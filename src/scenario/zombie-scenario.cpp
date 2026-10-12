@@ -337,16 +337,16 @@ ZombieScenario::ZombieScenario()
 }
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_scenario_zombie_scenario_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_scenario_zombie_scenario_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(ZombieRule)), 2u);
- types.recordActivateSource<ZombieRule>(2931u); AI_R56_REQUIRE_DECLARATION(ZombieRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZombieRule, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZombieRule>(2931u); AI_NATIVE_REQUIRE_DECLARATION(ZombieRule, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZombieRule, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(Zaibian)), 2u);
- types.recordActivateSource<Zaibian>(2932u); AI_R56_REQUIRE_DECLARATION(Zaibian, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Zaibian, getMaxUsageLimit, Skill);
+ types.recordActivateSource<Zaibian>(2932u); AI_NATIVE_REQUIRE_DECLARATION(Zaibian, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Zaibian, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(Xunmeng)), 2u);
- types.recordActivateSource<Xunmeng>(2933u); AI_R56_REQUIRE_DECLARATION(Xunmeng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Xunmeng, getMaxUsageLimit, Skill);
+ types.recordActivateSource<Xunmeng>(2933u); AI_NATIVE_REQUIRE_DECLARATION(Xunmeng, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Xunmeng, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(Peaching)), 2u);
- types.recordActivateSource<Peaching>(2934u); AI_R56_REQUIRE_DECLARATION(Peaching, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Peaching, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Peaching, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<Peaching>(2934u); AI_NATIVE_REQUIRE_DECLARATION(Peaching, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Peaching, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(Peaching, isResponseOrUse, ViewAsSkill);
  types.emplace(std::type_index(typeid(Ganran)), 2u);
- types.recordActivateSource<Ganran>(2935u); AI_R56_REQUIRE_DECLARATION(Ganran, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Ganran, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Ganran, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<Ganran>(2935u); AI_NATIVE_REQUIRE_DECLARATION(Ganran, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Ganran, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(Ganran, isResponseOrUse, ViewAsSkill);
 }

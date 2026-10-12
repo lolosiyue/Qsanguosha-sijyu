@@ -6,15 +6,45 @@ class ResponseSkill;
 struct lua_State;
 
 #include "card.h"
-#include "ai-strategy-readonly-card-store.h"
 #include "lua-runtime.h"
 #include "structs.h"
 
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QSharedPointer>
+#include <functional>
+#include <memory>
 
 struct CardLifetimeToken;
+struct AIRequest;
+class Room;
+class ServerPlayer;
+
+// Native-only observation custody. Each call validates the retained graph
+// lifetime; this callable is never serialized or exposed to isolated Lua.
+using AIReadonlyCardLease = std::function<const Card *()>;
+
+// Native-only custody of the exact detached product of an audited producer.
+// A key grants readonly queries, never payment, selection or reconstruction.
+// Implemented in ai-strategy/owner.cpp.
+class AIOwnerReadonlyCardStore final {
+public:
+    AIOwnerReadonlyCardStore(Room &, const AIRequest &);
+    ~AIOwnerReadonlyCardStore();
+    QString issue(ServerPlayer *, const AIRequest &, std::unique_ptr<Card>, const QString &sourceKey);
+    QString issueBorrowed(ServerPlayer *, const AIRequest &, const Card *, const QString &sourceKey);
+    const Card *lookup(ServerPlayer *, const AIRequest &, const QString &key) const;
+    QString sourceKey(ServerPlayer *, const AIRequest &, const QString &key) const;
+    AIReadonlyCardLease retain(ServerPlayer *, const AIRequest &, const QString &key) const;
+    void clear();
+    static AIReadonlyCardLease observe(const Card *);
+    static AIReadonlyCardLease own(std::unique_ptr<Card>);
+    AIOwnerReadonlyCardStore(const AIOwnerReadonlyCardStore &) = delete;
+    AIOwnerReadonlyCardStore &operator=(const AIOwnerReadonlyCardStore &) = delete;
+private:
+    struct State;
+    std::unique_ptr<State> m_state;
+};
 
 struct AICardView {
     std::shared_ptr<const CardLifetimeToken> nativeIdentity; // Never serialized.
@@ -459,7 +489,7 @@ struct AIConversionLedger {
     int queryCount = 0;
     QMap<QString, AIHandSampleReceipt> handSampleReceipts;
     QMap<int, AiSkillActionContext> previewPhysicalReceipts;
-    QMap<int,QJsonObject> round45PhysicalWrites; // Native-only same-request reached Danlve writes; no conversion receipt.
+    QMap<int,QJsonObject> danlvePhysicalWrites; // Native-only same-request reached Danlve writes; no conversion receipt.
 };
 
 struct AIRequest {
@@ -474,19 +504,19 @@ struct AIRequest {
     quint64 stateRevision;
     // Native-only current FC dispatch seal. Never serialize to either Lua VM.
     // Native-only lexical source-frame seal; never serialized into Lua.
-    quint64 round53CollateralQuestionSerial = 0; // Native-only actual Collateral effect inquiry.
-    quint64 round51CollateralQuestionSerial = 0; // Native-only lexical question witness.
-    bool round50YuriFrameBound = false;
-    quint64 round50YuriFrameSerial = 0;
-    bool round45NewgeneralsFrameBound = false;
-    quint64 round45NewgeneralsFrameSerial = 0;
-    bool round49NotifiedBound = false;
-    QJsonObject round49NotifiedWitness; // Native-only, never serialized.
-    QMap<int,QString> round49NotifiedIdentities;
-    bool round45NewgeneralsNotificationBound = false;
-    QJsonObject round45NewgeneralsNotificationWitness; // Native-only, never serialized.
-    bool round44FCUseFrameBound = false;
-    quint64 round44FCUseFrameSerial = 0;
+    quint64 collateralSlashQuestionSerial = 0; // Native-only actual Collateral effect inquiry.
+    quint64 benxiCollateralQuestionSerial = 0; // Native-only lexical question witness.
+    bool yuriFrameBound = false;
+    quint64 yuriFrameSerial = 0;
+    bool newgeneralsFrameBound = false;
+    quint64 newgeneralsFrameSerial = 0;
+    bool notifiedPileBound = false;
+    QJsonObject notifiedPileWitness; // Native-only, never serialized.
+    QMap<int,QString> notifiedPileIdentities;
+    bool newgeneralsNotificationBound = false;
+    QJsonObject newgeneralsNotificationWitness; // Native-only, never serialized.
+    bool fcUseFrameBound = false;
+    quint64 fcUseFrameSerial = 0;
     QString viewerObjectName;
     CardUseStruct::CardUseReason reason;
     QString pattern;
@@ -499,7 +529,7 @@ struct AIRequest {
     // skillActionContext above stays the one the request was built for, if any.
     QList<AiSkillActionContext> skillActions;
     AIChoiceOptions choiceOptions;
-    quint64 round52RangyiQuestionSerial = 0; // Native-only actual source callback/question witness.
+    quint64 rangyiWitnessSerial = 0; // Native-only actual source callback/question witness.
     quint64 jieyinghQuestionSerial = 0; // Native-only real question witness, never JSON input.
     quint64 zhifengQuestionSerial = 0; // Native-only ThWeijing recipient frame, never caller input.
     // Only the card decisions carry candidates; the other kinds leave this empty.

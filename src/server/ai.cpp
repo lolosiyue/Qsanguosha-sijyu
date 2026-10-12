@@ -1,11 +1,10 @@
-#include "ai-strategy-round47-xufa-event-scope.h"
-#include "ai-strategy-round44-certificate.h"
-#include "ai-strategy-round41-response.h"
-#include "ai-strategy-round29-choice.h"
-#include "ai-strategy-round30-choice.h"
-#include "ai-strategy-round30-planning.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/runtime.h"
+#include "ai-strategy/official.h"
+#include "ai-strategy/shadows.h"
+#include "ai-strategy/source-slots.h"
 #include "ai.h"
-#include "ai-strategy-choice-continuity.h"
+#include "ai-strategy/context.h"
 //#include "serverplayer.h"
 #include "engine.h"
 //#include "standard.h"
@@ -619,14 +618,14 @@ void LuaAI::pushCallback(lua_State*L, const char *function_name)
     // Before it is installed, preserve the unconditional startup invalidation.
     if(room && (!room->roomRuntime() || !room->roomRuntime()->lua().hasProtectedEntryObserver())) {
         invalidateAIChoiceContinuity(*room);
-        clearAIRound41FaqiPlans(*room);
+        clearAIFaqiPlans(*room);
     }
     Q_ASSERT(callback);
     if (room) {
-        invalidateAIRound29ChoicePriorities(*room,!prepareAIRound47XufaFilterCallback(*room,function_name));
-        invalidateAIRound30TargetCache(*room);
-        invalidateAIRound30TargetRevises(*room);
-        invalidateAIRound44RangeDecision(*room);
+        invalidateAIOverseasPriorities(*room,!prepareAIXufaFilterCallback(*room,function_name));
+        invalidateAITargetCache(*room);
+        invalidateAITargetRevises(*room);
+        invalidateAIRangeDecision(*room);
     }
 
     callback.push(L);

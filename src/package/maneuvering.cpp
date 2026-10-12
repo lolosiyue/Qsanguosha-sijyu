@@ -1,5 +1,5 @@
-#include "ai-strategy-round56-maxcards.h"
-#include "ai-strategy-round56-projection.h"
+#include "ai-strategy/native-registry.h"
+#include "ai-strategy/runtime.h"
 #include "maneuvering.h"
 //#include "client.h"
 #include "engine.h"
@@ -59,8 +59,8 @@ bool Analeptic::IsAvailable(const Player *player, const Card *analeptic)
 	if (!analeptic){
 		Card *ac = new Analeptic(Card::NoSuit, 0);
         if(auto*r=Sanguosha->currentRoom())
-            AIRound56AnalepticNullBirth sourceBirth(*r,player,ac);
-        if(auto*r=Sanguosha->currentRoom())recordAIRound56ProjectionSourceCard(*r,ac,QStringLiteral("analeptic"));
+            AIAnalepticNullBirth sourceBirth(*r,player,ac);
+        if(auto*r=Sanguosha->currentRoom())recordAIProjectionSourceCard(*r,ac,QStringLiteral("analeptic"));
 		ac->deleteLater();
 		analeptic = ac;
 	}
@@ -708,16 +708,15 @@ ManeuveringPackage::ManeuveringPackage()
 ADD_PACKAGE(Maneuvering)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_maneuvering_cpp(AIRound56NativeTypes&types){
+void registerAINativeTypes_src_package_maneuvering_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(FanVSSkill)), 2u);
- types.recordActivateSource<FanVSSkill>(945u); AI_R56_REQUIRE_DECLARATION(FanVSSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(FanVSSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(FanVSSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(FanVSSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(FanVSSkill, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(FanVSSkill, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<FanVSSkill>(945u); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(FanVSSkill, isResponseOrUse, ViewAsSkill);
  types.emplace(std::type_index(typeid(FanSkill)), 2u);
- types.recordActivateSource<FanSkill>(946u); AI_R56_REQUIRE_DECLARATION(FanSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(FanSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(FanSkill, getMaxUsageLimit, Skill);
+ types.recordActivateSource<FanSkill>(946u); AI_NATIVE_REQUIRE_DECLARATION(FanSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(FanSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(FanSkill, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GudingBladeSkill)), 2u);
- types.recordActivateSource<GudingBladeSkill>(947u); AI_R56_REQUIRE_DECLARATION(GudingBladeSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(GudingBladeSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GudingBladeSkill, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GudingBladeSkill>(947u); AI_NATIVE_REQUIRE_DECLARATION(GudingBladeSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GudingBladeSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GudingBladeSkill, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(VineSkill)), 2u);
- types.recordActivateSource<VineSkill>(948u); AI_R56_REQUIRE_DECLARATION(VineSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(VineSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(VineSkill, getMaxUsageLimit, Skill);
+ types.recordActivateSource<VineSkill>(948u); AI_NATIVE_REQUIRE_DECLARATION(VineSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(VineSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(VineSkill, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(SilverLionSkill)), 2u);
- types.recordActivateSource<SilverLionSkill>(949u); AI_R56_REQUIRE_DECLARATION(SilverLionSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(SilverLionSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(SilverLionSkill, getMaxUsageLimit, Skill);
+ types.recordActivateSource<SilverLionSkill>(949u); AI_NATIVE_REQUIRE_DECLARATION(SilverLionSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(SilverLionSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(SilverLionSkill, getMaxUsageLimit, Skill);
 }

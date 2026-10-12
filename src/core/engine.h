@@ -28,7 +28,7 @@ bool isPublishedGlobalCard(const QObject *object);
 bool hasPublishedGlobalCardOwnership(const QObject *object);
 bool canReparentDefinitionObject(const QObject *object, const QObject *parent);
 
-struct AIRound56FactorySourceReport;
+struct AIFactorySourceReport;
 class Room;
 
 class SafeLuaMutex {
@@ -258,10 +258,10 @@ public:
     QStringList getZhinangCards() const;
     void setZhinangCard(const QString &flag);
     Card *cloneCard(const Card *card) const;
-    bool aiRound56StandardCloneFactory(const QString &name) const;
+    bool aiStandardCloneFactory(const QString &name) const;
     // Public source definitions only; requires separate live-card birth ancestry.
-    bool aiRound56PublicPhysicalMetadataDefinitions(QString *why = nullptr) const;
-    bool aiRound56PublicPatternMetadataDefinitions(Room &, QString *why = nullptr) const;
+    bool aiPublicPhysicalMetadataDefinitions(QString *why = nullptr) const;
+    bool aiPublicPatternMetadataDefinitions(Room &, QString *why = nullptr) const;
     Card *cloneCard(const QString &name, Card::Suit suit = Card::NoSuit, int number = 0, const QStringList &flags = QStringList()) const;
     SkillCard *cloneSkillCard(const QString &name) const;
     QString getVersionNumber() const;
@@ -418,7 +418,7 @@ private:
     QJsonObject m_rulesLuaSnapshot;
     QStringList m_rulesPackageOrder;
     friend class RoomDefinitionRegistry;
-    friend AIRound56FactorySourceReport inspectAIRound56PublicFactorySources(Room &);
+    friend AIFactorySourceReport inspectAIPublicFactorySources(Room &);
 
     EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);
     RoomRuntime *currentRoomRuntime() const;

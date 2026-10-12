@@ -1,4 +1,4 @@
-#include "ai-strategy-round56-host.h"
+#include "ai-strategy/runtime.h"
 #include "server-logger.h"
 
 #include <QDateTime>
@@ -143,7 +143,7 @@ bool ServerLogger::start(const ServerLogConfiguration &configuration, QString &e
     m_activeLevel.store(static_cast<int>(configuration.level),
                         std::memory_order_release);
     m_previousHandler = qInstallMessageHandler(&ServerLogger::qtMessageHandler);
-    recordAIRound56ServerMessageSink(true);
+    recordAIServerMessageSink(true);
     m_started = true;
     return true;
 }
@@ -216,7 +216,7 @@ void ServerLogger::stop()
     if (!m_started)
         return;
 
-    recordAIRound56ServerMessageSink(false);
+    recordAIServerMessageSink(false);
     qInstallMessageHandler(m_previousHandler);
     ServerLogger *expected = this;
     s_activeLogger.compare_exchange_strong(expected, nullptr);

@@ -11,11 +11,11 @@ RoomState::~RoomState()
 
 void RoomState::clear()
 {
-    m_aiRound56IdMapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56IdMapSourceComplete.store(false, std::memory_order_release);
+    m_aiIdMapSourceAlive.store(false, std::memory_order_release);
+    m_aiIdMapSourceComplete.store(false, std::memory_order_release);
     // Generic ingress may never be repaired by a later reset/current shape.
-    m_aiRound56MapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56MapSourceComplete.store(false, std::memory_order_release);
+    m_aiMapSourceAlive.store(false, std::memory_order_release);
+    m_aiMapSourceComplete.store(false, std::memory_order_release);
     clearCardsForSourceReset();
 }
 
@@ -32,53 +32,53 @@ void RoomState::clearCardsForSourceReset()
     m_flags.clear();
 }
 
-bool RoomState::aiRound56PhysicalMapSourceOrigin() const noexcept
+bool RoomState::aiPhysicalMapSourceOrigin() const noexcept
 {
-    if (!m_aiRound56MapSourceAlive.load(std::memory_order_acquire)
-        || !m_aiRound56MapSourceComplete.load(std::memory_order_acquire)
-        || !hasAIRound56CardQueryOriginalSourceOrigin()
+    if (!m_aiMapSourceAlive.load(std::memory_order_acquire)
+        || !m_aiMapSourceComplete.load(std::memory_order_acquire)
+        || !hasAICardQueryOriginalSourceOrigin()
         || !Sanguosha || Sanguosha->currentRoomState() != this) return false;
     // Traverse the complete source-born public map, never an owner-selected
     // subset. Epochs only invalidate the already-issued factory provenance.
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         int sourceIndex = -1;
-        if (!it.value() || !it.value()->aiRound56PhysicalCloneIdentityOrigin(&sourceIndex)
+        if (!it.value() || !it.value()->aiPhysicalCloneIdentityOrigin(&sourceIndex)
             || sourceIndex != it.key()) return false;
     }
     return true;
 }
 
-bool RoomState::aiRound56PhysicalIdMapSourceOrigin() const noexcept
+bool RoomState::aiPhysicalIdMapSourceOrigin() const noexcept
 {
-    if (!m_aiRound56IdMapSourceAlive.load(std::memory_order_acquire)
-        || !m_aiRound56IdMapSourceComplete.load(std::memory_order_acquire)
-        || !hasAIRound56CardQueryOriginalSourceOrigin()
+    if (!m_aiIdMapSourceAlive.load(std::memory_order_acquire)
+        || !m_aiIdMapSourceComplete.load(std::memory_order_acquire)
+        || !hasAICardQueryOriginalSourceOrigin()
         || !Sanguosha || Sanguosha->currentRoomState() != this) return false;
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         int sourceIndex = -1;
-        if (!it.value() || !it.value()->aiRound56PhysicalCloneIdOrigin(&sourceIndex)
+        if (!it.value() || !it.value()->aiPhysicalCloneIdOrigin(&sourceIndex)
             || sourceIndex != it.key()) return false;
     }
     return true;
 }
 
-quint64 RoomState::aiRound56PhysicalIdMapGeneration() const noexcept
+quint64 RoomState::aiPhysicalIdMapGeneration() const noexcept
 {
-    return m_aiRound56IdMapGeneration.load(std::memory_order_acquire);
+    return m_aiIdMapGeneration.load(std::memory_order_acquire);
 }
 
-bool RoomState::aiRound56PhysicalIdSourceContains(const Card *card) const noexcept
+bool RoomState::aiPhysicalIdSourceContains(const Card *card) const noexcept
 {
-    if (!card || !m_aiRound56IdMapSourceAlive.load(std::memory_order_acquire)
-        || !m_aiRound56IdMapSourceComplete.load(std::memory_order_acquire)
-        || !hasAIRound56CardQueryOriginalSourceOrigin()
+    if (!card || !m_aiIdMapSourceAlive.load(std::memory_order_acquire)
+        || !m_aiIdMapSourceComplete.load(std::memory_order_acquire)
+        || !hasAICardQueryOriginalSourceOrigin()
         || !Sanguosha || Sanguosha->currentRoomState() != this) return false;
     // Actual writer checks only the member it introduces. Consumers also check
     // the entire map source; no selected hand scan or sampled card ID grants it.
     for (auto it = m_cards.cbegin(); it != m_cards.cend(); ++it) {
         if (it.value() != card) continue;
         int sourceIndex = -1;
-        return it.value()->aiRound56PhysicalCloneIdOrigin(&sourceIndex) && sourceIndex == it.key();
+        return it.value()->aiPhysicalCloneIdOrigin(&sourceIndex) && sourceIndex == it.key();
     }
     return false;
 }
@@ -130,17 +130,17 @@ void RoomState::reset()
 {
     // This complete known factory transition may continue a healthy lineage;
     // a failed/unproved former map can never be healed by replacing its values.
-    const bool continuousIdSource = aiRound56PhysicalIdMapSourceOrigin();
-    if (!continuousIdSource) m_aiRound56IdMapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56IdMapSourceComplete.store(false, std::memory_order_release);
+    const bool continuousIdSource = aiPhysicalIdMapSourceOrigin();
+    if (!continuousIdSource) m_aiIdMapSourceAlive.store(false, std::memory_order_release);
+    m_aiIdMapSourceComplete.store(false, std::memory_order_release);
     bool completeIdFactorySource = continuousIdSource;
-    if (m_aiRound56IdMapGeneration.fetch_add(1, std::memory_order_acq_rel) == ~quint64(0)) {
+    if (m_aiIdMapGeneration.fetch_add(1, std::memory_order_acq_rel) == ~quint64(0)) {
         completeIdFactorySource = false;
-        m_aiRound56IdMapSourceAlive.store(false, std::memory_order_release);
+        m_aiIdMapSourceAlive.store(false, std::memory_order_release);
     }
-    const bool continuousSource = aiRound56PhysicalMapSourceOrigin();
-    if (!continuousSource) m_aiRound56MapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56MapSourceComplete.store(false, std::memory_order_release);
+    const bool continuousSource = aiPhysicalMapSourceOrigin();
+    if (!continuousSource) m_aiMapSourceAlive.store(false, std::memory_order_release);
+    m_aiMapSourceComplete.store(false, std::memory_order_release);
     bool completeFactorySource = continuousSource;
     try {
         clearCardsForSourceReset();
@@ -152,10 +152,10 @@ void RoomState::reset()
                 continue;
             }
             int sourceIndex = -1;
-            const bool originalDefinition = engineCard->aiRound56OriginalPhysicalDefinitionIndex(&sourceIndex)
-                && engineCard->aiRound56OriginalPhysicalDefinitionMaterialsOrigin() && sourceIndex == i
-                && (engineCard->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
-            const bool originalDefinitionId = engineCard->aiRound56PhysicalDefinitionIdIndex(&sourceIndex)
+            const bool originalDefinition = engineCard->aiOriginalPhysicalDefinitionIndex(&sourceIndex)
+                && engineCard->aiOriginalPhysicalDefinitionMaterialsOrigin() && sourceIndex == i
+                && (engineCard->aiOriginalRecursiveFieldOrigins() & 14u) == 14u;
+            const bool originalDefinitionId = engineCard->aiPhysicalDefinitionIdIndex(&sourceIndex)
                 && sourceIndex == i;
             Card *clone = Card::Clone(engineCard);
             if (!clone) {
@@ -164,28 +164,28 @@ void RoomState::reset()
                 continue;
             }
             const bool unchangedDefinition = originalDefinition
-                && engineCard->aiRound56OriginalPhysicalDefinitionIndex(nullptr)
-                && engineCard->aiRound56OriginalPhysicalDefinitionMaterialsOrigin()
-                && (engineCard->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+                && engineCard->aiOriginalPhysicalDefinitionIndex(nullptr)
+                && engineCard->aiOriginalPhysicalDefinitionMaterialsOrigin()
+                && (engineCard->aiOriginalRecursiveFieldOrigins() & 14u) == 14u;
             WrappedCard *wrapped = new WrappedCard(WrappedCard::PhysicalCloneBirth{}, clone, i,
                                                     m_ownerThread, unchangedDefinition,
-                                                    originalDefinitionId && engineCard->aiRound56PhysicalDefinitionIdIndex(nullptr));
-            if (!wrapped->aiRound56PhysicalCloneIdOrigin(nullptr)) completeIdFactorySource = false;
-            if (!wrapped->aiRound56PhysicalCloneIdentityOrigin(nullptr)) completeFactorySource = false;
+                                                    originalDefinitionId && engineCard->aiPhysicalDefinitionIdIndex(nullptr));
+            if (!wrapped->aiPhysicalCloneIdOrigin(nullptr)) completeIdFactorySource = false;
+            if (!wrapped->aiPhysicalCloneIdentityOrigin(nullptr)) completeFactorySource = false;
             if (m_identityChanged)
                 QObject::connect(wrapped, &WrappedCard::identityChanged, wrapped,
                                  m_identityChanged, Qt::DirectConnection);
             m_cards[i] = wrapped;
         }
     } catch (...) {
-        m_aiRound56IdMapSourceAlive.store(false, std::memory_order_release);
-        m_aiRound56MapSourceAlive.store(false, std::memory_order_release);
+        m_aiIdMapSourceAlive.store(false, std::memory_order_release);
+        m_aiMapSourceAlive.store(false, std::memory_order_release);
         throw;
     }
-    if (!completeFactorySource || !hasAIRound56CardQueryOriginalSourceOrigin())
-        m_aiRound56MapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56MapSourceComplete.store(true, std::memory_order_release);
-    if (!completeIdFactorySource || !hasAIRound56CardQueryOriginalSourceOrigin())
-        m_aiRound56IdMapSourceAlive.store(false, std::memory_order_release);
-    m_aiRound56IdMapSourceComplete.store(true, std::memory_order_release);
+    if (!completeFactorySource || !hasAICardQueryOriginalSourceOrigin())
+        m_aiMapSourceAlive.store(false, std::memory_order_release);
+    m_aiMapSourceComplete.store(true, std::memory_order_release);
+    if (!completeIdFactorySource || !hasAICardQueryOriginalSourceOrigin())
+        m_aiIdMapSourceAlive.store(false, std::memory_order_release);
+    m_aiIdMapSourceComplete.store(true, std::memory_order_release);
 }

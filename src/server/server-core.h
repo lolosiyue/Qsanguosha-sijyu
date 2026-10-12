@@ -89,12 +89,12 @@ signals:
     void workFinished(const ScenarioWork::StageRunResult &result);
 
 public:
-    bool round56LogConnectionsReviewed() const noexcept { return typeid(*this)==typeid(Server) && m_round56LogConnectionsReviewed.load(); }
+    bool logConnectionsReviewed() const noexcept { return typeid(*this)==typeid(Server) && m_logConnectionsReviewed.load(); }
 protected:
     void connectNotify(const QMetaMethod &signal) override;
     void disconnectNotify(const QMetaMethod &signal) override;
 private:
-    std::atomic<bool> m_round56LogConnectionsReviewed {true};
+    std::atomic<bool> m_logConnectionsReviewed {true};
     GameSessionConfig takeNextGameSessionConfig();
     Room *publishRoom(Room *room);
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;

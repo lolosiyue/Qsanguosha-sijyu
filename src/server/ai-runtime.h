@@ -2,7 +2,6 @@
 #define QSAN_AI_RUNTIME_H
 
 #include "ai.h"
-#include "ai-strategy-readonly-card-store.h"
 #include "game-rng.h"
 #include "lua-runtime.h"
 
@@ -13,7 +12,7 @@ class Room;
 class Card;
 class ServerPlayer;
 class AIOwnerReadonlyCardStore;
-class AIRound24SourceSession;
+class AISourceCompatibilitySession;
 class RoomManagedState;
 struct lua_Debug;
 
@@ -236,7 +235,7 @@ private:
     int m_originalSuitResultValue = 0;
     quint64 m_originalSuitResultDecision = 0, m_originalSuitResultRevision = 0;
     std::unique_ptr<AIOwnerReadonlyCardStore> m_readonlyCards;
-    std::unique_ptr<AIRound24SourceSession> m_sourceCompatibility;
+    std::unique_ptr<AISourceCompatibilitySession> m_sourceCompatibility;
     QList<QWeakPointer<AIConversionLedger>> m_observationLedgers;
     void clearObservationLedgers();
     const AIRequest *m_activeEventRequest = nullptr;

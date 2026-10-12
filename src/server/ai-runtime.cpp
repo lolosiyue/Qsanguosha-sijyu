@@ -1,54 +1,24 @@
-#include "ai-strategy-round56-bootstrap-capture-metadata.h"
-#include "ai-strategy-round56-connection-cache.h"
-#include "ai-strategy-round56-mode-evaluation.h"
-#include "ai-strategy-round56-projection.h"
-#include "ai-strategy-round53-chuli.h"
-#include "ai-strategy-round41-response.h"
-#include "ai-strategy-round46-inovation.h"
-#include "ai-strategy-round50-effects.h"
-#include "ai-strategy-round53-collateral.h"
-#include "ai-strategy-round29-original.h"
-#include "ai-strategy-round29-planning.h"
-#include "ai-strategy-round29-choice.h"
-#include "ai-strategy-round40-choice.h"
-#include "ai-strategy-round30-choice.h"
-#include "ai-strategy-round30-planning.h"
-#include "ai-strategy-round31-planning.h"
-#include "ai-strategy-round26-response.h"
-#include "ai-strategy-round26-helpers.h"
-#include "ai-strategy-round28-choice.h"
-#include "ai-strategy-round24-response.h"
+#include "ai-strategy/runtime.h"
+#include "ai-strategy/official.h"
+#include "ai-strategy/inovation-ai.h"
+#include "ai-strategy/source-slots.h"
+#include "ai-strategy/shadows.h"
+#include "ai-strategy/ol-ai.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/prototypes.h"
+#include "ai-strategy/overseas.h"
+#include "ai-strategy/tenyear-ai.h"
 #include "ai-runtime.h"
-#include "ai-strategy-round46-planning-slots.h"
-#include "ai-strategy-round45-poxi-slot.h"
-#include "ai-strategy-round50-slots.h"
-#include "ai-strategy-round53-targets.h"
-#include "ai-strategy-round53-peiqi.h"
-#include "ai-strategy-round53-daoji.h"
-#include "ai-strategy-round51-manjuan.h"
-#include "ai-strategy-round53-manjuan.h"
-#include "ai-strategy-choice-continuity.h"
-#include "ai-strategy-round53-registry.h"
-#include "ai-strategy-round24-choice.h"
-#include "ai-strategy-round25-planning.h"
-#include "ai-strategy-round24-clock.h"
-#include "ai-strategy-round22-olclan-plan.h"
-#include "ai-strategy-round26-planning.h"
-#include "ai-strategy-round44-fc-frame.h"
-#include "ai-strategy-round45-context.h"
-#include "ai-strategy-round27-original.h"
-#include "ai-strategy-range-query.h"
-#include "ai-strategy-round44-certificate.h"
-#include "ai-strategy-round44-routes.h"
-#include "ai-strategy-round25-distance.h"
-#include "ai-strategy-readonly-card-store.h"
+#include "ai-strategy/newgenerals.h"
+#include "ai-strategy/context.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/anime.h"
+#include "ai-strategy/lua-seal.h"
+#include "ai-strategy/original-hegemony.h"
+#include "ai-strategy/owner.h"
 #include "serverplayer.h"
 
 #include "ai-data-store.h"
-#include "ai-strategy-history-context.h"
-#include "ai-strategy-nested-cardask.h"
-#include "ai-strategy-yczh2016.h"
-#include "ai-strategy-aliases.h"
 #include "roomthread.h"
 #include "engine.h"
 #include "lua-runtime.h"
@@ -56,19 +26,6 @@
 #include "lua-wrapper.h"
 #include "room.h"
 #include "room-runtime.h"
-#include "ai-strategy-round35-choice.h"
-#include "ai-strategy-round43-common.h"
-#include "ai-strategy-round44-imagine.h"
-#include "ai-strategy-round45-inovation-providers.h"
-#include "ai-strategy-round45-inovation-state.h"
-#include "ai-strategy-round45-goutong.h"
-#include "ai-strategy-round36-planning.h"
-#include "ai-strategy-round38-manbing.h"
-#include "ai-strategy-round37-response-init.h"
-#include "ai-strategy-round37-planning.h"
-#include "ai-strategy-round36-choice.h"
-#include "ai-strategy-round37-choice.h"
-#include "ai-strategy-round36-response-wire.h"
 #include "settings.h"
 #include "skill.h"
 
@@ -1264,10 +1221,10 @@ int AiLuaRuntime::luaRegisterDefenseWriter(lua_State *state)
     lua_Debug caller;
     if (!lua_getstack(state,1,&caller) || !lua_getinfo(state,"f",&caller))
         return luaL_error(state,"defense writer has no bootstrap caller");
-    const bool root=matchAIRound56PinnedAuxiliaryFunction(*runtime->m_room,state,-1,
+    const bool root=matchAIPinnedAuxiliaryFunction(*runtime->m_room,state,-1,
         "lua/ai/isolated/event-intention.lua",0,0);
     lua_pop(state,1);
-    if (!root || !matchAIRound56PinnedAuxiliaryFunction(*runtime->m_room,state,1,
+    if (!root || !matchAIPinnedAuxiliaryFunction(*runtime->m_room,state,1,
         "lua/ai/isolated/event-intention.lua",410,481))
         return luaL_error(state,"defense writer bootstrap source is not authenticated");
     lua_pushvalue(state,1);runtime->m_defenseWriterRef=luaL_ref(state,LUA_REGISTRYINDEX);
@@ -1281,7 +1238,7 @@ int AiLuaRuntime::luaPublishDefenseSnapshot(lua_State *state)
         || runtime->m_defenseWriterRef==LUA_NOREF)
         return luaL_error(state,"defense publication is outside its producer");
     const AIRequest *request=runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest;
-    if (!request || !aiRound44RangeRequestCurrent(*runtime->m_room,*request))
+    if (!request || !aiRangeRequestCurrent(*runtime->m_room,*request))
         return luaL_error(state,"defense publication has no current observer request");
     const QString viewer=request->viewerObjectName;
     const auto previous=runtime->m_pendingDefenseHistory.value("observer").toString()==viewer
@@ -1367,9 +1324,9 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, b
     lua_State *state = runtime.rawState();
     // Before the registry guard or world allocation, including refusal paths.
     Room *modeRoom = Sanguosha ? Sanguosha->currentRoom() : nullptr;
-    std::unique_ptr<AIRound56ModeEvaluationScope> sourceScope;
+    std::unique_ptr<AIModeEvaluationScope> sourceScope;
     if (modeRoom && modeRoom->roomRuntime() && &modeRoom->roomRuntime()->lua() == &runtime)
-        sourceScope.reset(new AIRound56ModeEvaluationScope(*modeRoom, state, world.modeId));
+        sourceScope.reset(new AIModeEvaluationScope(*modeRoom, state, world.modeId));
     const int top = lua_gettop(state);
     // Reentrancy is tracked in this Room's registry, never a process-global AI table.
     lua_getfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
@@ -1393,7 +1350,7 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, b
     lua_pushboolean(state, true);
     lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
     if (sourceScope && sourceScope->accepted()) {
-        AIRound56ModeWorldSource worldSource(*modeRoom, state);
+        AIModeWorldSource worldSource(*modeRoom, state);
         pushAIWorldView(state, world);
     } else {
         pushAIWorldView(state, world);
@@ -1583,35 +1540,35 @@ AiLuaRuntime::~AiLuaRuntime()
 
 bool AiLuaRuntime::initialize(QString *error)
 {
-    if (m_room) clearAIStrategyRound24Response(*m_room);
-    if(m_room)invalidateAIRound44RangeDecision(*m_room);
-    if(m_room)clearAIRound23OlClanObservations(*m_room);
-    if(m_room)clearAIRound41FaqiPlans(*m_room);
-    if(m_room)clearAIRound26PlanningPublicUses(*m_room);
-    if(m_room){clearAIRound44FCUseFrames(*m_room);clearAIRound45NewgeneralsFrames(*m_room);}
-    if(m_room)clearAIRound26DelegateObservations(*m_room);
-    if(m_room)clearAIRound28ChoiceState(*m_room);
-    if(m_room)clearAIRound27OriginalViews(*m_room);
-    if(m_room)clearAIRound29ShicaiPreview(*m_room);
+    if (m_room) clearAIStrategyKanyuResponse(*m_room);
+    if(m_room)invalidateAIRangeDecision(*m_room);
+    if(m_room)clearAIOlClanObservations(*m_room);
+    if(m_room)clearAIFaqiPlans(*m_room);
+    if(m_room)clearAIPlanningPublicUses(*m_room);
+    if(m_room){clearAIFCUseFrames(*m_room);clearAINewgeneralsFrames(*m_room);}
+    if(m_room)clearAIDelegateObservations(*m_room);
+    if(m_room)clearAILihuoChoiceState(*m_room);
+    if(m_room)clearAIViewCardsOriginalViews(*m_room);
+    if(m_room)clearAIShicaiPreview(*m_room);
     clearObservationLedgers();
     // Room startup has finished loading the legacy registries. Capture audited
     // function identities once, before the isolated VM can make a decision.
     if (m_room) captureAIStrategyAliases(*m_room);
     if (m_room) {
-        captureAIRound29ChoicePriorities(*m_room);
-        captureAIRound30TargetCache(*m_room);
-        initializeAIRound30TargetRevises(*m_room);
-        initializeAIRound36KurouShadow(*m_room);
-        initializeAIRound38Manbing(*m_room);
-        initializeAIRound37OriginalTurnUse(*m_room);
-        initializeAIRound45InovationProviders(*m_room);
-        initializeAIRound37CrossbowShadow(*m_room);
+        captureAIOverseasPriorities(*m_room);
+        captureAITargetCache(*m_room);
+        initializeAITargetRevises(*m_room);
+        initializeAIKurouShadow(*m_room);
+        initializeAIManbing(*m_room);
+        initializeAIOriginalTurnUse(*m_room);
+        initializeAIInovationProviders(*m_room);
+        initializeAICrossbowShadow(*m_room);
     }
-    if (m_room) captureAIRound24ChoiceRegistry(*m_room);
-    if (m_room) captureAIRound25PlanningMetadata(*m_room);
-    if (m_room) captureAIRound31PlanningMetadata(*m_room);
-    if (m_room) captureAIRound26DelegateMetadata(*m_room);
-    if (m_room) { clearAIStrategyRound26Response(*m_room); captureAIStrategyRound26Response(*m_room); }
+    if (m_room) captureAIGuoChoiceRegistry(*m_room);
+    if (m_room) captureAIHayateEnemyMetadata(*m_room);
+    if (m_room) captureAIMidaoNaMetadata(*m_room);
+    if (m_room) captureAIDelegateMetadata(*m_room);
+    if (m_room) { clearAIStrategyLoongXuheResponse(*m_room); captureAIStrategyXuheResponse(*m_room); }
     const int softMiB = qMax(1, Config.value(QStringLiteral("AiLuaSoftMemoryMiB"),
                                              int(AiSoftMemoryLimit / 1024u / 1024u)).toInt());
     const int hardMiB = qMax(softMiB, Config.value(QStringLiteral("AiLuaHardMemoryMiB"),
@@ -1636,7 +1593,7 @@ bool AiLuaRuntime::initialize(QString *error)
         shutdown();
         return false;
     }
-    if(m_room)initializeAIRound41ChoiceTables(*m_room,m_lua.state(),true);
+    if(m_room)initializeAIChoiceRegistryTables(*m_room,m_lua.state(),true);
     loadConfiguredRoutes();
     m_routes.freeze();
     return true;
@@ -1645,18 +1602,18 @@ bool AiLuaRuntime::initialize(QString *error)
 void AiLuaRuntime::shutdown()
 {
     m_defenseHistory.clear(); m_pendingDefenseHistory={}; m_defenseWriterRef=LUA_NOREF;
-    if (m_room) clearAIStrategyRound24Response(*m_room);
-    if(m_room)invalidateAIRound44RangeDecision(*m_room);
+    if (m_room) clearAIStrategyKanyuResponse(*m_room);
+    if(m_room)invalidateAIRangeDecision(*m_room);
     m_sourceCompatibility.reset();
-    if(m_room)clearAIRound23OlClanObservations(*m_room);
-    if(m_room)clearAIRound41FaqiPlans(*m_room);
-    if(m_room)clearAIRound26PlanningPublicUses(*m_room);
-    if(m_room){clearAIRound44FCUseFrames(*m_room);clearAIRound45NewgeneralsFrames(*m_room);}
-    if(m_room)clearAIRound26DelegateObservations(*m_room);
-    if(m_room)clearAIRound28ChoiceState(*m_room);
-    if(m_room)clearAIRound27OriginalViews(*m_room);
-    if(m_room)clearAIRound29ShicaiPreview(*m_room);
-    if(m_room) clearAIStrategyRound26Response(*m_room);
+    if(m_room)clearAIOlClanObservations(*m_room);
+    if(m_room)clearAIFaqiPlans(*m_room);
+    if(m_room)clearAIPlanningPublicUses(*m_room);
+    if(m_room){clearAIFCUseFrames(*m_room);clearAINewgeneralsFrames(*m_room);}
+    if(m_room)clearAIDelegateObservations(*m_room);
+    if(m_room)clearAILihuoChoiceState(*m_room);
+    if(m_room)clearAIViewCardsOriginalViews(*m_room);
+    if(m_room)clearAIShicaiPreview(*m_room);
+    if(m_room) clearAIStrategyLoongXuheResponse(*m_room);
     clearObservationLedgers();
     m_readonlyCards.reset();
     m_lua.shutdown();
@@ -1768,18 +1725,18 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         LuaRuntime::LuaInvocationScope invocation(m_lua);
         m_activeRequest = &request;
-        if(m_room)beginAIRound44RangeDecision(*m_room,request,lua_topointer(state,-1));
-        const auto finishRangeDecision=qScopeGuard([&]{if(m_room)finishAIRound44RangeDecision(*m_room,request);});
+        if(m_room)beginAIRangeDecision(*m_room,request,lua_topointer(state,-1));
+        const auto finishRangeDecision=qScopeGuard([&]{if(m_room)finishAIRangeDecision(*m_room,request);});
         m_originalDiscardResultReady=false;
         m_originalDiscardResultIds.clear();
         const auto clearOriginalDiscard=qScopeGuard([this]{m_originalDiscardResultReady=false;m_originalDiscardResultIds.clear();});
         m_originalSuitResultReady=false;
         const auto clearOriginalSuit=qScopeGuard([this]{m_originalSuitResultReady=false;});
         if(m_room) {
-            beginAIRound29ChoicePolicy(*m_room,request.viewerObjectName);
-            beginAIRound30TargetRevises(*m_room,request.viewerObjectName);
+            beginAIOverseasPriorityPolicy(*m_room,request.viewerObjectName);
+            beginAITargetRevises(*m_room,request.viewerObjectName);
         }
-        m_sourceCompatibility.reset(m_room ? new AIRound24SourceSession(*m_room,request) : nullptr);
+        m_sourceCompatibility.reset(m_room ? new AISourceCompatibilitySession(*m_room,request) : nullptr);
         const auto clearSourceCompatibility=qScopeGuard([this]{m_sourceCompatibility.reset();});
         m_readonlyCards.reset(m_room ? new AIOwnerReadonlyCardStore(*m_room,request) : nullptr);
         const auto clearRequest = qScopeGuard([this] { m_readonlyCards.reset(); m_activeRequest = nullptr; });
@@ -1860,7 +1817,7 @@ bool AiLuaRuntime::commitStrategyEffects(const AIWorldView &world, const QJsonAr
             && effect.toObject().value("kind") != "delay"
             && effect.toObject().value("kind") != "personality_target"
             && effect.toObject().value("kind") != "cardask_no_jink") return fail("AI_STRATEGY_INVALID_EFFECTS");
-    if (m_room && !aiRound44RangeWorldCurrent(*m_room,world)) return fail("AI_STRATEGY_STALE");
+    if (m_room && !aiRangeWorldCurrent(*m_room,world)) return fail("AI_STRATEGY_STALE");
     LuaRuntime::Binding binding(modeRuntime);
     ExecutionBinding executionBinding(*this);
     lua_State *state = modeRuntime.state();
@@ -1886,7 +1843,7 @@ bool AiLuaRuntime::commitStrategyEffects(const AIWorldView &world, const QJsonAr
     lua_pop(state, 1);
     if (!lua_istable(state, -1) || !validateStrategyEffects(presentation, world, 0))
         return fail("AI_STRATEGY_MODE_ERROR");
-    if (m_room && !aiRound44RangeWorldCurrent(*m_room,world)) return fail("AI_STRATEGY_STALE");
+    if (m_room && !aiRangeWorldCurrent(*m_room,world)) return fail("AI_STRATEGY_STALE");
     if (LuaRuntime::protectedCall(state, 1, 1, 0) != 0 || !lua_isnil(state, -1)) return fail("AI_STRATEGY_COMMIT_ERROR");
     publishPresentation(m_room, presentation);
     return true;
@@ -2019,16 +1976,16 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         eventRequest.choiceOptions.context.insert("target_recommend_event_actor", event.details.value("player"));
         eventRequest.choiceOptions.context.insert("target_recommend_event_death", event.triggerEvent == int(Death));
-        eventRequest.choiceOptions.context.insert("r40_oljijiang_event",aiRound40OLJijiangEvent(event));
-        const auto chuliEvent=aiRound53ChuliEvent(event);
+        eventRequest.choiceOptions.context.insert("r40_oljijiang_event",aiOLJijiangEvent(event));
+        const auto chuliEvent=aiChuliEvent(event);
         if(!chuliEvent.isEmpty())eventRequest.choiceOptions.context.insert("r53_chuli_event",chuliEvent);
         m_activeEventRequest = &eventRequest;
         m_activePeiqiEvent = &event;
         if(m_room) {
-            beginAIRound29ChoicePolicy(*m_room,eventRequest.viewerObjectName);
-            beginAIRound30TargetRevises(*m_room,eventRequest.viewerObjectName);
+            beginAIOverseasPriorityPolicy(*m_room,eventRequest.viewerObjectName);
+            beginAITargetRevises(*m_room,eventRequest.viewerObjectName);
         }
-        m_sourceCompatibility.reset(m_room ? new AIRound24SourceSession(*m_room,eventRequest,event.triggerEvent,event.kind) : nullptr);
+        m_sourceCompatibility.reset(m_room ? new AISourceCompatibilitySession(*m_room,eventRequest,event.triggerEvent,event.kind) : nullptr);
         const auto clearSourceCompatibility=qScopeGuard([this]{m_sourceCompatibility.reset();});
         m_activeEventMode = eventQuerySession ? &modeRuntime : nullptr;
         const int status = LuaRuntime::protectedCall(state, 2, 3, 0);
@@ -2258,7 +2215,7 @@ int AiLuaRuntime::luaResolveConversion(lua_State *state)
     if (!readAIJson(state, 3, spec, budget) || !spec.isObject())
         return luaL_error(state, "conversion spec must be plain values");
     if (runtime->m_room && runtime->m_room->roomRuntime()
-        && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+        && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale conversion query");
     QJsonObject proposal{{"class_name", className}, {"scope_id", scope}, {"spec", spec}};
     if (lua_gettop(state)==4) {
@@ -2323,8 +2280,8 @@ int AiLuaRuntime::luaEvaluateOwnerRangeCard(lua_State *state)
 {
     AiLuaRuntime *runtime = fromUpvalue(state);
     if (!runtime || current() != runtime || !runtime->m_activeRequest || !runtime->m_conversionResolver
-        || (!AIOwnerRangeQueryScope::isActive() && !AIRound25OwnerDistanceScope::active()
-            && !aiRound44RangeContinuation(*runtime->m_room,*runtime->m_activeRequest))
+        || (!AIOwnerRangeQueryScope::isActive() && !AIOwnerDistanceScope::active()
+            && !aiRangeContinuation(*runtime->m_room,*runtime->m_activeRequest))
         || lua_gettop(state) != 1 || !lua_istable(state, 1))
         return luaL_error(state, "owner range card requires an active hypothesis");
     const AIRequest &request = *runtime->m_activeRequest;
@@ -2390,7 +2347,7 @@ int AiLuaRuntime::luaOriginalSDChoice(lua_State *L)
  QJsonValue value;int budget=256;
  if(!readAIJson(L,1,value,budget)||!value.isObject())return luaL_error(L,"Original SD operation must be a bounded value object");
  const auto&q=*runtime->m_activeRequest;auto*p=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound37SD(*runtime->m_room,q,p,value.toObject()));return 1;
+ pushAIJsonValue(L,queryAIOriginalSD(*runtime->m_room,q,p,value.toObject()));return 1;
 }
 
 int AiLuaRuntime::luaOriginalCardChosenResult(lua_State *L)
@@ -2400,7 +2357,7 @@ int AiLuaRuntime::luaOriginalCardChosenResult(lua_State *L)
   ||lua_gettop(L)!=1||lua_type(L,1)!=LUA_TNUMBER)
   return luaL_error(L,"Original CardChosen result requires its native numeric source result");
  const auto&q=*runtime->m_activeRequest;
- if(q.kind!=AIRequest::CardChosen||q.choiceOptions.question!="askForCardChosen"||!aiRound35OriginalQuestion(q))
+ if(q.kind!=AIRequest::CardChosen||q.choiceOptions.question!="askForCardChosen"||!aiOriginalHegemonyQuestion(q))
   return luaL_error(L,"Original CardChosen result inquiry mismatch");
  // Exact fixed swig/ai.i461 conversion, including integral doubles and the
  // Lua API's own result for fractional/nonfinite numbers. No ID authority.
@@ -2417,8 +2374,8 @@ int AiLuaRuntime::luaOriginalGuanxingShadow(lua_State *L)
  QJsonObject result;
  if(lua_gettop(L)==1){
   if(runtime->m_activeEventRequest)return luaL_error(L,"Original Guanxing shadow event write rejected");
-  result=writeAIRound36GuanxingShadow(*runtime->m_room,q,p,lua_toboolean(L,1));
- }else result=readAIRound36GuanxingShadow(*runtime->m_room,q,p);
+  result=writeAIGuanxingShadow(*runtime->m_room,q,p,lua_toboolean(L,1));
+ }else result=readAIGuanxingShadow(*runtime->m_room,q,p);
  pushAIJsonValue(L,result);return 1;
 }
 
@@ -2432,9 +2389,9 @@ int AiLuaRuntime::luaOriginalCrossbowShadow(lua_State *L)
  const auto spec=input.toObject();const auto op=spec.value("op").toString();
  const auto &q=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
  auto *p=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);QJsonObject result;
- if(op==QStringLiteral("read")&&spec.size()==1)result=readAIRound37CrossbowShadow(*runtime->m_room,q,p);
+ if(op==QStringLiteral("read")&&spec.size()==1)result=readAICrossbowShadow(*runtime->m_room,q,p);
  else if(op==QStringLiteral("write")&&spec.size()==2&&spec.value("source").isObject()&&!runtime->m_activeEventRequest)
-  result=writeAIRound37CrossbowShadow(*runtime->m_room,q,p,spec.value("source").toObject());
+  result=writeAICrossbowShadow(*runtime->m_room,q,p,spec.value("source").toObject());
  else return luaL_error(L,"Original Crossbow operation or scope is not admitted");
  pushAIJsonValue(L,result);return 1;
 }
@@ -2448,7 +2405,7 @@ int AiLuaRuntime::luaOriginalTurnUsePresence(lua_State *L)
  auto*p=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);
  QString write;
  if(lua_gettop(L)==1){if(runtime->m_activeEventRequest)return luaL_error(L,"Original toUse event write rejected");size_t n=0;const char*s=lua_tolstring(L,1,&n);write=QString::fromUtf8(s,int(n));if(write!="empty"&&write!="nil"&&write!="unknown")return luaL_error(L,"invalid Original toUse state");}
- pushAIJsonValue(L,queryAIRound37OriginalTurnUse(*runtime->m_room,q,p,write));return 1;
+ pushAIJsonValue(L,queryAIOriginalTurnUse(*runtime->m_room,q,p,write));return 1;
 }
 
 int AiLuaRuntime::luaManbingFlag(lua_State *L)
@@ -2463,7 +2420,7 @@ int AiLuaRuntime::luaManbingFlag(lua_State *L)
  QString target;if(!readBoundedString(L,1,target)||target.isEmpty())return luaL_error(L,"invalid Manbing target");
  const auto&q=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
  const auto*p=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound38Manbing(*runtime->m_room,q,p,target,argc==2));return 1;
+ pushAIJsonValue(L,queryAIManbing(*runtime->m_room,q,p,target,argc==2));return 1;
 }
 
 int AiLuaRuntime::luaOriginalKurouShadow(lua_State *L)
@@ -2473,8 +2430,8 @@ int AiLuaRuntime::luaOriginalKurouShadow(lua_State *L)
  const auto&q=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
  auto*p=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);
  QJsonObject result;
- if(lua_gettop(L)==1){if(runtime->m_activeEventRequest)return luaL_error(L,"Original Kurou event write rejected");result=writeAIRound36KurouShadow(*runtime->m_room,q,p,lua_toboolean(L,1));}
- else result=readAIRound36KurouShadow(*runtime->m_room,q,p);
+ if(lua_gettop(L)==1){if(runtime->m_activeEventRequest)return luaL_error(L,"Original Kurou event write rejected");result=writeAIKurouShadow(*runtime->m_room,q,p,lua_toboolean(L,1));}
+ else result=readAIKurouShadow(*runtime->m_room,q,p);
  pushAIJsonValue(L,result);return 1;
 }
 
@@ -2502,7 +2459,7 @@ int AiLuaRuntime::luaInovationXinyang(lua_State *L)
  QString op;if(!readBoundedString(L,1,op))return luaL_error(L,"invalid Xinyang operation");
  const lua_Integer id=lua_tointeger(L,2);if(id<-1||id>std::numeric_limits<int>::max())return luaL_error(L,"invalid Xinyang material");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound45Xinyang(*r->m_room,q,p,op,int(id)));return 1;
+ pushAIJsonValue(L,queryAIXinyang(*r->m_room,q,p,op,int(id)));return 1;
 }
 
 int AiLuaRuntime::luaSourceImmediateEffect(lua_State*L){
@@ -2513,9 +2470,9 @@ int AiLuaRuntime::luaSourceImmediateEffect(lua_State*L){
  if(!readAIJson(L,1,input,budget)||!input.isObject())return luaL_error(L,"invalid finite source effect schema");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
  pushAIJsonValue(L,input.toObject().value("source")=="yohane"
-  ?queryAIRound53Yohane(*r->m_room,q,p,input.toObject()):input.toObject().value("source")=="goodatwep"
-  ?queryAIRound53Goodatwep(*r->m_room,q,p,input.toObject()):input.toObject().value("source")=="ordinary_collateral"
-  ?queryAIRound53Collateral(*r->m_room,q,p,input.toObject()):queryAIRound50Effects(*r->m_room,q,p,input.toObject()));return 1;
+  ?queryAIYohane(*r->m_room,q,p,input.toObject()):input.toObject().value("source")=="goodatwep"
+  ?queryAIGoodatwep(*r->m_room,q,p,input.toObject()):input.toObject().value("source")=="ordinary_collateral"
+  ?queryAICollateralFlag(*r->m_room,q,p,input.toObject()):queryAISourceEffects(*r->m_room,q,p,input.toObject()));return 1;
 }
 
 int AiLuaRuntime::luaInovationRemaining(lua_State *L)
@@ -2526,7 +2483,7 @@ int AiLuaRuntime::luaInovationRemaining(lua_State *L)
   return luaL_error(L,"Inovation finite source operation requires actual current question");
  QString op,name;if(!readBoundedString(L,1,op)||!readBoundedString(L,2,name))return luaL_error(L,"invalid Inovation finite source operation");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound46Inovation(*r->m_room,q,p,op,name));return 1;
+ pushAIJsonValue(L,queryAIInovationKaiqi(*r->m_room,q,p,op,name));return 1;
 }
 
 int AiLuaRuntime::luaInovationGoutong(lua_State *L)
@@ -2535,7 +2492,7 @@ int AiLuaRuntime::luaInovationGoutong(lua_State *L)
   return luaL_error(L,"Goutong source prefix requires the actual current request");
  QString op;if(!readBoundedString(L,1,op)||(op!="write"&&op!="read"))return luaL_error(L,"invalid Goutong operation");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,op=="write"?writeAIRound45GoutongMove(*r->m_room,q,p):readAIRound45GoutongMove(*r->m_room,q,p));return 1;
+ pushAIJsonValue(L,op=="write"?writeAIGoutongMove(*r->m_room,q,p):readAIGoutongMove(*r->m_room,q,p));return 1;
 }
 
 int AiLuaRuntime::luaInovationShoushi(lua_State *L)
@@ -2546,7 +2503,7 @@ int AiLuaRuntime::luaInovationShoushi(lua_State *L)
   return luaL_error(L,"Shoushi source slots require their actual current question");
  QString op,name;if(!readBoundedString(L,1,op)||!readBoundedString(L,2,name))return luaL_error(L,"invalid Shoushi operation");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound45Shoushi(*r->m_room,q,p,op,name));return 1;
+ pushAIJsonValue(L,queryAIShoushi(*r->m_room,q,p,op,name));return 1;
 }
 
 int AiLuaRuntime::luaManjuanSource(lua_State *L)
@@ -2555,7 +2512,7 @@ int AiLuaRuntime::luaManjuanSource(lua_State *L)
  QString op;QJsonValue input;int budget=64;
  if(!readBoundedString(L,1,op)||!readAIJson(L,2,input,budget)||!input.isObject())return luaL_error(L,"Manjuan finite argument shape invalid");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,op.startsWith("printed_")?queryAIRound53ManjuanPrinted(*r->m_room,q,p,op,input.toObject()):queryAIRound51Manjuan(*r->m_room,q,p,op,input.toObject()));return 1;
+ pushAIJsonValue(L,op.startsWith("printed_")?queryAIManjuanPrinted(*r->m_room,q,p,op,input.toObject()):queryAIManjuan(*r->m_room,q,p,op,input.toObject()));return 1;
 }
 
 int AiLuaRuntime::luaPeiqiSourceRecord(lua_State *L)
@@ -2568,7 +2525,7 @@ int AiLuaRuntime::luaPeiqiSourceRecord(lua_State *L)
  if(!readBoundedString(L,1,op)||!readBoundedString(L,2,key)||!readAIJson(L,3,value,budget)||!value.isObject())return luaL_error(L,"Peiqi source argument shape invalid");
  const auto&q=*(r->m_activeEventRequest?r->m_activeEventRequest:r->m_activeRequest);
  auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound53PeiqiRecord(*r->m_room,q,p,r->m_activePeiqiEvent,op,key,value.toObject()));return 1;
+ pushAIJsonValue(L,queryAIPeiqiRecord(*r->m_room,q,p,r->m_activePeiqiEvent,op,key,value.toObject()));return 1;
 }
 
 int AiLuaRuntime::luaDaojiSourceCard(lua_State *L)
@@ -2578,7 +2535,7 @@ int AiLuaRuntime::luaDaojiSourceCard(lua_State *L)
  if(!readBoundedString(L,1,op)||!readAIJson(L,2,value,budget)||!value.isObject())return luaL_error(L,"Daoji source arguments malformed");
  auto input=value.toObject();if(input.value("ids").isObject()&&input.value("ids").toObject().isEmpty())input.insert("ids",QJsonArray{});
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound53DaojiCard(*r->m_room,q,p,op,input));return 1;
+ pushAIJsonValue(L,queryAIDaojiCard(*r->m_room,q,p,op,input));return 1;
 }
 
 int AiLuaRuntime::luaCurrentSourceSlot(lua_State *L)
@@ -2589,10 +2546,10 @@ int AiLuaRuntime::luaCurrentSourceSlot(lua_State *L)
  if(key=="yuanrongIds"&&op=="write"&&value.toObject().value("ids").isObject()&&value.toObject().value("ids").toObject().isEmpty()){auto o=value.toObject();o.insert("ids",QJsonArray{});value=o;}
  if(r->m_activeEventRequest&&key!="chuli_id_choice")return luaL_error(L,"source slot event operation outside finite Chuli reader");
  const auto&q=*(r->m_activeEventRequest?r->m_activeEventRequest:r->m_activeRequest);auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- if(key=="chuli_id_choice"){pushAIJsonValue(L,queryAIRound53ChuliMap(*r->m_room,q,p,op,value.toObject()));return 1;}
+ if(key=="chuli_id_choice"){pushAIJsonValue(L,queryAIChuliMap(*r->m_room,q,p,op,value.toObject()));return 1;}
  if((key=="cl_to"||key=="youlong_to"||key=="secondjinzhi_to"||key=="fengying_to"||key=="fuping_to"||key=="jiusiTo"||key=="fuhui_to"||key=="jg_to"||key=="mx_to"||key=="shouli_to")&&op=="write"&&value.toObject().value("type")=="players"&&value.toObject().value("value").isObject()&&value.toObject().value("value").toObject().isEmpty()){auto o=value.toObject();o.insert("value",QJsonArray{});value=o;}
- if(key=="luochong_to"||key=="cl_to"||key=="diting_to"||key=="youlong_to"||key=="secondjinzhi_to"||key=="xiaoxinf_to"||key=="fengying_to"||key=="fuping_to"||key=="jiusiTo"||key=="fuhui_to"||key=="jg_to"||key=="mx_to"||key=="shouli_to"||key=="tj_to"||key=="shouxingTo"||key=="geassTarget"||key=="tychendeTo")pushAIJsonValue(L,queryAIRound53TargetSlot(*r->m_room,q,p,key,op,value.toObject()));
- else pushAIJsonValue(L,queryAIRound50SourceSlot(*r->m_room,q,p,key,op,value.toObject()));return 1;
+ if(key=="luochong_to"||key=="cl_to"||key=="diting_to"||key=="youlong_to"||key=="secondjinzhi_to"||key=="xiaoxinf_to"||key=="fengying_to"||key=="fuping_to"||key=="jiusiTo"||key=="fuhui_to"||key=="jg_to"||key=="mx_to"||key=="shouli_to"||key=="tj_to"||key=="shouxingTo"||key=="geassTarget"||key=="tychendeTo")pushAIJsonValue(L,queryAISelfTargetSlot(*r->m_room,q,p,key,op,value.toObject()));
+ else pushAIJsonValue(L,queryAICurrentSourceSlot(*r->m_room,q,p,key,op,value.toObject()));return 1;
 }
 
 int AiLuaRuntime::luaPoxiSourceSlot(lua_State *L)
@@ -2604,7 +2561,7 @@ int AiLuaRuntime::luaPoxiSourceSlot(lua_State *L)
  QString op,name;
  if(!readBoundedString(L,1,op)||!readBoundedString(L,2,name))return luaL_error(L,"invalid Poxi source slot arguments");
  const auto&q=*r->m_activeRequest;auto*p=r->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound45PoxiSlot(*r->m_room,q,p,op,name));return 1;
+ pushAIJsonValue(L,queryAIPoxiSlot(*r->m_room,q,p,op,name));return 1;
 }
 
 int AiLuaRuntime::luaInovationSourceDiagnostic(lua_State *L)
@@ -2617,14 +2574,14 @@ int AiLuaRuntime::luaInovationSourceDiagnostic(lua_State *L)
  auto*viewer=runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true);
  if(key=="shoushi_missing"){
   if(!runtime->m_activeRequest||runtime->m_activeEventRequest){lua_pushboolean(L,false);return 1;}
-  const auto row=queryAIRound45Shoushi(*runtime->m_room,request,viewer,"read",QString());
+  const auto row=queryAIShoushi(*runtime->m_room,request,viewer,"read",QString());
   if(row.value("known")!=QJsonValue(true)||row.value("value")!=QJsonValue(false)){lua_pushboolean(L,false);return 1;}
   runtime->m_room->output(QStringLiteral("shoushi player chosen error!!"));qWarning("%s","shoushi player chosen error!!");lua_pushboolean(L,true);return 1;
  }
  const QString method=key=="jijiang_traceback"?QStringLiteral("getJijiangSlashNum"):
   ((key=="lijian_looking"||key=="lijian_unfound")?QStringLiteral("findLijianTarget"):QString());
- if(method.isEmpty()||!aiRound44RangeRequestCurrent(*runtime->m_room,request,viewer)
-  ||!aiRound45InovationProviderKnown(*runtime->m_room,viewer,method)){lua_pushboolean(L,false);return 1;}
+ if(method.isEmpty()||!aiRangeRequestCurrent(*runtime->m_room,request,viewer)
+  ||!aiInovationProviderKnown(*runtime->m_room,viewer,method)){lua_pushboolean(L,false);return 1;}
  if(key=="jijiang_traceback"){
   // Same traceback operation / console sink order; this VM's file and line
   // necessarily differ and remain an explicit diagnostic-only boundary.
@@ -2646,7 +2603,7 @@ int AiLuaRuntime::luaImagineSourceDiagnostic(lua_State *L)
         return luaL_error(L,"invalid Imagine diagnostic arguments");
     const auto &request=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
     auto *viewer=runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true);
-    lua_pushboolean(L,emitAIRound44ImagineDiagnostic(*runtime->m_room,request,viewer,site,message));
+    lua_pushboolean(L,emitAIImagineDiagnostic(*runtime->m_room,request,viewer,site,message));
     return 1;
 }
 
@@ -2662,8 +2619,8 @@ int AiLuaRuntime::luaOriginalSourceWarning(lua_State *L)
     const auto &request=*runtime->m_activeRequest;
     auto *viewer=runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true);
     lua_pushboolean(L,source=="inovation.jizhanshiz"
-        ? emitAIRound43InovationWarning(*runtime->m_room,request,viewer,source,message)
-        : emitAIRound35SourceWarning(*runtime->m_room,request,viewer,source,message));
+        ? emitAIJizhanshizWarning(*runtime->m_room,request,viewer,source,message)
+        : emitAIOriginalSourceWarning(*runtime->m_room,request,viewer,source,message));
     return 1;
 }
 
@@ -2699,7 +2656,7 @@ int AiLuaRuntime::luaTargetRecommendCache(lua_State *L)
             ||(!event&&!request.decisionId))
             stamp={{"known",false},{"reason","observer cache has no current native question"}};
         else {
-            stamp=queryAIRound30TargetCache(*runtime->m_room,request,viewer,{{"op","observer_epoch"}});
+            stamp=queryAITargetCache(*runtime->m_room,request,viewer,{{"op","observer_epoch"}});
             if(stamp.value("known")==QJsonValue(true))
                 stamp.insert("question",event?"event:"+QString::number(runtime->m_activePeiqiEvent->sequence)
                     :"decision:"+QString::number(request.decisionId));
@@ -2719,11 +2676,11 @@ int AiLuaRuntime::luaTargetRecommendCache(lua_State *L)
         if (proposal.size() != 1 || !runtime->m_activeEventRequest
             || !request.choiceOptions.context.value("target_recommend_event_death").toBool())
             return luaL_error(L,"target recommendation Death clear requires source Death phase");
-        resetAIRound30TargetCache(*runtime->m_room);
-        pushAIJsonValue(L, queryAIRound30TargetCache(*runtime->m_room, request, viewer, {{"op","read"}}));
+        resetAITargetCache(*runtime->m_room);
+        pushAIJsonValue(L, queryAITargetCache(*runtime->m_room, request, viewer, {{"op","read"}}));
         return 1;
     }
-    pushAIJsonValue(L, queryAIRound30TargetCache(*runtime->m_room, request, viewer, proposal));
+    pushAIJsonValue(L, queryAITargetCache(*runtime->m_room, request, viewer, proposal));
     return 1;
 }
 
@@ -2738,7 +2695,7 @@ int AiLuaRuntime::luaTargetReviseProperty(lua_State *L)
         return luaL_error(L, "invalid target revise property proposal");
     const auto &request = *(runtime->m_activeEventRequest ? runtime->m_activeEventRequest : runtime->m_activeRequest);
     auto *viewer = runtime->m_room->findPlayerByObjectName(request.viewerObjectName, true);
-    pushAIJsonValue(L, queryAIRound30TargetRevises(*runtime->m_room, request, viewer, value.toObject()));
+    pushAIJsonValue(L, queryAITargetRevises(*runtime->m_room, request, viewer, value.toObject()));
     return 1;
 }
 
@@ -2787,11 +2744,11 @@ int AiLuaRuntime::luaChoiceContinuity(lua_State *state)
  if(operation.value("key")=="xufa"){
   EngineRuntimeContextScope engine(*Sanguosha,runtime->m_room);
   QJsonObject out{{"known",false}};const auto op=operation.value("op").toString();
-  if(op=="read"&&operation.size()==2)out=readAIRound53XufaChoice(*runtime->m_room,viewer,request);
+  if(op=="read"&&operation.size()==2)out=readAIXufaChoice(*runtime->m_room,viewer,request);
   else if(op=="record"&&operation.size()==3&&operation.value("row").isObject()){
    const auto row=operation.value("row").toObject();
    if(row.size()==3&&row.value("known")==QJsonValue(true)&&row.value("present")==QJsonValue(true)&&row.value("value").isString())
-    out=writeAIRound53XufaChoice(*runtime->m_room,viewer,request,row.value("value").toString());
+    out=writeAIXufaChoice(*runtime->m_room,viewer,request,row.value("value").toString());
   }
   pushAIJsonValue(state,out);return 1;
  }
@@ -2843,17 +2800,17 @@ int AiLuaRuntime::luaWithOwnerRange(lua_State *state)
             return luaL_error(state, "owner range hypothesis source/viewer/revision is invalid");
         if (!request.conversionLedger || ++request.conversionLedger->queryCount > 128)
             return luaL_error(state, "owner range hypothesis budget exceeded");
-        if(aiRound44RangeSource(flag,sourceKey)) {
-            if(arguments!=4 || !aiRound44RangeRoute(*runtime->m_room,request,viewer,flag,sourceKey,state,4))
+        if(aiRangeSource(flag,sourceKey)) {
+            if(arguments!=4 || !aiRangeRoute(*runtime->m_room,request,viewer,flag,sourceKey,state,4))
                 return luaL_error(state,"range source closure/current inquiry is not authenticated");
             QString failure;QJsonObject projection;
             const auto transition=[&](bool value,bool project) {
                 AIOwnerRangeQueryScope sourceScope(viewer,kind,true,sourceKey,true);
                 EngineRuntimeContextScope engineContext(*Sanguosha,runtime->m_room);
                 LuaRuntime::Binding nativeBinding(runtime->m_room->roomRuntime()->lua(),false);
-                if(!writeAIRound44RangeFlag(*runtime->m_room,request,viewer,flag,sourceKey,value,&failure))return false;
+                if(!writeAIRangeFlag(*runtime->m_room,request,viewer,flag,sourceKey,value,&failure))return false;
                 if(project)projection=projectAIStrategyOwnerRange(*runtime->m_room,viewer,flag,sourceKey);
-                if(!aiRound44RangeRequestCurrent(*runtime->m_room,request,viewer)) {
+                if(!aiRangeRequestCurrent(*runtime->m_room,request,viewer)) {
                     failure=QStringLiteral("range projection changed game state");return false;
                 }
                 return true;
@@ -2915,7 +2872,7 @@ int AiLuaRuntime::luaWithOwnerDistance(lua_State *state)
         const AIRequest &request=*runtime->m_activeRequest;QString source;
         if(!readBoundedString(state,1,source))return luaL_error(state,"invalid distance source");
         auto *viewer=runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true);
-        if(!validateAIRound25OwnerDistance(*runtime->m_room,viewer,request,source,delta))
+        if(!validateAIOwnerDistance(*runtime->m_room,viewer,request,source,delta))
             return luaL_error(state,"distance source/viewer/revision/delta is invalid");
         if(!request.conversionLedger||++request.conversionLedger->queryCount>128)
             return luaL_error(state,"owner distance query budget exceeded");
@@ -2924,8 +2881,8 @@ int AiLuaRuntime::luaWithOwnerDistance(lua_State *state)
         {
             EngineRuntimeContextScope engineContext(*Sanguosha,runtime->m_room);
             LuaRuntime::Binding nativeBinding(runtime->m_room->roomRuntime()->lua(),false);
-            AIRound25OwnerDistanceScope scope(viewer,delta);
-            projection=projectAIRound25OwnerDistance(*runtime->m_room,viewer,source,delta);
+            AIOwnerDistanceScope scope(viewer,delta);
+            projection=projectAIOwnerDistance(*runtime->m_room,viewer,source,delta);
         }
         if(request.stateRevision!=runtime->m_room->roomRuntime()->stateRevision()
             ||viewer->getFlagList()!=flags||viewer->getMark("ExtraBfDistanceFrom-Clear")!=mark)
@@ -2933,7 +2890,7 @@ int AiLuaRuntime::luaWithOwnerDistance(lua_State *state)
         lua_pushvalue(state,3);pushAIJsonValue(state,projection);
         {
             EngineRuntimeContextScope engineContext(*Sanguosha,runtime->m_room);
-            AIRound25OwnerDistanceScope scope(viewer,delta);
+            AIOwnerDistanceScope scope(viewer,delta);
             status=lua_pcall(state,1,LUA_MULTRET,0);
         }
         changed=request.stateRevision!=runtime->m_room->roomRuntime()->stateRevision()
@@ -3114,7 +3071,7 @@ int AiLuaRuntime::luaRushBPhysicalSkill(lua_State *state)
         return luaL_error(state,"RushB physical mutation query budget exhausted");
     QJsonValue value;int budget=64;
     if(lua_gettop(state)!=2 || !lua_istable(state,2)
-        || !aiRound44RangeLuaRequestCurrent(*runtime->m_room,request,lua_topointer(state,2))
+        || !aiRangeLuaRequestCurrent(*runtime->m_room,request,lua_topointer(state,2))
         || !readAIJson(state,1,value,budget) || !value.isObject())return luaL_error(state,"RushB physical mutation requires bounded values");
     auto proposal=value.toObject();if(proposal.contains("kind"))return luaL_error(state,"RushB physical mutation cannot supply host kind");
     const auto refresh=proposal.take("refresh");
@@ -3158,7 +3115,7 @@ int AiLuaRuntime::luaRecordNestedDelegateUse(lua_State *state)
     {
         EngineRuntimeContextScope engineScope(*Sanguosha,runtime->m_room);
         LuaRuntime::Binding gameBinding(runtime->m_room->roomRuntime()->lua(),false);
-        if(!recordAIRound26DelegateUse(request,viewer,key,&error))return fail(error);
+        if(!recordAIDelegateUse(request,viewer,key,&error))return fail(error);
     }
     // Source writes before calling the child and does not undo on child error.
     // This is observer custody only, not an accepted-answer gameplay effect.
@@ -3470,8 +3427,8 @@ int AiLuaRuntime::luaUseValueFlag(lua_State *state)
     QString error; bool value=false;
     if(lua_gettop(state)==1) {
         value=lua_toboolean(state,1);
-        if(!writeAIRound29UseValueFlag(*runtime->m_room,owner,request,value,&error))return luaL_error(state,"%s",qPrintable(error));
-    } else if(!readAIRound29UseValueFlag(*runtime->m_room,owner,request,value,&error))return luaL_error(state,"%s",qPrintable(error));
+        if(!writeAIUseValueFlag(*runtime->m_room,owner,request,value,&error))return luaL_error(state,"%s",qPrintable(error));
+    } else if(!readAIUseValueFlag(*runtime->m_room,owner,request,value,&error))return luaL_error(state,"%s",qPrintable(error));
     lua_pushboolean(state,value);return 1;
 }
 int AiLuaRuntime::luaEvaluateExtraShicai(lua_State *state)
@@ -3554,7 +3511,7 @@ int AiLuaRuntime::luaOLJijiangState(lua_State *L)
  QString op,value;if(!readBoundedString(L,1,op)||(lua_gettop(L)==2&&!lua_isnil(L,2)&&!readBoundedString(L,2,value)))return luaL_error(L,"invalid OLJijiang primitive operation");
  const auto&q=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
  auto *viewer=runtime->m_room->findPlayerByObjectName(q.viewerObjectName,true);
- pushAIJsonValue(L,queryAIRound40OLJijiang(*runtime->m_room,q,viewer,op,value));return 1;
+ pushAIJsonValue(L,queryAIOLJijiang(*runtime->m_room,q,viewer,op,value));return 1;
 }
 
 int AiLuaRuntime::luaOverseasPriority(lua_State *L)
@@ -3575,7 +3532,7 @@ int AiLuaRuntime::luaOverseasPriority(lua_State *L)
     }
     const auto &request=*(runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest);
     auto *viewer=runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true);
-    pushAIJsonValue(L,queryAIRound29ChoicePriority(*runtime->m_room,request,viewer,spec));return 1;
+    pushAIJsonValue(L,queryAIOverseasPriority(*runtime->m_room,request,viewer,spec));return 1;
 }
 int AiLuaRuntime::luaOverseasXiafengFlag(lua_State *L)
 {
@@ -3672,7 +3629,7 @@ int AiLuaRuntime::luaConsumeDeckCountShuffle(lua_State *state)
         return luaL_error(state, "deck-count authority unavailable outside policy");
     if (lua_gettop(state) != 0) return luaL_error(state, "deck-count query accepts no arguments");
     const AIRequest &request = *(runtime->m_activeRequest ? runtime->m_activeRequest : runtime->m_activeEventRequest);
-    if (runtime->m_room && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+    if (runtime->m_room && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale deck-count query");
     pushAIJsonValue(state, runtime->m_conversionResolver(request, {{"kind", "deck_count_shuffle"}}));
     return 1;
@@ -3691,7 +3648,7 @@ int AiLuaRuntime::luaSamplePatternLogName(lua_State *state)
         return luaL_error(state, "invalid pattern-log query");
     const bool derivative = lua_gettop(state) == 2 && lua_toboolean(state, 2);
     const AIRequest &request = *(runtime->m_activeRequest ? runtime->m_activeRequest : runtime->m_activeEventRequest);
-    if (runtime->m_room && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+    if (runtime->m_room && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale pattern-log query");
     QJsonObject query{{"kind", "pattern_log_name"}, {"pattern", pattern}};
     if (derivative) query.insert("derivative", true);
@@ -3720,7 +3677,7 @@ int AiLuaRuntime::luaSampleHiddenHand(lua_State *state)
         return luaL_error(state, "invalid hidden-hand query");
     const AIRequest &request = *runtime->m_activeRequest;
     if (runtime->m_room && runtime->m_room->roomRuntime()
-        && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+        && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale hidden-hand query");
     pushAIJsonValue(state, runtime->m_conversionResolver(request,
         {{"kind", "random_hand_discard"}, {"token", token}, {"target", target}}));
@@ -3752,24 +3709,24 @@ QJsonObject AiLuaRuntime::queryStandardMode(LuaRuntime &modeRuntime, const AIReq
     // graph BEFORE registry guard, hook changes or world allocation. Event and
     // updatePlayers routes remain distinct and receive no refresh scope.
     Room *modeRoom = Sanguosha ? Sanguosha->currentRoom() : nullptr;
-    std::unique_ptr<AIRound56ModeEvaluationScope> objectiveSource;
+    std::unique_ptr<AIModeEvaluationScope> objectiveSource;
     if (!refresh && !updatePlayers && !prefixDeltas && !prefixEffects
         && !m_activeEventRequest && m_activeRequest == &request && current() == this
         && modeRoom && modeRoom == m_room && modeRoom->roomRuntime()
         && &modeRoom->roomRuntime()->lua() == &modeRuntime
-        && inAIRound56ProjectionScope(*modeRoom, mode)
-        && aiRound44RangeRequestCurrent(*modeRoom, request))
-        objectiveSource.reset(new AIRound56ModeEvaluationScope(*modeRoom, mode,
-            request.worldView.modeId, AIRound56ModeEvaluationScope::StandardObjective));
+        && inAIProjectionSourceScope(*modeRoom, mode)
+        && aiRangeRequestCurrent(*modeRoom, request))
+        objectiveSource.reset(new AIModeEvaluationScope(*modeRoom, mode,
+            request.worldView.modeId, AIModeEvaluationScope::StandardObjective));
     else if (refresh && !updatePlayers && !prefixDeltas && !prefixEffects
         && !m_activeEventRequest && m_activeRequest == &request && current() == this
         && request.kind == AIRequest::Activate && request.worldView.self.phase == Player::Play
         && identityMode && toUseCount >= -1
         && modeRoom && modeRoom == m_room && modeRoom->roomRuntime()
         && &modeRoom->roomRuntime()->lua() == &modeRuntime
-        && aiRound44RangeRequestCurrent(*modeRoom, request))
-        objectiveSource.reset(new AIRound56ModeEvaluationScope(*modeRoom, mode,
-            request.worldView.modeId, AIRound56ModeEvaluationScope::StandardRelations));
+        && aiRangeRequestCurrent(*modeRoom, request))
+        objectiveSource.reset(new AIModeEvaluationScope(*modeRoom, mode,
+            request.worldView.modeId, AIModeEvaluationScope::StandardRelations));
     const int top = lua_gettop(mode);
     const auto restoreStack = qScopeGuard([mode, top] { lua_settop(mode, top); });
     lua_getfield(mode, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
@@ -3793,7 +3750,7 @@ QJsonObject AiLuaRuntime::queryStandardMode(LuaRuntime &modeRuntime, const AIReq
     AIWorldView defenseWorld=request.worldView;
     projectDefenseHistory(defenseWorld);
     if (objectiveSource && objectiveSource->accepted()) {
-        AIRound56ModeWorldSource worldSource(*modeRoom, mode);
+        AIModeWorldSource worldSource(*modeRoom, mode);
         pushAIWorldView(mode, defenseWorld);
     } else {
         pushAIWorldView(mode, defenseWorld);
@@ -3970,7 +3927,7 @@ int AiLuaRuntime::luaModeObjective(lua_State *state)
     const AIRequest &request = *(eventQuery ? runtime->m_activeEventRequest : runtime->m_activeRequest);
     LuaRuntime *mode = eventQuery ? runtime->m_activeEventMode : runtime->m_room ? runtime->m_room->luaRuntime() : nullptr;
     if (!mode) return luaL_error(state, "objective mode runtime unavailable");
-    if (runtime->m_room && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+    if (runtime->m_room && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale objective query");
     QJsonArray prefixDeltas, prefixEffects;
     if (eventQuery) {
@@ -4002,7 +3959,7 @@ int AiLuaRuntime::luaModeRefresh(lua_State *state)
         return luaL_error(state, "mode refresh requires activate decision");
     if (!runtime->m_room || !runtime->m_room->luaRuntime())
         return luaL_error(state, "mode refresh runtime unavailable");
-    if (!aiRound44RangeRequestCurrent(*runtime->m_room,request))
+    if (!aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale mode refresh");
     const QJsonObject result = runtime->queryStandardMode(*runtime->m_room->luaRuntime(), request, QString(), count, true);
     pushAIJsonValue(state, result);
@@ -4022,7 +3979,7 @@ int AiLuaRuntime::luaModeUpdatePlayers(lua_State *state)
     const AIRequest &request = *(eventQuery ? runtime->m_activeEventRequest : runtime->m_activeRequest);
     LuaRuntime *mode = eventQuery ? runtime->m_activeEventMode : runtime->m_room ? runtime->m_room->luaRuntime() : nullptr;
     if (!mode) return luaL_error(state, "updatePlayers mode runtime unavailable");
-    if (runtime->m_room && !aiRound44RangeRequestCurrent(*runtime->m_room,request))
+    if (runtime->m_room && !aiRangeRequestCurrent(*runtime->m_room,request))
         return luaL_error(state, "stale updatePlayers query");
     QJsonArray prefixDeltas, prefixEffects;
     if (eventQuery) {
@@ -4065,7 +4022,7 @@ int AiLuaRuntime::luaRefreshDiscardPreferences(lua_State *state)
         return luaL_error(state, "discard preference refresh accepts only true source assignment");
     const AIRequest &request = *runtime->m_activeRequest;
     if (request.viewerObjectName != request.worldView.self.objectName
-        || (runtime->m_room && !aiRound44RangeRequestCurrent(*runtime->m_room,request)))
+        || (runtime->m_room && !aiRangeRequestCurrent(*runtime->m_room,request)))
         return luaL_error(state, "stale or invalid discard preference viewer");
     if(sourcePrefix) {
         prefix.insert("kind","ordinary_card_choice_prefix");
@@ -4086,7 +4043,7 @@ int AiLuaRuntime::luaOriginalDiscardError(lua_State *state)
     ServerPlayer *owner=runtime->m_room->findPlayerByObjectName(r.viewerObjectName,true);
     const auto &o=r.choiceOptions;
     const QJsonObject c=o.context;
-    if(r.kind!=AIRequest::Discard || !aiRound35OriginalQuestion(r) || !owner
+    if(r.kind!=AIRequest::Discard || !aiOriginalHegemonyQuestion(r) || !owner
         || r.stateRevision!=runtime->m_room->roomRuntime()->stateRevision()
         || o.minCount<0 || o.maxCount<o.minCount
         || !c.value("include_equip").isBool() || !c.value("exchange").isBool()
@@ -4138,7 +4095,7 @@ int AiLuaRuntime::luaOriginalSuitResult(lua_State *state)
         || runtime->m_activeEventRequest || runtime->m_originalSuitResultReady || runtime->m_instructionLimitExceeded)
         return fail("Original Suit result requires its one active question");
     const AIRequest &request=*runtime->m_activeRequest;
-    if (request.kind!=AIRequest::Suit || !aiRound35OriginalQuestion(request)
+    if (request.kind!=AIRequest::Suit || !aiOriginalHegemonyQuestion(request)
         || request.stateRevision!=runtime->m_room->roomRuntime()->stateRevision()
         || !runtime->m_room->findPlayerByObjectName(request.viewerObjectName,true))
         return fail("Original Suit question identity is unavailable");
@@ -4817,7 +4774,7 @@ bool AiLuaRuntime::loadConfiguredScripts(QString *error)
             if (!loadIsolatedScript(name, error))
                 return false;
             if (name==QStringLiteral("ask-for-choice.lua")) {
-                if (trustedChoicePrefix && m_room) captureAIRound41ChoiceProxies(*m_room,m_lua.state());
+                if (trustedChoicePrefix && m_room) captureAIChoiceRegistryProxies(*m_room,m_lua.state());
                 trustedChoicePrefix=false;
             } else if (name!=QStringLiteral("ask-for-use-card.lua")) trustedChoicePrefix=false;
         }
@@ -4834,7 +4791,7 @@ bool AiLuaRuntime::loadConfiguredScripts(QString *error)
         // Attest the actual just-loaded dispatcher before package code can forge
         // its source name/lines or replace its closure/backing/metatable objects.
         if (fileName==QStringLiteral("ask-for-choice.lua")) {
-            if (trustedChoicePrefix && m_room) captureAIRound41ChoiceProxies(*m_room,m_lua.state());
+            if (trustedChoicePrefix && m_room) captureAIChoiceRegistryProxies(*m_room,m_lua.state());
             trustedChoicePrefix=false;
         } else if (fileName!=QStringLiteral("ask-for-use-card.lua")) trustedChoicePrefix=false;
     }
@@ -5489,8 +5446,8 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result, const AIReque
     lua_pop(state,1);
     if(originalWirePresent) {
         int physical=-1;
-        if(m_activeEventRequest || !originalWireString || !aiRound36OriginalWireRequest(request)
-            || !aiRound36OriginalWireSyntax(originalWire,&physical))return false;
+        if(m_activeEventRequest || !originalWireString || !aiOriginalResponseWireRequest(request)
+            || !aiOriginalResponseWireSyntax(originalWire,&physical))return false;
         for(const char *field:{"answer","targets","bottom_cards","card_spec","random_card_choice",
                               "card_id","card","candidate_id","skill_action","original_empty_choice","original_suit_value"}) {
             lua_getfield(state,-1,field);const bool extra=!lua_isnil(state,-1);lua_pop(state,1);
@@ -5578,7 +5535,7 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result, const AIReque
         if(originalEmpty && (!marker || m_activeEventRequest
             || request.kind!=AIRequest::Choice
             || request.choiceOptions.question!="askForChoice"
-            || !aiRound35OriginalQuestion(request)))return false;
+            || !aiOriginalHegemonyQuestion(request)))return false;
         lua_getfield(state,-1,"answer");
         const bool empty=lua_type(state,-1)==LUA_TSTRING&&lua_rawlen(state,-1)==0;
         lua_pop(state,1);

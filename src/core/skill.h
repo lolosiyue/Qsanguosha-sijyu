@@ -99,8 +99,8 @@ struct ActiveSkillRequest {
     bool generatedCardSelectionValid() const;
     bool generatedCardProductMatches(const Card *card) const;
 private:
-    friend class AIRound47FateUseAccess;
-    std::shared_ptr<const AIRound47FateUseProof> m_aiRound47FateUse;
+    friend class AIFateUseAccess;
+    std::shared_ptr<const AIFateUseProof> m_aiFateUse;
     bool generatedHandPayment = false;
     bool generatedHandFaceValid = false;
     QList<int> generatedHandCosts;
@@ -343,7 +343,7 @@ private:
     friend class AiDecisionCoordinator;
     // The conversion projector may scope only the original ownership query.
     // The callback returns before either virtual availability provider runs.
-    bool aiRound56AvailableForConversion(const Player *invoker, CardUseStruct::CardUseReason reason,
+    bool aiAvailableForConversion(const Player *invoker, CardUseStruct::CardUseReason reason,
         const QString &pattern, const std::function<bool()> &ownershipQuery) const;
 
 protected:

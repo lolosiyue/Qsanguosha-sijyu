@@ -1,218 +1,30 @@
 #include "room-runtime.h"
-#include "ai-strategy-round56-maxcards.h"
-#include "ai-strategy-round56-patterns.h"
+#include "ai-strategy/native-registry.h"
+#include "ai-strategy/runtime.h"
 #include <cstdio>
-#include "ai-strategy-round53-ainoto.h"
-#include "ai-strategy-round56-projection.h"
-#include "ai-strategy-round53-manjuan.h"
-#include "ai-strategy-round54-shebian.h"
-#include "ai-strategy-round54-cardchoice.h"
-#include "ai-strategy-round51-notified-costs.h"
-#include "ai-strategy-round49-extra-response.h"
-#include "ai-strategy-round47-xufa-query-scope.h"
-#include "ai-strategy-round47-heqia.h"
-#include "ai-strategy-round47b-fate-receipt.h"
-#include "ai-strategy-round47b-leiluan.h"
-#include "ai-strategy-round48-response.h"
-#include "ai-strategy-round49e-response.h"
-#include "ai-strategy-round49d-response.h"
-#include "ai-strategy-round49b-response.h"
-#include "ai-strategy-round49-response.h"
-#include "ai-strategy-round46-jianman.h"
-#include "ai-strategy-round45-xufa-slot.h"
-#include "ai-strategy-round53-xufa-response.h"
-#include "ai-strategy-round53-xuanzhu-slot.h"
-#include "ai-strategy-round53-xuanzhu-response.h"
-#include "ai-strategy-round44-response.h"
-#include "ai-strategy-round43-response.h"
-#include "ai-strategy-round50-htms-events.h"
-#include "ai-strategy-round43-context.h"
-#include "ai-strategy-round47e-choice.h"
-#include "ai-strategy-round49-choice.h"
-#include "ai-strategy-round49-yitian.h"
-#include "ai-strategy-round49-qhturn.h"
-#include "ai-strategy-round49-qixi.h"
-#include "ai-strategy-round49-current.h"
-#include "ai-strategy-round49-gongjian.h"
-#include "ai-strategy-round49-names.h"
-#include "ai-strategy-round49-record-constructors.h"
-#include "ai-strategy-round49-bools.h"
-#include "ai-strategy-round49-notified.h"
-#include "ai-strategy-round49-notified-context.h"
-#include "ai-strategy-round49-zero.h"
-#include "ai-strategy-round49-extra.h"
-#include "ai-strategy-round49-bozhi.h"
-#include "ai-strategy-round49-maotu-yinhu.h"
-#include "ai-strategy-round49-guhuo.h"
-#include "ai-strategy-round49-shuangxiong.h"
-#include "ai-strategy-round49-lianhuan.h"
-#include "ai-strategy-round49-xinhuo.h"
-#include "ai-strategy-round42-context.h"
-#include "ai-strategy-round42-response.h"
-#include "ai-strategy-round41-response.h"
-#include "ai-strategy-round42-choice.h"
-#include "ai-strategy-round43-choice.h"
-#include "ai-strategy-round44-choice.h"
-#include "ai-strategy-round45-context.h"
-#include "ai-strategy-round50-yuri-events.h"
-#include "ai-strategy-round45-choice.h"
-#include "ai-strategy-round40-context.h"
-#include "ai-strategy-round47d-dapo-context.h"
-#include "ai-strategy-round41-context.h"
-#include "ai-strategy-round35-response.h"
-#include "ai-strategy-round34-choice.h"
-#include "ai-strategy-round35-choice.h"
-#include "ai-strategy-round38-choice.h"
-#include "ai-strategy-round39-choice.h"
-#include "ai-strategy-round40-choice.h"
-#include "ai-strategy-round39-context.h"
-#include "ai-strategy-round36-formation.h"
-#include "ai-strategy-round36-response-wire.h"
-#include "ai-strategy-round33-common.h"
-#include "ai-strategy-round33-response.h"
-#include "ai-strategy-round33-choice.h"
-#include "ai-strategy-round29-original.h"
-#include "ai-strategy-round29-choice.h"
-#include "ai-strategy-round30-choice.h"
-#include "ai-strategy-round31-choice.h"
-#include "ai-strategy-round31-intention.h"
-#include "ai-strategy-round31-response.h"
-#include "ai-strategy-round31-planning.h"
-#include "ai-strategy-round30-planning.h"
-#include "ai-strategy-round28-response.h"
-#include "ai-strategy-round27-response.h"
-#include "ai-strategy-round26-response.h"
-#include "ai-strategy-round26-helpers.h"
-#include "ai-strategy-round27-jieyingh.h"
-#include "ai-strategy-round29-response.h"
-#include "ai-strategy-round39-response.h"
-#include "ai-strategy-round40-planning.h"
-#include "ai-strategy-round41-planning.h"
-#include "ai-strategy-round42-planning.h"
-#include "ai-strategy-round43-planning.h"
-#include "ai-strategy-round45-planning.h"
-#include "ai-strategy-round48-planning.h"
-#include "ai-strategy-round49h-planning.h"
-#include "ai-strategy-round49n-planning.h"
-#include "ai-strategy-round49p-planning.h"
-#include "ai-strategy-round49q-planning.h"
-#include "ai-strategy-round50-planning.h"
-#include "ai-strategy-round51-collateral.h"
-#include "ai-strategy-round53-collateral.h"
-#include "ai-strategy-round53-lianzhan.h"
-#include "ai-strategy-round53-mingfa.h"
-#include "ai-strategy-round53-gengdu.h"
-#include "ai-strategy-round53-zhuning.h"
-#include "ai-strategy-round53-diou.h"
-#include "ai-strategy-round53-tyfenwu.h"
-#include "ai-strategy-round53-tyqingkou.h"
-#include "ai-strategy-round53-tychende.h"
-#include "ai-strategy-round52-rangyi.h"
-#include "ai-strategy-round49r-planning.h"
-#include "ai-strategy-round49o-planning.h"
-#include "ai-strategy-round49g-planning.h"
-#include "ai-strategy-round49f-planning.h"
-#include "ai-strategy-round49e-planning.h"
-#include "ai-strategy-round49d-planning.h"
-#include "ai-strategy-round49c-planning.h"
-#include "ai-strategy-round49b-planning.h"
-#include "ai-strategy-round49j-planning.h"
-#include "ai-strategy-round49-extra-planning.h"
-#include "ai-strategy-round49-planning.h"
-#include "ai-strategy-round44-range.h"
-#include "ai-strategy-range-query.h"
-#include "ai-strategy-round44-certificate.h"
-#include "ai-strategy-round43-common.h"
-#include "ai-strategy-round45-inovation.h"
-#include "ai-strategy-round47-xiedou.h"
-#include "ai-strategy-round47c-retrial.h"
-#include "ai-strategy-round47-sijyu.h"
-#include "ai-strategy-round51-jijiao.h"
-#include "ai-strategy-round52-olsp.h"
-#include "ai-strategy-round47-fengyi.h"
-#include "ai-strategy-round45-inovation-state.h"
-#include "ai-strategy-round45-inovation-providers.h"
-#include "ai-strategy-round30-response.h"
-#include "ai-strategy-round24-original.h"
-#include "ai-strategy-round24-choice.h"
-#include "ai-strategy-round24-response.h"
-#include "ai-strategy-preview-authority.h"
-#include "ai-strategy-round21-readonly.h"
-#include "ai-strategy-round21-original.h"
-#include "ai-strategy-round21-response.h"
-#include "ai-strategy-round21-planning.h"
-#include "ai-strategy-round21-choice.h"
-#include "ai-strategy-round22-olclan-plan.h"
-#include "ai-strategy-round22-olclan-actions.h"
-#include "ai-strategy-round23-qiuxin.h"
-#include "ai-strategy-round24-feidiy.h"
-#include "ai-strategy-round25-planning.h"
-#include "ai-strategy-round26-planning.h"
-#include "ai-strategy-round27-planning.h"
-#include "ai-strategy-round28-planning.h"
-#include "ai-strategy-round25-helpers.h"
-#include "ai-strategy-round25-choice.h"
-#include "ai-strategy-round26-choice.h"
-#include "ai-strategy-round27-choice.h"
-#include "ai-strategy-round28-choice.h"
-#include "ai-strategy-round25-response.h"
-#include "ai-strategy-round25-original.h"
-#include "ai-strategy-round26-original.h"
-#include "ai-strategy-round27-original.h"
-#include "ai-strategy-round36-planning.h"
-#include "ai-strategy-round28-original.h"
-#include "ai-strategy-round22-olclan-observations.h"
-#include "ai-strategy-round23-olclan-planning.h"
-#include "ai-strategy-round22-choice.h"
-#include "ai-strategy-round23-choice.h"
-#include "ai-strategy-response-observer.h"
-#include "ai-strategy-choice-context.h"
-#include "ai-strategy-construction-query.h"
-#include "ai-strategy-construction-context.h"
-#include "ai-strategy-response-catalog.h"
-#include "ai-strategy-public-deck.h"
+#include "ai-strategy/source-slots.h"
+#include "ai-strategy/official.h"
+#include "ai-strategy/ol-ai.h"
+#include "ai-strategy/tenyear-ai.h"
+#include "ai-strategy/anime.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/newgenerals.h"
+#include "ai-strategy/context.h"
+#include "ai-strategy/shadows.h"
+#include "ai-strategy/original-hegemony.h"
+#include "ai-strategy/prototypes.h"
+#include "ai-strategy/owner.h"
+#include "ai-strategy/inovation-ai.h"
+#include "ai-strategy/overseas.h"
 #include "ai-owner-range-query-scope.h"
-#include "ai-strategy-round25-distance.h"
-#include "ai-strategy-scarlet-context.h"
-#include "ai-strategy-response-context.h"
-#include "ai-strategy-retrial-context.h"
-#include "ai-strategy-judge-context.h"
-#include "ai-strategy-conditional-prototypes.h"
-#include "ai-strategy-source-prototypes.h"
-#include "ai-strategy-public-action-flags.h"
-#include "ai-strategy-public-disclosure.h"
-#include "ai-strategy-nested-cardask.h"
 #include "notified-pile-query-scope.h"
 #include "skill-generated-card.h"
 #include "external-agent.h"
 #include "ai-decision-coordinator.h"
-#include "ai-strategy-round47-olclan-values.h"
-#include "ai-strategy-round47-olclan-scalar.h"
-#include "ai-strategy-round47-planning-slots.h"
-#include "ai-strategy-round46-planning-slots.h"
-#include "ai-strategy-choice-continuity.h"
-#include "ai-strategy-round33-planning.h"
-#include "ai-strategy-round34-planning.h"
 #include "qt-collection-utils.h"
 #include "ai-runtime.h"
-#include "ai-strategy-projection.h"
-#include "ai-strategy-use-dispatch.h"
-#include "ai-strategy-card-identity.h"
-#include "ai-strategy-animecard.h"
-#include "ai-strategy-newstar.h"
-#include "ai-strategy-olclan.h"
-#include "ai-strategy-dragon-events.h"
-#include "ai-strategy-public-disclosure.h"
 #include "card-lifetime-manager.h"
-#include "ai-strategy-yczh2016.h"
-#include "ai-strategy-yczh2017.h"
-#include "ai-strategy-random.h"
-#include "ai-strategy-events.h"
-#include "ai-strategy-owner.h"
-#include "ai-strategy-yjcm2012.h"
-#include "ai-strategy-yjcm2014.h"
-#include "ai-strategy-yjcm2015.h"
-#include "ai-strategy-history-context.h"
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
 #include "lua-wrapper.h"
@@ -1039,13 +851,13 @@ static bool commitAcceptedChoiceEffects(Room &room, const AIRequest &request, co
     if (result.strategyEffects.isEmpty()) return true;
     QString error;
     if (!AiLuaRuntime::validateDecisionEffects(request.worldView, result.strategyEffects)
-        || !stageAIRound26ChoiceFlags(room, request, result, false, &error)) return false;
+        || !stageAISRkillChoiceFlags(room, request, result, false, &error)) return false;
     QJsonArray ordinary;
     for (const auto &effect : result.strategyEffects)
         if (effect.toObject().value("kind") != "srkill_choice_flag") ordinary.append(effect);
     if (!room.roomRuntime()->ai().commitStrategyEffects(request.worldView,
         ordinary, room.roomRuntime()->lua(), &error)) return false;
-    return stageAIRound26ChoiceFlags(room, request, result, true, &error);
+    return stageAISRkillChoiceFlags(room, request, result, true, &error);
 }
 
 // Exact source questions which may save an aiUseCard result across requests.
@@ -1203,7 +1015,7 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
         m_turnCount = data.toInt();
     // One bounded, value-only log per Room. Nothing here keeps a pointer: the structs
     // are read once, while they are still valid, and only names and ids are kept.
-    if (target) resetAIRound30TargetCache(m_room);
+    if (target) resetAITargetCache(m_room);
     AIEventView event;
     event.sequence = ++m_eventSequence;
     event.revision = m_room.roomRuntime()->stateRevision();
@@ -1422,7 +1234,7 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
     if (triggerEvent == TargetSpecified && event.kind == QStringLiteral("card_use"))
         m_lastTargetUse = QJsonObject{{"from", event.from}, {"to", QJsonArray::fromStringList(event.targets)},
             {"card", event.details.value("card")}};
-    recordAIRound26PlanningPublicUse(m_room, triggerEvent, data);
+    recordAIPlanningPublicUse(m_room, triggerEvent, data);
     while (m_events.size() >= AiEventLogLimit)
         m_events.removeFirst();
     m_events << event;
@@ -1576,25 +1388,25 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
         projectAIStrategyScarletEventContext(world, m_room, observer, visible,
             [](const Card *card) { return publicDecisionCard(card); });
         projectAIStrategyEvent(visible, world, m_room, observer, target, data);
-        projectAIRound50HTMSIntention(world, m_room, observer, visible,
+        projectAIHTMSIntention(world, m_room, observer, visible,
             [](const Card *card) { return publicDecisionCard(card); });
-        projectAIRound41SkillFlagEvent(world, m_room, observer, visible);
-        projectAIRound45NewgeneralsEvent(world,m_room,observer,visible);
-        projectAIRound50YuriEvent(world,m_room,observer,target,visible,data,[](const Card*card){return publicDecisionCard(card);});
-        projectAIRound31IntentionEvent(visible, world, m_room, observer, target, data,
+        projectAIPublicSkillFlagEvent(world, m_room, observer, visible);
+        projectAINewgeneralsEvent(world,m_room,observer,visible);
+        projectAIYuriEvent(world,m_room,observer,target,visible,data,[](const Card*card){return publicDecisionCard(card);});
+        projectAIIntentionEvent(visible, world, m_room, observer, target, data,
             [](const Card *card) { return publicDecisionCard(card); });
-        recordAIRound27OriginalEvent(world, m_room, observer, target, visible, data);
-        projectAIStrategyRound26ResponseEvent(world, m_room, observer, visible);
+        recordAIViewCardsOriginalEvent(world, m_room, observer, target, visible, data);
+        projectAIStrategyFeilongResponseEvent(world, m_room, observer, visible);
         projectAIStrategyResponseEventContext(world, m_room, observer, visible,
             [](const Card *card) { return publicDecisionCard(card); });
         projectAIStrategyRetrialEventContext(world, m_room, observer, visible,
             [](const Card *card) { return publicDecisionCard(card); });
-        projectAIRound25ImagineEvent(world, m_room, observer, visible);
+        projectAIImagineEvent(world, m_room, observer, visible);
         visible.privateViewer.clear();
-        projectAIStrategyRound21OriginalEvent(world, m_room, observer, visible);
+        projectAIStrategyKnownBothOriginalEvent(world, m_room, observer, visible);
         projectAIStrategyDragonEvent(world, visible);
-        projectAIRound40AzirEvent(world, m_room, observer, target, visible, data);
-        projectAIRound47DapoEvent(world, m_room, observer, target, visible, data);
+        projectAIAzirshenjiEvent(world, m_room, observer, target, visible, data);
+        projectAIDapoEvent(world, m_room, observer, target, visible, data);
         QList<AICardView> disclosed;
         for (const QJsonValue &value : visible.details.value("move").toObject().value("cards").toArray()) {
             const QJsonObject card = value.toObject().value("card").toObject();
@@ -1741,18 +1553,18 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         {
             // Preserve the existing ordinary full-world caller's own proof.
             // The new exact consumer is for the previously unscoped path.
-            std::unique_ptr<AIRound56MaxCardsScope> maxCardsScope;
+            std::unique_ptr<AIMaxCardsScope> maxCardsScope;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                maxCardsScope.reset(new AIRound56MaxCardsScope(m_room,player,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                maxCardsScope.reset(new AIMaxCardsScope(m_room,player,gameLua));
             playerView.maxCards = player->getMaxCards();
         }
         playerView.hujia = player->getHujia();
         {
-            std::unique_ptr<AIRound56AttackRangeScope> attackRangeScope;
+            std::unique_ptr<AIAttackRangeScope> attackRangeScope;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                attackRangeScope.reset(new AIRound56AttackRangeScope(m_room,player,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                attackRangeScope.reset(new AIAttackRangeScope(m_room,player,gameLua));
             playerView.attackRange = player->getAttackRange();
             playerView.attackRangeWithoutWeapon = player->getAttackRange(false);
         }
@@ -1764,10 +1576,10 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         {
             // Exact original hasSkill/isSkillInvalid source union, established
             // before choosing any ViewAsEquip holder or instance branch.
-            std::unique_ptr<AIRound56PublicSkillQueriesScope> skillSource;
+            std::unique_ptr<AIPublicSkillQueriesScope> skillSource;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                skillSource.reset(new AIRound56PublicSkillQueriesScope(m_room,player,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                skillSource.reset(new AIPublicSkillQueriesScope(m_room,player,gameLua));
             // Same 50p cost trap as Player::viewAsEquipSources: scan the small
             // ViewAsEquipSkill list instead of every attached skill instance.
             foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
@@ -1847,10 +1659,10 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         {
             // Separate visible-definition/validity lifetime; excludes physical
             // armor, cards, piles and every later request consumer.
-            std::unique_ptr<AIRound56PublicSkillQueriesScope> skillSource;
+            std::unique_ptr<AIPublicSkillQueriesScope> skillSource;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                skillSource.reset(new AIRound56PublicSkillQueriesScope(m_room,player,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                skillSource.reset(new AIPublicSkillQueriesScope(m_room,player,gameLua));
             foreach (const SkillInstance &instance, player->getSkillInstances()) {
                 const Skill *skill = Sanguosha->getSkill(instance.skillName);
                 if (!instance.visible || !skill || !skill->isVisible())
@@ -2002,10 +1814,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     // public metadata/correction family is proved before the original query;
     // its result is consumed only after this scope has ended.
     const auto queryPublicSkill = [&](const auto &query) -> bool {
-        std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+        std::unique_ptr<AIWorldSkillQueriesScope> skillSource;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
-        if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
-            skillSource.reset(new AIRound56WorldSkillQueriesScope(m_room,viewer,gameLua));
+        if(!eventOnly&&!inAIProjectionSourceScope(m_room,gameLua))
+            skillSource.reset(new AIWorldSkillQueriesScope(m_room,viewer,gameLua));
         return query();
     };
 
@@ -2021,10 +1833,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         for (const QString &name : {QStringLiteral("ShenfenCard"), QStringLiteral("LihunCard")})
             playerView.usedHistory.insert(name, player->hasUsed(name));
         if (player == viewer && !eventOnly) {
-            std::unique_ptr<AIRound56OwnerCardRulesScope> ownerCardRulesScope;
+            std::unique_ptr<AIOwnerCardRulesScope> ownerCardRulesScope;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                ownerCardRulesScope.reset(new AIRound56OwnerCardRulesScope(m_room,player,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                ownerCardRulesScope.reset(new AIOwnerCardRulesScope(m_room,player,gameLua));
             const auto addRules = [&](const QString &key, const Card *card) {
                 if (!card) return;
                 QJsonObject limits, prohibited;
@@ -2060,7 +1872,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             for (const QString &name : {"jink", "slash", "peach", "fire_slash", "thunder_slash"}) {
                 Card *probe = Sanguosha->cloneCard(name);
                 if (!probe) continue;
-                AIRound47XufaProjectionCard xufaProjection(m_room,viewer,probe,name);
+                AIXufaProjectionCard xufaProjection(m_room,viewer,probe,name);
                 addRules("name:" + name, probe);
                 probe->deleteLater();
             }
@@ -2169,10 +1981,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         if (player == viewer) {
             // These facts are owner-only, never stored in the shared public cache.
             {
-                std::unique_ptr<AIRound56OwnerCardStateScope> ownerStateSource;
+                std::unique_ptr<AIOwnerCardStateScope> ownerStateSource;
                 auto *gameLua=m_room.roomRuntime()->lua().rawState();
-                if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
-                    ownerStateSource.reset(new AIRound56OwnerCardStateScope(m_room,viewer,gameLua));
+                if(!eventOnly&&!inAIProjectionSourceScope(m_room,gameLua))
+                    ownerStateSource.reset(new AIOwnerCardStateScope(m_room,viewer,gameLua));
                 for (AICardView &card : playerView.equips) projectOwnCardState(card, viewer, ownCardBudget);
                 for (AICardPileView &pile : playerView.piles)
                     for (AICardView &card : pile.cards) projectOwnCardState(card, viewer, ownCardBudget);
@@ -2186,10 +1998,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 playerView.skippedPhases.insert(phase, player->isSkipped(Player::Phase(phase)));
             world.self = playerView;
             {
-                std::unique_ptr<AIRound56OwnerCardStateScope> ownerStateSource;
+                std::unique_ptr<AIOwnerCardStateScope> ownerStateSource;
                 auto *gameLua=m_room.roomRuntime()->lua().rawState();
-                if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
-                    ownerStateSource.reset(new AIRound56OwnerCardStateScope(m_room,viewer,gameLua));
+                if(!eventOnly&&!inAIProjectionSourceScope(m_room,gameLua))
+                    ownerStateSource.reset(new AIOwnerCardStateScope(m_room,viewer,gameLua));
                 foreach (const Card *card, player->getHandcards()) {
                     // The owner sees this exact live hand object even if no prior
                     // gameplay Lua/SWIG callback happened to observe its lifetime.
@@ -2208,11 +2020,11 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         }
     }
     {
-    std::unique_ptr<AIRound56DistanceScope> distanceScope;
+    std::unique_ptr<AIDistanceScope> distanceScope;
     auto *distanceLua=m_room.roomRuntime()->lua().rawState();
-    const bool originalFullProjection=inAIRound56ProjectionScope(m_room,distanceLua);
+    const bool originalFullProjection=inAIProjectionSourceScope(m_room,distanceLua);
     if(!eventOnly&&!originalFullProjection)
-        distanceScope.reset(new AIRound56DistanceScope(m_room,viewer,distanceLua));
+        distanceScope.reset(new AIDistanceScope(m_room,viewer,distanceLua));
     // The entire public distance callback family is proved before cache choice
     // or any receiver pair. Current cache-key equality never issues source.
     // RoomThread broadcasts every distanceTo_<player> pair to all clients.
@@ -2232,7 +2044,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         && m_distanceSkillGeneration == skillGeneration
         && m_distancePlayers == distancePlayers && m_distanceSkills == distanceSkills) {
         if(distanceScope&&!m_distanceCorrectionSource)
-            retireAIRound56Projection(m_room,distanceLua);
+            retireAIProjectionSource(m_room,distanceLua);
         world.distances = m_worldDistances;
     } else {
         foreach (ServerPlayer *from, distancePlayers) {
@@ -2292,10 +2104,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         QJsonObject fillContexts;
         QStringList names;
         {
-            std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+            std::unique_ptr<AIWorldSkillQueriesScope> skillSource;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                skillSource.reset(new AIRound56WorldSkillQueriesScope(m_room,viewer,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                skillSource.reset(new AIWorldSkillQueriesScope(m_room,viewer,gameLua));
             for (const Skill *skill : viewer->getSkillList(true))
                 if (skill && (skill->isLordSkill() ? viewer->hasLordSkill(skill->objectName()) : viewer->hasSkill(skill)))
                     names << skill->objectName();
@@ -2415,7 +2227,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         world.strategyFacts.insert("distance_fix_one", distanceFixOne);
     }
     projectAIStrategyWorld(world, m_room, viewer, eventOnly);
-    projectAIRound34PlanningCardCounts(world, m_room, viewer);
+    projectAIOriginalCardCounts(world, m_room, viewer);
     if (viewer) {
         QJsonObject prototypes;
         for (const QString &name : {"#dl_chaju", "#dl_pindi", "#dl_yanxiao", "#dl_liuli"}) {
@@ -2492,10 +2304,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         // etushou2 is explicitly broadcast by Room::setPlayerFlag; this does
         // not disclose whether an otherwise hidden skill is possessed.
         {
-            std::unique_ptr<AIRound56OwnerSlashScope> ownerSlashScope;
+            std::unique_ptr<AIOwnerSlashScope> ownerSlashScope;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
-            if(!inAIRound56ProjectionScope(m_room,gameLua))
-                ownerSlashScope.reset(new AIRound56OwnerSlashScope(m_room,viewer,gameLua));
+            if(!inAIProjectionSourceScope(m_room,gameLua))
+                ownerSlashScope.reset(new AIOwnerSlashScope(m_room,viewer,gameLua));
             world.strategyFacts.insert("owner_can_slash_without_crossbow", viewer->canSlashWithoutCrossbow());
         }
         const auto ownTagPlayer = [&](const char *key) -> QJsonValue {
@@ -2571,10 +2383,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         for (const auto &player : world.players) for (const auto &view : player.judgingArea) publicCardFact(view);
         world.strategyFacts.insert("yongjian", QJsonObject{{"card_is_present", presentCards}, {"fulei_counts", fuleiCounts},
             {"defensive_horse_zhanxiang", QJsonObject{{viewer->objectName(), [&] {
-                std::unique_ptr<AIRound56OwnerEquipmentQueriesScope> equipmentSource;
+                std::unique_ptr<AIOwnerEquipmentQueriesScope> equipmentSource;
                 auto *gameLua=m_room.roomRuntime()->lua().rawState();
-                if(!inAIRound56ProjectionScope(m_room,gameLua))
-                    equipmentSource.reset(new AIRound56OwnerEquipmentQueriesScope(m_room,viewer,gameLua));
+                if(!inAIProjectionSourceScope(m_room,gameLua))
+                    equipmentSource.reset(new AIOwnerEquipmentQueriesScope(m_room,viewer,gameLua));
                 return viewer->hasDefensiveHorse("yj_zhanxiang");
             }()}}}});
         QJsonObject hayateFlags;
@@ -2647,23 +2459,23 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     projectAIStrategyHistory(world, m_room, viewer);
     projectAIConstructionFacts(world);
     projectAIResponseObservations(world, m_room, viewer);
-    projectAIStrategyRound21OriginalWorld(world, m_room, viewer);
-    projectAIRound25ImagineWorld(world, m_room, viewer);
-    projectAIRound25PlanningMetadata(world, m_room);
-    projectAIRound31PlanningMetadata(world, m_room);
-    projectAIRound25OriginalWorld(world, m_room, viewer);
-    projectAIRound26OriginalWorld(world, m_room, viewer);
-    projectAIRound27OriginalWorld(world, m_room, viewer);
-    projectAIRound28ExtraWorld(world, m_room, viewer);
-    projectAIRound45InovationWorld(world, m_room, viewer);
-    projectAIRound45InovationProviders(world,m_room,viewer);
-    projectAIRound29ExtraWorld(world, m_room, viewer);
-    projectAIRound30TargetRecommend(world, m_room, viewer);
-    projectAIRound31Choice(world, m_room, viewer);
-    projectAIRound34Choice(world, m_room, viewer);
-    projectAIRound45PlanningFacts(world,m_room,viewer);
-    projectAIRound36Formation(world, m_room, viewer);
-    projectAIRound31IntentionWorld(world, m_room, const_cast<ServerPlayer *>(viewer));
+    projectAIStrategyKnownBothOriginalWorld(world, m_room, viewer);
+    projectAIImagineWorld(world, m_room, viewer);
+    projectAIHayateEnemyMetadata(world, m_room);
+    projectAIMidaoNaMetadata(world, m_room);
+    projectAIGeneralDefinitionsOriginalWorld(world, m_room, viewer);
+    projectAILordExOriginalWorld(world, m_room, viewer);
+    projectAIBasaraOriginalWorld(world, m_room, viewer);
+    projectAILegacyPrototypeExtraWorld(world, m_room, viewer);
+    projectAIInovationWorld(world, m_room, viewer);
+    projectAIInovationProviders(world,m_room,viewer);
+    projectAIShicaiPreviewWorld(world, m_room, viewer);
+    projectAITargetRecommend(world, m_room, viewer);
+    projectAIVisibleHandFlags(world, m_room, viewer);
+    projectAIFixedDistanceWitness(world, m_room, viewer);
+    projectAINewgeneralsPlanningFacts(world,m_room,viewer);
+    projectAIOriginalFormation(world, m_room, viewer);
+    projectAIIntentionWorld(world, m_room, const_cast<ServerPlayer *>(viewer));
     if (queryPublicSkill([&] { return viewer->hasSkill("ollongdan"); }))
         world.strategyFacts.insert("ol_st_standard", QJsonObject{{"analeptic_available", Analeptic::IsAvailable(viewer)}});
     // Original phase/removal and keep-value policies ask isFriend(a, b).
@@ -2780,11 +2592,11 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
         }
         int projectionBudget = 16384;
         {
-            std::unique_ptr<AIRound56OwnerCandidatesScope> ownerCandidatesScope;
+            std::unique_ptr<AIOwnerCandidatesScope> ownerCandidatesScope;
             auto *gameLua=m_room.roomRuntime()->lua().rawState();
             if(kind==AIRequest::Activate&&reason==CardUseStruct::CARD_USE_REASON_PLAY
-                &&!inAIRound56ProjectionScope(m_room,gameLua))
-                ownerCandidatesScope.reset(new AIRound56OwnerCandidatesScope(m_room,player,gameLua));
+                &&!inAIProjectionSourceScope(m_room,gameLua))
+                ownerCandidatesScope.reset(new AIOwnerCandidatesScope(m_room,player,gameLua));
             foreach (const Card *card, player->getHandcards())
                 request.cardCandidates << makeAICardCandidate(m_room, player, card, method,
                                                               kind, pattern, projectionBudget);
@@ -2836,50 +2648,50 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     projectAIStrategyRequest(request, m_room, player);
     projectAIStrategyResponseContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound24Response(request, m_room, player, QVariant(), request.choiceOptions.context);
+    projectAIStrategyHuanshiKanyuResponse(request, m_room, player, QVariant(), request.choiceOptions.context);
     projectAIStrategyRetrialContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIConstructionContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound21PlanningContext(request, m_room, player,
+    projectAIJiePackagePlanningContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24FeiDIYContext(request, m_room, player,
+    projectAIFeiDIYContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24ChoiceContext(request, m_room, player);
-    projectAIRound25ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIGuoChoiceContext(request, m_room, player);
+    projectAIOlddiyKeguibaoChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAISRkillChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound27ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIOverseasChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound25Response(request, m_room, player, request.choiceOptions.context);
-    projectAIRound25OriginalContext(request, m_room, player, QVariant(),
+    projectAIStrategyOlStandardResponse(request, m_room, player, request.choiceOptions.context);
+    projectAITransformationOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26OriginalContext(request, m_room, player, QVariant(),
+    projectAILordExOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIMountainrumourPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound28PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIFcDIYPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); },
         [](const Card *card, int, const QString &) { return publicDecisionCard(card); });
-    projectAIRound27PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIFcHuanshiPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound21ChoiceContext(request, m_room, player, request.choiceOptions.context,
+    projectAIMeowTianxiangChoiceContext(request, m_room, player, request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound22OlClanPlanContext(request, m_room, player);
-    projectAIRound22ChoiceContext(request, m_room, player, request.choiceOptions.context,
+    projectAIOlClanPlanContext(request, m_room, player);
+    projectAIMeowLiuliChoiceContext(request, m_room, player, request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound22OlClanObservations(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIStrategyOlClanObservations(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyYCZH2017(request, m_room, player, [&](const Card *card) {
         return publicDecisionCard(card, request.choiceOptions.reason != "funan");
     });
-    projectAIRound24OriginalContext(request, m_room, player, QVariant(),
+    projectAIFormationOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
     if (player && kind == AIRequest::UseCard && pattern == "@@guangyu")
-        projectAIRound45InovationContext(request,m_room,player,QVariant());
+        projectAIInovationContext(request,m_room,player,QVariant());
     // UseCard has no generic serialized options table. Its context is built
     // above only by the audited viewer-scoped question projectors; expose those
     // same pure values through world context, matching getDecisionContext's
@@ -2900,30 +2712,30 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
         for (const QString &key : {QStringLiteral("nested_delegate"),QStringLiteral("yingbian")})
             if (request.choiceOptions.context.contains(key)) request.worldView.decisionContext.insert(key, request.choiceOptions.context.value(key));
     }
-    projectAIRound27JieyinghQuestion(request, m_room, player);
-    projectAIRound49Guhuo(request, m_room, player);
-    projectAIRound49CurrentFields(request,m_room,player);
-    projectAIRound49Gongjian(request,m_room,player);
-    projectAIRound49OwnerNames(request,m_room,player);
-    projectAIRound49OwnerBools(request,m_room,player);
-    projectAIRound50Planning(request,m_room,player);
-    projectAIRound51Collateral(request,m_room,player);
-    projectAIRound53Collateral(request,m_room,player);
-    projectAIRound52Rangyi(request,m_room,player);
-    projectAIRound49Notified(request,m_room,player);
-    projectAIRound49NotifiedContexts(request,m_room,player);
-    projectAIRound49Bozhi(request,m_room,player);
-    projectAIRound49MaotuYinhu(request,m_room,player);
-    projectAIRound29ZhifengQuestion(request, m_room, player);
-    projectAIStrategyRound26Response(request, m_room, player);
-    if (aiRound28NiwoResponseQuestion(request,m_room,player)) projectReadonlyOlClanPlanning(player,request);
+    projectAIJieyinghQuestion(request, m_room, player);
+    projectAIQhwindGuhuo(request, m_room, player);
+    projectAIQuxiShawuFields(request,m_room,player);
+    projectAIGongjian(request,m_room,player);
+    projectAIRecordedOwnerNames(request,m_room,player);
+    projectAIZunweiBools(request,m_room,player);
+    projectAIYuxinChenfusuiPlanning(request,m_room,player);
+    projectAIBenxiCollateral(request,m_room,player);
+    projectAICollateralSlash(request,m_room,player);
+    projectAIRangyi(request,m_room,player);
+    projectAINotifiedPile(request,m_room,player);
+    projectAINotifiedPileContexts(request,m_room,player);
+    projectAIBozhi(request,m_room,player);
+    projectAIMaotuYinhu(request,m_room,player);
+    projectAIZhifengQuestion(request, m_room, player);
+    projectAIStrategyXuheResponse(request, m_room, player);
+    if (aiNiwoResponseQuestion(request,m_room,player)) projectReadonlyOlClanPlanning(player,request);
     // Finite owner questions also include UseCard. Publish only after the
     // completed world/options handoff; the producer synchronizes both stores.
-    projectAIRound45Newgenerals(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
-    projectAIRound50YuriQuestion(request,m_room,player,[](const Card*card){return publicDecisionCard(card);});
-    projectAIRound51Jijiao(request,m_room,player);
-    bindAIRound53XufaQuestion(request,player);
-    bindAIRound53XuanzhuQuestion(request,player);
+    projectAINewgenerals(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
+    projectAIYuriQuestion(request,m_room,player,[](const Card*card){return publicDecisionCard(card);});
+    projectAIJijiao(request,m_room,player);
+    bindAIXufaQuestion(request,player);
+    bindAIXuanzhuQuestion(request,player);
     if (lagProbe)
         qWarning().noquote() << "[LAG_PROBE] end request" << request.decisionId
                              << lagTimer.elapsed() << "ms";
@@ -2949,11 +2761,11 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     ResponseNativeScope requestScope(m_room, player, request.reason, request.pattern);
     const auto nativeSkillInvalid = [&](const QString &name, int instanceId) {
-        std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+        std::unique_ptr<AISkillValidityScope> validitySource;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
         if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
-            &&!inAIRound56ProjectionScope(m_room,gameLua))
-            validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+            &&!inAIProjectionSourceScope(m_room,gameLua))
+            validitySource.reset(new AISkillValidityScope(m_room,player,gameLua));
         return player->isSkillInvalid(name,instanceId);
     };
     bool enumerated = true;
@@ -2985,12 +2797,12 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             // V1 response availability has separate nullification hooks and legacy
             // pattern conventions. Treat it as unknown without duplicating them.
             && (request.reason != CardUseStruct::CARD_USE_REASON_PLAY
-                || skill->aiRound56AvailableForConversion(player, request.reason, request.pattern, [&] {
-                    std::unique_ptr<AIRound56WorldSkillQueriesScope> ownershipSource;
+                || skill->aiAvailableForConversion(player, request.reason, request.pattern, [&] {
+                    std::unique_ptr<AIWorldSkillQueriesScope> ownershipSource;
                     auto *gameLua=m_room.roomRuntime()->lua().rawState();
                     if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
-                        &&!inAIRound56ProjectionScope(m_room,gameLua))
-                        ownershipSource.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+                        &&!inAIProjectionSourceScope(m_room,gameLua))
+                        ownershipSource.reset(new AIWorldSkillQueriesScope(m_room,player,gameLua));
                     return player->hasSkill(skill->objectName());
                 })))
             enumerated = false;
@@ -3081,9 +2893,9 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
                 && m_room.getCardOwner(selection.first()) == player;
             if (chopperFlagsKnown || fuluFlagsKnown)
                 for (const QString &flag : produced->getFlags()) chopperFlags.insert(flag, true);
-            const bool round33Physical = aiRound33PlanningPhysicalScope(request,action.getActivationSkillName())
+            const bool zhaobingPhysical = aiZhaobingPhysicalScope(request,action.getActivationSkillName())
                 && produced->isKindOf("EquipCard");
-            if (round33Physical && !authorizeAIRound33PlanningPhysicalProduct(request,m_room,player,
+            if (zhaobingPhysical && !authorizeAIZhaobingPhysicalProduct(request,m_room,player,
                     action.activationRef,action.sourceRef,selection,produced)) {
                 if (produced->isVirtualCard()) const_cast<Card *>(produced)->deleteLater();
                 continue;
@@ -3105,7 +2917,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.handlingMethod = int(produced->getHandlingMethod());
             view.targetResidue = responseResidue(m_room, player, produced);
             view.cardRules = responseOwnerRules(m_room, player, produced);
-            if (round33Physical) view.cardRules.insert("physical_product_id",produced->getEffectiveId());
+            if (zhaobingPhysical) view.cardRules.insert("physical_product_id",produced->getEffectiveId());
             const bool ownSkillChain = produced->isVirtualCard() || m_room.getCardOwner(produced->getEffectiveId()) == player;
             view.cardRules.insert("skill_names_complete", ownSkillChain);
             if (ownSkillChain) view.cardRules.insert("skill_names", QJsonArray::fromStringList(produced->getSkillNames()));
@@ -3122,13 +2934,13 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.sourceRef = action.sourceRef;
             view.activationQuotaAvailable = action.activationQuotaAvailable;
             view.sourceQuotaAvailable = action.sourceQuotaAvailable;
-            const bool zhangwuGenerated = aiRound27ZhangwuGeneratedBranch(request, player, action.getActivationSkillName());
+            const bool zhangwuGenerated = aiZhangwuGeneratedBranch(request, player, action.getActivationSkillName());
             view.generatedHandPayment = action.getActivationSkillName() == "chopper"
                 || action.getActivationSkillName() == "tiaojiaoCMT" || zhangwuGenerated;
             if (view.generatedHandPayment && (cost != 0 || !produced->isVirtualCard()
                 || (zhangwuGenerated
                     ? (produced->objectName() != "slash" || produced->getSkillName(false) != "lxtx_zhangwuu"
-                        || !aiRound27ZhangwuGeneratedPayment(request, player, action.getActivationSkillName(), produced->getSubcards()))
+                        || !aiZhangwuGeneratedPayment(request, player, action.getActivationSkillName(), produced->getSubcards()))
                     : (produced->objectName() != (action.getActivationSkillName() == "chopper" ? "slash" : "tiaojiaoCMTCard")
                         || (action.getActivationSkillName() == "chopper" && produced->getSubcards().isEmpty())
                         || produced->getSubcards() != player->handCards())))) {
@@ -3196,7 +3008,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             || definitionSource == "@extensions/addFunction.lua") && definition.linedefined == 1809;
         if (sourceKnown && (corePatterns || extensionPatterns)) {
             lua_pushboolean(metadataState, true);
-            AIRound56PatternsScope patternsSource(m_room, metadataState);
+            AICardPatternsScope patternsSource(m_room, metadataState);
             if (LuaRuntime::protectedCall(metadataState, 1, 1, 0) == 0
                 && lua_istable(metadataState, -1)) {
                 catalogComplete = true;
@@ -3269,22 +3081,22 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
     // no private opponent skills are inspected, including weidi's lord suffix.
     QList<const Skill *> skillList;
     for (const Skill *skill : player->getSkillList(true)) {
-        if (skill && (skill->isLordSkill() ? ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        if (skill && (skill->isLordSkill() ? ([&] { std::unique_ptr<AIWorldSkillQueriesScope> source;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
-        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
-            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
-        return player->hasLordSkill(skill->objectName()); }()) : ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIProjectionSourceScope(m_room,gameLua))
+            source.reset(new AIWorldSkillQueriesScope(m_room,player,gameLua));
+        return player->hasLordSkill(skill->objectName()); }()) : ([&] { std::unique_ptr<AIWorldSkillQueriesScope> source;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
-        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
-            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIProjectionSourceScope(m_room,gameLua))
+            source.reset(new AIWorldSkillQueriesScope(m_room,player,gameLua));
         return player->hasSkill(skill); }())))
             skillList << skill;
     }
     bool rosterComplete = true;
-    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+    if (([&] { std::unique_ptr<AIWorldSkillQueriesScope> source;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
-        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
-            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIProjectionSourceScope(m_room,gameLua))
+            source.reset(new AIWorldSkillQueriesScope(m_room,player,gameLua));
         return player->hasSkill("weidi"); }())) {
         const ServerPlayer *lord = m_room.getLord();
         if (lord && lord != player) {
@@ -3501,7 +3313,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
                 || request.pattern != "@@zhifeng" || request.prompt != "zhifeng0"
                 || request.handlingMethod != Card::MethodUse)) continue;
         if ((instance.skillName == "ol2shanjia" || instance.skillName == "jiewan")
-            && !aiRound52OlspQuestion(request, player)) continue;
+            && !aiOlspQuestion(request, player)) continue;
         AiSkillActionContext action;
         if (nativeSkillInvalid(instance.skillName, instance.instanceID)
             || !buildSkillActionContext(player, instance, request.reason, request.pattern, action)) continue;
@@ -3533,7 +3345,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
 // Fixed olwenwu.cpp:776-875: a zero-selection native product carries a
 // material tag; cost/pay binds that same sole physical card later. This is not
 // a generic permission to turn selected materials into zero-cost cards.
-static bool round25JincaiwangMaterial(const AIRequest &request, Room &room,
+static bool jincaiwangMaterial(const AIRequest &request, Room &room,
     ServerPlayer *player, const QString &name, const QList<int> &ids)
 {
     if (!player || request.viewerObjectName != player->objectName() || ids.size() != 1
@@ -3557,7 +3369,7 @@ static bool round25JincaiwangMaterial(const AIRequest &request, Room &room,
     else disclosed = includes(request.worldView.self.judgingArea);
     return disclosed;
 }
-static bool round25JincaiwangConstruction(const AIRequest &r, ServerPlayer *p, const QJsonObject &spec)
+static bool jincaiwangConstruction(const AIRequest &r, ServerPlayer *p, const QJsonObject &spec)
 {
     if (!p || !p->getRoom() || !p->hasSkill("secondjincaiwang") || r.kind != AIRequest::Activate
         || r.reason != CardUseStruct::CARD_USE_REASON_PLAY || spec.value("source_key") != "secondjincaiwang"
@@ -3565,11 +3377,11 @@ static bool round25JincaiwangConstruction(const AIRequest &r, ServerPlayer *p, c
         || !spec.value("subcards").isArray() || spec.value("subcards").toArray().size() != 1) return false;
     const auto value = spec.value("subcards").toArray().first();
     const int id = value.toInt(-1);
-    if (id < 0 || value != id || !round25JincaiwangMaterial(r,*p->getRoom(),p,"slash",{id})) return false;
+    if (id < 0 || value != id || !jincaiwangMaterial(r,*p->getRoom(),p,"slash",{id})) return false;
     const Card *card = Sanguosha->getCard(id);
     return card && spec.value("suit") == int(card->getSuit()) && spec.value("number") == card->getNumber();
 }
-static bool round25JincaiwangProduct(const Card *card, const QString &name,
+static bool jincaiwangProduct(const Card *card, const QString &name,
     const QList<int> &ids)
 {
     if (!card || ids.size() != 1 || !card->isVirtualCard() || !card->getSubcards().isEmpty()
@@ -3579,38 +3391,119 @@ static bool round25JincaiwangProduct(const Card *card, const QString &name,
     return ok && material.value("name").toString() == name && id == ids.first();
 }
 
+// Fixed-source SkillCard prototype masks of every audited strategy module, first match wins.
+// -1 when no audited source owns the skill/prototype pair. All masks are pure predicates.
+static int auditedStrategyPrototype(const AIRequest &request, ServerPlayer *player,
+                                    const QString &skillName, const QString &prototype)
+{
+    int auditedPrototype = aiAuditedSourcePrototype(skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiAuditedConditionalSourcePrototype(request, skillName, prototype, player);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiAuditedConstructionSourcePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiAssassinsHappy2v2ReadonlyPrototype(skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlClanJiePackagePlanningPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiMeowTianxiangChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiJizhanshizPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiInovationPlayPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiSijyuXuanmengPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiJijiaoPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlClanChengqiPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlClanActionPrototype(skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiMeowLiuliChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiMeowGuoseChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiFeiDIYPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiMouxiejiPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiFormationOriginalPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlddiyKeguibaoChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiJiqiaoPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiMtjieliPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiSkinPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiNewgeneralsPrototype(request,player,skillName,prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiNewgeneralsXdyifuPrototype(request,player,skillName,prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiRenchouPrototype(request,player,skillName,prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiGfengyingPrototype(request,player,skillName,prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiSRkillChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOverseasChoicePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlStandardResponsePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiLimuPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiLeiPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiTransformationOriginalPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiLordExOriginalPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiBasaraOriginalPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiHegKurouPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiGuanduTwyjPrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiJieyinghDelegatePrototype(request, player, skillName, prototype);
+    if (auditedPrototype < 0)
+        auditedPrototype = aiOlClanObservationPrototype(request, player, skillName, prototype);
+    return auditedPrototype;
+}
+
 QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &parentRequest,
                                                               const QJsonObject &proposal) const
 {
     // The inquiry scope is not authority for arbitrary native RPCs. Resolve
     // only the complete finite readonly source family below while it is live;
     // every other host entry retires BEFORE native constructors or callbacks.
-    auto*round56Lua=m_room.roomRuntime()->lua().rawState();
-    if(inAIRound56ProjectionScope(m_room,round56Lua)){
+    auto*projectionLua=m_room.roomRuntime()->lua().rawState();
+    if(inAIProjectionSourceScope(m_room,projectionLua)){
         const QString kind=proposal.value("kind").toString();
         const auto spec=proposal.value("spec").toObject();
         auto*owner=m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true);
         bool proved=kind=="ordinary_card_choice_prefix";
         if(kind=="evaluate_owner_view_as")
             proved=parentRequest.kind==AIRequest::PlayerChosen&&parentRequest.choiceOptions.reason=="choulve"
-                &&spec.value("source_key")=="choulve"&&Sanguosha->aiRound56StandardCloneFactory(spec.value("name").toString());
+                &&spec.value("source_key")=="choulve"&&Sanguosha->aiStandardCloneFactory(spec.value("name").toString());
         if(kind=="card_target_filter"&&proposal.value("recipe_key").isString()){
             const Card*c=m_room.roomRuntime()->ai().readonlyCard(parentRequest,owner,proposal.value("recipe_key").toString());
-            proved=c&&preserveAIRound56ProjectionNativeQuery(m_room,c,true);
+            proved=c&&preserveAIProjectionNativeQuery(m_room,c,true);
         }
         if(kind=="evaluate_owner_range_card"){
             proved=(spec.size()==1&&(spec.value("session_current")==true||spec.value("owner_state")==true));
             if(spec.value("recipe_key").isString()){
                 const Card*c=m_room.roomRuntime()->ai().readonlyCard(parentRequest,owner,spec.value("recipe_key").toString());
-                proved=c&&preserveAIRound56ProjectionNativeQuery(m_room,c,true);
+                proved=c&&preserveAIProjectionNativeQuery(m_room,c,true);
             }else if(spec.value("name").isString())
-                proved=Sanguosha->aiRound56StandardCloneFactory(spec.value("name").toString());
+                proved=Sanguosha->aiStandardCloneFactory(spec.value("name").toString());
         }
         if(!proved){
             if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")){
                 std::fprintf(stderr,"R56_QUERY_RETIRE site=conversion-proposal-gate\n");std::fflush(stderr);
             }
-            retireAIRound56Projection(m_room,round56Lua);
+            retireAIProjectionSource(m_room,projectionLua);
         }
     }
     if(proposal.value("kind")=="select_sijyu_fengyi_physical") {
@@ -3620,13 +3513,13 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         EngineRuntimeContextScope engineContext(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         auto *viewer=m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true);
-        return selectAIRound47FengyiPhysical(m_room,parentRequest,viewer,id.toInt());
+        return selectAIFengyiPhysical(m_room,parentRequest,viewer,id.toInt());
     }
     if(proposal.value("kind")=="rushb_physical_skill"||proposal.value("kind")=="rushb_physical_skill_read") {
         QString error;auto *viewer=m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true);
         EngineRuntimeContextScope engineContext(*Sanguosha,&m_room);
         LuaRuntime::Binding gameplay(m_room.roomRuntime()->lua(),false);
-        const Card *card=writeAIRound45PhysicalSkill(m_room,parentRequest,viewer,proposal,&error);
+        const Card *card=writeAIRushBPhysicalSkill(m_room,parentRequest,viewer,proposal,&error);
         if(!card)return {{"error",error},{"key","rushB.physical_mutation"}};
         // Same physical source object, with new native rules evaluated AFTER
         // the source write. This object is neither a readonly clone nor receipt.
@@ -3644,18 +3537,18 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         int budget=4096;
         const auto candidate=responseCandidateJson(makeAICardCandidate(m_room,viewer,card,
             parentRequest.handlingMethod,parentRequest.kind,parentRequest.pattern,budget));
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest,viewer))return {{"error","RushB post-write projection changed state"},{"key","rushB.physical_mutation"}};
+        if(!aiRangeRequestCurrent(m_room,parentRequest,viewer))return {{"error","RushB post-write projection changed state"},{"key","rushB.physical_mutation"}};
         return {{"kind","rushb_physical_skill"},{"viewer",viewer->objectName()},
             {"decision_id",parentRequest.getDecisionId()},{"state_revision",parentRequest.getStateRevision()},
             {"card",row},{"candidate",candidate}};
     }
     if (proposal.value("kind")=="overseas_priority")
-        return queryAIRound29ChoicePriority(m_room,parentRequest,m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true),proposal);
+        return queryAIOverseasPriority(m_room,parentRequest,m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true),proposal);
     if (proposal.value("kind")=="overseas_xiafeng_flag") {
         const auto id=proposal.value("card_id");
         if(proposal.size()!=3||!id.isDouble()||id.toDouble()<0||id.toDouble()!=id.toInt(-1)||!proposal.value("enabled").isBool())
             return {{"error","invalid Xiafeng flag proposal"}};
-        return writeAIRound29XiafengFlag(m_room,parentRequest,m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true),id.toInt(),proposal.value("enabled").toBool());
+        return writeAIXiafengFlag(m_room,parentRequest,m_room.findPlayerByObjectName(parentRequest.viewerObjectName,true),id.toInt(),proposal.value("enabled").toBool());
     }
     // This terminal consumes the original response scope; Play hypotheses can
     // never turn their scopes into payment. The copied request shares only the
@@ -3665,7 +3558,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         ServerPlayer *viewer=m_room.findPlayerByObjectName(parentRequest.viewerObjectName);
         const auto nested=parentRequest.worldView.strategyFacts.value("readonly_play_context").toObject();
         if(proposal.size()!=2 || !proposal.value("subcards").isArray()
-            || !aiRound28NiwoResponseQuestion(parentRequest,m_room,viewer)
+            || !aiNiwoResponseQuestion(parentRequest,m_room,viewer)
             || nested.value("source")!="OverseasVersion.ov_niwo"
             || parentRequest.readonlyParentConversionPolicy.isEmpty())
             return fail("Niwo response is not the current preserved parent question");
@@ -3697,10 +3590,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             {"scope_id",selected.value("scope_id")},{"spec",QJsonObject{{"subcards",costs},{"legacy_class","#ov_niwoCard"}}}});
     }
     ServerPlayer *planningViewer = m_room.findPlayerByObjectName(parentRequest.viewerObjectName);
-    const bool nestedPlay = aiRound23OlClanPlanningQuestion(parentRequest, m_room, planningViewer)
-        || aiRound27ChoicePlanningQuestion(parentRequest, m_room, planningViewer)
+    const bool nestedPlay = aiOlClanPlanningQuestion(parentRequest, m_room, planningViewer)
+        || aiXiafengChoicePlanningQuestion(parentRequest, m_room, planningViewer)
         || (parentRequest.worldView.strategyFacts.contains("readonly_play_context")
-            && aiRound28ChoicePlanningQuestion(parentRequest, m_room, planningViewer));
+            && aiNiwoShelieChoicePlanningQuestion(parentRequest, m_room, planningViewer));
     const bool hasNestedContext = parentRequest.worldView.strategyFacts.contains("readonly_play_context");
     if (hasNestedContext && !nestedPlay)
         return {{"error", "nested Play question is stale or no longer active"}, {"key", "zuheta.planning"}};
@@ -3724,8 +3617,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         effectiveRequest->handlingMethod = Card::MethodUse;
     }
     const AIRequest &request = effectiveRequest ? *effectiveRequest : parentRequest;
-    std::unique_ptr<AIRound44RangeRequestAlias> rangeReadonlyAlias;
-    if(effectiveRequest)rangeReadonlyAlias.reset(new AIRound44RangeRequestAlias(parentRequest,*effectiveRequest));
+    std::unique_ptr<AIRangeRequestAlias> rangeReadonlyAlias;
+    if(effectiveRequest)rangeReadonlyAlias.reset(new AIRangeRequestAlias(parentRequest,*effectiveRequest));
     // Runtime recipe identity is always the real active inquiry address, never
     // effectiveRequest. The copy is only native constructor/query context.
     std::unique_ptr<ResponseNativeScope> nestedScope;
@@ -3747,7 +3640,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     if(proposal.value("kind")=="xuanzhu_actual_slot") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","xuanzhuUse"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Xuanzhu active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Xuanzhu active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -3807,7 +3700,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Xuanzhu observation selector is not a finite issued identity");
-            const QString token=writeAIRound53XuanzhuSlot(request,player,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
+            const QString token=writeAIXuanzhuSlot(request,player,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         auto admit=[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);};
@@ -3815,12 +3708,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if(proposal.size()!=3||!proposal.value("recipe_key").isString())return fail("Xuanzhu first selected envelope malformed");
             const auto key=proposal.value("recipe_key").toString();
             if(m_room.roomRuntime()->ai().readonlyCardSource(parentRequest,player,key)!="xuanzhu_first_source")return fail("Xuanzhu selector is not its issued initial source");
-            return issueAIRound53XuanzhuFirst(request,player,m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,player,key),admit);
+            return issueAIXuanzhuFirst(request,player,m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,player,key),admit);
         }
         if(mode=="read") {
-            if(proposal.size()!=3||!proposal.value("include_card").isBool()||!aiRound53XuanzhuQuestion(request,player))return fail("Xuanzhu read lacks exact native question");
-            auto saved=readAIRound53XuanzhuSlot(request,player,proposal.value("include_card").toBool());
-            using R=AIRound53XuanzhuSlotRead;
+            if(proposal.size()!=3||!proposal.value("include_card").isBool()||!aiXuanzhuQuestion(request,player))return fail("Xuanzhu read lacks exact native question");
+            auto saved=readAIXuanzhuSlot(request,player,proposal.value("include_card").toBool());
+            using R=AIXuanzhuSlotRead;
             if(saved.kind==R::Unknown)return fail(saved.error);
             if(saved.kind==R::NilPlan)return{{"status","nil_plan"}};
             if(saved.kind==R::BooleanPlan)return{{"status","boolean_plan"}};
@@ -3833,15 +3726,15 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if(proposal.size()!=5||!proposal.value("material").isDouble()||!proposal.value("name").isString()||!proposal.value("targets").isArray())return fail("Xuanzhu selected envelope malformed");
             double raw=proposal.value("material").toDouble(-1);if(raw<0||raw!=std::floor(raw)||raw>std::numeric_limits<int>::max())return fail("Xuanzhu selected material malformed");
             QStringList names;for(const auto&v:proposal.value("targets").toArray()){if(!v.isString()||v.toString().isEmpty())return fail("Xuanzhu selected target malformed");names<<v.toString();}
-            return issueAIRound53XuanzhuSaved(request,player,int(raw),proposal.value("name").toString(),names,admit);
+            return issueAIXuanzhuSaved(request,player,int(raw),proposal.value("name").toString(),names,admit);
         }
         std::unique_ptr<Card>card;QString source;
         if(mode=="construct") {
             if(proposal.size()!=3||!proposal.value("name").isString())return fail("Xuanzhu constructor envelope malformed");
-            card=constructAIRound53XuanzhuPolicy(request,player,proposal.value("name").toString(),&error);source="xuanzhu_source_dummy";
+            card=constructAIXuanzhuPolicy(request,player,proposal.value("name").toString(),&error);source="xuanzhu_source_dummy";
         } else if(mode=="first_construct") {
             if(proposal.size()!=2)return fail("Xuanzhu initial constructor accepts no authored fields");
-            card=constructAIRound53XuanzhuFirst(request,player,&error);source="xuanzhu_first_source";
+            card=constructAIXuanzhuFirst(request,player,&error);source="xuanzhu_first_source";
         } else return fail("Xuanzhu operation outside fixed family");
         if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
         const QString key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),source);
@@ -3858,13 +3751,13 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("target_fixed",exact->targetFixed());row.insert("handling_method",int(exact->getHandlingMethod()));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
         row.insert("evaluation_only",true);row.insert("evaluation_owner",player->objectName());row.insert("readonly_recipe_key",key);
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest)||lease()!=exact)return fail("Xuanzhu source query changed current state/custody");
+        if(!aiRangeRequestCurrent(m_room,parentRequest)||lease()!=exact)return fail("Xuanzhu source query changed current state/custody");
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets}};
     }
     if(proposal.value("kind")=="xufa_actual_slot") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","xufaUse"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Xufa active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Xufa active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -3877,7 +3770,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if(names.size()>128)return fail("Xufa target budget exceeded");
             auto admit=[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use)
                 &&!player->isCardLimited(use.card,use.card->getHandlingMethod())&&m_room.areCardTargetsLegal(use);};
-            return issueAIRound53XufaValue(request,player,proposal.value("card").toObject(),names,admit);
+            return issueAIXufaValue(request,player,proposal.value("card").toObject(),names,admit);
         }
         if(mode=="capture") {
             if(proposal.size()!=5||!proposal.value("selector").isObject()||!proposal.value("targets").isArray()||!proposal.value("source_fields").isObject())return fail("Xufa capture shape malformed");
@@ -3934,7 +3827,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Xufa observation selector is not a finite issued identity");
-            const QString token=writeAIRound45XufaSlot(request,player,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
+            const QString token=writeAIXufaSlot(request,player,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         if(mode=="first_select"||mode=="saved_select") {
@@ -3948,31 +3841,31 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             QStringList names;for(const auto&v:proposal.value("targets").toArray()){
                 if(!v.isString()||v.toString().isEmpty())return fail("Xufa selected target malformed");names<<v.toString();}
             auto admit=[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);};
-            return first?issueAIRound53XufaFirst(request,player,std::move(lease),admit)
-                :issueAIRound53XufaSaved(request,player,std::move(lease),names,admit);
+            return first?issueAIXufaFirst(request,player,std::move(lease),admit)
+                :issueAIXufaSaved(request,player,std::move(lease),names,admit);
         }
         QString key;QStringList actualTargets;bool reading=false,targetsMissing=false,targetsFalse=false;
         if(mode=="first_construct") {
             if(proposal.size()!=3||!proposal.value("costs").isArray())return fail("Xufa first constructor shape malformed");
             QList<int>costs;for(const auto&v:proposal.value("costs").toArray()){
                 double id=v.toDouble(-1);if(!v.isDouble()||id<0||id!=std::floor(id)||id>std::numeric_limits<int>::max())return fail("Xufa first cost malformed");costs<<int(id);}
-            auto card=constructAIRound53XufaFirst(request,player,costs,&error);
+            auto card=constructAIXufaFirst(request,player,costs,&error);
             if(!card)return fail(error);
             key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"xufa_first_source");
         } else if(mode=="read") {
             if(proposal.size()!=2)return fail("Xufa read accepts no authored plan");
-            auto saved=readAIRound45XufaSlot(request,player);
-            if(saved.kind==AIRound45XufaSlotRead::Unknown)return fail(saved.error);
-            if(saved.kind==AIRound45XufaSlotRead::NilPlan)return{{"status","nil_plan"}};
-            if(saved.kind==AIRound45XufaSlotRead::FalsePlan)return{{"status","false_plan"}};
-            if(saved.kind==AIRound45XufaSlotRead::EmptyCard)return{{"status","empty_card"}};
+            auto saved=readAIXufaSlot(request,player);
+            if(saved.kind==AIXufaSlotRead::Unknown)return fail(saved.error);
+            if(saved.kind==AIXufaSlotRead::NilPlan)return{{"status","nil_plan"}};
+            if(saved.kind==AIXufaSlotRead::FalsePlan)return{{"status","false_plan"}};
+            if(saved.kind==AIXufaSlotRead::EmptyCard)return{{"status","empty_card"}};
             const Card*exact=saved.lease?saved.lease():nullptr;if(!exact)return fail("Xufa retained source expired");
             key=m_room.roomRuntime()->ai().issueBorrowedReadonlyCard(parentRequest,player,exact,"xufa_actual_slot");
             reading=true;actualTargets=saved.targets;targetsMissing=saved.targetsMissing;targetsFalse=saved.targetsFalse;
         } else if(mode=="construct") {
             if(proposal.size()!=4||!proposal.value("name").isString()||!proposal.value("costs").isArray())return fail("Xufa constructor shape malformed");
             QList<int>costs;for(const auto&v:proposal.value("costs").toArray()){const double id=v.toDouble(-1);if(!v.isDouble()||id<0||id!=std::floor(id)||id>std::numeric_limits<int>::max())return fail("Xufa cost malformed");costs<<int(id);}
-            auto card=constructAIRound45XufaPolicy(request,player,proposal.value("name").toString(),costs,&error);
+            auto card=constructAIXufaPolicy(request,player,proposal.value("name").toString(),costs,&error);
             if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
             key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"xufa_source_dummy");
         } else return fail("Xufa source query mode invalid");
@@ -3983,7 +3876,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             // The reader reaches canRecast first. No planning serializer,
             // sorting, targetFilter, targetFixed, flags or handling-method query.
             const bool recast=exact->canRecast();
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest)||lease()!=exact)
+            if(!aiRangeRequestCurrent(m_room,parentRequest)||lease()!=exact)
                 return fail("Xufa source canRecast changed current request or custody");
             row.insert("can_recast",recast);
             // The source returns (or errors indexing a missing target list)
@@ -3991,7 +3884,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             const bool sourceReturns=recast&&actualTargets.isEmpty()&&request.handlingMethod!=Card::MethodRecast;
             if(!targetsMissing&&!sourceReturns) {
                 const QString wire=exact->toString();
-                if(!aiRound44RangeRequestCurrent(m_room,parentRequest)||lease()!=exact)
+                if(!aiRangeRequestCurrent(m_room,parentRequest)||lease()!=exact)
                     return fail("Xufa source toString changed current request or custody");
                 row.insert("legacy_string_key",wire);
                 row.insert("legacy_identity_token",aiLegacyCardIdentity(m_room,player,exact));
@@ -4016,25 +3909,25 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
         }
         row.insert("evaluation_only",true);row.insert("evaluation_owner",player->objectName());row.insert("readonly_recipe_key",key);
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest)||lease()!=exact)return fail("Xufa source query changed current state or custody");
+        if(!aiRangeRequestCurrent(m_room,parentRequest)||lease()!=exact)return fail("Xufa source query changed current state or custody");
         QJsonArray names;for(const auto&name:actualTargets)names.append(name);
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets},{"status",reading?"card_plan":"constructed"},{"targets",names},{"targets_missing",targetsMissing},{"targets_false",targetsFalse}};
     }
     if(proposal.value("kind")=="olclan_saved_slot") {
         auto fail=[](const QString&why){return QJsonObject{{"error",why},{"key","olClan.saved_plan"}};};
         auto*player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player||!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("saved plan active request is stale");
+        if(!player||!aiRangeRequestCurrent(m_room,parentRequest))return fail("saved plan active request is stale");
         if(proposal.size()!=4||!proposal.value("slot").isString()||!proposal.value("operation").isString()||!proposal.value("payload").isObject())return fail("saved plan envelope malformed");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         const auto slot=proposal.value("slot").toString(),op=proposal.value("operation").toString();
         const auto payload=proposal.value("payload").toObject();
-        if(slot=="zulianzhuEp"||slot=="zujieliTo")return queryAIRound47OlClanPlayerSlot(parentRequest,player,slot,op,payload);
-        if(slot=="zujiewusuit")return queryAIRound47OlClanScalarSlot(parentRequest,player,op,payload);
-        if(slot=="lianzhanUse")return queryAIRound53LianzhanSlot(parentRequest,player,op,payload,[](const Card*c){return publicDecisionCard(c);});
-        if(slot=="tenyearmingfa_c"&&op=="query")return queryAIRound53MingfaSlot(parentRequest,player,op,payload);
-        if(slot=="diouUse"&&op=="select"){ResponseNativeScope native(m_room,player,parentRequest.reason,parentRequest.pattern);return issueAIRound53DiouReceipt(parentRequest,player,payload,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});}
-        if(slot=="gengduUse"&&op=="write"&&payload.value("card_state")!="card")return queryAIRound53GengduSlot(parentRequest,player,op,payload);
-        if(slot=="zhuning_d"&&op=="write"&&payload.value("card_state")!="card")return queryAIRound53ZhuningSlot(parentRequest,player,op,payload);
+        if(slot=="zulianzhuEp"||slot=="zujieliTo")return queryAIOlClanPlayerSlot(parentRequest,player,slot,op,payload);
+        if(slot=="zujiewusuit")return queryAIOlClanScalarSlot(parentRequest,player,op,payload);
+        if(slot=="lianzhanUse")return queryAILianzhanSlot(parentRequest,player,op,payload,[](const Card*c){return publicDecisionCard(c);});
+        if(slot=="tenyearmingfa_c"&&op=="query")return queryAIMingfaSlot(parentRequest,player,op,payload);
+        if(slot=="diouUse"&&op=="select"){ResponseNativeScope native(m_room,player,parentRequest.reason,parentRequest.pattern);return issueAIDiouReceipt(parentRequest,player,payload,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});}
+        if(slot=="gengduUse"&&op=="write"&&payload.value("card_state")!="card")return queryAIGengduSlot(parentRequest,player,op,payload);
+        if(slot=="zhuning_d"&&op=="write"&&payload.value("card_state")!="card")return queryAIZhuningSlot(parentRequest,player,op,payload);
         if(op=="write"){
             const auto selector=payload.value("selector").toObject();
             AIReadonlyCardLease lease;
@@ -4067,7 +3960,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                         && face.nativeIdentity->address == actual
                         && aiLegacyCardIdentity(m_room,player,face.nativeIdentity) == sourceIdentity) observed = true;
                 if (!observed || !actual || actual->isVirtualCard()) return fail("saved acquired source is no longer disclosed");
-                // queryAIRound47OlClanSlot rechecks the full current face and
+                // queryAIOlClanPlanSlot rechecks the full current face and
                 // exact source inquiry before assignment; no payment authority.
                 lease = AIOwnerReadonlyCardStore::observe(actual);
             } else if (selector.size() == 1 && selector.value("readonly_recipe_key").isString()) {
@@ -4119,27 +4012,27 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("saved plan observation selector is not a finite issued identity");
-            if(slot=="tyfenwuUse")return queryAIRound53TyfenwuSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="tychendeUse")return queryAIRound53TychendeSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="tyqingkouUse")return queryAIRound53TyqingkouSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="diouUse")return queryAIRound53DiouSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="zhuning_d")return queryAIRound53ZhuningSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="gengduUse")return queryAIRound53GengduSlot(parentRequest,player,op,payload,std::move(lease));
-            if(slot=="tenyearmingfa_c")return queryAIRound53MingfaSlot(parentRequest,player,op,payload,std::move(lease));
-            return queryAIRound47OlClanSlot(parentRequest,player,slot,op,payload,std::move(lease));
+            if(slot=="tyfenwuUse")return queryAITyfenwuSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="tychendeUse")return queryAITychendeSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="tyqingkouUse")return queryAITyqingkouSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="diouUse")return queryAIDiouSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="zhuning_d")return queryAIZhuningSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="gengduUse")return queryAIGengduSlot(parentRequest,player,op,payload,std::move(lease));
+            if(slot=="tenyearmingfa_c")return queryAIMingfaSlot(parentRequest,player,op,payload,std::move(lease));
+            return queryAIOlClanPlanSlot(parentRequest,player,slot,op,payload,std::move(lease));
         }
-        if(slot=="tyfenwuUse")return queryAIRound53TyfenwuSlot(parentRequest,player,op,payload);
-        if(slot=="tychendeUse")return queryAIRound53TychendeSlot(parentRequest,player,op,payload);
-        if(slot=="tyqingkouUse")return queryAIRound53TyqingkouSlot(parentRequest,player,op,payload);
-        if(slot=="diouUse")return queryAIRound53DiouSlot(parentRequest,player,op,payload);
-        if(slot=="zhuning_d")return queryAIRound53ZhuningSlot(parentRequest,player,op,payload);
-        if(slot=="gengduUse")return queryAIRound53GengduSlot(parentRequest,player,op,payload);
-        return queryAIRound47OlClanSlot(parentRequest,player,slot,op,payload);
+        if(slot=="tyfenwuUse")return queryAITyfenwuSlot(parentRequest,player,op,payload);
+        if(slot=="tychendeUse")return queryAITychendeSlot(parentRequest,player,op,payload);
+        if(slot=="tyqingkouUse")return queryAITyqingkouSlot(parentRequest,player,op,payload);
+        if(slot=="diouUse")return queryAIDiouSlot(parentRequest,player,op,payload);
+        if(slot=="zhuning_d")return queryAIZhuningSlot(parentRequest,player,op,payload);
+        if(slot=="gengduUse")return queryAIGengduSlot(parentRequest,player,op,payload);
+        return queryAIOlClanPlanSlot(parentRequest,player,slot,op,payload);
     }
     if(proposal.value("kind")=="newgenerals_saved_slot") {
         auto fail=[](const QString&why){return QJsonObject{{"error",why},{"key","newgenerals.saved_plan"}};};
         auto*player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player||!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("saved plan active request is stale");
+        if(!player||!aiRangeRequestCurrent(m_room,parentRequest))return fail("saved plan active request is stale");
         if(proposal.size()!=4||!proposal.value("slot").isString()||!proposal.value("operation").isString()||!proposal.value("payload").isObject())return fail("saved plan envelope malformed");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         const auto slot=proposal.value("slot").toString(),op=proposal.value("operation").toString();
@@ -4196,14 +4089,14 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("saved plan observation selector is not a finite issued identity");
-            return queryAIRound46PlanningSlot(parentRequest,player,slot,op,payload,std::move(lease));
+            return queryAINewgeneralsPlanningSlot(parentRequest,player,slot,op,payload,std::move(lease));
         }
-        return queryAIRound46PlanningSlot(parentRequest,player,slot,op,payload);
+        return queryAINewgeneralsPlanningSlot(parentRequest,player,slot,op,payload);
     }
     if(proposal.value("kind")=="heqia_saved_plan") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","heqia_use"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Heqia active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Heqia active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -4269,7 +4162,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Heqia observation selector is not a finite issued identity");
-            const QString token=writeAIRound47HeqiaSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
+            const QString token=writeAIHeqiaSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         if(mode=="select"||mode=="first") {
@@ -4278,18 +4171,18 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if(names.size()>128)return fail("Heqia target budget exceeded");
             if(mode=="select"){
                 if(!proposal.value("token").isString())return fail("Heqia selected custody key malformed");
-                return issueAIRound47HeqiaReceipt(request,player,proposal.value("token").toString(),names,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});
+                return issueAIHeqiaReceipt(request,player,proposal.value("token").toString(),names,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});
             }
             if(!proposal.value("subcards").isArray())return fail("Heqia first payment malformed");QList<int>ids;
             for(const auto&v:proposal.value("subcards").toArray()){const int id=v.toInt(-1);if(!v.isDouble()||id<0||v.toDouble()!=id)return fail("Heqia first payment ID malformed");ids<<id;}
-            return issueAIRound47HeqiaFirst(request,player,ids,names,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});
+            return issueAIHeqiaFirst(request,player,ids,names,[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);});
         }
         QString key;QStringList observedTargets;
         if(mode=="read"){
             if(proposal.size()!=3||!proposal.value("token").isString())return fail("Heqia read shape malformed");
-            AIRound47HeqiaSlotStatus status;const Card*c=readAIRound47HeqiaSlot(request,player,proposal.value("token").toString(),&observedTargets,nullptr,&error,&status);
-            if(status==AIRound47HeqiaSlotStatus::SourcePass)return{{"source_pass",true}};
-            if(status==AIRound47HeqiaSlotStatus::SourceError)return{{"source_error",error}};
+            AIHeqiaSlotStatus status;const Card*c=readAIHeqiaSlot(request,player,proposal.value("token").toString(),&observedTargets,nullptr,&error,&status);
+            if(status==AIHeqiaSlotStatus::SourcePass)return{{"source_pass",true}};
+            if(status==AIHeqiaSlotStatus::SourceError)return{{"source_error",error}};
             if(!c)return fail(error);
             key=m_room.roomRuntime()->ai().issueBorrowedReadonlyCard(parentRequest,player,c,"heqia_actual_slot");
         }else{
@@ -4298,7 +4191,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if(offer<0||material<0||offer!=proposal.value("offered_id").toDouble()||material!=proposal.value("material").toDouble())return fail("Heqia constructor ID malformed");
             bool exactName=false;for(const auto&v:request.choiceOptions.cards)if(v.effectiveId==offer&&v.objectName==proposal.value("name").toString())exactName=true;
             if(!exactName)return fail("Heqia source offered name changed");
-            auto card=constructAIRound47Heqia(request,player,offer,material,&error);
+            auto card=constructAIHeqia(request,player,offer,material,&error);
             if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
             key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"heqia_ag");
         }
@@ -4317,13 +4210,13 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("using",exact->hasFlag("using"));row.insert("can_recast",exact->canRecast());
         row.insert("target_fixed",exact->targetFixed());row.insert("handling_method",int(exact->getHandlingMethod()));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Heqia source constructor query changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return fail("Heqia source constructor query changed state");
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets},{"targets",QJsonArray::fromStringList(observedTargets)}};
     }
     if(proposal.value("kind")=="leiluan_saved_plan") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","leiluanUse"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Leiluan active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Leiluan active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -4388,17 +4281,17 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Leiluan observation selector is not a finite issued identity");
-            const QString token=writeAIRound47BLeiluanSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
+            const QString token=writeAILeiluanSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         if(mode=="select") {
             if(proposal.size()!=3||!proposal.value("token").isString())return fail("Leiluan select shape malformed");
-            return issueAIRound47BLeiluanReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
+            return issueAILeiluanReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
                 return m_skillRuntime.resolveCardSkillInstance(use);
             });
         }
         if(mode!="construct" || proposal.size()!=3 || !proposal.value("name").isString())return fail("Leiluan constructor shape malformed");
-        auto card=constructAIRound47BLeiluan(request,player,proposal.value("name").toString(),&error);
+        auto card=constructAILeiluan(request,player,proposal.value("name").toString(),&error);
         if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
         const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"leiluan_choice");
         const auto lease=m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,player,key);
@@ -4416,24 +4309,24 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("using",exact->hasFlag("using"));row.insert("can_recast",exact->canRecast());
         row.insert("target_fixed",exact->targetFixed());row.insert("handling_method",int(exact->getHandlingMethod()));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Leiluan source constructor query changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return fail("Leiluan source constructor query changed state");
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets}};
     }
     if(proposal.value("class_name")=="@r51_sushou_raw_costs") {
         const auto raw=proposal.value("spec").toObject();
         if(proposal.size()!=3 || proposal.value("scope_id")!=0 || raw.size()!=1 || !raw.value("wire").isString())return QJsonObject{{"error","Sushou raw source proposal malformed"}};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return QJsonObject{{"error","Sushou raw source request stale"}};
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return QJsonObject{{"error","Sushou raw source request stale"}};
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
-        return issueAIRound51NotifiedCosts(request,player,raw.value("wire").toString(),
+        return issueAISushouNotifiedCosts(request,player,raw.value("wire").toString(),
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);});
     }
     if(proposal.value("kind")=="jianman_saved_plan") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","jianmanUse"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Jianman active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Jianman active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -4498,17 +4391,17 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Jianman observation selector is not a finite issued identity");
-            const QString token=writeAIRound46JianmanSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
+            const QString token=writeAIJianmanSlot(request,player,offered,std::move(lease),names,proposal.value("source_fields").toObject(),&error);
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         if(mode=="select") {
             if(proposal.size()!=3||!proposal.value("token").isString())return fail("Jianman select shape malformed");
-            return issueAIRound46JianmanReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
+            return issueAIJianmanReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
                 return m_skillRuntime.resolveCardSkillInstance(use);
             });
         }
         if(mode!="construct" || proposal.size()!=3 || !proposal.value("name").isString())return fail("Jianman constructor shape malformed");
-        auto card=constructAIRound46Jianman(request,player,proposal.value("name").toString(),&error);
+        auto card=constructAIJianman(request,player,proposal.value("name").toString(),&error);
         if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
         const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"jianman_choice");
         const auto lease=m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,player,key);
@@ -4526,13 +4419,13 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("using",exact->hasFlag("using"));row.insert("can_recast",exact->canRecast());
         row.insert("target_fixed",exact->targetFixed());row.insert("handling_method",int(exact->getHandlingMethod()));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Jianman source constructor query changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return fail("Jianman source constructor query changed state");
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets}};
     }
     if(proposal.value("kind")=="faqi_saved_plan") {
         auto fail=[](const QString &why){return QJsonObject{{"error",why},{"key","faqiUse"}};};
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if(!player || !aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Faqi active request is stale");
+        if(!player || !aiRangeRequestCurrent(m_room,parentRequest))return fail("Faqi active request is stale");
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
@@ -4598,12 +4491,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return fail("Faqi observation selector is not a finite issued identity");
-            const QString token=captureAIRound41FaqiPlan(request,player,int(raw),std::move(lease),names,&error,proposal.value("source_fields").toObject());
+            const QString token=captureAIFaqiPlan(request,player,int(raw),std::move(lease),names,&error,proposal.value("source_fields").toObject());
             if(token.isEmpty())return fail(error);return{{"token",token}};
         }
         if(mode=="select") {
             if(proposal.size()!=3||!proposal.value("token").isString())return fail("Faqi select shape malformed");
-            return issueAIRound41FaqiReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
+            return issueAIFaqiReceipt(request,player,proposal.value("token").toString(),[&](CardUseStruct &use){
                 return m_skillRuntime.resolveCardSkillInstance(use);
             });
         }
@@ -4611,7 +4504,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             return fail("Faqi source constructor shape malformed");
         QList<int> costs;for(const auto &value:proposal.value("costs").toArray()){
             const double id=value.toDouble(-1);if(!value.isDouble()||id<0||id!=std::floor(id)||id>std::numeric_limits<int>::max())return fail("Faqi constructor cost malformed");costs<<int(id);}
-        auto card=constructAIRound41FaqiRevise(request,player,proposal.value("constructor").toString(),costs,&error);
+        auto card=constructAIFaqiRevise(request,player,proposal.value("constructor").toString(),costs,&error);
         if(!error.isEmpty())return fail(error);if(!card)return{{"exists",false}};
         const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"faqi_limu_revise");
         const auto lease=m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,player,key);
@@ -4629,7 +4522,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("using",exact->hasFlag("using"));row.insert("can_recast",exact->canRecast());
         row.insert("target_fixed",exact->targetFixed());row.insert("handling_method",int(exact->getHandlingMethod()));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return fail("Faqi source constructor query changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return fail("Faqi source constructor query changed state");
         return{{"exists",true},{"evaluation_only",true},{"card",row},{"candidate",targets}};
     }
     if (proposal.value("kind")=="observe_overseas_lihuo") {
@@ -4639,7 +4532,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         CardUseStruct use;QString error;
-        auto card=createAIRound28CapturedLihuoHypothesis(request,m_room,viewer,&use,&error);
+        auto card=createAICapturedLihuoHypothesis(request,m_room,viewer,&use,&error);
         if(!card)return fail(error);
         // Ownership goes into the existing readonly store; the observer retains
         // that same native lease, never a second owner or a copied old Slash.
@@ -4647,7 +4540,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         const auto lease=m_room.roomRuntime()->ai().retainReadonlyCard(parentRequest,viewer,key);
         if(!lease||!lease())return fail("Lihuo readonly custody could not be retained");
         use.card=lease();
-        if(!recordAIRound28LihuoDelegateUse(request,viewer,use,lease,&error))return fail(error);
+        if(!recordAILihuoDelegateUse(request,viewer,use,lease,&error))return fail(error);
         // Source wrote its tag before aiUseCard: subsequent projection/query
         // errors leave the reached observation intact, exactly like the donor.
         int budget=4096;
@@ -4672,7 +4565,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         auto failure=[](const QString &why){return QJsonObject{{"error",why},{"key","guandu_shicai"}};};
         if(proposal.size()!=1)return failure("Shicai evaluation has no parameters");
         auto *player=m_room.findPlayerByObjectName(request.viewerObjectName);
-        const Card *card=aiRound29ShicaiPreview(request,m_room,player);
+        const Card *card=aiShicaiPreview(request,m_room,player);
         if(!card)return failure("Shicai top card is not currently witnessed");
         EngineRuntimeContextScope contextScope(*Sanguosha,&m_room);
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(),false);
@@ -4688,7 +4581,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("locked",player->isLocked(card));
         row.insert("target_residue",responseResidueJson(responseResidue(m_room,player,card)));
         for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("Shicai evaluation changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("Shicai evaluation changed state");
         return {{"card",row},{"candidate",targets}};
     }
     if (proposal.value("kind").toString()=="bind_zhifeng_question") {
@@ -4704,7 +4597,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         ServerPlayer *player=m_room.findPlayerByObjectName(request.viewerObjectName);
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
-        QString error;std::unique_ptr<Card> card(createAIRound29ZhifengProduct(request,m_room,player,
+        QString error;std::unique_ptr<Card> card(createAIZhifengProduct(request,m_room,player,
             request.zhifengQuestionSerial,{ids.first().toInt()},&error));
         if(!card)return fail(error);
         if(card->objectName()!=spec.value("name").toString() || double(card->getSuit())!=spec.value("suit").toDouble()
@@ -4731,10 +4624,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         if(op=="prepare") {
             const auto v=input.value("id");const double d=v.toDouble(-1);
             if(input.size()!=2||!v.isDouble()||d<0||d!=std::floor(d)||d>std::numeric_limits<int>::max())return fail("Rangyi source material malformed");
-            std::unique_ptr<Card> card(createAIRound52RangyiProduct(request,m_room,player,int(d),false,&error));
+            std::unique_ptr<Card> card(createAIRangyiProduct(request,m_room,player,int(d),false,&error));
             if(!card)return fail(error);
             const QString key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"round52_rangyi_source");
-            if(key.isEmpty()||!aiRound52RangyiCurrent(request,m_room,player,int(d)))return fail("Rangyi source clone custody expired");
+            if(key.isEmpty()||!aiRangyiCurrent(request,m_room,player,int(d)))return fail("Rangyi source clone custody expired");
             return {{"kind","rangyi_readonly"},{"key",key}};
         }
         if(op!="select"||input.size()!=2||!input.value("key").isString())return fail("Rangyi selected schema invalid");
@@ -4743,10 +4636,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         const auto lease=runtime.retainReadonlyCard(parentRequest,player,key);const Card*source=lease?lease():nullptr;
         if(!source||source->objectName()!="twyj_rangyiUse"||source->getSkillName(false)!="twyj_rangyiuse"||source->getSubcards().size()!=1)return fail("Rangyi selected source changed");
         const int id=source->getSubcards().first();
-        std::unique_ptr<Card> card(createAIRound52RangyiProduct(request,m_room,player,id,true,&error));
+        std::unique_ptr<Card> card(createAIRangyiProduct(request,m_room,player,id,true,&error));
         if(!card)return fail(error);
         if(lease()!=source||source->toString()!=card->toString()||source->getClassName()!=card->getClassName())return fail("Rangyi clone and selected product disagree");
-        AICardConversionView t;t.rangyiQuestion=true;t.rangyiQuestionSerial=request.round52RangyiQuestionSerial;
+        AICardConversionView t;t.rangyiQuestion=true;t.rangyiQuestionSerial=request.rangyiWitnessSerial;
         t.conversionId=request.cardConversions.size()+request.conversionLedger->tickets.size()+1;
         t.producerVersion=0;t.producerReason=request.reason;t.producerPattern=request.pattern;t.policyClass="@rangyi_question";
         t.name=card->objectName();t.className=card->getClassName();t.suit=int(card->getSuit());t.number=card->getNumber();
@@ -4766,7 +4659,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         EngineRuntimeContextScope engine(*Sanguosha, &m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(), false);
         QString error;
-        std::unique_ptr<Card> card(createAIRound27JieyinghProduct(request, m_room, player,
+        std::unique_ptr<Card> card(createAIJieyinghProduct(request, m_room, player,
             request.jieyinghQuestionSerial, &error));
         if (!card) return fail(error);
         AICardConversionView ticket;
@@ -4791,7 +4684,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         const QString key=proposal.value("key").toString();
         if(key=="sfofl_zhengan_basic_printed" || key=="ny_tenth_jvewu_printed"
            || key=="sfofl_zhengan_basic_set" || key=="sfofl_zhengan_basic_available")
-            return resolveAIRound39PublicDeck(m_room,
+            return resolveAIPublicDeck(m_room,
                 m_room.findPlayerByObjectName(request.viewerObjectName), request, proposal);
         return resolveAIResponseCatalogue(m_room,
             m_room.findPlayerByObjectName(request.viewerObjectName), request, proposal);
@@ -4805,7 +4698,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         const bool derivative = proposal.value("derivative").isBool() && proposal.value("derivative").toBool();
         if (proposal.size() != (derivative ? 3 : 2) || !proposal.value("pattern").isString() || !viewer
             || request.worldView.self.objectName != viewer->objectName()
-            || !aiRound44RangeRequestCurrent(m_room,parentRequest)) return reject("unauthorized pattern-log query");
+            || !aiRangeRequestCurrent(m_room,parentRequest)) return reject("unauthorized pattern-log query");
         // Fixed OverseasVersion-ai512: PatternsCard(offeredName,nil,true).
         // The configured printed catalogue is public; no live draw order is read.
         if (derivative && (request.kind != AIRequest::Choice || request.choiceOptions.reason != "ov_weipo"
@@ -4824,7 +4717,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         ServerPlayer *viewer = m_room.findPlayerByObjectName(request.viewerObjectName);
         if (proposal.size() != 1 || !viewer || viewer->getRoom() != &m_room
             || request.worldView.self.objectName != viewer->objectName()
-            || !aiRound44RangeRequestCurrent(m_room,parentRequest))
+            || !aiRangeRequestCurrent(m_room,parentRequest))
             return reject("stale or unauthorized deck-count query");
         if (!request.conversionLedger || ++request.conversionLedger->queryCount > 128)
             return reject("deck-count query budget exceeded");
@@ -4837,7 +4730,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         ServerPlayer *viewer = m_room.findPlayerByObjectName(request.viewerObjectName);
         if (proposal.size() != 1 || !viewer || viewer->getRoom() != &m_room
             || request.worldView.self.objectName != viewer->objectName()
-            || !aiRound44RangeRequestCurrent(m_room,parentRequest)
+            || !aiRangeRequestCurrent(m_room,parentRequest)
             || request.kind != AIRequest::RespondCard || request.choiceOptions.question != "askForCardShow")
             return reject("stale or unauthorized owner-hand sample");
         if (!request.conversionLedger || ++request.conversionLedger->queryCount > 128)
@@ -4857,11 +4750,11 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             m_room.findPlayerByObjectName(request.viewerObjectName), request, proposal);
     if (proposal.value("kind")=="ordinary_card_choice_prefix") {
         auto *viewer=m_room.findPlayerByObjectName(request.viewerObjectName);
-        if (!viewer || !request.conversionLedger || !aiRound44RangeRequestCurrent(m_room,parentRequest)
+        if (!viewer || !request.conversionLedger || !aiRangeRequestCurrent(m_room,parentRequest)
             || ++request.conversionLedger->queryCount>128)
             return {{"error","ordinary card-choice prefix authority unavailable"},{"key","askForCardChosen.prefix"}};
         QJsonObject input=proposal;input.remove("kind");
-        return queryAIRound54CardChoicePrefix(m_room,viewer,request,input);
+        return queryAICardChoicePrefix(m_room,viewer,request,input);
     }
     if (proposal.value("kind").toString() == QStringLiteral("refresh_discard_preferences")
         || proposal.value("kind").toString() == QStringLiteral("ordinary_card_choice_preferences")) {
@@ -4871,14 +4764,14 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         ServerPlayer *viewer = m_room.findPlayerByObjectName(request.viewerObjectName);
         if (!viewer || viewer->getRoom() != &m_room || !viewer->isAlive()
             || request.worldView.self.objectName != viewer->objectName()
-            || !aiRound44RangeRequestCurrent(m_room,parentRequest))
+            || !aiRangeRequestCurrent(m_room,parentRequest))
             return reject("stale or unauthorized discard-preference request");
         if (!request.conversionLedger || ++request.conversionLedger->queryCount > 128)
             return reject("discard-preference query budget exceeded");
         if (proposal.size() != 1)
             return reject("discard-preference refresh accepts no arguments");
         if (proposal.value("kind")=="ordinary_card_choice_preferences")
-            return refreshAIRound54OrdinaryCardChoice(m_room,viewer,request);
+            return refreshAIOrdinaryCardChoice(m_room,viewer,request);
         return refreshAIStrategyDiscardPreferences(m_room, viewer);
     }
     const auto failure = [](const QString &reason) {
@@ -4889,7 +4782,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     };
     if (!request.conversionLedger || request.conversionLedger->tickets.size() >= 128)
         return failure("conversion authority query budget exhausted");
-    if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+    if (!aiRangeRequestCurrent(m_room,parentRequest))
         return failure("conversion authority request is stale");
     ServerPlayer *player = m_room.findPlayerByObjectName(request.viewerObjectName);
     if (!player || !player->isAlive()) return failure("conversion viewer is absent");
@@ -4930,24 +4823,24 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             ownedObject=m_room.roomRuntime()->ai().readonlyCard(parentRequest,player,objectKey);
             if (!ownedObject) return failure("Card-object readonly recipe expired");
         }
-        auto sourceObject=buildAIRound33CardsViewObject(request,m_room,player,scope,
+        auto sourceObject=buildAICardsViewObject(request,m_room,player,scope,
             proposal.value("registry").toString(),proposal.value("hook_key").toString(),
             objectSpec,proposal.value("attach_request").toBool(),ownedObject);
-        AIRound30ResponsePolicy product;
+        AIResponseSourcePolicy product;
         if (sourceObject.handled) {
             if (!sourceObject.error.isEmpty()) return failure(sourceObject.error);
-            product.status=sourceObject.absent?AIRound30ResponsePolicy::Absent:AIRound30ResponsePolicy::Parsed;
+            product.status=sourceObject.absent?AIResponseSourcePolicy::Absent:AIResponseSourcePolicy::Parsed;
             product.card=std::move(sourceObject.created);product.physicalCard=sourceObject.attached;
             product.bindingSpec=sourceObject.bindingSpec;
-        } else product=buildAIRound30ResponsePolicy(request,m_room,player,scope,
+        } else product=buildAIResponseSourcePolicy(request,m_room,player,scope,
             proposal.value("registry").toString(),proposal.value("hook_key").toString(),
             proposal.value("spec"),proposal.value("attach_request").toBool());
-        if (product.status==AIRound30ResponsePolicy::Unknown) return failure(product.error);
+        if (product.status==AIResponseSourcePolicy::Unknown) return failure(product.error);
         QJsonObject result{{"kind","response_policy_evaluation"},{"known",true},
-            {"exists",product.status==AIRound30ResponsePolicy::Parsed},{"scope_id",scopeId},
+            {"exists",product.status==AIResponseSourcePolicy::Parsed},{"scope_id",scopeId},
             {"class_name",proposal.value("class_name")},{"registry",proposal.value("registry")},
             {"hook_key",proposal.value("hook_key")},{"attach_request",proposal.value("attach_request")}};
-        if (product.status==AIRound30ResponsePolicy::Absent) return result;
+        if (product.status==AIResponseSourcePolicy::Absent) return result;
         const Card *card=product.card ? product.card.get() : product.physicalCard;
         if (!card) return failure("readonly response parser lost its product");
         QJsonObject row=publicDecisionCard(card,true);
@@ -5016,7 +4909,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 }
                 row.insert("response_class_planning",planning);
             }
-            if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("readonly response evaluation changed game state");
+            if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("readonly response evaluation changed game state");
             const auto key=sourceObject.attached?objectKey:m_room.roomRuntime()->ai().issueReadonlyCard(
                 parentRequest,player,std::move(product.card),sourceObject.handled?objectSource:QStringLiteral("response_policy"));
             if (key.isEmpty()) return failure("readonly response custody is unavailable");
@@ -5131,12 +5024,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                     lease=AIOwnerReadonlyCardStore::observe(exact);
                 }
             } else return failure("OlClan observation selector is not a finite issued identity");
-            const QString token=captureAIRound23OlClanObservation(request,player,slot,std::move(lease),&error);
+            const QString token=captureAIOlClanObservation(request,player,slot,std::move(lease),&error);
             if(token.isEmpty())return failure(error);
             return {{"token",token}};
         }
         if (!proposal.value("token").isString()) return failure("OlClan observation token is invalid");
-        const Card *card=restoreAIRound23OlClanObservation(request,player,slot,proposal.value("token").toString(),&error);
+        const Card *card=restoreAIOlClanObservation(request,player,slot,proposal.value("token").toString(),&error);
         if(!card)return failure(error);
         // Deliberately no candidate, receipt, recipe key, availability or rules.
         // Foreign public physical cards keep only their public activation chain.
@@ -5149,7 +5042,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("legacy_identity_token",aiLegacyCardIdentity(m_room,player,card));
         row.insert("legacy_string_key",card->toString());
         row.insert("legacy_sort_key",legacySortKey(card));
-        if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("OlClan observation changed state");
+        if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("OlClan observation changed state");
         return {{"card",row}};
     }
     if (proposal.value("kind").toString() == "evaluate_preview_card"
@@ -5161,8 +5054,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             return failure("preview card identity is malformed");
         const int id = int(rawId); QJsonObject disclosed;
         if (!authorizeAIStrategyPreviewEvaluation(request, m_room, player, id, &disclosed)
-            && !authorizeAIRound45NotifiedEvaluation(request,m_room,player,id,&disclosed)
-            && !authorizeAIRound49NotifiedEvaluation(request,m_room,player,id,&disclosed))
+            && !authorizeAINewgeneralsNotifiedEvaluation(request,m_room,player,id,&disclosed)
+            && !authorizeAINotifiedPileEvaluation(request,m_room,player,id,&disclosed))
             return failure("preview card lacks current recipient disclosure");
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
@@ -5177,11 +5070,11 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             const auto identity = scope.value("identity").toObject();
             const auto activation = responseRef(identity, "activation"), source = responseRef(identity, "source");
             if (!scope.value("skill_action").toBool() || scope.value("class_name") != "@skill_action"
-                || (scope.value("skill_name") != "caoduo" && scope.value("skill_name").toString()!=aiRound45NotifiedSkill(request) && scope.value("skill_name").toString()!=aiRound49NotifiedSkill(request)) || scope.value("reason").toInt() != request.reason
+                || (scope.value("skill_name") != "caoduo" && scope.value("skill_name").toString()!=aiNewgeneralsNotifiedSkill(request) && scope.value("skill_name").toString()!=aiNotifiedPileSkill(request)) || scope.value("reason").toInt() != request.reason
                 || scope.value("pattern").toString() != request.pattern
                 || (!authorizeAIStrategyPreviewPhysicalProduct(request, m_room, player, activation, source, id)
-                    && !authorizeAIRound45NotifiedPhysical(request,m_room,player,activation,source,id)
-                    && !authorizeAIRound49NotifiedPhysical(request,m_room,player,activation,source,id)))
+                    && !authorizeAINewgeneralsNotifiedPhysical(request,m_room,player,activation,source,id)
+                    && !authorizeAINotifiedPilePhysical(request,m_room,player,activation,source,id)))
                 return failure("preview physical product lacks exact selected authority");
             if (player->isCardLimited(card, request.handlingMethod)) return rejectedPayment("preview physical card limited");
             AiSkillActionContext receipt; receipt.activationRef = activation; receipt.sourceRef = source;
@@ -5206,7 +5099,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("locked", player->isLocked(card));
         row.insert("target_residue", responseResidueJson(responseResidue(m_room, player, card)));
         for (auto it = targets.begin(); it != targets.end(); ++it) row.insert(it.key(), it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("preview evaluation changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("preview evaluation changed state");
         return {{"evaluation_only", true}, {"card", row}, {"candidate", targets}, {"card_rules", rules}};
     }
     if (proposal.value("kind").toString() == "match_owner_discard_pattern") {
@@ -5231,7 +5124,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         const Card *card = Sanguosha->getCard(id);
         if (!card || card->isVirtualCard()) return failure("discard pattern physical card is unavailable");
         const bool matched = Sanguosha->matchExpPattern(pattern, player, card);
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("discard pattern query changed state");
         return {{"matched", matched}};
     }
@@ -5242,7 +5135,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
         ResponseNativeScope responseScope(m_room, player, request.reason, request.pattern);
         const QJsonObject result = inspectAINestedCardaskString(m_room, player, request, proposal.value("value").toString());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("nested card parser changed state");
         return result;
     }
@@ -5256,7 +5149,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
         ResponseNativeScope responseScope(m_room, player, request.reason, request.pattern);
         const QJsonObject result = evaluateAINengchenPreview(m_room, player, request, int(id));
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("Nengchen evaluation changed state");
         return result;
     }
@@ -5269,7 +5162,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         QJsonObject disclosed;
         QString error;
         if (!authorizeAIOlClanNotifiedEvaluation(request, int(id), &disclosed, &error)
-            && !authorizeAIRound44PoxiEvaluation(request, int(id), &disclosed))
+            && !authorizeAIPoxiEvaluation(request, int(id), &disclosed))
             return failure(error);
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
@@ -5298,7 +5191,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("legacy_string_key", card->toString());
         row.insert("legacy_sort_key", legacySortKey(card));
         for (auto it = targets.begin(); it != targets.end(); ++it) row.insert(it.key(), it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("notified evaluation changed state");
         return {{"evaluation_only", true}, {"card", row}, {"card_rules", rules}, {"candidate", targets}};
     }
@@ -5541,84 +5434,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             {"yeyan", "GreatYeyanCard"}};
         const QString skillName = scope.value("skill_name").toString();
         const QString requestedPrototype = proposal.value("class_name").toString();
-        int auditedPrototype = aiAuditedSourcePrototype(skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiAuditedConditionalSourcePrototype(request, skillName, requestedPrototype, player);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiAuditedConstructionSourcePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21ReadonlyPrototype(skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21PlanningPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound43InovationPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound45InovationPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound47SijyuPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound51JijiaoPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanActionPrototype(skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound23ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound24FeiDIYPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42PlanningPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound24OriginalPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound43ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound44SkinPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound45NewgeneralsPrototype(request,player,skillName,requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound46PlanningPrototype(request,player,skillName,requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound49qRenchouPrototype(request,player,skillName,requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound50PlanningPrototype(request,player,skillName,requestedPrototype);
-        if (skillName == "mtjieli" && !aiRound43ChoiceDeclaration(request, player, proposal))
+        int auditedPrototype = auditedStrategyPrototype(request, player, skillName, requestedPrototype);
+        if (skillName == "mtjieli" && !aiMtjieliDeclaration(request, player, proposal))
             return failure("Mtjieli source proxy requires zero costs and red/black declaration");
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound27ChoicePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25ResponsePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42ResponsePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound44LeiPrototype(request, player, skillName, requestedPrototype);
         if (skillName == "limu" && costHypothesis
             && proposal.value("subcards").toArray().size() != 1)
             return failure("Limu source readonly SkillCard requires exactly one material");
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25OriginalPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26OriginalPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound27OriginalPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound36KurouPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound29ExtraPrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26DelegatePrototype(request, player, skillName, requestedPrototype);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanObservationPrototype(request, player, skillName, requestedPrototype);
         if (skillName == "renchou" && (declarationHypothesis
             || (costHypothesis && (!proposal.value("subcards").isArray() || !proposal.value("subcards").toArray().isEmpty()))))
             return failure("Renchou source SkillCard requires zero costs and no declaration");
@@ -5644,12 +5465,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         for (const SkillInstance &instance : player->getSkillInstances()) {
             if (activation.ownerObjectName != player->objectName() || instance.key() != activation.key
                 || ([&] {
-                    std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+                    std::unique_ptr<AISkillValidityScope> validitySource;
                     auto *gameLua=m_room.roomRuntime()->lua().rawState();
                     if(parentRequest.kind==AIRequest::Activate&&request.kind==AIRequest::Activate
                         &&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
-                        &&!inAIRound56ProjectionScope(m_room,gameLua))
-                        validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+                        &&!inAIProjectionSourceScope(m_room,gameLua))
+                        validitySource.reset(new AISkillValidityScope(m_room,player,gameLua));
                     return player->isSkillInvalid(instance.skillName,instance.instanceID);
                 }())) continue;
             AiSkillActionContext current;
@@ -5658,12 +5479,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             break;
         }
         if (!enabled) return failure("strategy seed activation changed");
-        std::unique_ptr<AIRound56ZunweiSeedScope> zunweiSource;
+        std::unique_ptr<AIZunweiSeedScope> zunweiSource;
         if(parentRequest.kind==AIRequest::Activate&&request.kind==AIRequest::Activate
             &&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&request.pattern.isEmpty()
             &&skillName=="zunwei"&&prototype=="ZunweiCard"
-            &&!inAIRound56ProjectionScope(m_room,m_room.roomRuntime()->lua().rawState()))
-            zunweiSource.reset(new AIRound56ZunweiSeedScope(m_room,player,m_room.roomRuntime()->lua().rawState()));
+            &&!inAIProjectionSourceScope(m_room,m_room.roomRuntime()->lua().rawState()))
+            zunweiSource.reset(new AIZunweiSeedScope(m_room,player,m_room.roomRuntime()->lua().rawState()));
         std::unique_ptr<SkillCard> card(prototype.startsWith('#')
             ? LuaSkillCard::Parse(prototype + ":.:") : Sanguosha->cloneSkillCard(prototype));
         if (!card || !card->getSubcards().isEmpty()) return failure("legacy strategy prototype unavailable");
@@ -5671,7 +5492,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         if (costHypothesis) {
             if (!proposal.value("subcards").isArray() || proposal.value("subcards").toArray().size() > 128)
                 return failure("readonly source materials are malformed");
-            const bool tyshouliPublicSeed = aiRound40TyshouliSeed(request, m_room, player, skillName, prototype, proposal);
+            const bool tyshouliPublicSeed = aiTyshouliSeed(request, m_room, player, skillName, prototype, proposal);
             const QJsonArray values = proposal.value("subcards").toArray();
             QSet<int> seen;
             for (const QJsonValue &value : values) {
@@ -5695,7 +5516,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         }
         if (proposal.value("class_name").toString() == "ActiveSkillCard")
             card->setSkillName(scope.value("skill_name").toString());
-        AIRound47XufaSourceCard xufaSource(m_room,parentRequest,player,card.get(),skillName);
+        AIXufaSourceCard xufaSource(m_room,parentRequest,player,card.get(),skillName);
         QJsonObject row = publicDecisionCard(card.get(), true);
         row.insert("evaluation_owner", player->objectName());
         row.insert("evaluation_rules", responseOwnerRules(m_room, player, card.get()));
@@ -5720,7 +5541,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             result.insert("candidate", responseCandidateJson(candidate));
         }
         zunweiSource.reset(); // All native evaluation ends before DTO publication.
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("strategy prototype changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("strategy prototype changed state");
         if (nestedPlay) {
             const auto recipeKey = m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,
                 player, std::move(card), skillName);
@@ -5759,14 +5580,14 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("locked", player->isLocked(card.get())); row.insert("using",card->hasFlag("using"));
         const auto targets = responseCandidateJson(candidate);
         for (auto it = targets.begin(); it != targets.end(); ++it) row.insert(it.key(),it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("Zenhui evaluation changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("Zenhui evaluation changed state");
         return {{"card",row},{"candidate",targets}};
     }
     if (proposal.value("kind").toString() == "card_target_filter") {
         const bool recipeQuery = proposal.contains("recipe_key");
         const bool prohibitQuery = proposal.value("operation")==QJsonValue("is_prohibited");
         const bool slashQuery=proposal.value("operation")==QJsonValue("can_slash");
-        bool round50Recipe=false;QString round50Source;
+        bool nyarzRecipe=false;QString nyarzRecipeSource;
         if (proposal.size() != 4+int(prohibitQuery || slashQuery) || (recipeQuery ? !proposal.value("recipe_key").isString()
                 : !proposal.value("card_id").isDouble()) || !proposal.value("prefix").isArray()
             || !proposal.value("target").isString()) return failure("invalid target filter query");
@@ -5787,16 +5608,16 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             // Only the already-issued unskilled printed prototype domain.
             // Specialized extra-target recipes retain their sealed query route.
             const QString source = runtime.readonlyCardSource(parentRequest, player, key);
-            round50Recipe=aiRound50PlanningRecipe(request,m_room,player,source,card);
-            if(round50Recipe)round50Source=source;
-            if (!round50Recipe && ((!source.isEmpty() && source != QStringLiteral("heg_family_printed"))
+            nyarzRecipe=aiGfengyingJxyangjieRecipe(request,m_room,player,source,card);
+            if(nyarzRecipe)nyarzRecipeSource=source;
+            if (!nyarzRecipe && ((!source.isEmpty() && source != QStringLiteral("heg_family_printed"))
                 || !card->getSkillName(false).isEmpty() || !card->getSubcards().isEmpty()))
                 return failure("readonly target filter recipe is not an unskilled printed prototype");
         } else if (id >= 0) {
             bool issued = false;
             for (const auto &candidate : request.cardCandidates) if (candidate.cardId == id) issued = true;
             // Exact Caokong actual-card observation is readonly, not an issued payment.
-            const Card *caokong = aiRound26PlanningEvaluation(request, m_room, player, "luacaokong_context");
+            const Card *caokong = aiCaokongPlanningEvaluation(request, m_room, player, "luacaokong_context");
             if (caokong && caokong->getEffectiveId() == id) card = caokong;
             else {
                 if (!issued) return failure("target filter card was not issued");
@@ -5822,11 +5643,11 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         }
         const auto *target = m_room.findPlayerByObjectName(proposal.value("target").toString());
         if (!target || !target->isAlive()) return failure("target filter references absent player");
-        if (prohibitQuery && round50Source!="jxyangjie") return failure("prohibition prefix operation requires exact Jxyangjie recipe");
-        if (slashQuery && (round50Source!="gfengying" || !targets.isEmpty())) return failure("canSlash operation requires exact Gfengying recipe and empty prefix");
-        if(round50Source=="gfengying"&&!slashQuery)return failure("Gfengying recipe only permits its source canSlash call");
+        if (prohibitQuery && nyarzRecipeSource!="jxyangjie") return failure("prohibition prefix operation requires exact Jxyangjie recipe");
+        if (slashQuery && (nyarzRecipeSource!="gfengying" || !targets.isEmpty())) return failure("canSlash operation requires exact Gfengying recipe and empty prefix");
+        if(nyarzRecipeSource=="gfengying"&&!slashQuery)return failure("Gfengying recipe only permits its source canSlash call");
         const bool accepted = slashQuery ? player->canSlash(target,card,false,0) : prohibitQuery ? player->isProhibited(target,card,targets) : card->targetFilter(targets,target,player);
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("target filter changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("target filter changed state");
         return {{"accepted",accepted}};
     }
     if (proposal.value("kind").toString() == "qiuxin_target_filter") {
@@ -5841,17 +5662,17 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
         ResponseNativeScope responseScope(m_room, player, request.reason, request.pattern);
         if (sourceKey == "newgenerals.mouxieji")
-            return aiRound42PlanningTargetFilter(m_room,player,request,card,sourceKey,
+            return aiMouxiejiTargetFilter(m_room,player,request,card,sourceKey,
                 {{"prefix",proposal.value("prefix")},{"target",proposal.value("target")}});
         if (sourceKey=="newgenerals_context:moujiang")
-            return aiRound45MoujiangTargetFilter(m_room,player,request,card,{{"prefix",proposal.value("prefix")},{"target",proposal.value("target")}});
+            return aiMoujiangTargetFilter(m_room,player,request,card,{{"prefix",proposal.value("prefix")},{"target",proposal.value("target")}});
         if (sourceKey.startsWith("fcDIY_context:"))
-            return aiRound28PlanningTargetFilter(m_room,player,request,card,sourceKey,
+            return aiFcDIYPlanningTargetFilter(m_room,player,request,card,sourceKey,
                 {{"prefix",proposal.value("prefix")},{"target",proposal.value("target")}});
         if (sourceKey == "feihujue" || sourceKey == "feilangduo")
-            return aiRound24FeiDIYTargetFilter(m_room, player, request, card, sourceKey,
+            return aiFeiDIYTargetFilter(m_room, player, request, card, sourceKey,
                 {{"prefix", proposal.value("prefix")}, {"target", proposal.value("target")}});
-        return aiRound23QiuxinTargetFilter(m_room, player, request, card, sourceKey,
+        return aiQiuxinTargetFilter(m_room, player, request, card, sourceKey,
             {{"prefix", proposal.value("prefix")}, {"target", proposal.value("target")}});
     }
     if (proposal.value("kind").toString() == "evaluate_owner_range_card") {
@@ -5859,15 +5680,15 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         if (!AIOwnerRangeQueryScope::lookup(player, "InfinityAttackRange", flagValue)
             && !AIOwnerRangeQueryScope::lookup(player, "slashNoDistanceLimit", flagValue)
             && AIOwnerRangeQueryScope::sourceKey(player).isEmpty()
-            && !AIRound25OwnerDistanceScope::active(player)
-            && !aiRound44RangeContinuation(m_room,parentRequest))
+            && !AIOwnerDistanceScope::active(player)
+            && !aiRangeContinuation(m_room,parentRequest))
             return failure("range card query is outside authenticated owner hypothesis");
         if (proposal.size() != 2 || !proposal.value("spec").isObject())
             return failure("invalid range card query");
         // Post-clear continuation queries use current real flags and bypass
         // any old TargetModMemoScope entry; this scope changes no flag value.
         std::unique_ptr<AIOwnerRangeQueryScope> continuationScope;
-        if(!AIOwnerRangeQueryScope::isActive() && aiRound44RangeContinuation(m_room,parentRequest))
+        if(!AIOwnerRangeQueryScope::isActive() && aiRangeContinuation(m_room,parentRequest))
             continuationScope.reset(new AIOwnerRangeQueryScope(player,AIOwnerRangeQueryScope::InfinityAttackRange,true,QString(),true));
         const auto spec = proposal.value("spec").toObject();
         if(spec.size()==1 && spec.value("session_current")==true) {
@@ -5880,7 +5701,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             const auto source=AIOwnerRangeQueryScope::sourceKey(player);
             return projectAIStrategyOwnerRange(m_room,player,QString(),source);
         }
-        if(spec.contains("card_flag"))return writeAIRound44RangeQinggang(request,m_room,player,spec);
+        if(spec.contains("card_flag"))return writeAIRangeQinggang(request,m_room,player,spec);
         const auto integer = [](const QJsonValue &v, int &n) {
             const double d = v.toDouble();
             if (!v.isDouble() || !std::isfinite(d) || d != std::floor(d)
@@ -5915,11 +5736,11 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             const QString sourceKey = m_room.roomRuntime()->ai().readonlyCardSource(parentRequest, player, spec.value("recipe_key").toString());
             if (sourceKey == "kezuqiuxin") {
                 QString error;
-                if (!aiRound23QiuxinSource(request, player, card, sourceKey, &error)) return failure(error);
+                if (!aiQiuxinSource(request, player, card, sourceKey, &error)) return failure(error);
                 qiuxin = true; extraSourceKey = sourceKey;
             } else if (sourceKey == "feihujue" || sourceKey == "feilangduo") {
                 QString error;
-                if (!aiRound24FeiDIYSource(request, player, card, sourceKey, &error)) return failure(error);
+                if (!aiFeiDIYSource(request, player, card, sourceKey, &error)) return failure(error);
                 qiuxin = true; extraSourceKey = sourceKey;
             } else if (sourceKey == "newgenerals.mouxieji") {
                 return failure("Mouxieji extra2 profile cannot be reused in an unrelated owner-range scope");
@@ -5956,7 +5777,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 || issued.value("can_recast") != spec.value("can_recast"))
                 return failure("range virtual product lacks an unchanged issued printed prototype");
             clone.reset(Sanguosha->cloneCard(spec.value("name").toString(), Card::Suit(suit), number));
-            if(clone)recordAIRound56ProjectionSourceCard(m_room,clone.get(),spec.value("name").toString());
+            if(clone)recordAIProjectionSourceCard(m_room,clone.get(),spec.value("name").toString());
             if (!clone || clone->getTypeId() == Card::TypeSkill) return failure("range query requires ordinary card");
             clone->setSkillName(spec.value("rawskill").toString());
             clone->addSubcards(costs); clone->setCanRecast(spec.value("can_recast").toBool());
@@ -5969,7 +5790,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         }
         if (!card) return failure("range query card is unavailable");
         const QString rangeSource=AIOwnerRangeQueryScope::sourceKey(player);
-        const int rangeExtra=aiRound44RangeExtra(rangeSource);
+        const int rangeExtra=aiRangeExtra(rangeSource);
         if(qiuxin && rangeExtra!=0)return failure("independent source target overlays cannot be silently combined");
         const int appliedExtra=qiuxin?99:rangeExtra;
         const bool finiteQueries=qiuxin||rangeExtra!=0;
@@ -5987,7 +5808,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             const auto *target = m_room.findPlayerByObjectName(spec.value("target").toString());
             if (!target || !target->isAlive()) return failure("range target is absent");
             const bool accepted = card->targetFilter(prefix, target, player);
-            if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
+            if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
             return {{"target_filter", accepted}};
         }
         if (spec.contains("can_slash_target")) {
@@ -5997,7 +5818,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 || !integer(spec.value("range_fix"), fix) || !card->isKindOf("Slash"))
                 return failure("invalid range Slash query");
             const bool accepted = player->canSlash(target, card, spec.value("distance_limit").toBool(), fix);
-            if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
+            if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
             return {{"can_slash", accepted}};
         }
         int budget = 4096;
@@ -6037,7 +5858,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 slashMap.insert(target->objectName(), modes);
             }
         }
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("range query changed state");
         return {{"card", row}, {"candidate", targets}, {"can_slash_map", slashMap}};
     }
     if (proposal.value("kind").toString() == "evaluate_tianyi_slash") {
@@ -6085,7 +5906,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("evaluation_owner", player->objectName());
         const auto targetData = responseCandidateJson(candidate);
         for (auto it = targetData.begin(); it != targetData.end(); ++it) row.insert(it.key(), it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("Tianyi evaluation changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("Tianyi evaluation changed state");
         return {{"card", row}, {"candidate", targetData}};
     }
     if (proposal.value("kind").toString() == "evaluate_tongyi_policy") {
@@ -6147,7 +5968,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 {"source_limited", player->isCardLimited(proxy.get(), request.handlingMethod)}};
         }
         row.insert("response_class_planning", classPlanning);
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("Tongyi readonly query changed state");
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("Tongyi readonly query changed state");
         return {{"kind", "tongyi_policy_evaluation"}, {"evaluation_only", true},
             {"scope_id", int(scopeNumber)}, {"class_name", proposal.value("class_name")},
             {"declaration", declaration}, {"card", row}, {"card_rules", rules}, {"candidate", targetData}};
@@ -6169,26 +5990,26 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             {"huangjinsymbol", {"slash"}}, {"heg_huangjinsymbol", {"slash"}}};
         static const QSet<QString> fields{"source_key", "skill", "name", "subcards", "suit", "number"};
         const QString key = spec.value("source_key").toString(), name = spec.value("name").toString();
-        const bool olClanPlan = aiRound22OlClanConstruction(request, player, spec);
-        const bool olClanAction = aiRound22OlClanActionConstruction(request, player, spec);
-        const bool hc49Construction=aiRound49ExtraPlanningConstruction(request,m_room,player,spec);
-        const bool r45Construction=aiRound45PlanningConstruction(request,m_room,player,spec);
-        const bool r49ResponseConstruction=aiRound49ResponseConstruction(request,player,spec);
-        const bool r49ResponseRecast=r49ResponseConstruction;
-        const bool r48Construction=aiRound48PlanningConstruction(request,m_room,player,spec);
-        const bool r48Recast=r48Construction && key=="newgenerals._xdfangchan";
-        const bool r45Recast=r45Construction && key=="newgenerals._xdyifu";
-        const bool r49MaotuYinhu = aiRound49MaotuYinhuConstruction(request,m_room,player,spec);
-        const bool repeatedMaterials = (r49MaotuYinhu && key=="mtweiqie") || (olClanPlan && aiRound22OlClanRepeatedMaterials(spec)) || (r45Construction && aiRound45PlanningRepeatedMaterials(spec));
-        const bool tyshouliConstruction = aiRound40PlanningConstruction(request, m_room, player, spec);
-        const bool foreignMaterial = hc49Construction || aiRound49MaotuYinhuPublicMaterial(request,m_room,player,spec) || r45Construction || tyshouliConstruction || (olClanPlan && aiRound22OlClanForeignMaterial(spec))
-            || aiRound24ChumingPublicMaterials(request, player, spec);
-        const bool r42Construction = aiRound42PlanningConstruction(request,m_room,player,spec);
-        const int sourceExtraTarget = olClanPlan ? aiRound22OlClanExtraTarget(spec)
-            : r42Construction ? aiRound42PlanningExtraTarget(request,m_room,player,spec)
-            : aiRound24FeiDIYExtraTarget(request, player, spec);
+        const bool olClanPlan = aiOlClanConstruction(request, player, spec);
+        const bool olClanAction = aiOlClanActionConstruction(request, player, spec);
+        const bool hc49Construction=aiTenyearHcConstruction(request,m_room,player,spec);
+        const bool newgeneralsPlanningConstruction=aiNewgeneralsPlanningConstruction(request,m_room,player,spec);
+        const bool fuzhaiQuxiConstruction=aiFuzhaiQuxiConstruction(request,player,spec);
+        const bool fuzhaiQuxiRecast=fuzhaiQuxiConstruction;
+        const bool fangchanYantaoluanConstruction=aiFangchanYantaoluanConstruction(request,m_room,player,spec);
+        const bool fangchanYantaoluanRecast=fangchanYantaoluanConstruction && key=="newgenerals._xdfangchan";
+        const bool newgeneralsPlanningRecast=newgeneralsPlanningConstruction && key=="newgenerals._xdyifu";
+        const bool maotuYinhuConstruction = aiMaotuYinhuConstruction(request,m_room,player,spec);
+        const bool repeatedMaterials = (maotuYinhuConstruction && key=="mtweiqie") || (olClanPlan && aiOlClanRepeatedMaterials(spec)) || (newgeneralsPlanningConstruction && aiNewgeneralsPlanningRepeatedMaterials(spec));
+        const bool tyshouliConstruction = aiTyshouliConstruction(request, m_room, player, spec);
+        const bool foreignMaterial = hc49Construction || aiMaotuYinhuPublicMaterial(request,m_room,player,spec) || newgeneralsPlanningConstruction || tyshouliConstruction || (olClanPlan && aiOlClanForeignMaterial(spec))
+            || aiChumingPublicMaterials(request, player, spec);
+        const bool newgeneralsMouConstruction = aiNewgeneralsMouConstruction(request,m_room,player,spec);
+        const int sourceExtraTarget = olClanPlan ? aiOlClanExtraTarget(spec)
+            : newgeneralsMouConstruction ? aiMouxiejiExtraTarget(request,m_room,player,spec)
+            : aiFeiDIYExtraTarget(request, player, spec);
         const bool finiteSourceQueries = sourceExtraTarget == 99
-            || (r42Construction && key == "newgenerals.mouxieji" && sourceExtraTarget == 2);
+            || (newgeneralsMouConstruction && key == "newgenerals.mouxieji" && sourceExtraTarget == 2);
         // Original ableToSave clones a fresh NoSuitRed/0 Peach; this permits
         // only owner readonly rules, never foreign saver limits or payment.
         const auto saverFacts=request.worldView.strategyFacts.value("hegemony").toObject();
@@ -6202,28 +6023,28 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             && spec.value("suit")==QJsonValue(int(Card::NoSuitRed))
             && spec.value("number")==QJsonValue(0)
             && spec.value("subcards").isArray() && spec.value("subcards").toArray().isEmpty();
-        const bool originalGuanxing=aiRound35GuanxingConstruction(request,player,spec);
-        const bool yhbozhiConstruction=aiRound49BozhiConstruction(request,m_room,player,spec);
-        const bool saodongConstruction = aiRound47cSaodongConstruction(request,player,spec);
-        const bool record49Construction=aiRound49RecordConstruction(request,m_room,player,spec);
-        const bool auditedConstruction = aiRound53TychendeConstruction(request,m_room,player,spec) || aiRound53MingfaConstruction(request,m_room,player,spec) || aiRound53GengduConstruction(request,m_room,player,spec) || aiRound53TyfenwuConstruction(request,m_room,player,spec) || aiRound53TyqingkouConstruction(request,m_room,player,spec) || aiRound53ZhuningConstruction(request,m_room,player,spec) || aiRound53DiouConstruction(request,m_room,player,spec) || record49Construction || hc49Construction || aiRound49HTMSConstruction(request,m_room,player,spec) || r49MaotuYinhu || aiRound49ExtraConstruction(request,m_room,player,spec) || aiRound49JilieConstruction(request,m_room,player,spec) || aiRound49rHfgushiConstruction(request,m_room,player,spec) || aiRound49ZeroConstruction(request,m_room,player,spec) || yhbozhiConstruction || aiRound49QixiConstruction(request,m_room,player,spec) || aiRound49QhTurnConstruction(request,m_room,player,spec) || aiRound49GuhuoConstruction(request,m_room,player,spec) || aiRound49ShuangxiongConstruction(request,m_room,player,spec) || aiRound49LianhuanConstruction(request,m_room,player,spec) || aiRound49bResponseConstruction(request,player,spec) || r49ResponseConstruction || aiRound49bPlanningConstruction(request,m_room,player,spec) || aiRound49jPlanningConstruction(request,m_room,player,spec) || aiRound49PlanningConstruction(request,m_room,player,spec) || r48Construction || saodongConstruction || aiRound47XiedouConstruction(request,player,spec) || r45Construction || aiRound45KeolcihuangConstruction(request,m_room,player,spec) || aiRound45ShoushiConstruction(request,player,spec) || aiRound45InovationPhaseConstruction(request,player,spec) || aiRound45InovationConstruction(request, player, spec) || aiRound43ChoiceConstruction(request, player, spec) || aiAuditedConstructionQuery(request, player, spec) || aiRound41PlanningConstruction(request, m_room, player, spec) || aiRound43PlanningConstruction(request,m_room,player,spec) || aiRound44RangeConstruction(request,m_room,player,spec) || r42Construction || originalSaver || originalGuanxing || tyshouliConstruction
-            || aiRound21PlanningConstruction(request, player, spec) || olClanPlan || olClanAction
-            || aiRound23ChoiceConstruction(request, player, spec)
-            || aiRound24ChoiceConstruction(request, player, spec)
-            || aiRound24OriginalConstruction(request, player, spec)
-            || aiRound25PlanningConstruction(request, player, spec)
-            || aiRound25ChoiceConstruction(request, player, spec)
-            || aiRound26ChoiceConstruction(request, player, spec)
-            || aiRound27ChoiceConstruction(request, player, spec)
-            || aiRound25ResponseConstruction(request, player, spec)
-            || aiRound27ResponseConstruction(request, player, spec)
-            || aiRound28ResponseConstruction(request, player, spec)
-            || aiRound28XdResponseConstruction(request, player, spec)
-            || aiRound29ResponseConstruction(request, player, spec)
-            || aiRound39GodYouhuaConstruction(request, m_room, player, spec)
-            || aiRound25OriginalConstruction(request, player, spec)
-            || aiRound26OriginalConstruction(request, player, spec)
-            || round25JincaiwangConstruction(request, player, spec);
+        const bool originalGuanxing=aiOriginalGuanxingConstruction(request,player,spec);
+        const bool yhbozhiConstruction=aiBozhiConstruction(request,m_room,player,spec);
+        const bool saodongConstruction = aiSaodongConstruction(request,player,spec);
+        const bool record49Construction=aiRecordedNameConstruction(request,m_room,player,spec);
+        const bool auditedConstruction = aiTychendeConstruction(request,m_room,player,spec) || aiMingfaConstruction(request,m_room,player,spec) || aiGengduConstruction(request,m_room,player,spec) || aiTyfenwuConstruction(request,m_room,player,spec) || aiTyqingkouConstruction(request,m_room,player,spec) || aiZhuningConstruction(request,m_room,player,spec) || aiDiouConstruction(request,m_room,player,spec) || record49Construction || hc49Construction || aiHTMSConstruction(request,m_room,player,spec) || maotuYinhuConstruction || aiScarletYuriConstruction(request,m_room,player,spec) || aiJilieConstruction(request,m_room,player,spec) || aiHfgushiConstruction(request,m_room,player,spec) || aiScarletTenyearZeroConstruction(request,m_room,player,spec) || yhbozhiConstruction || aiQhstandardQixiConstruction(request,m_room,player,spec) || aiQhTurnConstruction(request,m_room,player,spec) || aiQhwindGuhuoConstruction(request,m_room,player,spec) || aiQhfireShuangxiongConstruction(request,m_room,player,spec) || aiQhfireLianhuanConstruction(request,m_room,player,spec) || aiMiuyanZonglveConstruction(request,player,spec) || fuzhaiQuxiConstruction || aiKeolsujiConstruction(request,m_room,player,spec) || aiKeolxiejuConstruction(request,m_room,player,spec) || aiKeolshuangxiongConstruction(request,m_room,player,spec) || fangchanYantaoluanConstruction || saodongConstruction || aiXiedouConstruction(request,player,spec) || newgeneralsPlanningConstruction || aiKeolcihuangConstruction(request,m_room,player,spec) || aiShoushiConstruction(request,player,spec) || aiInovationPhaseConstruction(request,player,spec) || aiInovationMaterialConstruction(request, player, spec) || aiMtjieliConstruction(request, player, spec) || aiAuditedConstructionQuery(request, player, spec) || aiFcDIYConstruction(request, m_room, player, spec) || aiMouluanjiConstruction(request,m_room,player,spec) || aiRangeConstruction(request,m_room,player,spec) || newgeneralsMouConstruction || originalSaver || originalGuanxing || tyshouliConstruction
+            || aiOlClanJiePackagePlanningConstruction(request, player, spec) || olClanPlan || olClanAction
+            || aiMeowGuoseChoiceConstruction(request, player, spec)
+            || aiGuoChoiceConstruction(request, player, spec)
+            || aiMiewuOriginalConstruction(request, player, spec)
+            || aiDmpkancollePlanningConstruction(request, player, spec)
+            || aiOlddiyKeguibaoChoiceConstruction(request, player, spec)
+            || aiSRkillChoiceConstruction(request, player, spec)
+            || aiOverseasChoiceConstruction(request, player, spec)
+            || aiOlStandardResponseConstruction(request, player, spec)
+            || aiLoongResponseConstruction(request, player, spec)
+            || aiOlQifuResponseConstruction(request, player, spec)
+            || aiTenyearXdResponseConstruction(request, player, spec)
+            || aiGodlongnuConstruction(request, player, spec)
+            || aiGodYouhuaConstruction(request, m_room, player, spec)
+            || aiTransformationOriginalConstruction(request, player, spec)
+            || aiLordExOriginalConstruction(request, player, spec)
+            || jincaiwangConstruction(request, player, spec);
         const bool conditional = key == "ntdtwo" || key == "ntdthree" || key == "luashipo"
             || key == "haidao" || key == "aoyi";
         if (conditional && (!spec.value("source_key").isString() || !spec.value("name").isString()
@@ -6268,14 +6089,14 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             return failure("LuaYanjiu hypothetical conversion is turn planning only");
         const bool jiejiuName = key == "jiejiu" && request.worldView.strategyFacts.value("pattern_names").toArray().contains(name);
         const bool tongyiName = tongyi && (request.worldView.strategyFacts.value("pattern_names").toArray().contains(name)
-            || aiRound33TongyiConstruction(request, m_room, player, spec));
+            || aiTongyiConstruction(request, m_room, player, spec));
         const bool fuhuiName = fuhui && request.worldView.strategyFacts.value("pattern_names").toArray().contains(name);
         const bool fuhuiRecast = fuhui && spec.contains("can_recast");
-        const bool overseasRecast = aiRound27ChoiceConstruction(request, player, spec) && key == "ov_cairu" && spec.contains("can_recast");
-        if (proposal.size() != 2 || spec.size() != fields.size() + int(fuhuiRecast || overseasRecast || r45Recast || r48Recast || r49ResponseRecast) || (!outputs.value(key).contains(name) && !tongyiName && !jiejiuName && !fuhuiName && !conditional && !auditedConstruction))
+        const bool overseasRecast = aiOverseasChoiceConstruction(request, player, spec) && key == "ov_cairu" && spec.contains("can_recast");
+        if (proposal.size() != 2 || spec.size() != fields.size() + int(fuhuiRecast || overseasRecast || newgeneralsPlanningRecast || fangchanYantaoluanRecast || fuzhaiQuxiRecast) || (!outputs.value(key).contains(name) && !tongyiName && !jiejiuName && !fuhuiName && !conditional && !auditedConstruction))
             return failure("owner view-as evaluation is outside audited source catalog");
         for (auto it = spec.begin(); it != spec.end(); ++it)
-            if (!fields.contains(it.key()) && !((fuhuiRecast || overseasRecast || r45Recast || r48Recast || r49ResponseRecast) && it.key() == "can_recast")) return failure("invalid owner view-as field");
+            if (!fields.contains(it.key()) && !((fuhuiRecast || overseasRecast || newgeneralsPlanningRecast || fangchanYantaoluanRecast || fuzhaiQuxiRecast) && it.key() == "can_recast")) return failure("invalid owner view-as field");
         const bool ditSpear = key == "DIT_duoshi";
         if (ditSpear && (request.kind != AIRequest::Activate || request.reason != CardUseStruct::CARD_USE_REASON_PLAY))
             return failure("DIT Spear hypothesis is turn planning only");
@@ -6321,11 +6142,11 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             if (!responseInteger(cost, id) || id < 0 || (!repeatedMaterials && ids.contains(id)))
                 return failure("owner view-as material identity is malformed");
             bool disclosed = foreignMaterial;
-            if (aiRound49ExtraPileMaterial(request,m_room,player,spec,id)) {
+            if (aiGenjutsuPileMaterial(request,m_room,player,spec,id)) {
                 disclosed = true; // Exact current genjutsu own disclosed gensou:first only.
-            } else if (aiRound41PlanningPileMaterial(request, m_room, player, spec, id)) {
+            } else if (aiFcDIYPileMaterial(request, m_room, player, spec, id)) {
                 disclosed = true; // Exact own ShenJian prefix, live + already disclosed.
-            } else if (key == "guangyu" && aiRound45InovationConstruction(request,player,spec)) {
+            } else if (key == "guangyu" && aiInovationMaterialConstruction(request,player,spec)) {
                 for(const auto&card:request.worldView.handCards)if(card.effectiveId==id)disclosed=true;
                 for(const auto&card:request.worldView.self.equips)if(card.effectiveId==id)disclosed=true;
                 for(const auto&card:request.worldView.self.judgingArea)if(card.effectiveId==id)disclosed=true;
@@ -6440,7 +6261,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         // Actual MethodNone askForCard preserves UNKNOWN in RoomState; the
         // generic request label is RESPONSE. Keep this finite source query exact.
         ResponseNativeScope responseScope(m_room, player,
-            (saodongConstruction || (r49MaotuYinhu && key=="mtweiqie")) ? CardUseStruct::CARD_USE_REASON_UNKNOWN : request.reason, request.pattern);
+            (saodongConstruction || (maotuYinhuConstruction && key=="mtweiqie")) ? CardUseStruct::CARD_USE_REASON_UNKNOWN : request.reason, request.pattern);
         // Ordinary cardsView_spear builds a NoSuit/0 dummy, then toString
         // records its material-derived suit. It may still be only a hypothetical
         // candidate: using/jilei/native prefix admission belongs to final bind.
@@ -6448,26 +6269,26 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         // Establish this before construction/query callbacks, never by reading
         // the resulting tag. The complete R56 source union must still be live
         // when this card-local fact is published below.
-        const bool round56FreshSlashDamage = record49Construction && key == "choulve"
-            && name == "slash" && inAIRound56ProjectionScope(m_room, round56Lua)
-            && Sanguosha->aiRound56StandardCloneFactory(name);
+        const bool choulveFreshSlashDamage = record49Construction && key == "choulve"
+            && name == "slash" && inAIProjectionSourceScope(m_room, projectionLua)
+            && Sanguosha->aiStandardCloneFactory(name);
         std::unique_ptr<Card> card(Sanguosha->cloneCard(name,
             ordinarySpear ? Card::NoSuit : Card::Suit(suit), number));
-        if (!card && record49Construction) { if (!spec.value("skill").toString().isEmpty() || !spec.value("subcards").toArray().isEmpty()) return failure("only the fresh record literal clone may be absent"); if (!aiRound49RecordConstruction(request,m_room,player,spec)) return failure("record literal clone changed its source scope"); return {{"kind","owner_view_as_evaluation"},{"complete",true},{"exists",false}}; }
-        if (!card && (originalGuanxing || yhbozhiConstruction || (r49MaotuYinhu && key=="yhduwei") || (key == "@@s_newtypeOther" && auditedConstruction))) return {{"kind","owner_view_as_evaluation"},{"complete",true},{"exists",false}};
+        if (!card && record49Construction) { if (!spec.value("skill").toString().isEmpty() || !spec.value("subcards").toArray().isEmpty()) return failure("only the fresh record literal clone may be absent"); if (!aiRecordedNameConstruction(request,m_room,player,spec)) return failure("record literal clone changed its source scope"); return {{"kind","owner_view_as_evaluation"},{"complete",true},{"exists",false}}; }
+        if (!card && (originalGuanxing || yhbozhiConstruction || (maotuYinhuConstruction && key=="yhduwei") || (key == "@@s_newtypeOther" && auditedConstruction))) return {{"kind","owner_view_as_evaluation"},{"complete",true},{"exists",false}};
         if (!card) return failure("owner view-as printed class is unavailable");
-        if(record49Construction && key=="choulve")recordAIRound56ProjectionSourceCard(m_room,card.get(),name);
+        if(record49Construction && key=="choulve")recordAIProjectionSourceCard(m_room,card.get(),name);
         if (key == "jiejiu" && !card->isKindOf("BasicCard")) return failure("Jiejiu hypothesis is not a BasicCard");
-        if (r45Construction && !aiRound45PlanningProduct(spec,*card))
+        if (newgeneralsPlanningConstruction && !aiNewgeneralsPlanningProduct(spec,*card))
             return failure("ordered source product class differs");
         card->setSkillName(producedSkill); card->addSubcards(ids);
-        if (olClanAction && !applyAIRound22OlClanActionConstruction(request, player, spec, *card))
+        if (olClanAction && !applyAIOlClanActionConstruction(request, player, spec, *card))
             return failure("OlClan detached source hypothesis differs");
         std::unique_ptr<AITianyiQueryScope> extraTargetScope;
         if (sourceExtraTarget) extraTargetScope.reset(new AITianyiQueryScope(player, card.get(), sourceExtraTarget, false));
         if (ordinarySpear && (int(card->getSuit()) != suit || card->getNumber() != number))
             return failure("ordinary Spear printed identity differs from disclosed materials");
-        if (key == "heg_miewu" || key == "heg_miewu_plan" || key == "heg_guishu" || fuhuiRecast || overseasRecast || r45Recast || r48Recast || r49ResponseRecast) card->setCanRecast(false);
+        if (key == "heg_miewu" || key == "heg_miewu_plan" || key == "heg_guishu" || fuhuiRecast || overseasRecast || newgeneralsPlanningRecast || fangchanYantaoluanRecast || fuzhaiQuxiRecast) card->setCanRecast(false);
         if (fuhui && !costs.isEmpty() && !(card->isKindOf("BasicCard") || card->isNDTrick()))
             return failure("Fuhui source only adds materials after its Basic/NDTrick check");
         const bool sourceAnalepticAvailable = sourceAnaleptic && Analeptic::IsAvailable(player, card.get());
@@ -6482,8 +6303,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("can_recast", card->canRecast());
         if (mountainPair || fuhui || ordinaryFan || standardNoSuit || auditedConstruction) row.insert("source_constructor", spec);
         if (sourceAnaleptic) row.insert("source_analeptic_available", sourceAnalepticAvailable);
-        if (r48Construction && key=="newgenerals._yantaoluan")
-            row.insert("source_yantaoluan_can_slash",aiRound48YantaoluanSlash(request,m_room,player,spec,card.get()));
+        if (fangchanYantaoluanConstruction && key=="newgenerals._yantaoluan")
+            row.insert("source_yantaoluan_can_slash",aiYantaoluanSlash(request,m_room,player,spec,card.get()));
         const bool responseQuery = (request.kind == AIRequest::UseCard || request.kind == AIRequest::RespondCard)
             && key != "@@maware"; // Fixed source runs ordinary aiUseCard on its hypothesis, not @@ pattern matching.
         QString responsePattern = request.pattern;
@@ -6523,12 +6344,12 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         auto targets = responseCandidateJson(candidate);
         if (finiteSourceQueries) targets.insert("readonly_source_queries", QJsonObject{{"source_key", key}, {"extra_target", sourceExtraTarget}});
         for (auto it = targets.begin(); it != targets.end(); ++it) row.insert(it.key(), it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("owner view-as evaluation changed state");
         const auto recipeKey = m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest, player, std::move(card), key);
         if (!recipeKey.isEmpty()) row.insert("readonly_recipe_key", recipeKey);
-        if (round56FreshSlashDamage && !recipeKey.isEmpty()
-            && inAIRound56ProjectionScope(m_room, round56Lua))
+        if (choulveFreshSlashDamage && !recipeKey.isEmpty()
+            && inAIProjectionSourceScope(m_room, projectionLua))
             row.insert("source_damage_state", QJsonObject{{"midao_nature", QString()},
                 {"basis", "r56_native_slash_constructor"}});
         return {{"kind", "owner_view_as_evaluation"}, {"complete", true}, {"card", row},
@@ -6549,7 +6370,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
             ResponseNativeScope native(m_room,player,request.reason,request.pattern);
             QString error;
-            auto card=aiRound42LimuEvaluation(request,m_room,player,proposal.value("name").toString(),costs,&error);
+            auto card=aiLimuEvaluation(request,m_room,player,proposal.value("name").toString(),costs,&error);
             if(!card)return failure(error);
             int budget=4096;
             const auto candidate=makeAICardCandidate(m_room,player,card.get(),Card::MethodUse,AIRequest::Activate,{},budget);
@@ -6565,7 +6386,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("legacy_sort_key",legacySortKey(card.get()));
             const auto targets=responseCandidateJson(candidate);
             for(auto i=targets.begin();i!=targets.end();++i)row.insert(i.key(),i.value());
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("Limu readonly evaluation changed gameplay state");
+            if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("Limu readonly evaluation changed gameplay state");
             const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"limu_source");
             if(key.isEmpty())return failure("Limu readonly evaluation lacks native custody");
             row.insert("readonly_recipe_key",key);
@@ -6574,7 +6395,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
 
         if (proposal.value("skill")=="GodYouhua"
             && (proposal.value("name")=="source_reference" || proposal.value("name")=="source_parse"))
-            return queryAIRound39GodYouhua(request,m_room,player,proposal);
+            return queryAIGodYouhua(request,m_room,player,proposal);
         // Fixed olddiy819: mutate only an already-disclosed physical policy
         // object. Its ID and legacy identity stay physical; this mints no ticket.
         if (proposal.value("skill")=="physical:bu_stwo_guicai") {
@@ -6587,7 +6408,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(),false);
             ResponseNativeScope responseScope(m_room,player,request.reason,request.pattern);
             QString error;QJsonObject row;
-            auto card=aiRound39GuicaiEvaluation(request,m_room,player,int(raw),&row,&error);
+            auto card=aiBuStwoGuicaiEvaluation(request,m_room,player,int(raw),&row,&error);
             if(!card)return failure(error);
             int budget=4096;
             auto candidate=makeAICardCandidate(m_room,player,card.get(),Card::MethodUse,AIRequest::Activate,QString(),budget);
@@ -6601,7 +6422,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("evaluation_rules",responseOwnerRules(m_room,player,card.get()));
             const auto targets=responseCandidateJson(candidate);
             for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("Guicai evaluation changed native state");
+            if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("Guicai evaluation changed native state");
             const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"physical:bu_stwo_guicai");
             if(!key.isEmpty())row.insert("readonly_recipe_key",key);
             return{{"card",row},{"candidate",targets}};
@@ -6618,7 +6439,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(),false);
             ResponseNativeScope responseScope(m_room,player,request.reason,request.pattern);
             QString error;QJsonObject row;
-            auto card=aiRound38ZhongerhxEvaluation(request,m_room,player,int(raw),&row,&error);
+            auto card=aiZhongerhxEvaluation(request,m_room,player,int(raw),&row,&error);
             if(!card)return failure(error);
             int budget=4096;
             auto candidate=makeAICardCandidate(m_room,player,card.get(),Card::MethodUse,AIRequest::Activate,QString(),budget);
@@ -6632,14 +6453,14 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("evaluation_rules",responseOwnerRules(m_room,player,card.get()));
             const auto targets=responseCandidateJson(candidate);
             for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("Zhongerhx evaluation changed native state");
+            if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("Zhongerhx evaluation changed native state");
             const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),"physical:zhongerhx");
             if(!key.isEmpty())row.insert("readonly_recipe_key",key);
             return{{"card",row},{"candidate",targets}};
         }
         // Fixed Qiangxi/Tiaoxin revise hypotheses. Real V1 constructors,
         // current owner disclosed materials; no V2 payment/activation checks.
-        if (aiRound33ChoiceEvaluationSource(proposal.value("skill").toString())) {
+        if (aiUseReviseEvaluationSource(proposal.value("skill").toString())) {
             if (proposal.size()!=4 || !proposal.value("name").isString()
                 || !proposal.value("subcards").isArray())
                 return failure("use-revise evaluation proposal shape differs");
@@ -6648,7 +6469,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             ResponseNativeScope responseScope(m_room,player,request.reason,request.pattern);
             QString error;
             const QString source=proposal.value("skill").toString();
-            auto card=aiRound33ChoiceEvaluation(request,m_room,player,source,
+            auto card=aiUseReviseEvaluation(request,m_room,player,source,
                 proposal.value("name").toString(),proposal.value("subcards").toArray(),&error);
             if (!card) return error.isEmpty() ? QJsonObject{{"exists",false}} : failure(error);
             int budget=4096;
@@ -6667,7 +6488,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("evaluation_rules",responseOwnerRules(m_room,player,card.get()));
             const QJsonObject targetData=responseCandidateJson(candidate);
             for(auto it=targetData.begin();it!=targetData.end();++it)row.insert(it.key(),it.value());
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest))
+            if(!aiRangeRequestCurrent(m_room,parentRequest))
                 return failure("use-revise evaluation changed the current game state");
             const auto key=m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(card),source);
             if(!key.isEmpty())row.insert("readonly_recipe_key",key);
@@ -6680,7 +6501,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             EngineRuntimeContextScope contextScope(*Sanguosha,&m_room);
             LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(),false);
             const QString wire=proposal.value("name").toString(); bool authorized=false;
-            const Card*parsed=parseAIRound51Collateral(parentRequest,m_room,player,wire,&authorized);
+            const Card*parsed=parseAIBenxiCollateral(parentRequest,m_room,player,wire,&authorized);
             if(!authorized)return failure("Benxi parser has no current native producer/question witness");
             if(!parsed)return {{"exists",false}};
             std::unique_ptr<Card> owned(parsed->isVirtualCard()?const_cast<Card*>(parsed):nullptr);
@@ -6693,7 +6514,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             // this actual Card getter. A nonstandard damage-card path retains
             // its existing downstream target-query boundary.
             row.insert("damage_card",parsed->isDamageCard());
-            if(!aiRound51CollateralCurrent(parentRequest,m_room,player,wire))
+            if(!aiBenxiCollateralCurrent(parentRequest,m_room,player,wire))
                 return failure("Benxi parser observation changed the current question");
             const QString key=owned
                 ? m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,player,std::move(owned),"tenyearbenxi:extra_collateral")
@@ -6728,7 +6549,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("effective_id", card->getEffectiveId()); row.insert("id", card->getId());
             row.insert("legacy_string_key", card->toString()); row.insert("legacy_sort_key", legacySortKey(card.get()));
             row.insert("target_fixed", card->targetFixed()); row.insert("handling_method", int(card->getHandlingMethod()));
-            if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+            if (!aiRangeRequestCurrent(m_room,parentRequest))
                 return failure("Overseas base delegate parsing changed state");
             return {{"evaluation_only", true}, {"card", row}, {"candidate", QJsonObject()}};
         }
@@ -6740,10 +6561,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             EngineRuntimeContextScope contextScope(*Sanguosha,&m_room);
             LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(),false);
             ResponseNativeScope responseScope(m_room,player,request.reason,request.pattern);
-            const Card *card=fcSource=="newgenerals_context:moujiang" ? aiRound45MoujiangEvaluation(request,m_room,player) : aiRound28PlanningEvaluation(request,m_room,player,fcSource);
+            const Card *card=fcSource=="newgenerals_context:moujiang" ? aiMoujiangEvaluation(request,m_room,player) : aiFcDIYPlanningEvaluation(request,m_room,player,fcSource);
             if (!card || card->objectName()!=proposal.value("name").toString())
                 return failure("FC current public use is unavailable or changed");
-            const int extra=fcSource=="newgenerals_context:moujiang" ? 99 : aiRound28PlanningExtraTarget(request,m_room,player,fcSource);
+            const int extra=fcSource=="newgenerals_context:moujiang" ? 99 : aiFcDIYPlanningExtraTarget(request,m_room,player,fcSource);
             AITianyiQueryScope extraScope(player,card,extra,false);
             auto row=publicDecisionCard(card);
             row.insert("evaluation_only",true);row.insert("evaluation_owner",player->objectName());
@@ -6766,7 +6587,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             auto targets=responseCandidateJson(candidate);
             targets.insert("readonly_source_queries",QJsonObject{{"source_key",fcSource},{"extra_target",extra}});
             for(auto it=targets.begin();it!=targets.end();++it)row.insert(it.key(),it.value());
-            if(!aiRound44RangeRequestCurrent(m_room,parentRequest))return failure("FC query changed state");
+            if(!aiRangeRequestCurrent(m_room,parentRequest))return failure("FC query changed state");
             const auto key=m_room.roomRuntime()->ai().issueBorrowedReadonlyCard(parentRequest,player,card,fcSource);
             if(key.isEmpty())return failure("FC actual-card observation lifetime unavailable");
             row.insert("readonly_recipe_key",key);
@@ -6779,7 +6600,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
             LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
             ResponseNativeScope responseScope(m_room, player, request.reason, request.pattern);
-            const Card *card = aiRound26PlanningEvaluation(request, m_room, player, "luacaokong_context");
+            const Card *card = aiCaokongPlanningEvaluation(request, m_room, player, "luacaokong_context");
             if (!card || card->objectName() != proposal.value("name").toString())
                 return failure("Caokong actual card is not lawfully disclosed in this question");
             int budget = 4096;
@@ -6797,21 +6618,21 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             row.insert("virtual_card", false); row.insert("subcards", QJsonArray());
             row.insert("legacy_string_key", card->toString()); row.insert("legacy_sort_key", legacySortKey(card));
             for (auto it = targets.begin(); it != targets.end(); ++it) row.insert(it.key(), it.value());
-            if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("Caokong evaluation changed state");
+            if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("Caokong evaluation changed state");
             return {{"evaluation_only", true}, {"card", row}, {"card_rules", rules}, {"candidate", targets}};
         }
         const QString skillName = proposal.value("skill").toString();
         const QString name = proposal.value("name").toString();
         const bool printedPolicy = skillName.isEmpty();
-        const bool chouliePolicy = aiRound48ChoulieEvaluation(parentRequest, player, proposal);
-        const bool r52OlspPolicy = aiRound52OlspEvaluation(parentRequest, player, proposal);
-        const bool renchouPolicy = aiRound49qRenchouEvaluation(parentRequest, player, proposal);
+        const bool chouliePolicy = aiChoulieEvaluation(parentRequest, player, proposal);
+        const bool olspPolicy = aiOlspEvaluation(parentRequest, player, proposal);
+        const bool renchouPolicy = aiRenchouEvaluation(parentRequest, player, proposal);
         const bool renchouLimit = renchouPolicy && skillName == "renchou_limit";
-        const bool r50Policy = aiRound50PlanningEvaluation(request,m_room,player,proposal);
-        const bool panqinPolicy = aiRound49ePanqinEvaluation(parentRequest, player, proposal);
-        const bool xixiangPolicy = aiRound49dXixiangEvaluation(parentRequest, player, proposal);
-        const bool fenyuePolicy = aiRound21FenyueEvaluation(request, skillName, name, proposal.value("subcards").toArray());
-        const bool taozeiTmPolicy = aiRound28PlanningConstruction(request,m_room,player,
+        const bool gfengyingJxyangjiePolicy = aiGfengyingJxyangjieEvaluation(request,m_room,player,proposal);
+        const bool panqinPolicy = aiPanqinEvaluation(parentRequest, player, proposal);
+        const bool xixiangPolicy = aiXixiangEvaluation(parentRequest, player, proposal);
+        const bool fenyuePolicy = aiFenyueEvaluation(request, skillName, name, proposal.value("subcards").toArray());
+        const bool taozeiTmPolicy = aiMoutaozeiPlanningConstruction(request,m_room,player,
             {{"name",name},{"skill",skillName},{"suit",int(Card::NoSuit)},{"number",0},{"subcards",proposal.value("subcards")}});
         static const QMap<QString, QString> nyBeautyClones{
             {"nymiaojian", "_stabs_slash"}, {"nymansi", "savage_assault"},
@@ -6926,7 +6747,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         }
         if (proposal.size() != 4 || !proposal.value("subcards").isArray()
             || (skillName != "guhuo" && skillName != "nosguhuo" && skillName != "shensu" && skillName != "jixi"
-                && skillName != "guose" && skillName != "wusheng" && skillName != "gdlonghun" && skillName != "jinxianwan" && !shuangrenPolicy && !treasurePolicy && !yonglvePolicy && !qicePolicy && !huomoPolicy && !lihuoMalformedPolicy && !printedPolicy && !declared2016 && !fumianPolicy && !elucidatorPolicy && !koujingPolicy && !shujianPolicy && !arkGuozaiPolicy && !dragonWushengPolicy && !nyarzPolicy && !tousuiPolicy && !erangwaiPolicy && !wuxingPolicy && !faqiPolicy && !nyBeautyPolicy && !fenyuePolicy && !olGuhuoPolicy && !olChangbiaoPolicy && !taozeiTmPolicy && !chouliePolicy && !xixiangPolicy && !panqinPolicy && !renchouPolicy && !r50Policy && !r52OlspPolicy) || (!wuxingPolicy && !treasurePolicy && !yonglvePolicy && !printedPolicy && !shujianPolicy && !fenyuePolicy && !rushShensu && !chouliePolicy && !renchouPolicy && !r50Policy && !r52OlspPolicy && !player->hasSkill(skillName)))
+                && skillName != "guose" && skillName != "wusheng" && skillName != "gdlonghun" && skillName != "jinxianwan" && !shuangrenPolicy && !treasurePolicy && !yonglvePolicy && !qicePolicy && !huomoPolicy && !lihuoMalformedPolicy && !printedPolicy && !declared2016 && !fumianPolicy && !elucidatorPolicy && !koujingPolicy && !shujianPolicy && !arkGuozaiPolicy && !dragonWushengPolicy && !nyarzPolicy && !tousuiPolicy && !erangwaiPolicy && !wuxingPolicy && !faqiPolicy && !nyBeautyPolicy && !fenyuePolicy && !olGuhuoPolicy && !olChangbiaoPolicy && !taozeiTmPolicy && !chouliePolicy && !xixiangPolicy && !panqinPolicy && !renchouPolicy && !gfengyingJxyangjiePolicy && !olspPolicy) || (!wuxingPolicy && !treasurePolicy && !yonglvePolicy && !printedPolicy && !shujianPolicy && !fenyuePolicy && !rushShensu && !chouliePolicy && !renchouPolicy && !gfengyingJxyangjiePolicy && !olspPolicy && !player->hasSkill(skillName)))
             return failure("skill evaluation is not an audited owner policy");
         const QJsonArray costs = proposal.value("subcards").toArray();
         if ((olGuhuoPolicy && costs.size() != 1)
@@ -6951,7 +6772,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
         ResponseNativeScope responseScope(m_room, player, request.reason, request.pattern);
         std::unique_ptr<Card> card(Sanguosha->cloneCard(name,
-            (arkGuozaiPolicy || nyBeautyPolicy || renchouLimit || r50Policy) ? Card::SuitToBeDecided : Card::NoSuit, (arkGuozaiPolicy || erangwaiPolicy || nyBeautyPolicy || renchouLimit || r50Policy) ? -1 : 0));
+            (arkGuozaiPolicy || nyBeautyPolicy || renchouLimit || gfengyingJxyangjiePolicy) ? Card::SuitToBeDecided : Card::NoSuit, (arkGuozaiPolicy || erangwaiPolicy || nyBeautyPolicy || renchouLimit || gfengyingJxyangjiePolicy) ? -1 : 0));
         if (!card && (printedPolicy || nyarzPolicy)) return {{"exists",false}};
         if (!card || ((skillName == "guhuo" || skillName == "nosguhuo" || olGuhuoPolicy) && !(card->isKindOf("BasicCard") || card->isNDTrick())))
             return failure("invalid skill evaluation card class");
@@ -6970,7 +6791,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 || number != std::floor(number)) return failure("invalid skill evaluation cost");
             QList<int> payable = skillName == "jixi" ? player->getPile("field") : player->handCards();
             if (panqinPolicy) for (const auto &v : request.worldView.discardPile) payable << v.effectiveId;
-            if (declared2016 || xixiangPolicy || r50Policy || dragonWushengPolicy || skillName == "guose" || skillName == "wusheng" || skillName == "gdlonghun")
+            if (declared2016 || xixiangPolicy || gfengyingJxyangjiePolicy || dragonWushengPolicy || skillName == "guose" || skillName == "wusheng" || skillName == "gdlonghun")
                 for (const Card *equip : player->getEquips()) payable << equip->getEffectiveId();
             if (declared2016 || wuxingPolicy) payable.append(player->getHandPile());
             if (!payable.contains(int(number))) return failure("skill evaluation cost is outside owner policy");
@@ -6979,7 +6800,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
                 if (v.effectiveId == int(number)) disclosed = true;
             for (const AICardView &known : request.worldView.handCards)
                 if (known.effectiveId == int(number)) disclosed = true;
-            if (declared2016 || xixiangPolicy || r50Policy || dragonWushengPolicy || skillName == "guose" || skillName == "wusheng" || skillName == "gdlonghun")
+            if (declared2016 || xixiangPolicy || gfengyingJxyangjiePolicy || dragonWushengPolicy || skillName == "guose" || skillName == "wusheng" || skillName == "gdlonghun")
                 for (const AICardView &known : request.worldView.self.equips)
                     if (known.effectiveId == int(number)) disclosed = true;
             if (skillName == "jixi")
@@ -7000,7 +6821,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         if (skillName == "ny_zhenge") card->setSkillName("_ny_zhenge");
         if (skillName == "nyarz_zhifou") card->setSkillName(QString());
         if (fumianPolicy) card->setFlags("fumian_distance");
-        if (chouliePolicy && !configureAIRound48ChoulieEvaluation(*card))
+        if (chouliePolicy && !configureAIChoulieEvaluation(*card))
             return failure("Choulie readonly dummy differs from the fixed source");
         std::unique_ptr<AITianyiQueryScope> noDistance;
         if (shuangrenPolicy) noDistance.reset(new AITianyiQueryScope(player, nullptr));
@@ -7022,10 +6843,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         row.insert("evaluation_owner", player->objectName());
         const QJsonObject targetData = responseCandidateJson(candidate);
         for (auto it = targetData.begin(); it != targetData.end(); ++it) row.insert(it.key(), it.value());
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest))
+        if (!aiRangeRequestCurrent(m_room,parentRequest))
             return failure("skill evaluation changed game state");
-        if (r50Policy) row.insert("round50_source",skillName);
-        if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("R50 source query changed native state");
+        if (gfengyingJxyangjiePolicy) row.insert("round50_source",skillName);
+        if (!aiRangeRequestCurrent(m_room,parentRequest)) return failure("R50 source query changed native state");
         const auto recipeKey = m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest, player, std::move(card), skillName);
         if (!recipeKey.isEmpty()) row.insert("readonly_recipe_key", recipeKey);
         return {{"card", row}, {"candidate", targetData}};
@@ -7054,7 +6875,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         }
         const QJsonObject issuedIdentity = scope.value("identity").toObject();
         const bool chumingGenerated = selectedMaterials.isEmpty()
-            && authorizeAIRound24ChumingPayment(request, player,
+            && authorizeAIChumingPayment(request, player,
                 responseRef(issuedIdentity, "activation"), responseRef(issuedIdentity, "source"), spec);
         if (!chumingGenerated && !aiAuditedNonconsumingSelection(request, player, scope.value("skill_name").toString(),
                 spec, responseIds(selectedMaterials)))
@@ -7276,81 +7097,9 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             {"xingxue", "XingxueCard"}, {"yjyanyu", "YjYanyuCard"}, {"wurong", "WurongCard"},
             {"anguo", "AnguoCard"}, {"olzhaofu", "OLzhaofuCard"}};
         const QString skillName = scope.value("skill_name").toString();
-        int auditedPrototype = aiAuditedSourcePrototype(skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiAuditedConditionalSourcePrototype(request, skillName, spec.value("legacy_class").toString(), player);
-        if (auditedPrototype < 0)
-            auditedPrototype = aiAuditedConstructionSourcePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21ReadonlyPrototype(skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21PlanningPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound21ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound43InovationPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound45InovationPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound47SijyuPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound51JijiaoPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanActionPrototype(skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound23ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound24FeiDIYPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42PlanningPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound24OriginalPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound43ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound44SkinPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound45NewgeneralsPrototype(request,player,skillName,spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound46PlanningPrototype(request,player,skillName,spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound49qRenchouPrototype(request,player,skillName,spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound50PlanningPrototype(request,player,skillName,spec.value("legacy_class").toString());
-        if (skillName == "mtjieli" && !aiRound43ChoiceDeclaration(request, player, spec))
+        int auditedPrototype = auditedStrategyPrototype(request, player, skillName, spec.value("legacy_class").toString());
+        if (skillName == "mtjieli" && !aiMtjieliDeclaration(request, player, spec))
             return failure("Mtjieli selected proxy requires zero costs and red/black declaration");
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound27ChoicePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25ResponsePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound42ResponsePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound44LeiPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound25OriginalPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26OriginalPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound27OriginalPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound36KurouPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound29ExtraPrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound26DelegatePrototype(request, player, skillName, spec.value("legacy_class").toString());
-        if (auditedPrototype < 0)
-            auditedPrototype = aiRound22OlClanObservationPrototype(request, player, skillName, spec.value("legacy_class").toString());
         const bool declared = (auditedPrototype >= 0 && (auditedPrototype & 2) && spec.contains("user_string"))
             || skillName == "caozhao" || skillName == "guhuo" || skillName == "aocai"
             || skillName == "jinxianwan" || skillName == "qice" || skillName == "qinwang"
@@ -7424,8 +7173,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     if (activationRef.key.skillName == "ol2shanjia" || activationRef.key.skillName == "jiewan") {
         AiSkillActionContext exact;
         exact.activationRef = activationRef; exact.sourceRef = sourceRef;
-        if (!skillAction || !aiRound52OlspQuestion(request, player)
-            || !aiRound52OlspAction(m_room, player, exact))
+        if (!skillAction || !aiOlspQuestion(request, player)
+            || !aiOlspAction(m_room, player, exact))
             return failure("OL/SP response source inquiry changed");
     }
     if (activationRef.ownerObjectName != player->objectName()
@@ -7460,10 +7209,10 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         // metadata must describe that same source product. Native factory,
         // ordered material validation and authority ticket stay unchanged.
         if (legacyPrototypeName == "ActiveSkillCard"
-            && aiRound36KurouPrototype(request, player, scope.value("skill_name").toString(), legacyPrototypeName) == 1)
+            && aiHegKurouPrototype(request, player, scope.value("skill_name").toString(), legacyPrototypeName) == 1)
             legacyPrototype->setSkillName("heg_kurou");
         if (legacyPrototypeName == "ActiveSkillCard"
-            && aiRound43ChoicePrototype(request, player, scope.value("skill_name").toString(), legacyPrototypeName) == 2)
+            && aiMtjieliPrototype(request, player, scope.value("skill_name").toString(), legacyPrototypeName) == 2)
             legacyPrototype->setSkillName("mtjieli");
         if (spec.contains("user_string")) legacyPrototype->setUserString(spec.value("user_string").toString());
     }
@@ -7517,20 +7266,20 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         && authorizeAIStrategyPreviewPayment(request, m_room, player, activationRef, sourceRef, previewCosts);
     if (previewPayment) for (int id : previewCosts) { payable << id; visible.insert(id); }
     QList<int> newgeneralsForeign;
-    if(!aiRound45NotifiedSkill(request).isEmpty() && activationRef.key.skillName==aiRound45NotifiedSkill(request)
-        && !authorizeAIRound45NotifiedPayment(request,m_room,player,activationRef,sourceRef,previewCosts,&newgeneralsForeign))
+    if(!aiNewgeneralsNotifiedSkill(request).isEmpty() && activationRef.key.skillName==aiNewgeneralsNotifiedSkill(request)
+        && !authorizeAINewgeneralsNotifiedPayment(request,m_room,player,activationRef,sourceRef,previewCosts,&newgeneralsForeign))
         return rejectedPayment("Newgenerals notified payment changed or lacks current disclosure");
     for(int id:newgeneralsForeign){payable<<id;visible.insert(id);}
     const QString leiSkill=activationRef.key.skillName;
     const bool leiExchange=request.kind==AIRequest::UseCard && request.pattern=="@@"+leiSkill
         && (leiSkill=="poxi"||leiSkill=="hongju"||leiSkill=="olhongju"||leiSkill=="mobilehongju");
     QList<int> leiForeign;
-    if(leiExchange && !authorizeAIRound44LeiPayment(request,m_room,player,activationRef,sourceRef,previewCosts,&leiForeign))
+    if(leiExchange && !authorizeAILeiPayment(request,m_room,player,activationRef,sourceRef,previewCosts,&leiForeign))
         return rejectedPayment("Lei exchange source/current ordered materials changed");
     for(int id:leiForeign){payable<<id;visible.insert(id);}
     QList<int> chumingPublicMaterials;
     const bool chumingPayment = selectedMaterialProposal && selectedMaterials.isEmpty()
-        && authorizeAIRound24ChumingPayment(request, player, activationRef, sourceRef, spec, &chumingPublicMaterials);
+        && authorizeAIChumingPayment(request, player, activationRef, sourceRef, spec, &chumingPublicMaterials);
     if (chumingPayment) for (int id : chumingPublicMaterials) { payable << id; visible.insert(id); }
     QList<int> costs;
     QSet<int> unique;
@@ -7545,9 +7294,9 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     }
     const bool niwoSourcePayment = skillAction && legacyPrototypeName == "#ov_niwoCard"
         && activationRef.key.skillName == "ov_niwo" && sourceRef.key.skillName == "ov_niwo"
-        && aiRound28NiwoResponseQuestion(request,m_room,player);
+        && aiNiwoResponseQuestion(request,m_room,player);
     if (costs.size() > (niwoSourcePayment ? 998 : 128)) return failure("conversion payment budget exhausted");
-    if (jincaiwangGenerated && !round25JincaiwangMaterial(request, m_room, player,
+    if (jincaiwangGenerated && !jincaiwangMaterial(request, m_room, player,
             spec.value("name").toString(), costs))
         return failure("SecondJincaiwang sole disclosed material changed");
     if (legacyPrototype) legacyPrototype->addSubcards(costs);
@@ -7556,15 +7305,15 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         && activationRef.key.skillName == "kezhuanmanjuan";
     int manjuanRawId = -1;
     QString declaration;
-    const bool zhangwuGenerated = v2 && aiRound27ZhangwuGeneratedBranch(request, player, activationRef.key.skillName);
+    const bool zhangwuGenerated = v2 && aiZhangwuGeneratedBranch(request, player, activationRef.key.skillName);
     const bool zhangwuPrinted = v2 && request.kind == AIRequest::Activate
         && reason == CardUseStruct::CARD_USE_REASON_PLAY && activationRef.key.skillName == "lxtx_zhangwu";
-    if (zhangwuGenerated && !aiRound27ZhangwuGeneratedPayment(request, player, activationRef.key.skillName, costs))
+    if (zhangwuGenerated && !aiZhangwuGeneratedPayment(request, player, activationRef.key.skillName, costs))
         return rejectedPayment("Zhangwu source proposal differs from native generated ordered payment");
     if (manjuanRaw) {
         if (!costs.isEmpty()) return failure("Manjuan fixed source wire has no selected costs");
         declaration = spec.value("user_string").toString();
-        produced = constructAIRound53ManjuanRaw(request,player,declaration,&manjuanRawId);
+        produced = constructAIManjuanRaw(request,player,declaration,&manjuanRawId);
         if (!produced) return failure("Manjuan raw response lacks its current actual source selection");
     } else if (v2) {
         AiSkillActionContext current;
@@ -7617,8 +7366,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             selected << card;
         }
         if (legacyResponse && legacyPrototypeName == "#tongyiTQ"
-            && isAIRound33TongyiSource(request, activationRef.key.skillName, className)) {
-            produced = buildAIRound33TongyiSource(request, m_room, player, activationRef, sourceRef,
+            && isAITongyiSource(request, activationRef.key.skillName, className)) {
+            produced = buildAITongyiSource(request, m_room, player, activationRef, sourceRef,
                 className, spec.value("user_string").toString(), costs);
         } else produced = skill->viewAs(selected);
         if (!declarationScope.retainProduced(produced)) return failure("V1 declaration clone ownership changed");
@@ -7632,7 +7381,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     const bool skinGenerated = v2 && skillAction && legacyResponse
         && legacyPrototypeName == "#skin" && activationRef.key.skillName == "skin";
     if (skinGenerated && (!declaration.isEmpty() || !costs.isEmpty()
-        || !aiRound44SkinProduct(request, player, activationRef, sourceRef, produced, legacyPrototype.get()))) {
+        || !aiSkinProduct(request, player, activationRef, sourceRef, produced, legacyPrototype.get()))) {
         if (produced->isVirtualCard()) const_cast<Card *>(produced)->deleteLater();
         return failure("Skin generated product does not match exact empty source policy");
     }
@@ -7644,15 +7393,15 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         || produced->getNumber() != spec.value("number").toDouble())) {
         discardProduced(); return failure("conversion rule produced a different printed identity");
     }
-    const bool round33Physical = v2 && aiRound33PlanningPhysicalScope(request,activationRef.key.skillName)
+    const bool zhaobingPhysical = v2 && aiZhaobingPhysicalScope(request,activationRef.key.skillName)
         && produced->isKindOf("EquipCard");
-    if (round33Physical && !authorizeAIRound33PlanningPhysicalProduct(request,m_room,player,
+    if (zhaobingPhysical && !authorizeAIZhaobingPhysicalProduct(request,m_room,player,
             activationRef,sourceRef,costs,produced)) {
         discardProduced(); return failure("sfofl owner-pile physical Equip authentication failed");
     }
-    const bool physicalProduct = round33Physical || (skillAction && v2
+    const bool physicalProduct = zhaobingPhysical || (skillAction && v2
         && isAuditedPhysicalCardSkill(activationRef.key.skillName, reason, pattern));
-    if (round33Physical) {
+    if (zhaobingPhysical) {
         // Exact original owner-pile product was authenticated above; no physical mutation.
     } else if (physicalProduct && isMarkedPhysicalCardSkill(activationRef.key.skillName, reason, pattern)) {
         bool printed = false; QJsonObject disclosed;
@@ -7672,7 +7421,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             discardProduced(); return failure("notified producer did not preserve the original disclosed physical card");
         }
     } else if (jincaiwangGenerated) {
-        if (!round25JincaiwangProduct(produced, spec.value("name").toString(), costs)) {
+        if (!jincaiwangProduct(produced, spec.value("name").toString(), costs)) {
             discardProduced(); return failure("SecondJincaiwang native material tag or zero-cost product changed");
         }
     } else if (produced->getSubcards() != costs) {
@@ -7712,13 +7461,13 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     // is tested on the donor's class dummy below. Enumerate targets on the REAL
     // already-proven SkillCard, not on that dummy and not on a mismatching raw
     // SkillCard expression. All live limits/targetFilter/feasibility still apply.
-    const bool round33TongyiTargets = request.kind == AIRequest::UseCard && !skillAction
+    const bool tongyiTargets = request.kind == AIRequest::UseCard && !skillAction
         && legacyResponse && legacyPrototypeName == "#tongyiTQ"
-        && isAIRound33TongyiSource(request, activationRef.key.skillName, className);
-    AIRound47XufaSourceCard xufaSource(m_room,parentRequest,player,produced,activationRef.key.skillName);
+        && isAITongyiSource(request, activationRef.key.skillName, className);
+    AIXufaSourceCard xufaSource(m_room,parentRequest,player,produced,activationRef.key.skillName);
     const AICardCandidateView candidate = makeAICardCandidate(m_room, player, produced,
         request.handlingMethod, skillAction ? AIRequest::Activate : request.kind,
-        (chumingPayment || round33TongyiTargets) ? QString() : request.pattern, budget);
+        (chumingPayment || tongyiTargets) ? QString() : request.pattern, budget);
     AICardConversionView ticket;
     ticket.conversionId = request.cardConversions.size() + request.conversionLedger->tickets.size() + 1;
     ticket.hasSelectedMaterials = selectedMaterialProposal || jincaiwangGenerated;
@@ -7755,8 +7504,8 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
     // _ol2shanjia name. Its activation identity remains the authenticated
     // ol2shanjia instance; do not rewrite the donor/native product face.
     const bool ol2ResponseRaw = skillAction && !v2 && activationRef.key.skillName == "ol2shanjia"
-        && aiRound52OlspQuestion(request, player);
-    const bool tyfenwuRaw = v2 && aiRound53TyfenwuRawProduct(request,player,activationRef.key.skillName,produced);
+        && aiOlspQuestion(request, player);
+    const bool tyfenwuRaw = v2 && aiTyfenwuRawProduct(request,player,activationRef.key.skillName,produced);
     ticket.skillName = scope.value("has_action").toBool() && !physicalProduct && !zhangwuPrinted && !ol2ResponseRaw && !manjuanRaw && !tyfenwuRaw
         ? activationRef.key.skillName : produced->getSkillName(false);
     ticket.canRecast = produced->canRecast(); ticket.willThrow = produced->willThrow();
@@ -7925,7 +7674,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             legacyPolicy.insert("evaluation_rules", rules);
         }
     }
-    if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) {
+    if (!aiRangeRequestCurrent(m_room,parentRequest)) {
         discardProduced();return failure("conversion authority rule changed game state");
     }
     if(needsOlClanObservationCustody(request,player) && (ticket.className=="GodSalvation" || ticket.policyClass=="GodSalvation")
@@ -7972,11 +7721,11 @@ bool AiDecisionCoordinator::buildSkillActionContext(
 {
     if (!player || !player->hasSkillInstance(instance.skillName, instance.instanceID)) return false;
     const auto nativeSkillInvalid = [&](const QString &name, int instanceId) {
-        std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+        std::unique_ptr<AISkillValidityScope> validitySource;
         auto *gameLua=m_room.roomRuntime()->lua().rawState();
         if(reason==CardUseStruct::CARD_USE_REASON_PLAY&&pattern.isEmpty()
-            &&!inAIRound56ProjectionScope(m_room,gameLua))
-            validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+            &&!inAIProjectionSourceScope(m_room,gameLua))
+            validitySource.reset(new AISkillValidityScope(m_room,player,gameLua));
         return player->isSkillInvalid(name,instanceId);
     };
     const ViewAsSkill *native = Sanguosha->getViewAsSkill(instance.skillName);
@@ -8003,7 +7752,7 @@ bool AiDecisionCoordinator::buildSkillActionContext(
         const bool olspResponse = (instance.skillName == "ol2shanjia" || instance.skillName == "jiewan")
             && reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
             && pattern == "@@" + instance.skillName
-            && aiRound52OlspInstance(m_room, player, instance.skillName, instance.instanceID);
+            && aiOlspInstance(m_room, player, instance.skillName, instance.instanceID);
         if (!native || (!auditedV1.contains(instance.skillName) && !nestedJieyingh && !promptedZhifeng && !jijiaoPlay && !zunweiPlay && !olspResponse)
             || nativeSkillInvalid(instance.skillName, instance.instanceID)) return false;
         const bool play = reason == CardUseStruct::CARD_USE_REASON_PLAY;
@@ -8011,7 +7760,7 @@ bool AiDecisionCoordinator::buildSkillActionContext(
         actionContext.activationRef = SkillInstanceRef(player->objectName(), instance.key());
         actionContext.sourceRef = m_skillRuntime.resolveSkillInstanceRootRef(actionContext.activationRef);
         if (!actionContext.sourceRef.isValid()) actionContext.sourceRef = actionContext.activationRef;
-        if (olspResponse && !aiRound52OlspAction(m_room, player, actionContext)) return false;
+        if (olspResponse && !aiOlspAction(m_room, player, actionContext)) return false;
         actionContext.activationQuotaAvailable = actionContext.sourceQuotaAvailable = true;
         return true;
     }
@@ -8066,7 +7815,7 @@ bool AiDecisionCoordinator::buildSkillActionRequest(
         projectAIUseCardDispatch(aiRequest, m_room, player);
         // Poxi disclosure requires this actual accepted action identity.
         // makeRequest alone has not attached that identity yet.
-        projectAIRound44LeiExchange(aiRequest, m_room, player);
+        projectAILeiExchange(aiRequest, m_room, player);
     }
     return true;
 }
@@ -8088,7 +7837,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound53ManjuanRaw(request,player,spec,{},
+        if(!applyAIManjuanRaw(request,player,spec,{},
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return nullptr;
         return const_cast<Card *>(selected.card);
     }
@@ -8097,21 +7846,21 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
         || authorized->activationRef.key.skillName == "jiewan") {
         AiSkillActionContext exact;
         exact.activationRef = authorized->activationRef; exact.sourceRef = authorized->sourceRef;
-        if (!aiRound52OlspQuestion(request, player)
-            || !aiRound52OlspAction(m_room, player, exact)) return nullptr;
+        if (!aiOlspQuestion(request, player)
+            || !aiOlspAction(m_room, player, exact)) return nullptr;
     }
     if (authorized->zhifengQuestion) {
         if(spec.name!=authorized->name || spec.suit!=authorized->suit || spec.number!=authorized->number
             || !spec.skillName.isEmpty() || spec.subcardIds!=authorized->subcardIds)return nullptr;
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
-        return rebuildAIRound29ZhifengProduct(request,m_room,player,*authorized);
+        return rebuildAIZhifengProduct(request,m_room,player,*authorized);
     }
     if (authorized->rangyiQuestion) {
         if(spec.name!=authorized->name||spec.suit!=authorized->suit||spec.number!=authorized->number
             ||!spec.skillName.isEmpty()||spec.subcardIds!=authorized->subcardIds)return nullptr;
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
-        return rebuildAIRound52RangyiProduct(request,m_room,player,*authorized);
+        return rebuildAIRangyiProduct(request,m_room,player,*authorized);
     }
     if (authorized->jieyinghQuestion) {
         if (spec.name != authorized->name || spec.suit != authorized->suit
@@ -8119,7 +7868,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
             || !spec.subcardIds.isEmpty()) return nullptr;
         EngineRuntimeContextScope engine(*Sanguosha, &m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(), false);
-        return rebuildAIRound27JieyinghProduct(request, m_room, player, *authorized);
+        return rebuildAIJieyinghProduct(request, m_room, player, *authorized);
     }
     if (!authorized->activationQuotaAvailable || !authorized->sourceQuotaAvailable) return nullptr;
 
@@ -8169,18 +7918,18 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     if ((authorized->activationRef.key.skillName == "PlusYiji" || authorized->activationRef.key.skillName == "fatewangzhe")
         && !authorizeAIStrategyPreviewPayment(request, m_room, player, authorized->activationRef,
             authorized->sourceRef, spec.subcardIds)) return nullptr;
-    if(!aiRound45NotifiedSkill(request).isEmpty() && authorized->activationRef.key.skillName==aiRound45NotifiedSkill(request)
-        && !authorizeAIRound45NotifiedPayment(request,m_room,player,authorized->activationRef,authorized->sourceRef,spec.subcardIds))return nullptr;
+    if(!aiNewgeneralsNotifiedSkill(request).isEmpty() && authorized->activationRef.key.skillName==aiNewgeneralsNotifiedSkill(request)
+        && !authorizeAINewgeneralsNotifiedPayment(request,m_room,player,authorized->activationRef,authorized->sourceRef,spec.subcardIds))return nullptr;
     const QString leiSkill=authorized->activationRef.key.skillName;
     if(request.kind==AIRequest::UseCard && request.pattern=="@@"+leiSkill
         && (leiSkill=="poxi"||leiSkill=="hongju"||leiSkill=="olhongju"||leiSkill=="mobilehongju")
-        && !authorizeAIRound44LeiPayment(request,m_room,player,authorized->activationRef,authorized->sourceRef,spec.subcardIds))return nullptr;
+        && !authorizeAILeiPayment(request,m_room,player,authorized->activationRef,authorized->sourceRef,spec.subcardIds))return nullptr;
     const Card *produced = nullptr;
     bool chumingPayment = false;
     const bool jincaiwangGenerated = skill && authorized->activationRef.key.skillName == "secondjincaiwang"
         && authorized->hasSelectedMaterials && authorized->selectedMaterialIds.size() == 1
         && authorized->subcardIds.isEmpty();
-    if (jincaiwangGenerated && !round25JincaiwangMaterial(request, m_room, player,
+    if (jincaiwangGenerated && !jincaiwangMaterial(request, m_room, player,
             authorized->name, authorized->selectedMaterialIds)) return nullptr;
     if (skill) {
         ActiveSkillRequest activation;
@@ -8193,7 +7942,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
         if (authorized->generatedHandPayment) {
             const QString generatedSkill=authorized->activationRef.key.skillName;
             if (generatedSkill == "lxtx_zhangwu") {
-                if (!aiRound27ZhangwuGeneratedPayment(request, player, generatedSkill, spec.subcardIds)) return nullptr;
+                if (!aiZhangwuGeneratedPayment(request, player, generatedSkill, spec.subcardIds)) return nullptr;
             } else if ((generatedSkill != "chopper" && generatedSkill != "tiaojiaoCMT")
                 || (generatedSkill == "chopper" && spec.subcardIds.isEmpty())
                 || (generatedSkill == "tiaojiaoCMT" && request.kind != AIRequest::Activate)
@@ -8203,7 +7952,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
             const QJsonObject product{{"name", authorized->name}, {"skill", authorized->activationRef.key.skillName},
                 {"suit", authorized->suit}, {"number", authorized->number}, {"subcards", responseIds(spec.subcardIds)}};
             chumingPayment = authorized->selectedMaterialIds.isEmpty()
-                && authorizeAIRound24ChumingPayment(request, player, authorized->activationRef,
+                && authorizeAIChumingPayment(request, player, authorized->activationRef,
                     authorized->sourceRef, product);
             if (!chumingPayment && !aiAuditedNonconsumingSelection(request, player, authorized->activationRef.key.skillName,
                     product, responseIds(authorized->selectedMaterialIds))) return nullptr;
@@ -8253,8 +8002,8 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
             if (!payable.contains(id) || !payment || !viewAs->viewFilter(selected, payment)) return nullptr;
             selected << payment;
         }
-        if (isAIRound33TongyiSource(request, authorized->activationRef.key.skillName, authorized->policyClass)) {
-            produced = buildAIRound33TongyiSource(request, m_room, player,
+        if (isAITongyiSource(request, authorized->activationRef.key.skillName, authorized->policyClass)) {
+            produced = buildAITongyiSource(request, m_room, player,
                 authorized->activationRef, authorized->sourceRef, authorized->policyClass,
                 authorized->declaredName, spec.subcardIds);
         } else produced = viewAs->viewAs(selected);
@@ -8265,14 +8014,14 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
         if (produced->isVirtualCard()) const_cast<Card *>(produced)->deleteLater();
         return nullptr;
     };
-    const bool round33Physical = skill && aiRound33PlanningPhysicalScope(request,authorized->activationRef.key.skillName)
+    const bool zhaobingPhysical = skill && aiZhaobingPhysicalScope(request,authorized->activationRef.key.skillName)
         && produced->isKindOf("EquipCard");
-    if (round33Physical && (!authorizeAIRound33PlanningPhysicalProduct(request,m_room,player,
+    if (zhaobingPhysical && (!authorizeAIZhaobingPhysicalProduct(request,m_room,player,
             authorized->activationRef,authorized->sourceRef,spec.subcardIds,produced)
         || authorized->legacyIdentityToken!=aiLegacyCardIdentity(m_room,player,produced))) return reject();
-    const bool physicalProduct = round33Physical || (authorized->policyClass == "@skill_action" && skill
+    const bool physicalProduct = zhaobingPhysical || (authorized->policyClass == "@skill_action" && skill
         && isAuditedPhysicalCardSkill(authorized->activationRef.key.skillName, reason, pattern));
-    if (round33Physical) {
+    if (zhaobingPhysical) {
         // Final factory returned the same disclosed physical object/material/face.
     } else if (physicalProduct && isMarkedPhysicalCardSkill(authorized->activationRef.key.skillName, reason, pattern)) {
         bool printed = false; QJsonObject disclosed;
@@ -8289,7 +8038,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
             || produced->getEffectiveId() != spec.subcardIds.first()
             || !authorizeAIOlClanNotifiedEvaluation(request, spec.subcardIds.first())) return reject();
     } else if (jincaiwangGenerated) {
-        if (!round25JincaiwangProduct(produced, authorized->name, authorized->selectedMaterialIds)) return reject();
+        if (!jincaiwangProduct(produced, authorized->name, authorized->selectedMaterialIds)) return reject();
     } else if (!produced->isVirtualCard() || produced->getSubcards() != spec.subcardIds) return reject();
     if (produced->objectName() != authorized->name || int(produced->getSuit()) != authorized->suit
         || produced->getNumber() != authorized->number) return reject();
@@ -8297,14 +8046,14 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
         std::unique_ptr<SkillCard> sourcePolicy(LuaSkillCard::Parse("#skin:.:") );
         if (!authorized->declaredName.isEmpty() || authorized->policyClass != "@skill_action"
             || authorized->producerVersion != 2 || !authorized->subcardIds.isEmpty()
-            || !aiRound44SkinProduct(request, player, authorized->activationRef, authorized->sourceRef,
+            || !aiSkinProduct(request, player, authorized->activationRef, authorized->sourceRef,
                 produced, sourcePolicy.get())) return reject();
         const auto *proxy = static_cast<const SkillCard *>(produced);
         if (proxy->getUserString() != authorized->skinGeneratedUserString) return reject();
     } else if (const auto *proxy = dynamic_cast<const SkillCard *>(produced))
         if (proxy->getUserString() != authorized->declaredName) return reject();
     if (authorized->activationRef.key.skillName == "tyfenwu" && authorized->skillName == "_tyfenwu"
-        && !aiRound53TyfenwuRawProduct(request,player,authorized->activationRef.key.skillName,produced)) return reject();
+        && !aiTyfenwuRawProduct(request,player,authorized->activationRef.key.skillName,produced)) return reject();
     Card *card = const_cast<Card *>(produced);
     if (!physicalProduct) {
         card->setActivationSkill(authorized->activationRef.key.skillName, authorized->activationRef.key.instanceID);
@@ -8315,7 +8064,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     if (!physicalProduct) card->setSkillName(authorized->skillName);
     QString actualPattern = request.pattern;
     if (actualPattern.endsWith('!')) actualPattern.chop(1);
-    AIRound47XufaSourceCard xufaRebuilt(m_room,request,player,card,authorized->activationRef.key.skillName);
+    AIXufaSourceCard xufaRebuilt(m_room,request,player,card,authorized->activationRef.key.skillName);
     ResponseNativeScope actualScope(m_room, player, request.reason, request.pattern);
     const auto matchesActual = [&](const Card *candidate) {
         return request.kind == AIRequest::RespondCard
@@ -8347,7 +8096,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     } else if ((request.kind == AIRequest::Activate ? !card->isAvailable(player)
                 : !matchesActual(card))
                || player->isCardLimited(card, request.handlingMethod)) return reject();
-    if (!aiRound44RangeRequestCurrent(m_room,request)) return reject();
+    if (!aiRangeRequestCurrent(m_room,request)) return reject();
     return card;
 
 }
@@ -8357,7 +8106,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
                                         CardUseStruct &cardUse) const
 {
     if (request.worldView.strategyFacts.contains("readonly_play_context")) {
-        if (!aiRound28NiwoResponseQuestion(request,m_room,player)
+        if (!aiNiwoResponseQuestion(request,m_room,player)
             || request.worldView.strategyFacts.value("readonly_play_context").toObject().value("source")!="OverseasVersion.ov_niwo"
             || request.readonlyParentConversionPolicy.isEmpty()
             || (result.kind!=AIResult::Pass && (result.kind!=AIResult::UseCard
@@ -8367,7 +8116,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         || result.decisionId != request.decisionId
         || result.stateRevision != request.stateRevision)
         return false;
-    if (!aiRound44RangeRequestCurrent(m_room,request)) return false;
+    if (!aiRangeRequestCurrent(m_room,request)) return false;
 
     CardUseStruct candidate = cardUse;
     candidate.from = player;
@@ -8383,92 +8132,92 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         return true;
     }
 
-    if(result.action.hasCardSpec && hasAIRound53DiouReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIDiouReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);CardUseStruct selected;
-        if(!applyAIRound53DiouReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIDiouReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,selected.card->getHandlingMethod())||!m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;cardUse=selected;return true;
+        if(!aiRangeRequestCurrent(m_room,request))return false;cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound53XuanzhuReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIXuanzhuReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound53XuanzhuReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIXuanzhuReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,selected.card->getHandlingMethod())||!m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound53XufaReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIXufaReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound53XufaReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIXufaReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,selected.card->getHandlingMethod())||!m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound47HeqiaReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIHeqiaReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound47HeqiaReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIHeqiaReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,request.handlingMethod) || !m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound47BLeiluanReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAILeiluanReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound47BLeiluanReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAILeiluanReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,request.handlingMethod) || !m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound51NotifiedCosts(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAISushouNotifiedCosts(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound51NotifiedCosts(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAISushouNotifiedCosts(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         // Original Room::resolveCardUse checks the parsed card's MethodNone,
         // not the prompt's MethodUse; preserve the actual raw SkillCard ABI.
         if(player->isCardLimited(selected.card,selected.card->getHandlingMethod()) || !m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound46JianmanReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIJianmanReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound46JianmanReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIJianmanReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,request.handlingMethod) || !m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
-    if(result.action.hasCardSpec && hasAIRound41FaqiReceipt(request,result.action.cardSpec.conversionId)) {
+    if(result.action.hasCardSpec && hasAIFaqiReceipt(request,result.action.cardSpec.conversionId)) {
         EngineRuntimeContextScope engine(*Sanguosha,&m_room);LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         CardUseStruct selected;
-        if(!applyAIRound41FaqiReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
+        if(!applyAIFaqiReceipt(request,player,result.action.cardSpec,result.action.selectedTargetNames,
             [&](CardUseStruct &use){return m_skillRuntime.resolveCardSkillInstance(use);},selected))return false;
         selected.m_validateTargets=true;
         if(player->isCardLimited(selected.card,request.handlingMethod) || !m_room.areCardTargetsLegal(selected))return false;
-        if(!aiRound44RangeRequestCurrent(m_room,request))return false;
+        if(!aiRangeRequestCurrent(m_room,request))return false;
         cardUse=selected;return true;
     }
     QSet<QString> targetNames;
@@ -8503,10 +8252,10 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
             const auto receipt = request.conversionLedger->previewPhysicalReceipts.value(useCardId);
             previewBorrow = authorizeAIStrategyPreviewPhysicalProduct(request, m_room, player,
                 receipt.activationRef, receipt.sourceRef, useCardId)
-                || authorizeAIRound45NotifiedPhysical(request,m_room,player,receipt.activationRef,receipt.sourceRef,useCardId)
-                || authorizeAIRound49NotifiedPhysical(request,m_room,player,receipt.activationRef,receipt.sourceRef,useCardId);
+                || authorizeAINewgeneralsNotifiedPhysical(request,m_room,player,receipt.activationRef,receipt.sourceRef,useCardId)
+                || authorizeAINotifiedPilePhysical(request,m_room,player,receipt.activationRef,receipt.sourceRef,useCardId);
         }
-        const bool danlvePhysical=authorizeAIRound45DanlvePhysical(m_room,request,player,useCardId);
+        const bool danlvePhysical=authorizeAIDanlvePhysical(m_room,request,player,useCardId);
         const Card *played = (owned || previewBorrow || danlvePhysical || liveTaoxiBorrow(m_room, player, request.worldView, useCardId))
             ? Sanguosha->getCard(useCardId) : nullptr;
         if (!played) return false;
@@ -8549,10 +8298,10 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         else candidate.card = built;
         if (request.kind==AIRequest::UseCard && request.pattern=="@fatewangzhe"
             && authorized->activationRef.key.skillName=="fatewangzhe"
-            && !AIRound47FateUseAccess::attach(request,m_room,player,*authorized,candidate)) return false;
-        if (aiRound33PlanningPhysicalScope(request,authorized->activationRef.key.skillName)
+            && !AIFateUseAccess::attach(request,m_room,player,*authorized,candidate)) return false;
+        if (aiZhaobingPhysicalScope(request,authorized->activationRef.key.skillName)
             && built->isKindOf("EquipCard")
-            && !AIRound33PhysicalUseAccess::attach(request,m_room,player,*authorized,candidate)) return false;
+            && !AIZhaobingPhysicalUseAccess::attach(request,m_room,player,*authorized,candidate)) return false;
         cardUse = candidate;
         return true;
     }
@@ -8622,8 +8371,8 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
     // selected-ID result must not travel through ActiveSkillCard::changeCard,
     // which transfers activation metadata/tags to its newly created product.
     // Only an actually issued same-request physical receipt admits this path.
-    const QString round45PhysicalSkill = aiRound45NotifiedSkill(request);
-    if (round45PhysicalSkill == "keolzhuri" || round45PhysicalSkill == "keolsaoguslash") {
+    const QString notifiedPhysicalSkill = aiNewgeneralsNotifiedSkill(request);
+    if (notifiedPhysicalSkill == "keolzhuri" || notifiedPhysicalSkill == "keolsaoguslash") {
         if (request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE_USE
             || request.handlingMethod != Card::MethodUse
             || !request.hasSkillActionContext || !request.conversionLedger
@@ -8636,7 +8385,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         EngineRuntimeContextScope engine(*Sanguosha, &m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(), false);
         ResponseNativeScope native(m_room, player, request.reason, request.pattern);
-        if (!authorizeAIRound45NotifiedPhysical(request, m_room, player,
+        if (!authorizeAINewgeneralsNotifiedPhysical(request, m_room, player,
                 context.activationRef, context.sourceRef, id)) return false;
         const Card *physical = m_room.getCard(id);
         if (!physical || physical->isVirtualCard()
@@ -8675,14 +8424,14 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
 
 void AiDecisionCoordinator::projectReadonlyOlClanPlanning(ServerPlayer *player, AIRequest &request) const
 {
-    QJsonObject context = aiRound23OlClanPlanningContext(request, m_room, player);
-    if (context.isEmpty()) context = aiRound27ChoicePlanningContext(request, m_room, player);
-    if (context.isEmpty()) context = aiRound28ChoicePlanningContext(request, m_room, player);
+    QJsonObject context = aiOlClanPlanningContext(request, m_room, player);
+    if (context.isEmpty()) context = aiXiafengChoicePlanningContext(request, m_room, player);
+    if (context.isEmpty()) context = aiNiwoShelieChoicePlanningContext(request, m_room, player);
     if (context.isEmpty()) return;
     EngineRuntimeContextScope engineScope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     ResponseNativeScope responseScope(m_room, player, CardUseStruct::CARD_USE_REASON_PLAY, QString());
-    if (aiRound28NiwoResponseQuestion(request,m_room,player)) {
+    if (aiNiwoResponseQuestion(request,m_room,player)) {
         request.readonlyParentConversionPolicy=request.conversionPolicy;
         request.readonlyParentSkillActions=request.skillActions;
     }
@@ -8787,46 +8536,46 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
         }
     }
     projectAIStrategyRequest(request, m_room, player);
-    projectAIRound39Wendao(request, m_room, player);
-    projectAIRound40TargetHistory(request, m_room, player);
+    projectAIKeqiwendao(request, m_room, player);
+    projectAITargetHistory(request, m_room, player);
     projectAIStrategyResponseContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound24Response(request, m_room, player, QVariant(), request.choiceOptions.context);
+    projectAIStrategyHuanshiKanyuResponse(request, m_room, player, QVariant(), request.choiceOptions.context);
     projectAIStrategyRetrialContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIConstructionContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound21PlanningContext(request, m_room, player,
+    projectAIJiePackagePlanningContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24FeiDIYContext(request, m_room, player,
+    projectAIFeiDIYContext(request, m_room, player,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24ChoiceContext(request, m_room, player);
-    projectAIRound25ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIGuoChoiceContext(request, m_room, player);
+    projectAIOlddiyKeguibaoChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAISRkillChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound27ChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIOverseasChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound25Response(request, m_room, player, request.choiceOptions.context);
-    projectAIRound25OriginalContext(request, m_room, player, QVariant(),
+    projectAIStrategyOlStandardResponse(request, m_room, player, request.choiceOptions.context);
+    projectAITransformationOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26OriginalContext(request, m_room, player, QVariant(),
+    projectAILordExOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIMountainrumourPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound28PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIFcDIYPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); },
         [](const Card *card, int, const QString &) { return publicDecisionCard(card); });
-    projectAIRound27PlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIFcHuanshiPlanningContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound21ChoiceContext(request, m_room, player, request.choiceOptions.context,
+    projectAIMeowTianxiangChoiceContext(request, m_room, player, request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound22OlClanPlanContext(request, m_room, player);
-    projectAIRound22ChoiceContext(request, m_room, player, request.choiceOptions.context,
+    projectAIOlClanPlanContext(request, m_room, player);
+    projectAIMeowLiuliChoiceContext(request, m_room, player, request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound22OlClanObservations(request, m_room, player, QVariant(), request.choiceOptions.context,
+    projectAIStrategyOlClanObservations(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyYCZH2017(request, m_room, player, [&](const Card *card) {
         return publicDecisionCard(card, request.choiceOptions.reason != "funan");
@@ -8837,7 +8586,7 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     }
     if (kind == AIRequest::Discard && options.reason == "bunkasai")
         projectDecisionContext(player, QVariant(), request);
-    projectAIRound24OriginalContext(request, m_room, player, QVariant(),
+    projectAIFormationOriginalContext(request, m_room, player, QVariant(),
         [](const Card *card) { return publicDecisionCard(card); });
     if ((kind == AIRequest::PlayersChosen && (options.reason == "mobilebenxi" || options.reason == "fanyin"))
         || (kind == AIRequest::PlayerChosen && (options.reason == "jincanmou" || options.reason == "yb_zhuzhan2" || options.reason == "yb_fujia2" || options.reason == "ov_zenhui" || options.reason == "ov_qirang" || options.reason == "ov_yizhu" || options.reason == "ov_ronggui" || options.reason == "ov_lihuo"))
@@ -8849,7 +8598,7 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     if (request.choiceOptions.context.contains("round27_choice"))
         request.worldView.decisionContext.insert("round27_choice", request.choiceOptions.context.value("round27_choice"));
     request.worldView.strategyFacts.insert("original_guanxing_flag_write",
-        request.kind==AIRequest::Guanxing && aiRound35OriginalQuestion(request));
+        request.kind==AIRequest::Guanxing && aiOriginalHegemonyQuestion(request));
     request.worldView.strategyFacts.insert("round25_cixiao_speech",
         request.kind == AIRequest::PlayerChosen && request.choiceOptions.reason == "cixiao"
         && player && player->hasSkill("cixiao"));
@@ -8857,30 +8606,30 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     // the existing finite owner property after the actual Choulve question is known.
     if (request.kind == AIRequest::PlayerChosen && request.choiceOptions.reason == "choulve"
         && request.choiceOptions.question == "askForPlayerChosen")
-        projectAIRound49OwnerNames(request, m_room, player);
-    projectAIRound42Liehou(request, m_room, player);
-    projectAIRound43Qingsi(request, m_room, player);
-    projectAIRound47EQinyin(request, m_room, player);
-    projectAIRound49ChoiceProperties(request, m_room, player);
-    projectAIRound49Yitian(request, m_room, player);
-    projectAIRound49Bozhi(request,m_room,player);
-    projectAIRound49MaotuYinhu(request,m_room,player);
-    projectAIRound49hPlanning(request,m_room,player);
-    projectAIRound49nPlanning(request,m_room,player);
-    projectAIRound49pPlanning(request,m_room,player);
-    projectAIRound49oPlanning(request,m_room,player);
-    projectAIRound49gPlanning(request,m_room,player);
-    projectAIRound49fPlanning(request,m_room,player);
-    projectAIRound49ePlanning(request,m_room,player);
-    projectAIRound49dPlanning(request,m_room,player);
-    projectAIRound49cPlanning(request,m_room,player);
-    projectAIRound50YuriQuestion(request,m_room,player,[](const Card*card){return publicDecisionCard(card);});
-    projectAIRound50Planning(request,m_room,player);
-    projectAIRound51Collateral(request,m_room,player);
-    projectAIRound53Collateral(request,m_room,player);
-    projectAIRound52Rangyi(request,m_room,player);
-    projectAIRound45Newgenerals(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
-    projectAIRound50HTMSEvents(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
+        projectAIRecordedOwnerNames(request, m_room, player);
+    projectAILiehou(request, m_room, player);
+    projectAIQingsi(request, m_room, player);
+    projectAIQhfireQinyin(request, m_room, player);
+    projectAIQhstandardChoiceProperties(request, m_room, player);
+    projectAIYitianChoices(request, m_room, player);
+    projectAIBozhi(request,m_room,player);
+    projectAIMaotuYinhu(request,m_room,player);
+    projectAIBackpackShizongPlanning(request,m_room,player);
+    projectAIQiangwuPlanning(request,m_room,player);
+    projectAIXiaoyanPlanning(request,m_room,player);
+    projectAIZhuangpoPlanning(request,m_room,player);
+    projectAIYijiaPlanning(request,m_room,player);
+    projectAILuncePlanning(request,m_room,player);
+    projectAIKesxchunlaoPlanning(request,m_room,player);
+    projectAIChendancuiPlanning(request,m_room,player);
+    projectAIYikuxinChenlanjiaoPlanning(request,m_room,player);
+    projectAIYuriQuestion(request,m_room,player,[](const Card*card){return publicDecisionCard(card);});
+    projectAIYuxinChenfusuiPlanning(request,m_room,player);
+    projectAIBenxiCollateral(request,m_room,player);
+    projectAICollateralSlash(request,m_room,player);
+    projectAIRangyi(request,m_room,player);
+    projectAINewgenerals(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
+    projectAIHTMSEvents(request,m_room,player,[](const Card *card){return publicDecisionCard(card);});
     return request;
 }
 
@@ -8987,10 +8736,10 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
 {
     auto endpoint = m_room.externalAgent(player->objectName());
     if (!endpoint) return false;
-    invalidateAIRound29ChoicePriorities(m_room);
-    invalidateAIRound30TargetCache(m_room);
-    invalidateAIRound30TargetRevises(m_room);
-    invalidateAIRound44RangeDecision(m_room);
+    invalidateAIOverseasPriorities(m_room);
+    invalidateAITargetCache(m_room);
+    invalidateAITargetRevises(m_room);
+    invalidateAIRangeDecision(m_room);
     interruptAIChoiceContinuity(m_room);
     endpoint->begin(request);
     while (true) {
@@ -9047,7 +8796,7 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     if (externalAnswer(player, request, result, [&](const AIResult &answer) {
             if (!answer.handled || !answer.errorCode.isEmpty() || answer.decisionId != request.decisionId
                 || answer.stateRevision != request.stateRevision
-                || !aiRound44RangeRequestCurrent(m_room,request)) return false;
+                || !aiRangeRequestCurrent(m_room,request)) return false;
             AIResult resolved = answer;
             if (!resolveAIStrategyRandomChoice(m_room, player, request, resolved)) return false;
             result = resolved;
@@ -9077,12 +8826,12 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
             hinted = request;
             hinted.choiceOptions.context.insert(QStringLiteral("legacy_hook"), true);
         }
-        std::unique_ptr<AIRound44RangeRequestAlias> rangeHintAlias;
-        if(deferDefault)rangeHintAlias.reset(new AIRound44RangeRequestAlias(request,hinted));
+        std::unique_ptr<AIRangeRequestAlias> rangeHintAlias;
+        if(deferDefault)rangeHintAlias.reset(new AIRangeRequestAlias(request,hinted));
         result = m_room.roomRuntime()->ai().decideIsolated(deferDefault ? hinted : request);
         if (result.handled && result.errorCode.isEmpty()
             && result.decisionId == request.decisionId && result.stateRevision == request.stateRevision
-            && aiRound44RangeRequestCurrent(m_room,request,player)
+            && aiRangeRequestCurrent(m_room,request,player)
             && !resolveAIStrategyRandomChoice(m_room, player, request, result)) {
             result.handled = false;
             result.errorCode = QStringLiteral("AI_NATIVE_REJECTED");
@@ -9095,7 +8844,7 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
             && result.kind != AIResult::UseCard
             && result.decisionId == request.decisionId
             && result.stateRevision == request.stateRevision
-            && aiRound44RangeRequestCurrent(m_room,request,player);
+            && aiRangeRequestCurrent(m_room,request,player);
         if (!isolatedAnswer) {
             traceIsolatedDecision(request, result, "fallback");
             result = legacy(request);
@@ -9127,10 +8876,10 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     AIIdentityProjectionScope identityScope(m_room, viewer);
     QJsonObject &context = request.choiceOptions.context;
-    projectAIRound47OlClanScalar(request,m_room,viewer,data,context);
-    projectAIRound49ExtraPlanningContext(request,data);
-    projectAIRound53Mingfa(request,data);
-    projectAIRound53Lianzhan(request,m_room,viewer,data);
+    projectAIOlClanZujiewuSuit(request,m_room,viewer,data,context);
+    projectAICuixinContext(request,data);
+    projectAIMingfa(request,data);
+    projectAILianzhan(request,m_room,viewer,data);
     if (request.kind == AIRequest::Choice && request.choiceOptions.reason == "nyarz_yuheng"
         && data.metaType().id() == QMetaType::Int)
         context.insert("nyarz_yuheng_count", data.toInt());
@@ -9878,41 +9627,41 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyResponseContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound24Response(request, m_room, viewer, data, context);
-    projectAIStrategyRound31Response(request, m_room, viewer, data, context);
-    projectAIRound50HTMSEvents(request, m_room, viewer,
+    projectAIStrategyHuanshiKanyuResponse(request, m_room, viewer, data, context);
+    projectAIStrategyHaiyouResponse(request, m_room, viewer, data, context);
+    projectAIHTMSEvents(request, m_room, viewer,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound43GoddessContext(request, m_room, viewer, data, context,
+    projectAIGoddessContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyRetrialContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyChoiceContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound21OriginalRequest(request, m_room, viewer, data, context);
-    projectAIRound21PlanningContext(request, m_room, viewer,
+    projectAIStrategyKnownBothOriginalRequest(request, m_room, viewer, data, context);
+    projectAIJiePackagePlanningContext(request, m_room, viewer,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24FeiDIYContext(request, m_room, viewer,
+    projectAIFeiDIYContext(request, m_room, viewer,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24ChoiceContext(request, m_room, viewer);
-    projectAIRound25ChoiceContext(request, m_room, viewer, data, context,
+    projectAIGuoChoiceContext(request, m_room, viewer);
+    projectAIOlddiyKeguibaoChoiceContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26ChoiceContext(request, m_room, viewer, data, context,
+    projectAISRkillChoiceContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound27ChoiceContext(request, m_room, viewer, data, context,
+    projectAIOverseasChoiceContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound25Response(request, m_room, viewer, context);
-    projectAIRound25OriginalContext(request, m_room, viewer, data,
+    projectAIStrategyOlStandardResponse(request, m_room, viewer, context);
+    projectAITransformationOriginalContext(request, m_room, viewer, data,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26OriginalContext(request, m_room, viewer, data,
+    projectAILordExOriginalContext(request, m_room, viewer, data,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound25PlanningContext(request, m_room, viewer, data,
+    projectAIDmpkancollePlanningContext(request, m_room, viewer, data,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound26PlanningContext(request, m_room, viewer, data, context,
+    projectAIMountainrumourPlanningContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound28PlanningContext(request, m_room, viewer, data, context,
+    projectAIFcDIYPlanningContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); },
         [](const Card *card, int, const QString &) { return publicDecisionCard(card); });
-    projectAIRound27PlanningContext(request, m_room, viewer, data, context,
+    projectAIFcHuanshiPlanningContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); },
         [&](const Card *card) {
             // Exact current Huanshi judge face, evaluated from the prompted
@@ -9932,22 +9681,22 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
                 m_room, viewer, card, Card::MethodUse, AIRequest::Activate, QString(), budget)));
             return row;
         });
-    projectAIRound21ChoiceContext(request, m_room, viewer, context,
+    projectAIMeowTianxiangChoiceContext(request, m_room, viewer, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound22OlClanPlanContext(request, m_room, viewer);
-    projectAIRound22ChoiceContext(request, m_room, viewer, context,
+    projectAIOlClanPlanContext(request, m_room, viewer);
+    projectAIMeowLiuliChoiceContext(request, m_room, viewer, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound23ChoiceContext(request, m_room, viewer, data, context,
+    projectAIMeowLierenChoiceContext(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound22OlClanObservations(request, m_room, viewer, data, context,
+    projectAIStrategyOlClanObservations(request, m_room, viewer, data, context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound24OriginalContext(request, m_room, viewer, data,
+    projectAIFormationOriginalContext(request, m_room, viewer, data,
         [](const Card *card) { return publicDecisionCard(card); });
 // Insert near END of projectDecisionContext, after all existing Yingbian and
 // JiePackage tag producers (otherwise an older native value can overwrite it).
 // The returned source is always this viewer's observed CardUse, never foreign
 // canUse or private response vectors.
-const AIRound26UseProfile delegateProfile = [&](const Card *card) {
+const AIDelegateUseProfile delegateProfile = [&](const Card *card) {
     auto row = publicDecisionCard(card);
     row.insert("evaluation_only", true);
     row.insert("evaluation_owner", viewer->objectName());
@@ -9962,17 +9711,17 @@ const AIRound26UseProfile delegateProfile = [&](const Card *card) {
     row.insert("can_use_by_player",QJsonObject{{viewer->objectName(),values}});
     return row;
 };
-const AIRound26UseProfile constructedLihuoProfile = [&](const Card *card) {
+const AIDelegateUseProfile constructedLihuoProfile = [&](const Card *card) {
     auto row=delegateProfile(card);const auto face=lihuoPolicyCard(card);
     for(auto it=face.begin();it!=face.end();++it)row.insert(it.key(),it.value());
     row.insert("locked",viewer->isLocked(card));row.insert("using",card->hasFlag("using"));
     return row;
 };
-projectAIRound28LihuoQuestion(request,m_room,viewer,data);
-projectAIRound45InovationContext(request,m_room,viewer,data);
-projectAIRound26Delegates(request,m_room,viewer,delegateProfile,data);
+projectAILihuoQuestion(request,m_room,viewer,data);
+projectAIInovationContext(request,m_room,viewer,data);
+projectAIDelegates(request,m_room,viewer,delegateProfile,data);
 for(const QString &destination:{QString("JincanmouData"),QString("yb_zhuzhan2_data"),QString("yb_fujia2_data")}) {
-    const auto saved=restoreAIRound26DelegateUse(request,viewer,destination,delegateProfile,constructedLihuoProfile);
+    const auto saved=restoreAIDelegateUse(request,viewer,destination,delegateProfile,constructedLihuoProfile);
     if(!saved.value("present").toBool())continue; // native current-tag producer wins
     const bool known=saved.value("known")==true;
     if(destination=="JincanmouData") {
@@ -9989,12 +9738,12 @@ for(const QString &destination:{QString("JincanmouData"),QString("yb_zhuzhan2_da
 }
     // This finite question producer is independent of saved delegate uses.
     // In particular, !saved.present above must not skip current owner context.
-    projectAIRound45Newgenerals(request,m_room,viewer,[](const Card *card){return publicDecisionCard(card);});
-    projectAIRound50YuriQuestion(request,m_room,viewer,[](const Card*card){return publicDecisionCard(card);});
+    projectAINewgenerals(request,m_room,viewer,[](const Card *card){return publicDecisionCard(card);});
+    projectAIYuriQuestion(request,m_room,viewer,[](const Card*card){return publicDecisionCard(card);});
 
     // Earlier context producers rebuild the Yongjian object; retain the finite
     // history witness only after the final projection handoff.
-    projectAIRound40TargetHistory(request, m_room, viewer);
+    projectAITargetHistory(request, m_room, viewer);
 }
 
 bool AiDecisionCoordinator::decideSkillInvoke(ServerPlayer *player, const QString &skillName,
@@ -10056,7 +9805,7 @@ bool AiDecisionCoordinator::decideChoice(ServerPlayer *player, const QString &sk
     if (result.kind != AIResult::Answer) return false;
     if (result.action.userString.isEmpty()
         && !(result.originalEmptyChoice && request.kind==AIRequest::Choice && request.choiceOptions.question=="askForChoice"
-            && aiRound35OriginalQuestion(request)))
+            && aiOriginalHegemonyQuestion(request)))
         return false; // Ordinary refusal retains the existing call-site default.
     answer = result.action.userString;
     return commitAcceptedChoiceEffects(m_room, request, result);
@@ -10081,7 +9830,7 @@ bool AiDecisionCoordinator::decideSuit(ServerPlayer *player, const QString &reas
         return false;
     if (result.kind != AIResult::Answer) return false;
     if (result.originalSuitResult) {
-        if (!aiRound35OriginalQuestion(request) || result.originalSuitValue<int(Card::SuitToBeDecided)
+        if (!aiOriginalHegemonyQuestion(request) || result.originalSuitValue<int(Card::SuitToBeDecided)
             || result.originalSuitValue>int(Card::NoSuit)) return false;
         suit=Card::Suit(result.originalSuitValue);
         return commitAcceptedChoiceEffects(m_room,request,result);
@@ -10142,7 +9891,7 @@ bool AiDecisionCoordinator::decideGeneral(ServerPlayer *player, const QStringLis
         catalog.insert(name, row);
     }
     options.context.insert("general_catalog", catalog);
-    projectAIRound40OLGeneralContext(m_room,player,generals,options.context);
+    projectAIOLGeneralContext(m_room,player,generals,options.context);
     ServerPlayer *lord = m_room.getLord();
     if (lord && lord->getGeneral())
         options.context.insert("lord_general_kingdom", lord->getGeneral()->getKingdom());
@@ -10225,7 +9974,7 @@ bool AiDecisionCoordinator::decideDiscard(ServerPlayer *player, const QString &r
     if(fromIsolated && result.originalDiscardError) {
         // This exception is only a runtime-issued result of the exact fixed
         // source error fallback. It cannot authorize any Lua-selected IDs.
-        if(!aiRound35OriginalQuestion(request) || request.kind!=AIRequest::Discard
+        if(!aiOriginalHegemonyQuestion(request) || request.kind!=AIRequest::Discard
             || result.decisionId!=request.decisionId || result.stateRevision!=request.stateRevision
             || result.stateRevision!=m_room.roomRuntime()->stateRevision()
             || result.originalDiscardViewer!=player->objectName()
@@ -10476,13 +10225,13 @@ bool AiDecisionCoordinator::decidePlayerChosen(ServerPlayer *player,
                                                ServerPlayer *&choice) const
 {
     if (!player || !player->getAI()) return false;
-    std::unique_ptr<LuaRuntime::Binding> round56Binding;
-    std::unique_ptr<AIRound56ProjectionScope> round56Projection;
+    std::unique_ptr<LuaRuntime::Binding> projectionBinding;
+    std::unique_ptr<AIProjectionSourceScope> projectionScope;
     // The first complete source union belongs to the public Choulve question.
     // Other PlayerChosen policies keep their existing entry behavior.
     if (reason == "choulve") {
-        round56Binding.reset(new LuaRuntime::Binding(m_room.roomRuntime()->lua(),false));
-        round56Projection.reset(new AIRound56ProjectionScope(m_room,player,m_room.roomRuntime()->lua().rawState()));
+        projectionBinding.reset(new LuaRuntime::Binding(m_room.roomRuntime()->lua(),false));
+        projectionScope.reset(new AIProjectionSourceScope(m_room,player,m_room.roomRuntime()->lua().rawState()));
     }
     AIChoiceOptions options;
     options.reason = reason;
@@ -10531,7 +10280,7 @@ bool AiDecisionCoordinator::decidePlayerChosen(ServerPlayer *player,
         // Accept the isolated semantic pass without invoking legacy fallback;
         // do not change the separate native optional/default-choice contract.
         const bool committed=commitAcceptedChoiceEffects(m_room, request, result);
-        if(committed&&reason=="choulve")recordAIRound56ChoulveNativeAcceptance(m_room);
+        if(committed&&reason=="choulve")recordAIChoulveNativeAcceptance(m_room);
         return committed;
     }
     if (result.kind != AIResult::Answer || result.action.selectedTargetNames.size() != 1)
@@ -10545,7 +10294,7 @@ bool AiDecisionCoordinator::decidePlayerChosen(ServerPlayer *player,
                 nonHintStrategyEffects(result.strategyEffects), m_room.roomRuntime()->lua(), &error)) return false;
             if (!stageAcceptedAIStrategyChoiceHints(m_room, request, result.strategyEffects, target, &error)) return false;
             choice = target;
-            if(reason=="choulve")recordAIRound56ChoulveNativeAcceptance(m_room);
+            if(reason=="choulve")recordAIChoulveNativeAcceptance(m_room);
             return true;
         }
     }
@@ -10737,7 +10486,7 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
         const AIResult result = m_room.roomRuntime()->ai().decideIsolated(request);
         traceIsolatedDecision(request, result, "proposed-response");
         if(result.hasOriginalResponseWire) {
-            const auto source=commitAIRound36OriginalResponseWire(m_room,player,request,result,[&](){
+            const auto source=commitAIOriginalResponseWire(m_room,player,request,result,[&](){
                 QString error;
                 return m_room.roomRuntime()->ai().commitStrategyEffects(request.worldView,
                     result.strategyEffects,m_room.roomRuntime()->lua(),&error);
@@ -10753,7 +10502,7 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
         if (result.handled && result.errorCode.isEmpty() && result.kind == AIResult::Pass
             && request.choiceOptions.optional && result.decisionId == request.decisionId
             && result.stateRevision == request.stateRevision
-            && aiRound44RangeRequestCurrent(m_room,request,player)) {
+            && aiRangeRequestCurrent(m_room,request,player)) {
             QString effectsError;
             if (!m_room.roomRuntime()->ai().commitStrategyEffects(request.worldView, result.strategyEffects,
                     m_room.roomRuntime()->lua(), &effectsError)) return nullptr;
@@ -10792,7 +10541,7 @@ const Card *AiDecisionCoordinator::responseCard(ServerPlayer *player, const AIRe
         return nullptr;
     if (result.decisionId != request.decisionId
         || result.stateRevision != request.stateRevision
-        || !aiRound44RangeRequestCurrent(m_room,request,player))
+        || !aiRangeRequestCurrent(m_room,request,player))
         return nullptr;
     const auto rescueProhibited = [&](const Card *card) {
         if (request.choiceOptions.question != QStringLiteral("askForSinglePeach")) return false;
@@ -10876,9 +10625,9 @@ const Card *AiDecisionCoordinator::responseCard(ServerPlayer *player, const AIRe
         // not an @@ pattern match or a virtual/ViewAs replacement.
         EngineRuntimeContextScope engineContext(*Sanguosha,&m_room);
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
-        return consumeAIRound47FengyiPhysical(m_room,request,player,cardId);
+        return consumeAIFengyiPhysical(m_room,request,player,cardId);
     }
-    const bool danlvePhysical=authorizeAIRound45DanlvePhysical(m_room,request,player,cardId);
+    const bool danlvePhysical=authorizeAIDanlvePhysical(m_room,request,player,cardId);
     if (!danlvePhysical && !request.choiceOptions.cardIds.contains(cardId)) return nullptr;
     if (!danlvePhysical && !player->handCards().contains(cardId)) {
         bool equipped = false;
@@ -10941,7 +10690,7 @@ AIRequest AiDecisionCoordinator::makeResponseRequest(ServerPlayer *player,
     projectAIStrategyRequest(request, m_room, player);
     projectAIStrategyResponseContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIStrategyRound24Response(request, m_room, player, QVariant(), request.choiceOptions.context);
+    projectAIStrategyHuanshiKanyuResponse(request, m_room, player, QVariant(), request.choiceOptions.context);
     projectAIStrategyRetrialContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
     projectAIStrategyChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
@@ -10949,10 +10698,10 @@ AIRequest AiDecisionCoordinator::makeResponseRequest(ServerPlayer *player,
     projectAIStrategyYCZH2017(request, m_room, player, [&](const Card *card) {
         return publicDecisionCard(card, request.choiceOptions.reason != "funan");
     });
-    projectAIStrategyRound21Response(request, m_room, player, request.choiceOptions.context);
-    projectAIRound35TrustCardDefault(request, m_room, player);
-    projectAIRound49Xinhuo(request, m_room, player);
-    projectAIRound49Guhuo(request, m_room, player);
+    projectAIStrategyYinmengResponse(request, m_room, player, request.choiceOptions.context);
+    projectAITrustCardDefault(request, m_room, player);
+    projectAIQhfireXinhuo(request, m_room, player);
+    projectAIQhwindGuhuo(request, m_room, player);
     return request;
 }
 
@@ -10999,7 +10748,7 @@ const Card *AiDecisionCoordinator::decideNullification(ServerPlayer *player, con
         {"positive", positive}};
     projectAIStrategyChoiceContext(request, m_room, player, QVariant(), request.choiceOptions.context,
         [](const Card *card) { return publicDecisionCard(card); });
-    projectAIRound33AmazingGrace(request, m_room, player, trick, from, to);
+    projectAIAmazingGrace(request, m_room, player, trick, from, to);
     request.choiceOptions.defaultChoice = positive ? QStringLiteral("positive")
                                                    : QStringLiteral("negative");
     request.choiceOptions.hasDefaultChoice = true;
@@ -11041,7 +10790,7 @@ const Card *AiDecisionCoordinator::decidePindian(ServerPlayer *player, ServerPla
             }
         if (!target.isEmpty()) request.choiceOptions.context.insert("mizhao_pindian_target", target);
     }
-    projectAIRound41SkillFlagQuestion(request, m_room, player);
+    projectAIPublicSkillFlagQuestion(request, m_room, player);
     return decideResponse(player, request, QStringLiteral("askForPindian"),
         [ai, requestor, &reason]() { return ai->askForPindian(requestor, reason); });
 }

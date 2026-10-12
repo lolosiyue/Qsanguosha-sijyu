@@ -1,8 +1,8 @@
 #include "skill-generated-card.h"
-#include "ai-strategy-round47b-fate-receipt.h"
+#include "ai-strategy/anime.h"
 #include "skill-runtime-coordinator.h"
-#include "ai-strategy-round33-planning.h"
-#include "ai-strategy-yczh2016.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/official.h"
 
 #include "engine.h"
 #include "protocol/skill-instance-message.h"
@@ -1090,8 +1090,8 @@ SkillInstanceRef SkillRuntimeCoordinator::resolveSkillInstanceRootRef(
 bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
 {
     use.physicalEquipSource = PhysicalEquipSource(); // Original native entry reset applies to AI proofs too.
-    const int round33 = AIRound33PhysicalUseAccess::validate(m_room,use);
-    if (round33 >= 0) return round33 == 1; // No proof: original human/legacy path below is unchanged.
+    const int zhaobingProof = AIZhaobingPhysicalUseAccess::validate(m_room,use);
+    if (zhaobingProof >= 0) return zhaobingProof == 1; // No proof: original human/legacy path below is unchanged.
     if (!use.card || !use.from)
         return false;
     if (!use.card->appliedPhysicalEffectSource().isEmpty()) {
@@ -1282,7 +1282,7 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
             foreach (ServerPlayer *target, use.to)
                 request.selectedTargetNames << target->objectName();
         }
-        if (!AIRound47FateUseAccess::bind(m_room,use,request)) return false;
+        if (!AIFateUseAccess::bind(m_room,use,request)) return false;
         const Card *serverCard = m_room.resolveActiveSkillRequest(use.from,
                                                                   activeSkill,
                                                                   request);

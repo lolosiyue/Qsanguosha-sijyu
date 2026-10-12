@@ -1,5 +1,5 @@
 #include "player-ui-state-builder.h"
-#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy/native-registry.h"
 #include "room-runtime.h"
 
 #include "engine.h"
@@ -80,7 +80,7 @@ void PlayerUIStateBuilder::buildSkillDescriptions(PlayerUIState &state,
         if (instance.source != SourceHelper) {
             // Exact lexical query only: ends before usage providers or UI
             // publication. All registered validity effects are proved first.
-            AIRound56SkillValidityScope validitySource(const_cast<Room &>(room),
+            AISkillValidityScope validitySource(const_cast<Room &>(room),
                 const_cast<ServerPlayer *>(&player), const_cast<Room &>(room).roomRuntime()->lua().rawState());
             state.skillValidity.insert(key, !player.isSkillInvalid(skill, instance.instanceID));
         }

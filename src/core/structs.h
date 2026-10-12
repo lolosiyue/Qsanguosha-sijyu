@@ -3,10 +3,10 @@
 
 class Card;
 struct CardUseStruct;
-class AIRound33PhysicalUseProof;
-class AIRound33PhysicalUseAccess;
-class AIRound47FateUseProof;
-class AIRound47FateUseAccess;
+class AIZhaobingPhysicalUseProof;
+class AIZhaobingPhysicalUseAccess;
+class AIFateUseProof;
+class AIFateUseAccess;
 
 #include "skill-instance-types.h"
 #include "serverplayer.h"
@@ -232,11 +232,11 @@ struct CardUseStruct {
 
 private:
     friend class Room;
-    friend class AIRound33PhysicalUseAccess;
-    friend class AIRound47FateUseAccess;
-    std::shared_ptr<const AIRound47FateUseProof> m_aiRound47FateUse;
+    friend class AIZhaobingPhysicalUseAccess;
+    friend class AIFateUseAccess;
+    std::shared_ptr<const AIFateUseProof> m_aiFateUse;
     // AI-only immutable proof: never parsed, serialized, or exposed by SWIG.
-    std::shared_ptr<const AIRound33PhysicalUseProof> m_aiRound33PhysicalUse;
+    std::shared_ptr<const AIZhaobingPhysicalUseProof> m_aiZhaobingPhysicalUse;
     // Server continuation identity is copied internally but never parsed from a request.
     bool m_acceptedSkillEffectCard = false;
     void replaceCard(const Card *newCard, Card *ownedCard = nullptr);

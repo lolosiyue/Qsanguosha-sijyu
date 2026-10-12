@@ -1,5 +1,4 @@
-#include "ai-strategy-round56-async.h"
-#include "ai-strategy-round56-bootstrap-source.h"
+#include "ai-strategy/runtime.h"
 #include "lua-runtime.h"
 #include "card-lifetime-manager.h"
 
@@ -27,7 +26,7 @@
 
 // Defined beside the exact compiled SWIG descriptor arrays. It never inspects
 // a current namespace value and cannot independently mint a source origin.
-bool aiRound56NativeNamespaceBirthDescriptors() noexcept;
+bool aiNativeNamespaceBirthDescriptors() noexcept;
 
 namespace {
 
@@ -510,7 +509,7 @@ void LuaRuntime::notifyNativeNamespaceBirth() noexcept
     // this fixed bootstrap proof; do not infer anything from its current state.
     return;
 #endif
-    if (!observer || !m_state || !aiRound56NativeNamespaceBirthDescriptors()
+    if (!observer || !m_state || !aiNativeNamespaceBirthDescriptors()
         || !lua_checkstack(m_state, 4)) return;
     const int top = lua_gettop(m_state);
     lua_pushglobaltable(m_state);
@@ -956,8 +955,8 @@ void LuaRuntime::notifyUnclassifiedLuaEntry(lua_State *state,int asyncKind) noex
 {
     if (m_bootstrapAsyncObserver) m_bootstrapAsyncObserver(state, asyncKind);
     if (asyncKind==4 && InstructionBudgetScope::matches(state)) return;
-    if (acceptAIRound56BootstrapAsyncEntry(state,asyncKind)
-        || acceptAIRound56AsyncEntry(state,asyncKind)) return;
+    if (acceptAIBootstrapAsyncEntry(state,asyncKind)
+        || acceptAIAsyncEntry(state,asyncKind)) return;
     if (m_protectedEntryObserver)
         m_protectedEntryObserver(state, -1);
 }
@@ -980,7 +979,7 @@ int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
         if (runtime->m_bootstrapAsyncObserver)
             runtime->m_bootstrapAsyncObserver(state,
                 argumentCount >= 0 && argumentCount < lua_gettop(state) ? -argumentCount - 1 : 0);
-        observeAIRound56AsyncProtectedEntry(state);
+        observeAIAsyncProtectedEntry(state);
         if (runtime->m_protectedEntryObserver) {
             const bool inspectionStack = lua_checkstack(state, 8192) != 0;
             runtime->m_protectedEntryObserver(state, inspectionStack ? argumentCount : -1);

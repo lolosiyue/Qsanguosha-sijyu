@@ -489,16 +489,16 @@ TaiwanYJCMPackage::TaiwanYJCMPackage()
 ADD_PACKAGE(TaiwanYJCM)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_tw_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_tw_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(Yinqin)), 2u);
- types.recordActivateSource<Yinqin>(4070u); AI_R56_REQUIRE_DECLARATION(Yinqin, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Yinqin>(4070u); AI_NATIVE_REQUIRE_DECLARATION(Yinqin, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(TWBaobian)), 2u);
- types.recordActivateSource<TWBaobian>(4071u); AI_R56_REQUIRE_DECLARATION(TWBaobian, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<TWBaobian>(4071u); AI_NATIVE_REQUIRE_DECLARATION(TWBaobian, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Tijin)), 2u);
- types.recordActivateSource<Tijin>(4072u); AI_R56_REQUIRE_DECLARATION(Tijin, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Tijin>(4072u); AI_NATIVE_REQUIRE_DECLARATION(Tijin, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Xiaolian)), 2u);
- types.recordActivateSource<Xiaolian>(4073u); AI_R56_REQUIRE_DECLARATION(Xiaolian, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Xiaolian>(4073u); AI_NATIVE_REQUIRE_DECLARATION(Xiaolian, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(XiaolianDist)), 3u);
- types.recordActivateSource<XiaolianDist>(4074u); AI_R56_REQUIRE_DECLARATION(XiaolianDist, getBaseAmount, DistanceSkillV2);
+ types.recordActivateSource<XiaolianDist>(4074u); AI_NATIVE_REQUIRE_DECLARATION(XiaolianDist, getBaseAmount, DistanceSkillV2);
 }

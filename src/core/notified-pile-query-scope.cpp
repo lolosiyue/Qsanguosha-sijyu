@@ -1,5 +1,5 @@
 #include "notified-pile-query-scope.h"
-#include "ai-strategy-projection.h"
+#include "ai-strategy/owner.h"
 #include "engine.h"
 #include "room.h"
 #include "room-runtime.h"

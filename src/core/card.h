@@ -260,16 +260,16 @@ public:
     // claim about QObject::objectName, virtual dispatch, lookup or live values.
     // 1: constructor-empty subcards; 2: constructor-empty change-card edges;
     // 4: constructor-original m_suit; 8: m_number; 16: m_id. Only clear bits.
-    unsigned aiRound56OriginalRecursiveFieldOrigins() const noexcept;
-    quint64 aiRound56IdWriteEpoch() const noexcept;
-    quint64 aiRound56MaterialWriteEpoch() const noexcept;
-    quint64 aiRound56ScalarWriteEpoch() const noexcept;
-    bool aiRound56OriginalPhysicalDefinitionMaterialsOrigin() const noexcept;
-    bool aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept;
+    unsigned aiOriginalRecursiveFieldOrigins() const noexcept;
+    quint64 aiIdWriteEpoch() const noexcept;
+    quint64 aiMaterialWriteEpoch() const noexcept;
+    quint64 aiScalarWriteEpoch() const noexcept;
+    bool aiOriginalPhysicalDefinitionMaterialsOrigin() const noexcept;
+    bool aiOriginalPhysicalDefinitionIndex(int *index) const noexcept;
     // ID-only continuity through the registry's own repeated assignment. The
     // older first-write/material receipt above remains strictly unchanged.
-    bool aiRound56PhysicalDefinitionIdIndex(int *index) const noexcept;
-    void retireAIRound56RecursiveFieldOrigins(unsigned fields) const noexcept;
+    bool aiPhysicalDefinitionIdIndex(int *index) const noexcept;
+    void retireAIRecursiveFieldOrigins(unsigned fields) const noexcept;
     const QList<const Card *> &getChangeCards() const noexcept { return change_cards; }
     void clearChangeCards() const;
 
@@ -311,19 +311,19 @@ private:
     friend struct CardResponseStruct;
     void appendChangeCardForEvent(const Card *card);
     mutable QList<const Card *> change_cards;
-    mutable std::atomic<unsigned> m_aiRound56RecursiveFieldOrigins{31u};
-    mutable std::atomic<quint64> m_aiRound56IdWriteEpoch{0};
-    mutable std::atomic<quint64> m_aiRound56MaterialWriteEpoch{0};
-    mutable std::atomic<quint64> m_aiRound56ScalarWriteEpoch{0};
-    std::atomic<int> m_aiRound56PhysicalDefinitionIndex{-2};
-    std::atomic<quint64> m_aiRound56DefinitionIdSourceEpoch{0};
+    mutable std::atomic<unsigned> m_aiRecursiveFieldOrigins{31u};
+    mutable std::atomic<quint64> m_aiIdWriteEpoch{0};
+    mutable std::atomic<quint64> m_aiMaterialWriteEpoch{0};
+    mutable std::atomic<quint64> m_aiScalarWriteEpoch{0};
+    std::atomic<int> m_aiPhysicalDefinitionIndex{-2};
+    std::atomic<quint64> m_aiDefinitionIdSourceEpoch{0};
     friend class Engine;
     friend class RoomDefinitionRegistry;
-    void aiRound56RecordPhysicalDefinitionIndexSource(int index) noexcept;
-    void aiRound56ReassertPhysicalDefinitionId(int index);
+    void aiRecordPhysicalDefinitionIndexSource(int index) noexcept;
+    void aiReassertPhysicalDefinitionId(int index);
     friend class Room;
     friend class RoomManagedState;
-    friend class AIRound47XiedouObservation;
+    friend class AIXiedouObservation;
     // Native-only observation epoch, never copied as gameplay card state.
     mutable quint64 m_aiXiedouNosJiefanEpoch = 0;
     friend class WrappedCard;

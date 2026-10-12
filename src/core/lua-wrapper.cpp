@@ -761,4 +761,4 @@ LuaScenarioRule::LuaScenarioRule(Scenario *scenario)
 }
 
 
-#include "ai-strategy-round56-lua-skill-factory-source.inc"
+#include "ai-strategy/factory-source-lua-skill.inc"

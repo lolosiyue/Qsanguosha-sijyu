@@ -657,8 +657,8 @@ bool TakeoverRule::restore(Room *room) const
 }
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_scenario_takeover_scenario_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_scenario_takeover_scenario_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(TakeoverRule)), 2u);
- types.recordActivateSource<TakeoverRule>(2930u); AI_R56_REQUIRE_DECLARATION(TakeoverRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(TakeoverRule, getMaxUsageLimit, Skill);
+ types.recordActivateSource<TakeoverRule>(2930u); AI_NATIVE_REQUIRE_DECLARATION(TakeoverRule, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(TakeoverRule, getMaxUsageLimit, Skill);
 }

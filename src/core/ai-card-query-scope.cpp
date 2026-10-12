@@ -1,6 +1,6 @@
 #include "ai-card-query-scope.h"
 namespace { thread_local bool originalCardQuerySource = true; }
-bool hasAIRound56CardQueryOriginalSourceOrigin() noexcept { return originalCardQuerySource; }
+bool hasAICardQueryOriginalSourceOrigin() noexcept { return originalCardQuerySource; }
 thread_local AICardQueryScope *AICardQueryScope::s_current = nullptr;
 AICardQueryScope::AICardQueryScope(const Room *room, const RoomState *state, int id, Card *shadow,
                                  ServerPlayer *owner, int place)

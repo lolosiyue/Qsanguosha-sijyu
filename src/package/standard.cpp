@@ -1047,22 +1047,22 @@ StandardPackage::StandardPackage()
 ADD_PACKAGE(Standard)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_standard_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_standard_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(horseSkill)), 3u);
- types.recordActivateSource<horseSkill>(2084u); AI_R56_REQUIRE_DECLARATION(horseSkill, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(horseSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(horseSkill, getMaxUsageLimit, Skill);
+ types.recordActivateSource<horseSkill>(2084u); AI_NATIVE_REQUIRE_DECLARATION(horseSkill, getBaseAmount, DistanceSkillV2); AI_NATIVE_REQUIRE_DECLARATION(horseSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(horseSkill, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleProhibit)), 3u);
- types.recordActivateSource<GameRuleProhibit>(2085u); AI_R56_REQUIRE_DECLARATION(GameRuleProhibit, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleProhibit, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleProhibit>(2085u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleProhibit, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleProhibit, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleMaxCards)), 3u);
- types.recordActivateSource<GameRuleMaxCards>(2086u); AI_R56_REQUIRE_DECLARATION(GameRuleMaxCards, getBaseAmount, MaxCardsSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleMaxCards, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleMaxCards, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleMaxCards>(2086u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleMaxCards, getBaseAmount, MaxCardsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleMaxCards, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleMaxCards, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleAttackRange)), 3u);
- types.recordActivateSource<GameRuleAttackRange>(2087u); AI_R56_REQUIRE_DECLARATION(GameRuleAttackRange, getBaseAmount, AttackRangeSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleAttackRange, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleAttackRange, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleAttackRange>(2087u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleAttackRange, getBaseAmount, AttackRangeSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleAttackRange, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleAttackRange, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleSlashBuff)), 3u);
- types.recordActivateSource<GameRuleSlashBuff>(2088u); AI_R56_REQUIRE_DECLARATION(GameRuleSlashBuff, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleSlashBuff, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleSlashBuff, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleSlashBuff>(2088u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleSlashBuff, getBaseAmount, TargetModSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleSlashBuff, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleSlashBuff, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleDistanceFrom)), 3u);
- types.recordActivateSource<GameRuleDistanceFrom>(2089u); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceFrom, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceFrom, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceFrom, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleDistanceFrom>(2089u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceFrom, getBaseAmount, DistanceSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceFrom, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceFrom, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleDistanceTo)), 3u);
- types.recordActivateSource<GameRuleDistanceTo>(2090u); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceTo, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceTo, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleDistanceTo, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleDistanceTo>(2090u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceTo, getBaseAmount, DistanceSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceTo, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleDistanceTo, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(GameRuleState)), 2u);
- types.recordActivateSource<GameRuleState>(2091u); AI_R56_REQUIRE_DECLARATION(GameRuleState, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(GameRuleState, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(GameRuleState, getMaxUsageLimit, Skill);
+ types.recordActivateSource<GameRuleState>(2091u); AI_NATIVE_REQUIRE_DECLARATION(GameRuleState, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GameRuleState, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GameRuleState, getMaxUsageLimit, Skill);
 }

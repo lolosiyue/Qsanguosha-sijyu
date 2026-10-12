@@ -1,7 +1,6 @@
-#include "ai-strategy-round56-maxcards.h"
-#include "ai-strategy-round56-factory-source.h"
-#include "ai-strategy-round47-xufa-query-scope.h"
-#include "ai-strategy-round45-continuity.h"
+#include "ai-strategy/native-registry.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/runtime.h"
 #include "ai-owner-range-query-scope.h"
 #include "engine.h"
 #include <QMutexLocker>
@@ -1393,7 +1392,7 @@ void Engine::addPackage(Package*package)
         { QMutexLocker lock(&globalFactoryRegistrySource().mutex); physicalDefinitionIndex=cards.length(); }
         // Keep the original virtual setup outside the container lock.
         card->setId(physicalDefinitionIndex);
-        card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
+        card->aiRecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
         const int registeredId=card->getId();
         { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
           cards << card;
@@ -1573,7 +1572,7 @@ void Engine::setPackage(Package*package)
           physicalDefinitionIndex=cards.length();
         }
         card->setId(physicalDefinitionIndex);
-        card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
+        card->aiRecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
         const int registeredId=card->getId();
         { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
           cards << card;
@@ -2044,7 +2043,7 @@ Card*Engine::cloneCard(const Card*card) const
 
 // Native-only factory metadata proof. Never constructs a card or calls an
 // authored clone. All alternatives are public registered definitions.
-bool Engine::aiRound56StandardCloneFactory(const QString &name) const
+bool Engine::aiStandardCloneFactory(const QString &name) const
 {
  QHash<QString, const Card *> namedSnapshot;
  QHash<QString, const QMetaObject *> metaSnapshot;
@@ -2069,11 +2068,11 @@ bool Engine::aiRound56StandardCloneFactory(const QString &name) const
  const Card *c=runtime?runtime->cardTemplate(name):nullptr;
  if(!c)c=namedSnapshot.value(name,nullptr);
  const QMetaObject *expected=nullptr;const std::type_info *type=nullptr;
-#define R56_FACTORY(N,T) if(name==QStringLiteral(N)){expected=&T::staticMetaObject;type=&typeid(T);}
- R56_FACTORY("jink",Jink) R56_FACTORY("slash",Slash) R56_FACTORY("peach",Peach)
- R56_FACTORY("fire_slash",FireSlash) R56_FACTORY("thunder_slash",ThunderSlash) R56_FACTORY("analeptic",Analeptic)
- R56_FACTORY("dismantlement",Dismantlement) R56_FACTORY("ex_nihilo",ExNihilo)
-#undef R56_FACTORY
+#define NATIVE_CARD_FACTORY_CASE(N,T) if(name==QStringLiteral(N)){expected=&T::staticMetaObject;type=&typeid(T);}
+ NATIVE_CARD_FACTORY_CASE("jink",Jink) NATIVE_CARD_FACTORY_CASE("slash",Slash) NATIVE_CARD_FACTORY_CASE("peach",Peach)
+ NATIVE_CARD_FACTORY_CASE("fire_slash",FireSlash) NATIVE_CARD_FACTORY_CASE("thunder_slash",ThunderSlash) NATIVE_CARD_FACTORY_CASE("analeptic",Analeptic)
+ NATIVE_CARD_FACTORY_CASE("dismantlement",Dismantlement) NATIVE_CARD_FACTORY_CASE("ex_nihilo",ExNihilo)
+#undef NATIVE_CARD_FACTORY_CASE
  if(!expected)return false;
  // Exact outer type makes the following metaObject/getPackage dispatch fixed.
  // Rejecting a heg overlay is conservative: normal cloneCard would fall back.
@@ -2158,7 +2157,7 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 		else if(name!=card->getClassName())
 			card->setObjectName(name);
 	}
-    AIRound56CardRulesCloneBirth(this,card,name);
+    AICardRulesCloneBirth(this,card,name);
     return card;
 }
 
@@ -2177,7 +2176,7 @@ SkillCard*Engine::cloneSkillCard(const QString &name) const
 		card=qobject_cast<SkillCard*>(metaSnapshot.value(name)->newInstance());
     else if (namedSnapshot.contains(name))
 		card=qobject_cast<SkillCard*>(namedSnapshot.value(name)->metaObject()->newInstance());
-    AIRound56ZunweiSkillCloneBirth(this,card,name);
+    AIZunweiSkillCloneBirth(this,card,name);
 	return card;
 }
 
@@ -3108,7 +3107,7 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
 
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
     if (!card) return nullptr;
@@ -3160,7 +3159,7 @@ const ProhibitPindianSkill*Engine::isPindianProhibited(const Player*from, const 
 
 const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card, Card::HandlingMethod method, bool isHandcard) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true,false,false,true);
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true,false,false,true);
     // Immutable per-call dispatch avoids shared lazy map writes before lua_mutex.
     QString method_name;
     switch (method) {
@@ -3450,7 +3449,7 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     // Distance ignores cards; hand refreshes recalculate each Slash against every player.
     TargetModMemoScope *memo = TargetModMemoScope::active();
@@ -3495,7 +3494,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
 int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCardsCount type) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (target && target->inherits("ClientPlayer")) return 0;
@@ -3616,7 +3615,7 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
     if (!from || !card) return 0;
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
 
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
@@ -3740,7 +3739,7 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_correctSkillValidity);
     if (player && player->isClientPlayer()) {
         return true; 
@@ -3766,7 +3765,7 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
-    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
+    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     // Attack range depends only on the source; target selection asks again for each candidate.
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
@@ -3954,29 +3953,29 @@ bool Engine::setAiData(const QString &json) const
     return AiDataStore::write(json);
 }
 
-#include "ai-strategy-round56-card-metadata-types.inc"
+#include "ai-strategy/card-metadata-rows.inc"
 
 // Complete PUBLIC physical definition alternatives, before card/owner selection.
 // This proves reviewed implementation classes and original definition field/index
 // sources. Live holder ancestry and clone/construction effects need separate proof.
-bool Engine::aiRound56PublicPhysicalMetadataDefinitions(QString *why) const
+bool Engine::aiPublicPhysicalMetadataDefinitions(QString *why) const
 {
     const auto fail = [why](const char *message) {
         if (why) *why = QString::fromLatin1(message);
         return false;
     };
-    if (!hasAIRound56EngineSelfNullSourceOrigin())
+    if (!hasAIEngineSelfNullSourceOrigin())
         return fail("public metadata engine Self source origin unavailable");
     const auto known = [](const Card *definition, int publicIndex) {
         if (!definition) return true; // Sparse PUBLIC definition slot.
-        const unsigned mask = aiRound56CardMetadataSourceEffects(typeid(*definition));
+        const unsigned mask = aiCardMetadataSourceEffects(typeid(*definition));
         if ((mask & 3u) != 3u || (mask & 8u) != 0) return false;
         // Source registration fact + unchanged writer epoch; never getId().
         int assignedIndex = -1;
-        return definition->aiRound56OriginalPhysicalDefinitionIndex(&assignedIndex)
+        return definition->aiOriginalPhysicalDefinitionIndex(&assignedIndex)
             && assignedIndex == publicIndex
-            && definition->aiRound56OriginalPhysicalDefinitionMaterialsOrigin()
-            && (definition->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+            && definition->aiOriginalPhysicalDefinitionMaterialsOrigin()
+            && (definition->aiOriginalRecursiveFieldOrigins() & 14u) == 14u;
     };
     // Include global fallback even when a runtime definition overlays it.
     QList<Card *> physicalSnapshot;
@@ -3995,17 +3994,17 @@ bool Engine::aiRound56PublicPhysicalMetadataDefinitions(QString *why) const
 // Exact patterns(true) getter family: objectName, getClassName, getPackage,
 // getTypeId. It reads no suit/material/change-card/flags, target policy or Self.
 // Full public registry source precedes every lookup; no selected card can grant.
-bool Engine::aiRound56PublicPatternMetadataDefinitions(Room &room,QString *why) const
+bool Engine::aiPublicPatternMetadataDefinitions(Room &room,QString *why) const
 {
     const auto fail=[why](const char *text){if(why)*why=QString::fromLatin1(text);return false;};
     auto *runtime=room.roomRuntime();
     if(this!=Sanguosha||!runtime||runtime->isClosing()||!runtime->lua().isCurrentThreadOwner()
-       ||currentRoomRuntime()!=runtime||!hasAIRound56GlobalFactoryMapOrigin(this)
+       ||currentRoomRuntime()!=runtime||!hasAIGlobalFactoryMapOrigin(this)
        ||!runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState()))
         return fail("patterns original global/Room catalogue source unavailable");
     const auto known=[](const Card *card){
         if(!card)return true; // Public sparse definition slot, preserved.
-        const unsigned mask=aiRound56CardMetadataSourceEffects(typeid(*card));
+        const unsigned mask=aiCardMetadataSourceEffects(typeid(*card));
         // Unknown implementations and WrappedCard delegations are not admitted.
         return (mask&1u)!=0&&(mask&8u)==0;
     };
@@ -4023,8 +4022,8 @@ bool Engine::aiRound56PublicPatternMetadataDefinitions(Room &room,QString *why) 
     // Its Room map is source-sealed and confined by this Game runtime binding.
     for(int id=0;id<getCardCount();++id)
         if(!known(getEngineCard(id)))return fail("patterns Room metadata implementation unavailable");
-    return hasAIRound56GlobalFactoryMapOrigin(this)
+    return hasAIGlobalFactoryMapOrigin(this)
         &&runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState());
 }
 
-#include "ai-strategy-round56-factory-source.inc"
+#include "ai-strategy/factory-source-inspect.inc"

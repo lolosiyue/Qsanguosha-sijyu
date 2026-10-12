@@ -1,5 +1,5 @@
 #include "gamerule.h"
-#include "ai-strategy-flag-lifecycle.h"
+#include "ai-strategy/owner.h"
 #include "hegemony-mode.h"
 #include <QScopeGuard>
 #include <QSet>
@@ -2574,8 +2574,8 @@ bool HegemonyRule::trigger(TriggerEvent event, Room *room, ServerPlayer *player,
 }
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_server_gamerule_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_server_gamerule_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(GameRule)), 2u);
  types.emplace(std::type_index(typeid(HulaoPassMode)), 2u);
  types.emplace(std::type_index(typeid(HegemonyRule)), 2u);

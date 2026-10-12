@@ -15,7 +15,7 @@
 #include "roomthread.h"
 #include "room-runtime.h"
 #include "room-definition-registry.h"
-#include "ai-strategy-round47-xiedou.h"
+#include "ai-strategy/inovation-ai.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QEvent>
 #include <QRegularExpression>
@@ -70,117 +70,117 @@ Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_g
 
 Card::~Card()
 {
-    retireAIRound56RecursiveFieldOrigins(31u);
+    retireAIRecursiveFieldOrigins(31u);
     globalCardLifetimeManager().removeChangeEdges(this);
 	globalCardLifetimeManager().releaseTags(this);
 	CardLifetimeManager::invalidateObservedCard(this);
 	change_cards.clear();
 }
 
-unsigned Card::aiRound56OriginalRecursiveFieldOrigins() const noexcept
+unsigned Card::aiOriginalRecursiveFieldOrigins() const noexcept
 {
-    return m_aiRound56RecursiveFieldOrigins.load(std::memory_order_acquire);
+    return m_aiRecursiveFieldOrigins.load(std::memory_order_acquire);
 }
 
-void Card::retireAIRound56RecursiveFieldOrigins(unsigned fields) const noexcept
+void Card::retireAIRecursiveFieldOrigins(unsigned fields) const noexcept
 {
-    m_aiRound56RecursiveFieldOrigins.fetch_and(~fields, std::memory_order_acq_rel);
+    m_aiRecursiveFieldOrigins.fetch_and(~fields, std::memory_order_acq_rel);
     if (fields & 12u) {
-        quint64 epoch = m_aiRound56ScalarWriteEpoch.load(std::memory_order_relaxed);
+        quint64 epoch = m_aiScalarWriteEpoch.load(std::memory_order_relaxed);
         const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiRound56ScalarWriteEpoch.compare_exchange_weak(
+        while (epoch != exhausted && !m_aiScalarWriteEpoch.compare_exchange_weak(
                    epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
     }
     if (fields & 1u) {
-        quint64 epoch = m_aiRound56MaterialWriteEpoch.load(std::memory_order_relaxed);
+        quint64 epoch = m_aiMaterialWriteEpoch.load(std::memory_order_relaxed);
         const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiRound56MaterialWriteEpoch.compare_exchange_weak(
+        while (epoch != exhausted && !m_aiMaterialWriteEpoch.compare_exchange_weak(
                    epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
     }
     if (fields & 16u) {
-        quint64 epoch = m_aiRound56IdWriteEpoch.load(std::memory_order_relaxed);
+        quint64 epoch = m_aiIdWriteEpoch.load(std::memory_order_relaxed);
         const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiRound56IdWriteEpoch.compare_exchange_weak(
+        while (epoch != exhausted && !m_aiIdWriteEpoch.compare_exchange_weak(
                    epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
     }
 }
 
-quint64 Card::aiRound56IdWriteEpoch() const noexcept
+quint64 Card::aiIdWriteEpoch() const noexcept
 {
-    return m_aiRound56IdWriteEpoch.load(std::memory_order_acquire);
+    return m_aiIdWriteEpoch.load(std::memory_order_acquire);
 }
 
-quint64 Card::aiRound56MaterialWriteEpoch() const noexcept
+quint64 Card::aiMaterialWriteEpoch() const noexcept
 {
-    return m_aiRound56MaterialWriteEpoch.load(std::memory_order_acquire);
+    return m_aiMaterialWriteEpoch.load(std::memory_order_acquire);
 }
 
-quint64 Card::aiRound56ScalarWriteEpoch() const noexcept
+quint64 Card::aiScalarWriteEpoch() const noexcept
 {
-    return m_aiRound56ScalarWriteEpoch.load(std::memory_order_acquire);
+    return m_aiScalarWriteEpoch.load(std::memory_order_acquire);
 }
 
-bool Card::aiRound56OriginalPhysicalDefinitionMaterialsOrigin() const noexcept
+bool Card::aiOriginalPhysicalDefinitionMaterialsOrigin() const noexcept
 {
     // Source setId cleared then appended the source index exactly once. This
     // is a single-index source receipt, NOT constructor-empty/current-empty.
-    return aiRound56OriginalPhysicalDefinitionIndex(nullptr)
-        && aiRound56MaterialWriteEpoch() == 1;
+    return aiOriginalPhysicalDefinitionIndex(nullptr)
+        && aiMaterialWriteEpoch() == 1;
 }
 
-void Card::aiRound56RecordPhysicalDefinitionIndexSource(int index) noexcept
+void Card::aiRecordPhysicalDefinitionIndexSource(int index) noexcept
 {
     // Only actual definition registration can call this. The first registration
     // must be the first identity writer; no earlier unknown attempt can heal.
     int neverAttempted = -2;
-    if (!m_aiRound56PhysicalDefinitionIndex.compare_exchange_strong(
+    if (!m_aiPhysicalDefinitionIndex.compare_exchange_strong(
             neverAttempted, -1, std::memory_order_acq_rel)) return;
-    if (index >= 0 && aiRound56IdWriteEpoch() == 1) {
-        m_aiRound56PhysicalDefinitionIndex.store(index, std::memory_order_release);
-        m_aiRound56DefinitionIdSourceEpoch.store(1, std::memory_order_release);
+    if (index >= 0 && aiIdWriteEpoch() == 1) {
+        m_aiPhysicalDefinitionIndex.store(index, std::memory_order_release);
+        m_aiDefinitionIdSourceEpoch.store(1, std::memory_order_release);
     }
 }
 
-bool Card::aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept
+bool Card::aiOriginalPhysicalDefinitionIndex(int *index) const noexcept
 {
-    const int source = m_aiRound56PhysicalDefinitionIndex.load(std::memory_order_acquire);
-    if (source < 0 || aiRound56IdWriteEpoch() != 1) return false;
+    const int source = m_aiPhysicalDefinitionIndex.load(std::memory_order_acquire);
+    if (source < 0 || aiIdWriteEpoch() != 1) return false;
     if (index) *index = source;
     return true;
 }
 
-bool Card::aiRound56PhysicalDefinitionIdIndex(int *index) const noexcept
+bool Card::aiPhysicalDefinitionIdIndex(int *index) const noexcept
 {
-    const int source = m_aiRound56PhysicalDefinitionIndex.load(std::memory_order_acquire);
-    const quint64 epoch = m_aiRound56DefinitionIdSourceEpoch.load(std::memory_order_acquire);
-    if (source < 0 || !epoch || epoch == ~quint64(0) || aiRound56IdWriteEpoch() != epoch)
+    const int source = m_aiPhysicalDefinitionIndex.load(std::memory_order_acquire);
+    const quint64 epoch = m_aiDefinitionIdSourceEpoch.load(std::memory_order_acquire);
+    if (source < 0 || !epoch || epoch == ~quint64(0) || aiIdWriteEpoch() != epoch)
         return false;
     if (index) *index = source;
     return true;
 }
 
-void Card::aiRound56ReassertPhysicalDefinitionId(int index)
+void Card::aiReassertPhysicalDefinitionId(int index)
 {
     int recorded = -1;
-    const bool continuous = aiRound56PhysicalDefinitionIdIndex(&recorded) && recorded == index;
-    const quint64 before = m_aiRound56DefinitionIdSourceEpoch.exchange(0, std::memory_order_acq_rel);
+    const bool continuous = aiPhysicalDefinitionIdIndex(&recorded) && recorded == index;
+    const quint64 before = m_aiDefinitionIdSourceEpoch.exchange(0, std::memory_order_acq_rel);
     // The actual registry writer still executes on all paths. Its source index,
     // not a current ID comparison, can continue an already-valid lineage only.
     // Retire before dispatch so failure/reentry/unknown ID writes never heal it.
     setId(index);
-    if (continuous && before && before < ~quint64(0) - 1 && aiRound56IdWriteEpoch() == before + 1)
-        m_aiRound56DefinitionIdSourceEpoch.store(before + 1, std::memory_order_release);
+    if (continuous && before && before < ~quint64(0) - 1 && aiIdWriteEpoch() == before + 1)
+        m_aiDefinitionIdSourceEpoch.store(before + 1, std::memory_order_release);
 }
 
 void Card::appendChangeCardForEvent(const Card *card)
 {
-    retireAIRound56RecursiveFieldOrigins(2u);
+    retireAIRecursiveFieldOrigins(2u);
     change_cards << card;
 }
 
 void Card::clearChangeCards() const
 {
-    retireAIRound56RecursiveFieldOrigins(2u);
+    retireAIRecursiveFieldOrigins(2u);
     // Preserve the old direct clear's lifetime-manager behavior exactly.
     change_cards.clear();
 }
@@ -261,7 +261,7 @@ bool Card::lifetimeIsLive() const
 
 void Card::setId(int id)
 {
-    retireAIRound56RecursiveFieldOrigins(17u);
+    retireAIRecursiveFieldOrigins(17u);
 	this->m_id = id;
 	if (id>=0){
 		subcards.clear();
@@ -343,7 +343,7 @@ int Card::getNumber() const
 
 void Card::setNumber(int number)
 {
-    retireAIRound56RecursiveFieldOrigins(8u);
+    retireAIRecursiveFieldOrigins(8u);
 	this->m_number = number;
 }
 
@@ -395,7 +395,7 @@ Card::Suit Card::getSuit() const
 
 void Card::setSuit(Suit suit)
 {
-    retireAIRound56RecursiveFieldOrigins(4u);
+    retireAIRecursiveFieldOrigins(4u);
 	this->m_suit = suit;
 }
 
@@ -788,14 +788,14 @@ QString Card::subcardString() const
 
 void Card::addSubcards(const QList<const Card*> &cards)
 {
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	foreach(const Card*card, cards)
 		subcards << card->getEffectiveId();
 }
 
 void Card::addSubcards(const QList<int> &subcards_list)
 {
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	subcards << subcards_list;
 }
 
@@ -938,7 +938,7 @@ Card *Card::CloneReadonlyPhysicalPolicy(const Card *source)
     std::unique_ptr<Card> inner(Clone(real));
     if (!inner) return nullptr;
     const auto copyState = [](Card &to, const Card &from) {
-        to.retireAIRound56RecursiveFieldOrigins(31u);
+        to.retireAIRecursiveFieldOrigins(31u);
         to.setObjectName(from.objectName());
         to.subcards=from.subcards; to.target_fixed=from.target_fixed;
         to.mute=from.mute; to.will_throw=from.will_throw; to.has_preact=from.has_preact;
@@ -948,7 +948,7 @@ Card *Card::CloneReadonlyPhysicalPolicy(const Card *source)
         to.m_activationSkillName=from.m_activationSkillName; to.m_activationSkillInstanceId=from.m_activationSkillInstanceId;
         to.show_skill=from.show_skill; to.is_gift=from.is_gift; to.is_transferable=from.is_transferable;
         to.damage_card=from.damage_card; to.single_target=from.single_target; to.handling_method=from.handling_method;
-        invalidateAIRound47XiedouFlags(&to);
+        invalidateAIXiedouFlags(&to);
         to.flags=from.flags;
         // Card tags/change links may hold Card lifetimes. Use existing tracked
         // APIs, not raw QVariantMap/QList pointer ownership copies.
@@ -1293,7 +1293,7 @@ bool Card::isCancelable(const CardEffectStruct &) const
 
 void Card::addSubcard(int card_id)
 {
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	if (card_id < 0)
 		qWarning("%s", qPrintable(tr("Subcard must not be virtual card!")));
 	else
@@ -1302,7 +1302,7 @@ void Card::addSubcard(int card_id)
 
 void Card::addSubcard(const Card*card)
 {
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	if (card->isVirtualCard())
 		addSubcards(card->getSubcards());
 	else
@@ -1316,7 +1316,7 @@ QList<int> Card::getSubcards() const
 
 void Card::clearSubcards()
 {
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	subcards.clear();
 }
 
@@ -1420,7 +1420,7 @@ QStringList Card::getMarkNames() const
 
 void Card::addChange(const Card*card)
 {
-    retireAIRound56RecursiveFieldOrigins(2u);
+    retireAIRecursiveFieldOrigins(2u);
 	if (!card)
 		return;
 	if (globalCardLifetimeManager().addChangeEdge(this, card))
@@ -1439,7 +1439,7 @@ QStringList Card::getSkillNames(bool removePrefix) const
 void Card::setFlags(const QString &flag) const
 {
     if (flag == QStringLiteral(".") || flag == QStringLiteral("nosjiefan-slash")
-        || flag == QStringLiteral("-nosjiefan-slash")) invalidateAIRound47XiedouFlags(this);
+        || flag == QStringLiteral("-nosjiefan-slash")) invalidateAIXiedouFlags(this);
 	if(flag == ".") flags.clear();
 	else{
 		if(flag.startsWith("-")){
@@ -1456,7 +1456,7 @@ bool Card::hasFlag(const QString &flag) const
 
 void Card::clearFlags() const
 {
-    invalidateAIRound47XiedouFlags(this);
+    invalidateAIXiedouFlags(this);
 	flags.clear();
 }
 
@@ -1717,7 +1717,7 @@ DummyCard::DummyCard(const QList<int> &subcards)
 {
 	target_fixed = true;
 	handling_method = MethodNone;
-    retireAIRound56RecursiveFieldOrigins(1u);
+    retireAIRecursiveFieldOrigins(1u);
 	this->subcards = subcards;
 	setObjectName("dummy");
 }

@@ -81,21 +81,21 @@ public:
     void clear();
     // Whole canonical map source proof. No selected card, ID value, owner or
     // applicability reads. Requires normal native thread/lifetime confinement.
-    bool aiRound56PhysicalMapSourceOrigin() const noexcept;
+    bool aiPhysicalMapSourceOrigin() const noexcept;
     // ID-only sibling of the stronger face/material contract. Source birth and
     // every reset/adoption/ID writer are tracked independently, never healed
     // from current IDs, empty containers, or the stronger receipt's result.
-    bool aiRound56PhysicalIdMapSourceOrigin() const noexcept;
-    quint64 aiRound56PhysicalIdMapGeneration() const noexcept;
-    bool aiRound56PhysicalIdSourceContains(const Card *) const noexcept;
+    bool aiPhysicalIdMapSourceOrigin() const noexcept;
+    quint64 aiPhysicalIdMapGeneration() const noexcept;
+    bool aiPhysicalIdSourceContains(const Card *) const noexcept;
 
 private:
     void clearCardsForSourceReset();
-    std::atomic<bool> m_aiRound56MapSourceAlive{true};
-    std::atomic<bool> m_aiRound56MapSourceComplete{true};
-    std::atomic<bool> m_aiRound56IdMapSourceAlive{true};
-    std::atomic<bool> m_aiRound56IdMapSourceComplete{true};
-    std::atomic<quint64> m_aiRound56IdMapGeneration{0};
+    std::atomic<bool> m_aiMapSourceAlive{true};
+    std::atomic<bool> m_aiMapSourceComplete{true};
+    std::atomic<bool> m_aiIdMapSourceAlive{true};
+    std::atomic<bool> m_aiIdMapSourceComplete{true};
+    std::atomic<quint64> m_aiIdMapGeneration{0};
 
 
 protected:

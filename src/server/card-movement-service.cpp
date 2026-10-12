@@ -1,10 +1,9 @@
-#include "ai-strategy-round29-original.h"
-#include "ai-strategy-round37-choice.h"
-#include "ai-strategy-choice-context.h"
-#include "ai-strategy-retrial-context.h"
-#include "ai-strategy-public-disclosure.h"
+#include "ai-strategy/official.h"
+#include "ai-strategy/shadows.h"
+#include "ai-strategy/context.h"
+#include "ai-strategy/owner.h"
 #include "card-movement-service.h"
-#include "ai-strategy-round45-xufa-filter.h"
+#include "ai-strategy/xufa.h"
 
 #include "engine.h"
 #include "room.h"
@@ -301,8 +300,8 @@ void CardMovementService::setCardMapping(int cardId, ServerPlayer *owner,
     invalidateAIStrategyPublicDisclosure(m_room, cardId);
     invalidateAIStrategyChoiceAGDisclosure(m_room, cardId);
     invalidateAIStrategyRetrialPreview(m_room, cardId);
-    invalidateAIRound29ShicaiPreview(m_room, cardId);
-    invalidateAIRound37SDCard(m_room, cardId);
+    invalidateAIShicaiPreview(m_room, cardId);
+    invalidateAIOriginalSDCard(m_room, cardId);
     const quint64 cascade = m_room.getThread() && m_room.getThread()->hasActiveCascade()
         ? m_room.getThread()->cascadeId() : 0;
     if (cascade) {
@@ -1337,7 +1336,7 @@ QVariant CardMovementService::afterMoves(QList<CardsMoveOneTimeStruct> moves)
 QVariant CardMovementService::moveCardsSub(QList<CardsMoveStruct> cardsMoves,
                                            bool visible, bool guanxing)
 {
-    AIRound45XufaMoveEntry xufaEntry(m_room,cardsMoves,visible,guanxing);
+    AIXufaMoveEntry xufaEntry(m_room,cardsMoves,visible,guanxing);
     cardsMoves = normalizeMoves(cardsMoves);
     if (cardsMoves.isEmpty()) return QVariantList();
     const QList<CardsMoveOneTimeStruct> requestedMoves = mergeMoves(cardsMoves);

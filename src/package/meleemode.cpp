@@ -292,12 +292,12 @@ MeleeModePackage::MeleeModePackage() : Package("MeleeMode", Package::CardPack)
 ADD_PACKAGE(MeleeMode)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_meleemode_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_meleemode_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(MeleeMode)), 2u);
- types.recordActivateSource<MeleeMode>(1040u); AI_R56_REQUIRE_DECLARATION(MeleeMode, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(MeleeMode, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(MeleeMode, getMaxUsageLimit, Skill);
+ types.recordActivateSource<MeleeMode>(1040u); AI_NATIVE_REQUIRE_DECLARATION(MeleeMode, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(MeleeMode, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(MeleeMode, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(MeleePeach)), 2u);
- types.recordActivateSource<MeleePeach>(1041u); AI_R56_REQUIRE_DECLARATION(MeleePeach, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(MeleePeach, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(MeleePeach, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(MeleePeach, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(MeleePeach, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(MeleePeach, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<MeleePeach>(1041u); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(MeleePeach, isResponseOrUse, ViewAsSkill);
  types.emplace(std::type_index(typeid(MeleePeachFilter)), 2u);
- types.recordActivateSource<MeleePeachFilter>(1042u); AI_R56_REQUIRE_DECLARATION(MeleePeachFilter, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(MeleePeachFilter, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(MeleePeachFilter, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<MeleePeachFilter>(1042u); AI_NATIVE_REQUIRE_DECLARATION(MeleePeachFilter, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(MeleePeachFilter, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(MeleePeachFilter, isResponseOrUse, ViewAsSkill);
 }

@@ -2,13 +2,13 @@
 #include "player-self-source-origin.h"
 
 namespace {
-thread_local bool round56OriginalSelfNullOrigin = true;
+thread_local bool originalSelfNullOrigin = true;
 }
 
-bool hasAIRound56EngineSelfNullSourceOrigin() noexcept
+bool hasAIEngineSelfNullSourceOrigin() noexcept
 {
     // Do not inspect QSanEngine::Self, including for equality with nullptr.
-    return round56OriginalSelfNullOrigin;
+    return originalSelfNullOrigin;
 }
 
 // The engine-side Self. It is declared in the QSAN_ENGINE_BUILD branch of
@@ -21,6 +21,6 @@ thread_local Player *Self = nullptr;
 void setEngineSelf(Player *player)
 {
     // Retire BEFORE the actual source write; null/equal writes also retire.
-    round56OriginalSelfNullOrigin = false;
+    originalSelfNullOrigin = false;
     QSanEngine::Self = player;
 }

@@ -1,14 +1,11 @@
-#include "ai-strategy-round54-shebian.h"
-#include "ai-strategy-round54-jijiang.h"
-#include "ai-strategy-round47-xufa-event-scope.h"
-#include "ai-strategy-round53-registry.h"
-#include "ai-strategy-response-observer.h"
+#include "ai-strategy/ol-ai.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/context.h"
 #include "roomthread.h"
-#include "ai-strategy-round45-natural-event.h"
-#include "ai-strategy-round44-fc-frame.h"
-#include "ai-strategy-round45-context.h"
-#include "ai-strategy-round39-context.h"
-#include "ai-strategy-round50-yuri-events.h"
+#include "ai-strategy/lua-seal.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/newgenerals.h"
+#include "ai-strategy/anime.h"
 #include "managed-rewind-lab.h"
 #include <QScopedValueRollback>
 #include "card-lifetime-manager.h"
@@ -297,8 +294,8 @@ CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
     m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
-    m_aiRound33PhysicalUse=other.m_aiRound33PhysicalUse;
-    m_aiRound47FateUse=other.m_aiRound47FateUse;
+    m_aiZhaobingPhysicalUse=other.m_aiZhaobingPhysicalUse;
+    m_aiFateUse=other.m_aiFateUse;
     physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
 	targetModReveal=other.targetModReveal;
@@ -315,8 +312,8 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
     m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
-    m_aiRound33PhysicalUse=std::move(other.m_aiRound33PhysicalUse);
-    m_aiRound47FateUse=std::move(other.m_aiRound47FateUse);
+    m_aiZhaobingPhysicalUse=std::move(other.m_aiZhaobingPhysicalUse);
+    m_aiFateUse=std::move(other.m_aiFateUse);
     physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
 	targetModReveal=std::move(other.targetModReveal);
@@ -331,8 +328,8 @@ CardUseStruct::~CardUseStruct() { globalCardLifetimeManager().releaseEventPayloa
 
 void CardUseStruct::replaceCard(const Card *newCard, Card *ownedCard)
 {
-    m_aiRound33PhysicalUse.reset(); // Replacements/parse cannot inherit an AI admission.
-    m_aiRound47FateUse.reset();
+    m_aiZhaobingPhysicalUse.reset(); // Replacements/parse cannot inherit an AI admission.
+    m_aiFateUse.reset();
 	Q_ASSERT(!ownedCard || ownedCard == newCard);
 	CardLifetimeManager &manager = globalCardLifetimeManager();
 	CardLifetimeLease replacementLease(manager, manager.liveToken(newCard));
@@ -455,7 +452,7 @@ void CardUseStruct::clientReply()
 
 void CardUseStruct::changeCard(Card*newcard)
 {
-    newcard->retireAIRound56RecursiveFieldOrigins(2u);
+    newcard->retireAIRecursiveFieldOrigins(2u);
 	globalCardLifetimeManager().releaseEventPayload(this);
 	const bool replacingOwnedCard = !m_ownedCard.isNull() && m_ownedCard.data() == card;
 	QVariantMap tag = newcard->tag;
@@ -536,7 +533,7 @@ CardResponseStruct::~CardResponseStruct() { globalCardLifetimeManager().releaseE
 
 void CardResponseStruct::changeCard(Card*newcard)
 {
-    newcard->retireAIRound56RecursiveFieldOrigins(2u);
+    newcard->retireAIRecursiveFieldOrigins(2u);
 	globalCardLifetimeManager().releaseEventPayload(this);
 	QVariantMap tag = newcard->tag;
 	for (auto it = m_card->tag.cbegin(); it != m_card->tag.cend(); ++it)
@@ -2624,8 +2621,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		// Format 2: use selected_ctx->owner (the skill owner) as the player for cost.
 		Room::ResolutionScope resolution(*room, skillName);
-        AIRound39WendaoScope wendaoScope(*room, v2, selected_ctx);
-        AIRound50YuriScope yuriScope(*room,v2,selected_ctx,int(triggerEvent));
+        AIKeqiwendaoScope wendaoScope(*room, v2, selected_ctx);
+        AIYuriScope yuriScope(*room,v2,selected_ctx,int(triggerEvent));
 		ResolutionHistoryEventGuard skillHistory(
 			room->resolutionHistory(), QStringLiteral("skill"),
 			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
@@ -2980,11 +2977,11 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
     // Xufa's actual R53 source is not yet proved across trigger dispatch.
     // Revoke before sorting, records, private eligibility, optional suppression
     // and every early return; the later move observer cannot restore a receipt.
-    if(room)retireAIRound53Registry(*room);
+    if(room)retireAIXufaChoiceRegistry(*room);
     // Before any private trigger eligibility; a declined nested turnover must
     // revoke the previous Shebian plan exactly as an accepted one does.
-    if(room&&triggerEvent==TurnedOver)invalidateAIRound54Shebian(*room);
-    if(room)enterAIRound54JijiangEvent(*room,int(triggerEvent),target);
+    if(room&&triggerEvent==TurnedOver)invalidateAIShebian(*room);
+    if(room)enterAIJijiangEvent(*room,int(triggerEvent),target);
     if (isMandatoryCleanup() && (triggerEvent == GameOverJudge || triggerEvent == BuryVictim))
         return triggerMandatoryGameRule(triggerEvent, target, data);
     if (suppressOptionalDispatch()) return false;
@@ -3102,8 +3099,8 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
             room->resolutionHistory().appendFact(eventId, QStringLiteral("target_confirmed"), fact);
         }
     }
-	AIRound44FCUseFrame fcUseFrame(*room, int(triggerEvent), target, data);
-    AIRound45NewgeneralsFrame newgeneralsFrame(*room,int(triggerEvent),target,data);
+	AIFCUseFrame fcUseFrame(*room, int(triggerEvent), target, data);
+    AINewgeneralsFrame newgeneralsFrame(*room,int(triggerEvent),target,data);
 	try {
 		broken = dispatchTrigger(triggerEvent, room, target, data);
 	} catch (TriggerEvent) {
@@ -3398,12 +3395,12 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                     invalidateManagedTurns(journalError);
             } else invalidateManagedTurns(journalError);
         }
-		{ AIRound54JijiangEvent jijiangEvent(*room,int(triggerEvent),target,data);
-          AIRound47XufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
+		{ AIJijiangEvent jijiangEvent(*room,int(triggerEvent),target,data);
+          AIXufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
 		room->recordAiEvent(int(triggerEvent), target, data);
 		if (target) {
                 AI *observerAI = target->getSmartAI();
-                AIRound45NaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
+                AINaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
                 observerAI->filterEvent(triggerEvent, target, data);
             }
 		}
@@ -3450,11 +3447,11 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
         checkTriggerDispatchAbort();
         if (!stacked) throw;
         try {
-            { AIRound47XufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
+            { AIXufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
             room->recordAiEvent(int(triggerEvent), target, data);
             if (target) {
                 AI *observerAI = target->getSmartAI();
-                AIRound45NaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
+                AINaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
                 observerAI->filterEvent(triggerEvent, target, data);
             }
             }

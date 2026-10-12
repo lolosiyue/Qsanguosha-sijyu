@@ -27,5 +27,5 @@ private:
 };
 // Original TLS source history, not current-stack emptiness. Once a shadow
 // scope has been attempted on this thread, destruction never restores this bit.
-bool hasAIRound56CardQueryOriginalSourceOrigin() noexcept;
+bool hasAICardQueryOriginalSourceOrigin() noexcept;
 #endif

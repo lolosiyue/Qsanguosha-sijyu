@@ -1,5 +1,5 @@
 #include "skill-generated-card.h"
-#include "ai-strategy-yczh2016.h"
+#include "ai-strategy/official.h"
 #include "skill.h"
 #include "skill-declaration.h"
 #include <QEvent>
@@ -468,10 +468,10 @@ ViewAsSkill::ViewAsSkill(const QString &name)
 bool ViewAsSkill::isAvailable(const Player *invoker,
     CardUseStruct::CardUseReason reason, const QString &pattern) const
 {
-    return aiRound56AvailableForConversion(invoker, reason, pattern, {});
+    return aiAvailableForConversion(invoker, reason, pattern, {});
 }
 
-bool ViewAsSkill::aiRound56AvailableForConversion(const Player *invoker,
+bool ViewAsSkill::aiAvailableForConversion(const Player *invoker,
     CardUseStruct::CardUseReason reason, const QString &pattern,
     const std::function<bool()> &ownershipQuery) const
 {
@@ -587,7 +587,7 @@ QList<int> zhangwuGeneratedCosts(const ActiveSkillRequest &request)
 }
 void ActiveSkillRequest::setCardSelection(const Card *card)
 {
-    m_aiRound47FateUse.reset(); // A new selection never inherits a preview receipt.
+    m_aiFateUse.reset(); // A new selection never inherits a preview receipt.
     selectedCardIds = card ? card->getSubcards() : QList<int>();
     if (card && !card->isVirtualCard()
         && isNotifiedPhysicalCardSkill(activationRef.key.skillName, reason, pattern))

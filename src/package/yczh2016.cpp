@@ -1857,59 +1857,59 @@ YCZH2016Package::YCZH2016Package()
 ADD_PACKAGE(YCZH2016)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_yczh2016_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_yczh2016_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(JiaozhaoVS)), 2u);
- types.recordActivateSource<JiaozhaoVS>(4075u); AI_R56_REQUIRE_DECLARATION(JiaozhaoVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<JiaozhaoVS>(4075u); AI_NATIVE_REQUIRE_DECLARATION(JiaozhaoVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Jiaozhao)), 2u);
- types.recordActivateSource<Jiaozhao>(4076u); AI_R56_REQUIRE_DECLARATION(Jiaozhao, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Jiaozhao>(4076u); AI_NATIVE_REQUIRE_DECLARATION(Jiaozhao, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(JiaozhaoPro)), 3u);
  types.emplace(std::type_index(typeid(Danxin)), 2u);
- types.recordActivateSource<Danxin>(4077u); AI_R56_REQUIRE_DECLARATION(Danxin, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Danxin>(4077u); AI_NATIVE_REQUIRE_DECLARATION(Danxin, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(DanxinFuture)), 2u);
- types.recordActivateSource<DanxinFuture>(4078u); AI_R56_REQUIRE_DECLARATION(DanxinFuture, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<DanxinFuture>(4078u); AI_NATIVE_REQUIRE_DECLARATION(DanxinFuture, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Guizao)), 2u);
- types.recordActivateSource<Guizao>(4079u); AI_R56_REQUIRE_DECLARATION(Guizao, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Guizao>(4079u); AI_NATIVE_REQUIRE_DECLARATION(Guizao, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Jiyu)), 2u);
- types.recordActivateSource<Jiyu>(4080u); AI_R56_REQUIRE_DECLARATION(Jiyu, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<Jiyu>(4080u); AI_NATIVE_REQUIRE_DECLARATION(Jiyu, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(JiyuRecord)), 2u);
- types.recordActivateSource<JiyuRecord>(4081u); AI_R56_REQUIRE_DECLARATION(JiyuRecord, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<JiyuRecord>(4081u); AI_NATIVE_REQUIRE_DECLARATION(JiyuRecord, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(DuliangViewAsSkill)), 2u);
- types.recordActivateSource<DuliangViewAsSkill>(4082u); AI_R56_REQUIRE_DECLARATION(DuliangViewAsSkill, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<DuliangViewAsSkill>(4082u); AI_NATIVE_REQUIRE_DECLARATION(DuliangViewAsSkill, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Duliang)), 2u);
- types.recordActivateSource<Duliang>(4083u); AI_R56_REQUIRE_DECLARATION(Duliang, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Duliang>(4083u); AI_NATIVE_REQUIRE_DECLARATION(Duliang, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Fulin)), 2u);
- types.recordActivateSource<Fulin>(4084u); AI_R56_REQUIRE_DECLARATION(Fulin, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Fulin>(4084u); AI_NATIVE_REQUIRE_DECLARATION(Fulin, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(FulinBF)), 2u);
- types.recordActivateSource<FulinBF>(4085u); AI_R56_REQUIRE_DECLARATION(FulinBF, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<FulinBF>(4085u); AI_NATIVE_REQUIRE_DECLARATION(FulinBF, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(QinqingVS)), 2u);
- types.recordActivateSource<QinqingVS>(4086u); AI_R56_REQUIRE_DECLARATION(QinqingVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<QinqingVS>(4086u); AI_NATIVE_REQUIRE_DECLARATION(QinqingVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Qinqing)), 2u);
- types.recordActivateSource<Qinqing>(4087u); AI_R56_REQUIRE_DECLARATION(Qinqing, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Qinqing>(4087u); AI_NATIVE_REQUIRE_DECLARATION(Qinqing, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(HuishengVS)), 2u);
- types.recordActivateSource<HuishengVS>(4088u); AI_R56_REQUIRE_DECLARATION(HuishengVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<HuishengVS>(4088u); AI_NATIVE_REQUIRE_DECLARATION(HuishengVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Huisheng)), 2u);
- types.recordActivateSource<Huisheng>(4089u); AI_R56_REQUIRE_DECLARATION(Huisheng, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Huisheng>(4089u); AI_NATIVE_REQUIRE_DECLARATION(Huisheng, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(KuangbiVS)), 2u);
- types.recordActivateSource<KuangbiVS>(4090u); AI_R56_REQUIRE_DECLARATION(KuangbiVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<KuangbiVS>(4090u); AI_NATIVE_REQUIRE_DECLARATION(KuangbiVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Kuangbi)), 2u);
- types.recordActivateSource<Kuangbi>(4091u); AI_R56_REQUIRE_DECLARATION(Kuangbi, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Kuangbi>(4091u); AI_NATIVE_REQUIRE_DECLARATION(Kuangbi, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(JisheVS)), 2u);
- types.recordActivateSource<JisheVS>(4092u); AI_R56_REQUIRE_DECLARATION(JisheVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<JisheVS>(4092u); AI_NATIVE_REQUIRE_DECLARATION(JisheVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Jishe)), 2u);
- types.recordActivateSource<Jishe>(4093u); AI_R56_REQUIRE_DECLARATION(Jishe, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Jishe>(4093u); AI_NATIVE_REQUIRE_DECLARATION(Jishe, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Lianhuo)), 2u);
- types.recordActivateSource<Lianhuo>(4094u); AI_R56_REQUIRE_DECLARATION(Lianhuo, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Lianhuo>(4094u); AI_NATIVE_REQUIRE_DECLARATION(Lianhuo, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Zhige)), 2u);
- types.recordActivateSource<Zhige>(4095u); AI_R56_REQUIRE_DECLARATION(Zhige, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<Zhige>(4095u); AI_NATIVE_REQUIRE_DECLARATION(Zhige, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Zongzuo)), 2u);
- types.recordActivateSource<Zongzuo>(4096u); AI_R56_REQUIRE_DECLARATION(Zongzuo, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Zongzuo>(4096u); AI_NATIVE_REQUIRE_DECLARATION(Zongzuo, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(ZongzuoDeath)), 2u);
- types.recordActivateSource<ZongzuoDeath>(4097u); AI_R56_REQUIRE_DECLARATION(ZongzuoDeath, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<ZongzuoDeath>(4097u); AI_NATIVE_REQUIRE_DECLARATION(ZongzuoDeath, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(TaoluanVS)), 2u);
- types.recordActivateSource<TaoluanVS>(4098u); AI_R56_REQUIRE_DECLARATION(TaoluanVS, getBaseAmount, ViewAsSkillV2);
+ types.recordActivateSource<TaoluanVS>(4098u); AI_NATIVE_REQUIRE_DECLARATION(TaoluanVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(Taoluan)), 2u);
- types.recordActivateSource<Taoluan>(4099u); AI_R56_REQUIRE_DECLARATION(Taoluan, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<Taoluan>(4099u); AI_NATIVE_REQUIRE_DECLARATION(Taoluan, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(TenyearTaoluan)), 2u);
- types.recordActivateSource<TenyearTaoluan>(4100u); AI_R56_REQUIRE_DECLARATION(TenyearTaoluan, getBaseAmount, TriggerSkillV2);
+ types.recordActivateSource<TenyearTaoluan>(4100u); AI_NATIVE_REQUIRE_DECLARATION(TenyearTaoluan, getBaseAmount, TriggerSkillV2);
 }

@@ -1,12 +1,8 @@
 #include "player-initial-source-origin.h"
-#include "ai-strategy-round41-context.h"
-#include "ai-strategy-round38-manbing.h"
-#include "ai-strategy-round29-planning.h"
-#include "ai-strategy-round26-choice.h"
-#include "ai-strategy-round26-response.h"
-#include "ai-strategy-response-observer.h"
-#include "ai-strategy-flag-lifecycle.h"
-#include "ai-strategy-public-disclosure.h"
+#include "ai-strategy/shadows.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/context.h"
+#include "ai-strategy/owner.h"
 #include "player-state-service.h"
 
 #include "ai-decision-coordinator.h"
@@ -69,17 +65,17 @@ void PlayerStateService::setPlayerFlag(ServerPlayer *player, const QString &flag
 {
 	// The legacy AI writes this flag into Player; isolated AI holds only its
 	// own observation. Retire that shadow even when the real flag is absent.
-	synchronizeAIRound29UseValueFlag(m_room, player, flag);
-	observeAIRound38ManbingFlag(m_room, player, flag);
+	synchronizeAIUseValueFlag(m_room, player, flag);
+	observeAIManbingFlag(m_room, player, flag);
 	if (flag == "-lol_jwyh_w_empty") recordAIStrategyLolWEmptyCleared(m_room, player);
 	if (flag.startsWith("-") && !player->hasFlag(flag.mid(1)))
 		return;
 	player->setFlags(flag);
 	if (flag == ".") recordAIStrategyFlagsCleared(m_room, player);
 	broadcastProperty(player, "flags", flag);
-    observeAIRound41PublicSkillFlag(m_room, player, flag);
-    observeAIRound26ChoiceFlag(m_room, player, flag);
-    recordAIStrategyRound26PublicFlag(m_room, player, flag);
+    observeAIPublicSkillFlag(m_room, player, flag);
+    observeAISRkillChoiceFlag(m_room, player, flag);
+    recordAIStrategyFeilongPublicFlag(m_room, player, flag);
     recordAIStrategyPublicKaiyuanFlag(m_room, player, flag);
     recordAIResponseObservedPlayerFlag(m_room, player, flag);
 }
@@ -403,7 +399,7 @@ bool PlayerStateService::setPlayerMarkWithReceipt(ServerPlayer *player, const QS
     const std::function<void(const QString &, int, int)> &committed,
     QList<ServerPlayer *> onlyViewers)
 {
-    retireAIRound56PlayerMarksOrigin(player);
+    retireAIPlayerMarksOrigin(player);
 	if (value == player->getMark(mark)) return false;
 
 	if (mark.endsWith("Clear") && value != 0 && !m_room.current) return false;

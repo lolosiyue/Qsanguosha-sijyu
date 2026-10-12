@@ -7,5 +7,5 @@
 // premise: it is not authority for a later request or a private player value.
 // Complete fixed native/source reachability and all assignment sites must still
 // be covered by the caller before preserving this premise through execution.
-bool hasAIRound56EngineSelfNullSourceOrigin() noexcept;
+bool hasAIEngineSelfNullSourceOrigin() noexcept;
 #endif

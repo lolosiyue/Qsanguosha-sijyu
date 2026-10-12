@@ -1,4 +1,4 @@
-#include "ai-strategy-round56-host.h"
+#include "ai-strategy/runtime.h"
 #include <QMetaMethod>
 #if defined(QSAN_SERVER_CORE_ONLY)
 #include "server-core.h"
@@ -1734,7 +1734,7 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
     if (qApp) qApp->setProperty("restrictedRewindLabRequested", QVariant());
     if (m_restrictedRewindLab) qInfo("Restricted rewind profile explicitly enabled for this server (TrustAI 02p)");
 	m_uptimeTimer.start();
-	{ AIRound56ReviewedLogConnect reviewed(this);
+	{ AIReviewedLogConnect reviewed(this);
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	}
 	if (injectedSocket != nullptr) {
@@ -2251,7 +2251,7 @@ Room *Server::publishRoom(Room *room)
 	connect(createdRoom, &QObject::destroyed, this,
 		[this, createdRoom]() { m_roomCreatedAtMs.remove(createdRoom); });
 
-	{ AIRound56ReviewedLogConnect reviewed(createdRoom);
+	{ AIReviewedLogConnect reviewed(createdRoom);
 	connect(createdRoom, &Room::room_message, this,
 		[this, createdRoom](const QString &message) {
 			if (isHeadlessMode)
@@ -2260,8 +2260,8 @@ Room *Server::publishRoom(Room *room)
 				emit server_message(message);
 		});
 	}
-	createdRoom->m_round56LogServer = this;
-	createdRoom->m_round56LogServerAttached = true;
+	createdRoom->m_logServer = this;
+	createdRoom->m_logServerAttached = true;
 	connect(createdRoom, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
 	connect(createdRoom, &Room::preparation_failed, this,
 		[this, createdRoom](const QString &reason) {
@@ -3201,15 +3201,13 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     room->start();
 }
 
-#endif
-
 void Server::connectNotify(const QMetaMethod &signal)
 {
     if ((signal == QMetaMethod::fromSignal(&Server::server_message)
          || signal == QMetaMethod::fromSignal(&Server::logMessage)
          || signal == QMetaMethod::fromSignal(&Server::roomLogMessage))
-        && !AIRound56ReviewedLogConnect::matches(this))
-        m_round56LogConnectionsReviewed.store(false);
+        && !AIReviewedLogConnect::matches(this))
+        m_logConnectionsReviewed.store(false);
     QObject::connectNotify(signal);
 }
 void Server::disconnectNotify(const QMetaMethod &signal)
@@ -3217,6 +3215,8 @@ void Server::disconnectNotify(const QMetaMethod &signal)
     if (!signal.isValid() || signal == QMetaMethod::fromSignal(&Server::server_message)
         || signal == QMetaMethod::fromSignal(&Server::logMessage)
         || signal == QMetaMethod::fromSignal(&Server::roomLogMessage))
-        m_round56LogConnectionsReviewed.store(false);
+        m_logConnectionsReviewed.store(false);
     QObject::disconnectNotify(signal);
 }
+
+#endif

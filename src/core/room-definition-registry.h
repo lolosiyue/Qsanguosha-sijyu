@@ -9,10 +9,10 @@
 #include <QObject>
 #include <QSet>
 
-struct AIRound56FactorySourceReport;
+struct AIFactorySourceReport;
 class Room;
 class RoomRuntime;
-class AIRound56BootstrapSourceProof;
+class AIBootstrapSourceProof;
 struct lua_State;
 
 class DistanceSkillCache;
@@ -91,15 +91,15 @@ public:
 
 private:
     friend class RoomRuntime;
-    friend bool completeAIRound56FactoryMapOrigin(Room &, lua_State *, const AIRound56BootstrapSourceProof &) noexcept;
+    friend bool completeAIFactoryMapOrigin(Room &, lua_State *, const AIBootstrapSourceProof &) noexcept;
     void beginFactorySourceOrigin(Room &) noexcept;
     void observeFactoryMapWriter() noexcept;
     enum class FactorySourcePhase { Pristine, Collecting, Sealed, Retired };
     FactorySourcePhase m_factorySourcePhase = FactorySourcePhase::Pristine;
     Room *m_factorySourceRoom = nullptr;
     quint64 m_factorySourceGeneration = 0;
-    friend AIRound56FactorySourceReport inspectAIRound56PublicFactorySources(Room &);
-    friend void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &, AIRound56FactorySourceReport &);
+    friend AIFactorySourceReport inspectAIPublicFactorySources(Room &);
+    friend void appendAILuaSkillFactorySources(const RoomDefinitionRegistry &, AIFactorySourceReport &);
     void indexPackage(Package *package);
 
     Engine &m_engine;

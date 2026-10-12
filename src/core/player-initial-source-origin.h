@@ -9,24 +9,24 @@ class Player;
 // A fresh Player's actual default-constructed maps issue the only receipt.
 // Any writer attempt, including equal, zero, removal, failed eligibility and
 // whole-map replacement, clears it permanently. No public begin/reseed API.
-bool hasAIRound56PlayerEmptyMarksOrigin(const Player&) noexcept;
-bool hasAIRound56PlayerEmptySkillsOrigin(const Player&) noexcept;
+bool hasAIPlayerEmptyMarksOrigin(const Player&) noexcept;
+bool hasAIPlayerEmptySkillsOrigin(const Player&) noexcept;
 // Actual finite public ol_liubei/sujiang preparePlayers source, issued once.
 // All skill/general writer attempts retire it; it is not an execution grant.
-bool hasAIRound56PlayerPublicGeneralSkillsOrigin(const Player&) noexcept;
-void retireAIRound56PlayerMarksOrigin(const Player*) noexcept;
-void retireAIRound56PlayerSkillsOrigin(const Player*) noexcept;
+bool hasAIPlayerPublicGeneralSkillsOrigin(const Player&) noexcept;
+void retireAIPlayerMarksOrigin(const Player*) noexcept;
+void retireAIPlayerSkillsOrigin(const Player*) noexcept;
 // Structural source ancestry only. All three containers were default-born
 // empty and have had no writer attempt. This is not metadata/effect authority.
-bool hasAIRound56PlayerEmptyPublicCardsOrigin(const Player&) noexcept;
-void retireAIRound56PlayerPublicCardsOrigin(const Player*) noexcept;
+bool hasAIPlayerEmptyPublicCardsOrigin(const Player&) noexcept;
+void retireAIPlayerPublicCardsOrigin(const Player*) noexcept;
 // Source-owned hand additions only. This fact is independent of hand contents,
 // and never recovers after an unknown writer or canonical map replacement.
 // Receiver lifetime and coherent native execution remain separate obligations.
-bool hasAIRound56PlayerCanonicalHandOrigin(const Player&) noexcept;
-void retireAIRound56PlayerCanonicalHandOrigin(const Player*) noexcept;
+bool hasAIPlayerCanonicalHandOrigin(const Player&) noexcept;
+void retireAIPlayerCanonicalHandOrigin(const Player*) noexcept;
 // Constructor-empty limitation source. Every public writer attempt retires it,
 // including clears/removals/copy, regardless of current contents or equality.
-bool hasAIRound56PlayerEmptyLimitationsOrigin(const Player&) noexcept;
-void retireAIRound56PlayerLimitationsOrigin(const Player*) noexcept;
+bool hasAIPlayerEmptyLimitationsOrigin(const Player&) noexcept;
+void retireAIPlayerLimitationsOrigin(const Player*) noexcept;
 #endif

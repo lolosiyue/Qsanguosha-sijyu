@@ -31,8 +31,8 @@ bool SceneRule::trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *pla
 }
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_scenario_scenerule_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_scenario_scenerule_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(SceneRule)), 2u);
- types.recordActivateSource<SceneRule>(2929u); AI_R56_REQUIRE_DECLARATION(SceneRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(SceneRule, getMaxUsageLimit, Skill);
+ types.recordActivateSource<SceneRule>(2929u); AI_NATIVE_REQUIRE_DECLARATION(SceneRule, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(SceneRule, getMaxUsageLimit, Skill);
 }

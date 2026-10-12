@@ -998,14 +998,14 @@ public:
                                           const ActiveSkillRequest &request) const;
 
 public:
-    bool round56LogConnectionsReviewed() const noexcept;
+    bool logConnectionsReviewed() const noexcept;
 protected:
     void connectNotify(const QMetaMethod &signal) override;
     void disconnectNotify(const QMetaMethod &signal) override;
 private:
-    std::atomic<bool> m_round56LogConnectionsReviewed {true};
-    QPointer<Server> m_round56LogServer;
-    bool m_round56LogServerAttached = false;
+    std::atomic<bool> m_logConnectionsReviewed {true};
+    QPointer<Server> m_logServer;
+    bool m_logServerAttached = false;
 protected:
     virtual void run();
     int _m_Id;

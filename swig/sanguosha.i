@@ -14,26 +14,26 @@
 #include <stdexcept>
 #include <cstring>
 
-#include "ai-strategy-round56-async.h"
+#include "ai-strategy/runtime.h"
 #include "lua-runtime.h"
 namespace {
-using Round56Finalizer = bool (*)(lua_State*,int,int,bool,bool) noexcept;
-Round56Finalizer round56Finalizer = nullptr;
-bool (*round56RegisteredUniverse)(lua_State*) noexcept = nullptr;
-lua_CFunction round56CardGc = nullptr;
-bool (*round56NamespaceBirthDescriptors)() noexcept = nullptr;
+using NativeFinalizerHook = bool (*)(lua_State*,int,int,bool,bool) noexcept;
+NativeFinalizerHook nativeFinalizerHook = nullptr;
+bool (*registeredUniverseHook)(lua_State*) noexcept = nullptr;
+lua_CFunction registeredCardGc = nullptr;
+bool (*namespaceBirthDescriptorsHook)() noexcept = nullptr;
 }
-bool aiRound56NativeFinalizerNonwriter(lua_State*L,int f,int o,bool fresh,bool variants) noexcept {
- return round56Finalizer&&round56Finalizer(L,f,o,fresh,variants);
+bool aiNativeFinalizerNonwriter(lua_State*L,int f,int o,bool fresh,bool variants) noexcept {
+ return nativeFinalizerHook&&nativeFinalizerHook(L,f,o,fresh,variants);
 }
-bool aiRound56RegisteredFinalizerUniverse(lua_State*L) noexcept {
- return round56RegisteredUniverse&&round56RegisteredUniverse(L);
+bool aiRegisteredFinalizerUniverse(lua_State*L) noexcept {
+ return registeredUniverseHook&&registeredUniverseHook(L);
 }
 
 // Compiled descriptor metadata only. This is NOT a live absence check and
 // supplies no authority without LuaRuntime's ephemeral native birth token.
-bool aiRound56NativeNamespaceBirthDescriptors() noexcept {
- return round56NamespaceBirthDescriptors&&round56NamespaceBirthDescriptors();
+bool aiNativeNamespaceBirthDescriptors() noexcept {
+ return namespaceBirthDescriptorsHook&&namespaceBirthDescriptorsHook();
 }
 
 namespace QSanEngine {
@@ -96,7 +96,7 @@ extern thread_local Player *Self;
 %}
 
 %init %{
-    round56NamespaceBirthDescriptors = +[]() noexcept -> bool {
+    namespaceBirthDescriptorsHook = +[]() noexcept -> bool {
         // A native-created namespace initially has only these descriptors and
         // fixed .get/.set/.fn infrastructure. Exclude every R56 registry root
         // from the RAW namespace, declared getter/setter, method, class and
@@ -160,12 +160,12 @@ extern thread_local Player *Self;
 		return 0;
 	};
 
-    round56CardGc = cardGc;
-    round56Finalizer = +[](lua_State*state,int function,int object,bool fresh,bool variants) noexcept -> bool {
+    registeredCardGc = cardGc;
+    nativeFinalizerHook = +[](lua_State*state,int function,int object,bool fresh,bool variants) noexcept -> bool {
         if(!lua_iscfunction(state,function)||lua_type(state,object)!=LUA_TUSERDATA
            ||lua_rawlen(state,object)!=sizeof(swig_lua_userdata))return false;
         // Reject native closures with captures, even if their C entry matches.
-        const TValue*fn=AIRound45Inspect::value(state,function);
+        const TValue*fn=AILuaInspect::value(state,function);
         if(!ttislcf(fn))return false;
         auto*u=static_cast<const swig_lua_userdata*>(lua_touserdata(state,object));
         const swig_lua_class*c=nullptr;
@@ -174,7 +174,7 @@ extern thread_local Player *Self;
         }
         if(!c)return false;
         const auto gc=lua_tocfunction(state,function);
-        if(gc==round56CardGc){
+        if(gc==registeredCardGc){
             // releaseWrapperBinding refuses a foreign/absent runtime context;
             // its fallback is generic ownership destruction, so the exact
             // active Binding is part of this native source proof.
@@ -189,7 +189,7 @@ extern thread_local Player *Self;
         // Exact native-owned scratch wrappers erase only their value record.
         // Their all-branches bodies return early or destroy the fixed value
         // graph; no selected payload field is read to establish authority.
-        if(gc==round45TargetsGc&&c==&_wrap_class_SPlayerList)return true;
+        if(gc==slotTargetsGc&&c==&_wrap_class_SPlayerList)return true;
         if(variants&&gc==goutongMoveGc&&c==&_wrap_class_CardsMoveOneTimeStruct)return true;
         if(variants&&gc==lianzhanUseGc&&c==&_wrap_class_CardUseStruct)return true;
         if(gc==lianzhanCanonicalUseGc&&c==&_wrap_class_CardUseStruct
@@ -256,27 +256,27 @@ extern thread_local Player *Self;
         // may admit LuaAI. An arbitrary owned QObject never inherits this.
         return fresh&&c==&_wrap_class_LuaAI&&c->destructor==swig_delete_LuaAI;
     };
-    round56RegisteredUniverse = +[](lua_State*state) noexcept -> bool {
-        if(!AIRound45Inspect::capacity(state,6))return false;
+    registeredUniverseHook = +[](lua_State*state) noexcept -> bool {
+        if(!AILuaInspect::capacity(state,6))return false;
         const int top=lua_gettop(state);
         const auto done=[&](bool result){lua_settop(state,top);return result;};
-        AIRound45Inspect::field(state,LUA_REGISTRYINDEX,"SWIG");
+        AILuaInspect::field(state,LUA_REGISTRYINDEX,"SWIG");
         if(!lua_istable(state,-1))return done(false);
         for(int i=0;swig_types[i];++i){
             const auto*c=static_cast<const swig_lua_class*>(swig_types[i]->clientdata);
             if(!c)continue;
             if(!c->fqname)return done(false);
-            AIRound45Inspect::field(state,-1,c->fqname);
+            AILuaInspect::field(state,-1,c->fqname);
             if(!lua_istable(state,-1))return done(false);
-            AIRound45Inspect::field(state,-1,"__close");
+            AILuaInspect::field(state,-1,"__close");
             if(!lua_isnil(state,-1))return done(false);
             lua_pop(state,1);
-            AIRound45Inspect::field(state,-1,"__gc");
-            const auto*fn=AIRound45Inspect::value(state,-1);
+            AILuaInspect::field(state,-1,"__gc");
+            const auto*fn=AILuaInspect::value(state,-1);
             if(!ttislcf(fn))return done(false);
             const auto gc=lua_tocfunction(state,-1);
             const bool card=qsgsCardExposure(swig_types[i])||qsgsQObjectExposure(swig_types[i]);
-            const bool exact=card?gc==round56CardGc:
+            const bool exact=card?gc==registeredCardGc:
                 (gc==SWIG_Lua_class_destruct
                  ||(c==&_wrap_class_CardUseStruct&&gc==lianzhanCanonicalUseGc
                     &&c->destructor==swig_delete_CardUseStruct));

@@ -1,7 +1,6 @@
 #include "player-initial-source-origin.h"
 #include "room-managed-state.h"
-#include "ai-strategy-round47-xiedou.h"
-#include "ai-strategy-round45-inovation-state.h"
+#include "ai-strategy/inovation-ai.h"
 
 
 #include "room.h"
@@ -1037,11 +1036,11 @@ bool RoomManagedState::buildNativeCandidate(NativeSlice &native, const GameState
                 || c->objectName()!=seat.combo.value("name").toString())
                 return fail(error,QStringLiteral("cannot rebuild owned native card definition"));
             auto f=readFace(seat.combo.value("face").toMap());
-            c->retireAIRound56RecursiveFieldOrigins(28u);
+            c->retireAIRecursiveFieldOrigins(28u);
             c->m_id=id;c->m_suit=f.suit;c->m_number=f.number;
             c->m_skillInstanceId=f.instance;c->m_sourceSkillInstanceId=f.sourceInstance;c->m_activationSkillInstanceId=f.activationInstance;
             c->m_skillName=f.skill;c->m_sourceSkillName=f.source;c->m_activationSkillName=f.activation;c->show_skill=f.show;
-            invalidateAIRound47XiedouFlags(c);
+            invalidateAIXiedouFlags(c);
             c->flags=f.flags;c->tag=f.tags;c->m_appliedPhysicalEffectSource=f.applied;
             c->target_fixed=f.targetFixed;c->mute=f.mute;c->will_throw=f.willThrow;c->has_preact=f.preAction;
             c->can_recast=f.recast;c->is_gift=f.gift;c->is_transferable=f.transferable;
@@ -1186,9 +1185,9 @@ bool RoomManagedState::publish(Candidate &&candidate, QString *error)
     // Every possible native destination loses original-map authority even when
     // this attempted publication is rejected or publishes equal values.
     for(const auto *player:m_room.getAllPlayers(true)) {
-        retireAIRound56PlayerMarksOrigin(player);
-        retireAIRound56PlayerSkillsOrigin(player);
-        retireAIRound56PlayerPublicCardsOrigin(player);
+        retireAIPlayerMarksOrigin(player);
+        retireAIPlayerSkillsOrigin(player);
+        retireAIPlayerPublicCardsOrigin(player);
     }
     if (!m_store || !candidate.d || candidate.d->owner != this || !quiescent(error))
         return fail(error, QStringLiteral("invalid managed Room candidate or non-quiescent Room"));
@@ -1257,7 +1256,7 @@ bool RoomManagedState::publish(Candidate &&candidate, QString *error)
         // pure derived cache without emitting skill/mark/HP signals.
         player->m_skillValidityCache.clear();
     }
-    observeAIRound45XinyangTagRestore(m_room); // actual whole-map replacement, even equal
+    observeAIXinyangTagRestore(m_room); // actual whole-map replacement, even equal
     if(m_running) m_room.tag.swap(data.native->rawRoomTags);
     else m_room.tag.swap(data.native->roomTags);
     if(m_running) publishRunning(*data.native);
@@ -1270,9 +1269,9 @@ void RoomManagedState::publishRunning(NativeSlice &native) noexcept
 {
     for(auto &s:native.seats) {
         auto *p=s.player.data();
-        retireAIRound56PlayerPublicCardsOrigin(p);
+        retireAIPlayerPublicCardsOrigin(p);
         std::swap(p->face_up,s.faceUp);std::swap(p->chained,s.chained);
-        retireAIRound56PlayerCanonicalHandOrigin(p);
+        retireAIPlayerCanonicalHandOrigin(p);
         p->handcards.swap(s.hand);p->equips.swap(s.equips);p->judging_area.swap(s.judge);
         p->piles.swap(s.piles);p->pile_open.swap(s.pileOpen);p->history.swap(s.history);p->flags.swap(s.flags);
         p->shown_handcards.swap(s.shown);p->broken_equips.swap(s.broken);p->phases.swap(s.phases);
@@ -1281,12 +1280,12 @@ void RoomManagedState::publishRunning(NativeSlice &native) noexcept
         p->m_skillDescriptionEffects.swap(s.descriptionEffects);
     }
     const auto swapFace=[](Card *c,ManagedCardFace &f) noexcept {
-        c->retireAIRound56RecursiveFieldOrigins(28u);
+        c->retireAIRecursiveFieldOrigins(28u);
         std::swap(c->m_suit,f.suit);std::swap(c->m_number,f.number);
         std::swap(c->m_skillInstanceId,f.instance);std::swap(c->m_sourceSkillInstanceId,f.sourceInstance);
         std::swap(c->m_activationSkillInstanceId,f.activationInstance);
         c->m_skillName.swap(f.skill);c->m_sourceSkillName.swap(f.source);c->m_activationSkillName.swap(f.activation);
-        invalidateAIRound47XiedouFlags(c);
+        invalidateAIXiedouFlags(c);
         c->show_skill.swap(f.show);c->flags.swap(f.flags);c->tag.swap(f.tags);c->m_appliedPhysicalEffectSource.swap(f.applied);
         std::swap(c->target_fixed,f.targetFixed);std::swap(c->mute,f.mute);std::swap(c->will_throw,f.willThrow);
         std::swap(c->has_preact,f.preAction);std::swap(c->can_recast,f.recast);std::swap(c->is_gift,f.gift);

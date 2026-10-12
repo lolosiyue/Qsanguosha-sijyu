@@ -776,40 +776,40 @@ void HStandardPackage::addShuGenerals()
 }
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_h_standard_shu_generals_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_h_standard_shu_generals_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(HPaoxiao)), 3u);
- types.recordActivateSource<HPaoxiao>(637u); AI_R56_REQUIRE_DECLARATION(HPaoxiao, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(HPaoxiao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HPaoxiao, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HPaoxiao>(637u); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiao, getBaseAmount, TargetModSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiao, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiao, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HPaoxiaoDraw)), 2u);
- types.recordActivateSource<HPaoxiaoDraw>(638u); AI_R56_REQUIRE_DECLARATION(HPaoxiaoDraw, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HPaoxiaoDraw, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HPaoxiaoDraw, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HPaoxiaoDraw>(638u); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoDraw, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoDraw, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoDraw, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HPaoxiaoArmorNullification)), 2u);
- types.recordActivateSource<HPaoxiaoArmorNullification>(639u); AI_R56_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HPaoxiaoArmorNullification>(639u); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HPaoxiaoArmorNullification, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HKongcheng)), 2u);
- types.recordActivateSource<HKongcheng>(640u); AI_R56_REQUIRE_DECLARATION(HKongcheng, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HKongcheng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HKongcheng, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HKongcheng>(640u); AI_NATIVE_REQUIRE_DECLARATION(HKongcheng, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HKongcheng, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HKongcheng, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HLongdanVS)), 2u);
- types.recordActivateSource<HLongdanVS>(641u); AI_R56_REQUIRE_DECLARATION(HLongdanVS, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(HLongdanVS, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLongdanVS, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(HLongdanVS, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(HLongdanVS, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(HLongdanVS, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<HLongdanVS>(641u); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLongdanVS, isResponseOrUse, ViewAsSkill);
  types.emplace(std::type_index(typeid(HLongdan)), 2u);
- types.recordActivateSource<HLongdan>(642u); AI_R56_REQUIRE_DECLARATION(HLongdan, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HLongdan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLongdan, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HLongdan>(642u); AI_NATIVE_REQUIRE_DECLARATION(HLongdan, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLongdan, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLongdan, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HTieqi)), 2u);
- types.recordActivateSource<HTieqi>(643u); AI_R56_REQUIRE_DECLARATION(HTieqi, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HTieqi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HTieqi, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HTieqi>(643u); AI_NATIVE_REQUIRE_DECLARATION(HTieqi, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTieqi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HTieqi, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HTieqiClear)), 2u);
- types.recordActivateSource<HTieqiClear>(644u); AI_R56_REQUIRE_DECLARATION(HTieqiClear, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HTieqiClear, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HTieqiClear, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HTieqiClear>(644u); AI_NATIVE_REQUIRE_DECLARATION(HTieqiClear, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTieqiClear, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HTieqiClear, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HJizhi)), 2u);
- types.recordActivateSource<HJizhi>(645u); AI_R56_REQUIRE_DECLARATION(HJizhi, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HJizhi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HJizhi, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HJizhi>(645u); AI_NATIVE_REQUIRE_DECLARATION(HJizhi, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJizhi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJizhi, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HLiegong)), 2u);
- types.recordActivateSource<HLiegong>(646u); AI_R56_REQUIRE_DECLARATION(HLiegong, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HLiegong, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLiegong, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HLiegong>(646u); AI_NATIVE_REQUIRE_DECLARATION(HLiegong, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLiegong, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLiegong, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HLiegongRange)), 3u);
- types.recordActivateSource<HLiegongRange>(647u); AI_R56_REQUIRE_DECLARATION(HLiegongRange, getBaseAmount, AttackRangeSkillV2); AI_R56_REQUIRE_DECLARATION(HLiegongRange, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLiegongRange, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HLiegongRange>(647u); AI_NATIVE_REQUIRE_DECLARATION(HLiegongRange, getBaseAmount, AttackRangeSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLiegongRange, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLiegongRange, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HLiegongTarget)), 3u);
- types.recordActivateSource<HLiegongTarget>(648u); AI_R56_REQUIRE_DECLARATION(HLiegongTarget, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(HLiegongTarget, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLiegongTarget, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HLiegongTarget>(648u); AI_NATIVE_REQUIRE_DECLARATION(HLiegongTarget, getBaseAmount, TargetModSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLiegongTarget, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLiegongTarget, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HLiegongDamage)), 2u);
- types.recordActivateSource<HLiegongDamage>(649u); AI_R56_REQUIRE_DECLARATION(HLiegongDamage, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HLiegongDamage, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HLiegongDamage, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HLiegongDamage>(649u); AI_NATIVE_REQUIRE_DECLARATION(HLiegongDamage, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLiegongDamage, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLiegongDamage, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HSavageAssaultAvoid)), 2u);
- types.recordActivateSource<HSavageAssaultAvoid>(650u); AI_R56_REQUIRE_DECLARATION(HSavageAssaultAvoid, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HSavageAssaultAvoid, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HSavageAssaultAvoid, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HSavageAssaultAvoid>(650u); AI_NATIVE_REQUIRE_DECLARATION(HSavageAssaultAvoid, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HSavageAssaultAvoid, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HSavageAssaultAvoid, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HHuoshou)), 2u);
- types.recordActivateSource<HHuoshou>(651u); AI_R56_REQUIRE_DECLARATION(HHuoshou, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HHuoshou, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HHuoshou, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HHuoshou>(651u); AI_NATIVE_REQUIRE_DECLARATION(HHuoshou, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHuoshou, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHuoshou, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HJuxiang)), 2u);
- types.recordActivateSource<HJuxiang>(652u); AI_R56_REQUIRE_DECLARATION(HJuxiang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HJuxiang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HJuxiang, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HJuxiang>(652u); AI_NATIVE_REQUIRE_DECLARATION(HJuxiang, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJuxiang, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJuxiang, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(HZaiqi)), 2u);
- types.recordActivateSource<HZaiqi>(653u); AI_R56_REQUIRE_DECLARATION(HZaiqi, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(HZaiqi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HZaiqi, getMaxUsageLimit, Skill);
+ types.recordActivateSource<HZaiqi>(653u); AI_NATIVE_REQUIRE_DECLARATION(HZaiqi, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HZaiqi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HZaiqi, getMaxUsageLimit, Skill);
 }

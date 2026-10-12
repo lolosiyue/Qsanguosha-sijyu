@@ -438,30 +438,29 @@ ZombinePackage::ZombinePackage()
 ADD_PACKAGE(Zombine)
 
 // R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy-round56-native-types.h"
-void registerAIRound56NativeTypes_src_package_zombine_cpp(AIRound56NativeTypes&types){
+#include "ai-strategy/native-registry.h"
+void registerAINativeTypes_src_package_zombine_cpp(AINativeTypes&types){
  types.emplace(std::type_index(typeid(ZbGanran)), 2u);
- types.recordActivateSource<ZbGanran>(2826u); AI_R56_REQUIRE_DECLARATION(ZbGanran, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbGanran, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ZbGanran, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<ZbGanran>(2826u); AI_NATIVE_REQUIRE_DECLARATION(ZbGanran, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbGanran, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbGanran, isResponseOrUse, ViewAsSkill);
  types.emplace(std::type_index(typeid(ZbXunmeng)), 2u);
- types.recordActivateSource<ZbXunmeng>(2827u); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbXunmeng>(2827u); AI_NATIVE_REQUIRE_DECLARATION(ZbXunmeng, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ZbXunmeng, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbXunmeng, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(ZbZaibian)), 2u);
- types.recordActivateSource<ZbZaibian>(2828u); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbZaibian>(2828u); AI_NATIVE_REQUIRE_DECLARATION(ZbZaibian, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ZbZaibian, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbZaibian, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(ZbDanyu)), 2u);
- types.recordActivateSource<ZbDanyu>(2829u); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbDanyu>(2829u); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyu, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyu, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyu, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(ZbDanyuRevive)), 2u);
- types.recordActivateSource<ZbDanyuRevive>(2830u); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbDanyuRevive>(2830u); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyuRevive, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyuRevive, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbDanyuRevive, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(ZbWansha)), 2u);
- types.recordActivateSource<ZbWansha>(2831u); AI_R56_REQUIRE_DECLARATION(ZbWansha, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbWansha, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbWansha, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbWansha>(2831u); AI_NATIVE_REQUIRE_DECLARATION(ZbWansha, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ZbWansha, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbWansha, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(ZbWanshaLimit)), 3u);
- types.recordActivateSource<ZbWanshaLimit>(2832u); AI_R56_REQUIRE_DECLARATION(ZbWanshaLimit, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbWanshaLimit, getMaxUsageLimit, Skill);
+ types.recordActivateSource<ZbWanshaLimit>(2832u); AI_NATIVE_REQUIRE_DECLARATION(ZbWanshaLimit, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZbWanshaLimit, getMaxUsageLimit, Skill);
  types.emplace(std::type_index(typeid(Cee)), 2u);
- types.recordActivateSource<Cee>(2833u); AI_R56_REQUIRE_DECLARATION(Cee, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, getLimitScope, Cee); AI_R56_REQUIRE_DECLARATION(Cee, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Cee, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, isResponseOrUse, ViewAsSkill);
+ types.recordActivateSource<Cee>(2833u); AI_NATIVE_REQUIRE_DECLARATION(Cee, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Cee, getLimitScope, Cee); AI_NATIVE_REQUIRE_DECLARATION(Cee, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(Cee, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Cee, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Cee, isResponseOrUse, ViewAsSkill);
 }
 
 // Exact source-local type receipt; no gameplay virtual method is invoked.
-#include "ai-strategy-round56-card-metadata-types.h"
 #include <type_traits>
-unsigned aiRound56CardMetadataLocalZombineSourceEffects(const std::type_info &type) noexcept
+unsigned aiCardMetadataLocalZombineSourceEffects(const std::type_info &type) noexcept
 {
     static_assert(std::is_same<decltype(&ZbDanyuCard::getClassName), decltype(&Card::getClassName)>::value, "R56 metadata ZbDanyuCard::getClassName declaring owner changed");
     static_assert(std::is_same<decltype(&ZbDanyuCard::getPackage), decltype(&Card::getPackage)>::value, "R56 patterns ZbDanyuCard::getPackage declaring owner changed");

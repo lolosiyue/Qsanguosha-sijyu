@@ -1,16 +1,14 @@
 #include <QScopeGuard>
-#include "ai-strategy-round47b-fate-receipt.h"
+#include "ai-strategy/anime.h"
 #include "player-decision-service.h"
-#include "ai-strategy-round53-collateral.h"
-#include "ai-strategy-round53-xufa-response.h"
-#include "ai-strategy-round53-xuanzhu-response.h"
-#include "ai-strategy-round47-fengyi.h"
-#include "ai-strategy-choice-continuity.h"
-#include "ai-strategy-round27-jieyingh.h"
-#include "ai-strategy-round29-response.h"
+#include "ai-strategy/official.h"
+#include "ai-strategy/xufa.h"
+#include "ai-strategy/ol-ai.h"
+#include "ai-strategy/diy.h"
+#include "ai-strategy/context.h"
+#include "ai-strategy/tenyear-ai.h"
 
 #include "ai.h"
-#include "ai-strategy-animecard.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "event-dispatcher.h"
@@ -1192,7 +1190,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 	const QVariant&data, Card::HandlingMethod method, ServerPlayer*m_who, bool isRetrial, const QString&skill_name,
 	bool isProvision, const Card*m_toCard)
 {
-    AIRound47FengyiQuestion fengyiQuestion(m_room,player,pattern,prompt,data,int(method),isRetrial);
+    AIFengyiQuestion fengyiQuestion(m_room,player,pattern,prompt,data,int(method),isRetrial);
     AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(pattern != "slash" || method != Card::MethodUse); // use askForUseSlashTo instead
@@ -1976,10 +1974,10 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 	Card::HandlingMethod method, bool addHistory, ServerPlayer*who, const Card*whocard, QString flag)
 {
     AIChoiceContinuityInquiry scalarContinuity(m_room);
-    AIRound53XufaInquiryScope xufaInquiry(m_room,player,pattern,prompt,int(method));
-    AIRound53XuanzhuInquiryScope xuanzhuInquiry(m_room,player,pattern,prompt,int(method));
-    AIRound53CollateralQuestion collateralQuestion(m_room,player,pattern,prompt,int(method));
-    AIRound47FateInquiry fateInquiry(m_room,player,pattern);
+    AIXufaInquiryScope xufaInquiry(m_room,player,pattern,prompt,int(method));
+    AIXuanzhuInquiryScope xuanzhuInquiry(m_room,player,pattern,prompt,int(method));
+    AICollateralSlashQuestion collateralQuestion(m_room,player,pattern,prompt,int(method));
+    AIFateInquiry fateInquiry(m_room,player,pattern);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(method != Card::MethodResponse);
 	if (!player->isAlive()) return CardUseStruct();
@@ -1993,8 +1991,8 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 		m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 	
 	// Native observer only: no tag, skill, rule, RNG or revision write.
-	AIRound27JieyinghQuestion jieyinghQuestion(m_room, player, pattern, prompt, int(method));
-    AIRound29ZhifengQuestion zhifengQuestion(m_room, player, pattern, prompt, int(method));
+	AIJieyinghQuestion jieyinghQuestion(m_room, player, pattern, prompt, int(method));
+    AIZhifengQuestion zhifengQuestion(m_room, player, pattern, prompt, int(method));
 	QStringList asked;
 	asked << pattern << prompt << "use";
 	if (whocard){

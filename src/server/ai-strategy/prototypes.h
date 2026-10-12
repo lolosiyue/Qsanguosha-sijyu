@@ -1,0 +1,605 @@
+#ifndef AI_STRATEGY_PROTOTYPES_H
+#define AI_STRATEGY_PROTOTYPES_H
+
+#include "ai-strategy/owner.h"
+#include <QList>
+#include <QString>
+#include <QMap>
+#include <QStringList>
+#include <QJsonObject>
+#include <memory>
+#include <QJsonValue>
+#include <QJsonArray>
+#include <QVariant>
+#include <functional>
+
+struct AIRequest;
+struct AIWorldView;
+class Card;
+struct CardUseStruct;
+class Player;
+class Room;
+class ServerPlayer;
+struct SkillInstanceRef;
+
+// Call once after the original AI has loaded, before any isolated decision.
+// Captures only audited registry function identity; no callback is executed.
+void captureAIStrategyAliases(Room &room);
+
+// Copies the immutable, Room-owned capture; never reads the gameplay VM here.
+void projectAIStrategyAliases(AIWorldView &world, Room &room);
+
+// Fixed-source constructor catalog only. This does not issue a scope or authorize
+// payment: the caller must still rebuild the exact current skill instance and run
+// can_activate/can_select/feasible/create_card and final product validation.
+// Same flags as aiAuditedSourcePrototype: -1 absent, bit 0 source supplies costs,
+// bit 1 source supplies userString. Reads only this request's live owner state.
+int aiAuditedConditionalSourcePrototype(const AIRequest &request, const QString &skill,
+                                       const QString &prototype, const ServerPlayer *viewer);
+
+// Exact ordinary-card constructor branch corresponding to the same providers.
+// Raw printed skill, suit, number and ordered costs are part of the predicate;
+// accepting a product name alone would merge different native branches.
+bool aiAuditedConditionalOrdinaryProduct(const AIRequest &request, const QString &sourceSkill,
+                                        const QString &printedSkill, const QString &name,
+                                        int suit, int number, const QList<int> &orderedCosts,
+                                        const ServerPlayer *viewer);
+
+// Readonly-only superset: Aoyi's unskilled red Slash hypothesis is not the
+// eventual paid native product. Never use this predicate for receipt issuance.
+bool aiAuditedConditionalOrdinaryPreview(const AIRequest &request, const QString &sourceSkill,
+                                        const QString &printedSkill, const QString &name,
+                                        int suit, int number, const QList<int> &orderedCosts,
+                                        const ServerPlayer *viewer);
+
+// Fixed b6025acc source constructors, verified against native definitions.
+// 1: source has nonempty material wire; 2: source has a user-string wire.
+// This list supplies neither an activation scope nor a payment receipt. All
+// selected actions still run the existing current-instance/native recomputation.
+inline int aiAuditedSourcePrototype(const QString &skill, const QString &prototype)
+{
+    static const QMap<QString, QMap<QString, int>> rows{
+        // kearjsrgqi3295-3306: zero-cost response proxy; selected native instance remains mandatory.
+        {"kezhuanmanjuan", {{"#kezhuanmanjuanVsCard", 2}}},
+        {"TH_guanglongzhitanxi", {{"#TH_guanglongzhitanxiCARD", 0}}}, // fixed AI4714/native6361
+        {"PlusChenggui", {{"#PlusChenggui", 1}}},
+        {"PlusCuorui", {{"#PlusCuorui_DummyCard", 1}}},
+        {"PlusDuocheng", {{"#PlusDuocheng_Card", 1}}},
+        {"PlusFanjian", {{"#PlusFanjian_Card", 1}}},
+        {"PlusFuzheng", {{"#PlusFuzheng_Card", 1}}},
+        {"PlusGuicai", {{"#PlusGuicai_Card", 1}, {"#PlusGuicai_DummyCard", 1}}},
+        {"PlusGuidao", {{"#PlusGuidao_Card", 1}}},
+        {"PlusHuangtianQun", {{"#PlusHuangtian_Card", 1}}},
+        {"PlusJiahuo", {{"#PlusJiahuo_Card", 0}}},
+        {"PlusJiangcai", {{"#PlusJiangcai_Card", 1}}},
+        {"PlusJianxiong", {{"#PlusJianxiong_Card", 1}}},
+        {"PlusJieyin", {{"#PlusJieyin_Card", 1}}},
+        {"PlusKuangjun", {{"#PlusKuangjun_Card", 0}}},
+        {"PlusKurou", {{"#PlusKurou_Card", 0}}},
+        {"PlusLeiji", {{"#PlusLeiji_Card", 0}}},
+        {"PlusLiangyuan", {{"#PlusLiangyuan_Card", 0}}},
+        {"PlusLiuli", {{"#PlusLiuli_Card", 1}}},
+        {"PlusLuoyi", {{"#PlusLuoyi_select", 1}}},
+        {"PlusMizhao", {{"#PlusMizhao_Card", 1}}},
+        {"PlusPaoxiao", {{"#PlusPaoxiao_Card", 0}}},
+        {"PlusQimou", {{"#PlusQimou_Card", 0}}},
+        {"PlusRende", {{"#PlusRende_Card", 1}}},
+        {"PlusShensu", {{"#PlusShensu_Card", 1}}},
+        {"PlusTianxiang", {{"#PlusTianxiang_Card", 1}}},
+        {"PlusXuanhu", {{"#PlusXuanhu_Card", 1}}},
+        {"PlusYiji", {{"#PlusYiji_Card", 1}}},
+        {"PlusYizhong", {{"#PlusYizhong_Card", 1}}},
+        {"PlusYuanmou", {{"#PlusYuanmou_Card", 1}}},
+        {"PlusZenhui", {{"#PlusZenhui_Card", 1}}},
+        {"PlusZhaxiang", {{"#PlusZhaxiang_Card", 0}}},
+        {"PlusZhiguo", {{"#PlusZhiguo_Card", 1}}},
+        {"PlusZhiheng", {{"#PlusZhiheng_Card", 1}}},
+        {"PlusZhiren", {{"#PlusZhiren_Card", 0}}},
+        {"PlusZhongyong", {{"#PlusZhongyong_Card", 1}}},
+        {"SE_Geass", {{"#SE_GeassCard", 0}}},
+        {"SE_Nagong_Geiqian", {{"#SE_Nagong_Geiqian", 1}}},
+        {"SevenChuanJiao", {{"#SevenChuanJiao", 0}}},
+        {"SevenFenLiang", {{"#SevenFenLiang", 0}}},
+        {"SevenFengPing", {{"#SevenFengPing", 0}}},
+        {"SevenJiujia", {{"#SevenJiujiaCard", 2}}},
+        {"SevenJuDi", {{"#SevenJuDi", 0}}},
+        {"SevenKanLuan", {{"#SevenKanLuan", 1}}},
+        {"SevenLuanZheng", {{"#SevenLuanZheng", 0}}},
+        {"SevenWeiYuan", {{"#SevenWeiYuan", 1}}},
+        {"SevenYingYong", {{"#SevenYingYong", 0}}},
+        {"SevenZhaoXiang", {{"#SevenZhaoXiang", 0}}},
+        {"SevenZhengBian", {{"#SevenZhengBian", 1}}},
+        {"SixChouyuan", {{"#SixChouyuanCard", 0}}},
+        {"SixChouzuan", {{"#SixChouzuanCard", 0}}},
+        {"SixChunlao", {{"#SixChunlaoCard", 1}, {"#SixChunlaoWineCard", 1}}},
+        {"SixGuicai", {{"#SixGuicaiCard", 1}, {"#SixGuicaiDummyCard", 1}}},
+        {"SixLongdan", {{"#SixLongdanCard", 1}}},
+        {"SixMiBian", {{"#SixMiBian", 1}}},
+        {"SixMingduan", {{"#SixMingduanCard", 1}}},
+        {"SixPaoxiao", {{"#SixPaoxiaoCard", 0}}},
+        {"SixRende", {{"#SixRendeCard", 1}}},
+        {"SixSance", {{"#SixSanceCard", 1}}},
+        {"SixTaichen", {{"#SixTaichenCard", 1}}},
+        {"SixTaohui", {{"#SixTaohuiCard", 1}}},
+        {"SixWuzhi", {{"#SixWuzhiCard", 1}}},
+        {"SixZhidi", {{"#SixZhidiCard", 1}}},
+        {"_chunqiubi", {{"#_chunqiubiCard", 0}}},
+        {"bachi", {{"#bachi", 1}}},
+        {"baoshu", {{"BaoshuCard", 0}}},
+        {"bianxing", {{"#bianxing", 1}}},
+        {"bojue", {{"BojueCard", 0}}},
+        {"boss_miehou", {{"#boss_miehou", 0}}},
+        {"boyan", {{"BoyanCard", 0}}},
+        {"bursta", {{"#bursta", 0}}},
+        {"burstd", {{"#burstd", 0}}},
+        {"burstj", {{"#burstj", 0}}},
+        {"burstl", {{"#burstl", 0}}},
+        {"burstp", {{"#burstp", 0}}},
+        {"bursts", {{"#bursts", 0}}},
+        {"channi", {{"ChanniCard", 1}}},
+        {"chanshuang", {{"ChanshuangCard", 0}}},
+        {"chaobing", {{"#chaobing", 1}}},
+        {"chenjian", {{"ChenjianCard", 1}}},
+        {"chuifeng", {{"#chuifengCard", 2}}},
+        {"ciyuanbawangliu", {{"#ciyuanbawangliu", 1}}},
+        {"dici", {{"DiciCard", 0}}},
+        {"dinglun", {{"DinglunCard", 0}}},
+        {"diy_k_luoshang", {{"#diy_k_luoshang", 0}}},
+        {"diy_k_meihun", {{"#diy_k_meihun", 1}}},
+        {"diy_k_shouli", {{"#diy_k_shouli", 2}}},
+        {"dunshi", {{"DunshiCard", 2}}},
+        {"dynames_transam", {{"#dynames_transam", 0}}},
+        {"exia_transam", {{"#exia_transam", 0}}},
+        {"f_bawang", {{"#f_bawangCard", 1}}},
+        {"f_beifa", {{"#f_beifaCard", 1}}},
+        {"f_dingjun", {{"#f_dingjunCard", 0}}},
+        {"f_diyuxi", {{"#f_diyuxiCard", 0}}},
+        {"f_doufa", {{"#f_doufaCard", 1}}},
+        {"f_doushen", {{"#f_doushenCard", 0}}},
+        {"f_gengzhong", {{"#f_gengzhongCard", 1}}},
+        {"f_gongkang", {{"#f_gongkangCard", 0}}},
+        {"f_henjue", {{"#f_henjueCard", 0}}},
+        {"f_huimeng", {{"#lcd_f_huimengCard", 1}}},
+        {"f_huishi", {{"#f_huishiCard", 0}}},
+        {"f_huoxin", {{"#f_huoxinCard", 1}}},
+        {"f_jianyuan", {{"#f_jianyuangiveCard", 1}, {"#f_jianyuanthrowCard", 1}}},
+        {"f_jieyi", {{"#f_jieyiCard", 0}}},
+        {"f_jishen", {{"#f_jishenCard", 0}}},
+        {"f_jiutian", {{"#f_jiutianCard", 0}}},
+        {"f_kuzha", {{"#f_kuzhaCard", 0}}},
+        {"f_liaodu", {{"#f_liaoduCard", 1}}},
+        {"f_luolei", {{"#f_luoleiCard", 0}}},
+        {"f_mafei", {{"#f_mafeiCard", 1}}},
+        {"f_newdingjun", {{"#f_newdingjunCard", 0}}},
+        {"f_qiandu", {{"#f_qianduCard", 0}}},
+        {"f_qigong", {{"#mini_f_qigongCard", 0}, {"#pro_f_qigongCard", 1}}},
+        {"f_renyi", {{"#f_renyiCard", 0}}},
+        {"f_sandaoEX", {{"#f_sandaoEXCard", 0}, {"#f_sandaoEXSlashCard", 0}}},
+        {"f_shanmengHS", {{"#f_shanmengHSCard", 0}}},
+        {"f_shenjiang", {{"#f_shenjiangCard", 1}, {"#f_shenjiangSBKCard", 1}}},
+        {"f_shenlin", {{"#f_shenlinCard", 1}}},
+        {"f_shennu", {{"#f_shennuCard", 0}}},
+        {"f_shenpan", {{"#f_shenpanCard", 1}}},
+        {"f_shenxianshizu", {{"#f_shenxianshizuCard", 0}}},
+        {"f_skysson", {{"#f_skyssonCard", 1}}},
+        {"f_wuqin", {{"#f_wuqinCard", 1}}},
+        {"f_yanyi", {{"#f_yanyiCard", 0}}},
+        {"f_yaoshu", {{"#f_yaoshuCard", 0}}},
+        {"f_yifa", {{"#f_yifaCard", 1}}},
+        {"f_yishi", {{"#f_yishiCard", 0}}},
+        {"f_yonghun", {{"#f_yonghunCard", 0}, {"#f_yonghunSlashCard", 1}}},
+        {"f_zhanshan", {{"#f_zhanshanCard", 0}}},
+        {"fanshe", {{"#fanshe", 0}}},
+        {"fcbshenwuVS", {{"#fcbshenwuCard", 1}}},
+        {"fcgongxin", {{"#fcgongxinCard", 0}}},
+        {"fcj_fuman", {{"#fcj_fumanCard", 1}}},
+        {"fcj_jianjie", {{"#fcj_jianjieCard", 0}}},
+        {"fcj_jueyan", {{"#fcj_jueyan", 0}}},
+        {"fcj_kannan", {{"#fcj_kannanCard", 0}}},
+        {"fcj_pingcai", {{"#fcj_pingcaiCard", 0}}},
+        {"fcj_sanchen", {{"#fcj_sanchenCard", 0}}},
+        {"fcj_shanxi", {{"#fcj_shanxiCard", 1}}},
+        {"fcmoumingce", {{"#fcmoumingceCard", 1}}},
+        {"fcmoutiaoxin", {{"#fcmoutiaoxinCard", 0}}},
+        {"fcmouyijue", {{"#fcmouyijueCard", 1}}},
+        {"fcmouzhiba", {{"#fcmouzhibaCard", 0}}},
+        {"fczhizhe", {{"#fczhizheCard", 1}}},
+        {"fengong", {{"#fengong", 1}}},
+        {"fengshang", {{"FengshangCard", 1}}},
+        {"fs_transam", {{"#fs_transam", 0}}},
+        {"fushi", {{"FushiCard", 1}}},
+        {"gangqian", {{"GangqianCard", 1}}},
+        {"gaoda_difa", {{"#gaoda_difa", 1}}},
+        {"gaoda_zhongjie", {{"#gaoda_zhongjie", 0}}},
+        {"gaoda_zhufu", {{"#gaoda_zhufu", 1}}},
+        {"getFShenJianSkill", {{"#getFShenJianSkillCard", 0}}},
+        {"guowu", {{"GuowuCard", 0}}},
+        {"guyan", {{"#guyan", 0}}},
+        {"hannan", {{"#hannanCard", 0}}},
+        {"harute_transam", {{"#harute_transam", 0}}},
+        {"heqia", {{"HeqiaCard", 1}}},
+        {"hongbao", {{"#hongbao", 1}}},
+        {"hongtu", {{"HongtuCard", 1}}},
+        {"huanhuo", {{"HuanhuoCard", 1}}},
+        {"huanpei", {{"HuanpeiCard", 2}}},
+        {"hubi", {{"#hubi", 1}}},
+        {"huishi", {{"#huishiCard", 0}}},
+        {"huishii", {{"#huishii", 0}}},
+        {"hundun", {{"#hundun", 0}}},
+        {"hunjiang", {{"HunjiangCard", 0}}},
+        {"imba", {{"#imbaCard", 0}}},
+        {"jianmie", {{"#jianmie", 1}}},
+        {"jidong", {{"#jidong", 1}}},
+        {"jiechi", {{"#jiechi", 1}}},
+        {"jiewan", {{"JiewanCard", 1}}},
+        {"jigu", {{"JiguCard", 1}}},
+        {"jinchongxin", {{"JinChongxinCard", 0}}},
+        {"jinghe", {{"#jinghe", 1}}},
+        {"jinhui", {{"JinhuiCard", 0}, {"JinhuiUseCard", 1}}},
+        {"jinlan", {{"JinlanCard", 0}}},
+        {"jiqi", {{"#jiqi", 0}}},
+        {"jiqiaosy", {{"JiqiaosyCard", 1}}},
+        {"juemou", {{"#juemouCard", 0}}},
+        {"juexin", {{"#juexin", 0}}},
+        {"jvjian", {{"#jvjian", 1}}},
+        {"kehuiyao", {{"#kehuiyaoCard", 0}}},
+        {"kemobileguanzong", {{"#kemobileguanzongCard", 0}}},
+        {"keolbixin", {{"#keolbixinCard", 2}}},
+        {"keolqingyi", {{"#keolqingyiCard", 0}}},
+        {"keolsaogu", {{"#keolsaoguCard", 1}}},
+        {"keolshandao", {{"#keolshandaoCard", 0}}},
+        {"keolshizhan", {{"#keolshizhanCard", 0}}},
+        {"keolxianbi", {{"#keolxianbiCard", 0}}},
+        {"keolxieju", {{"#keolxiejuCard", 0}}},
+        {"keolzhenying", {{"#keolzhenyingCard", 0}}},
+        {"keolzhubi", {{"#keolzhubiCard", 0}}},
+        {"kouchao", {{"KouchaoCard", 0}}},
+        {"kuanmo", {{"KuanmoCard", 0}}},
+        {"kyrios_transam", {{"#kyrios_transam", 0}}},
+        {"leishe", {{"#leishe", 0}}},
+        {"liangyuan", {{"#liangyuanCard", 2}}},
+        {"lieyi", {{"LieyiCard", 0}}},
+        {"linguang", {{"#linguang", 0}}},
+        {"longhou", {{"#longhou", 1}}},
+        {"lucun", {{"LucunCard", 2}}},
+        {"lunwu", {{"#lunwu", 1}}},
+        {"lunzhan", {{"LunzhanCard", 1}}},
+        {"m_aoyi", {{"#m_aoyi", 1}}},
+        {"manwang", {{"ManwangCard", 1}}},
+        {"map", {{"#map", 0}}},
+        {"meichunjiefuli", {{"#meichunjiefulicard", 0}}},
+        {"meispliwu", {{"#meispliwucard", 0}}},
+        {"meispruixue", {{"#meispruixuecard", 0}}},
+        {"meispshliwu", {{"#meispshliwucard", 0}}},
+        {"meizlbiyi", {{"#meizlbiyicard", 0}}},
+        {"meizlbiyin", {{"#meizlbiyincard", 0}}},
+        {"meizlchanhuo", {{"#meizlchanhuocard", 0}}},
+        {"meizlganzheng", {{"#meizlganzhengcard", 0}}},
+        {"meizlguihan", {{"#meizlguihancard", 0}}},
+        {"meizlhuawu", {{"#meizlhuawucard", 1}}},
+        {"meizlhujia", {{"#meizlhujiacard", 0}}},
+        {"meizljianwu", {{"#meizljianwucard", 1}}},
+        {"meizljiaorao", {{"#meizljiaoraocard", 1}}},
+        {"meizlkuangji", {{"#meizlkuangjicard", 1}}},
+        {"meizlkujingguhun", {{"#meizlkujingguhuncard", 0}}},
+        {"meizllipo", {{"#meizllipocard", 0}}},
+        {"meizlluohong", {{"#meizlluohongcard", 1}}},
+        {"meizlluoyingbinfen", {{"#meizlluoyingbinfencard", 0}}},
+        {"meizlmengshilong", {{"#meizlmengshilongcard", 0}}},
+        {"meizlmihun", {{"#meizlmihuncard", 1}}},
+        {"meizlmijian", {{"#meizlmijiancard", 1}}},
+        {"meizlmosi", {{"#meizlmosicard", 0}}},
+        {"meizlqingyan", {{"#meizlqingyancard", 1}}},
+        {"meizlrangdou", {{"#meizlrangdoucard", 1}}},
+        {"meizlseaoman", {{"#meizlseaomancard", 0}}},
+        {"meizlsebaonu", {{"#meizlsebaonucard", 0}}},
+        {"meizlsebaoshi", {{"#meizlsebaoshicard", 1}}},
+        {"meizlsedangyang", {{"#meizlsedangyangcard", 0}}},
+        {"meizlsejidu", {{"#meizlsejiducard", 1}}},
+        {"meizlselanduo", {{"#meizlselanduocard", 0}}},
+        {"meizlselianyu", {{"#meizlselianyucard", 0}}},
+        {"meizlsepoxiao", {{"#meizlsepoxiaocard", 1}}},
+        {"meizlsetanlan", {{"#meizlsetanlancard", 0}}},
+        {"meizlseyinyu", {{"#meizlseyinyucard", 0}}},
+        {"meizlseyousha", {{"#meizlseyoushacard", 1}}},
+        {"meizlshguihan", {{"#meizlshguihancard", 0}}},
+        {"meizlshhujia", {{"#meizlshhujiacard", 0}}},
+        {"meizlshqingyan", {{"#meizlshqingyancard", 1}}},
+        {"meizlshtuogu", {{"#meizlshtuogucard", 0}}},
+        {"meizlshzefu", {{"#meizlshzefucard", 0}}},
+        {"meizltuogu", {{"#meizltuogucard", 0}}},
+        {"meizlwuyin", {{"#meizlwuyincard", 1}}},
+        {"meizlwuzhijingjichang", {{"#meizlwuzhijingjichangcard", 0}}},
+        {"meizlyangxiu", {{"#meizlyangxiucard", 0}}},
+        {"meizlyanranyixiao", {{"#meizlyanranyixiaocard", 0}}},
+        {"meizlyincai", {{"#meizlyincaicard", 0}}},
+        {"meizlyuezhanyueqiang", {{"#meizlyuezhanyueqiangcard", 0}}},
+        {"meizlyujue", {{"#meizlyujuecard", 0}}},
+        {"meizlzefu", {{"#meizlzefucard", 0}}},
+        {"meizlzenhui", {{"#meizlzenhuicard", 1}}},
+        {"meizlzhaojie", {{"#meizlzhaojiecard", 1}}},
+        {"meizlzhaoxu", {{"#meizlzhaoxucard", 0}}},
+        {"meizlzhenhunqu", {{"#meizlzhenhunqucard", 0}}},
+        {"meizlzhenshi", {{"#meizlzhenshicard", 0}}},
+        {"meizlzhinang", {{"#meizlzhinangcard", 1}}},
+        {"meizlzhixi", {{"#meizlzhixicard", 1}}},
+        {"mengshi", {{"MengshiCard", 0}}},
+        {"miluo", {{"MiluoCard", 1}}},
+        {"mobile_dingzou", {{"#mobile_dingzouCard", 1}}},
+        {"mobile_wuling", {{"#mobile_wulingCard", 0}}},
+        {"mobile_youyi", {{"#mobile_youyiCard", 0}}},
+        {"mobiledamingvs", {{"#mobiledamingCard", 1}}},
+        {"mobilefenming", {{"#mobilefenming", 0}}},
+        {"mobilejingxie", {{"#mobilejingxieCard", 1}}},
+        {"mobileqiaosi", {{"#mobileqiaosiCard", 0}}},
+        {"mouduanliangg", {{"#mouduanlianggCard", 0}}},
+        {"moufanjian", {{"#moufanjianCard", 1}}},
+        {"moufenwei", {{"#moufenweiCard", 1}}},
+        {"mouguose", {{"#mouguoseCard", 0}}},
+        {"mouhuoji", {{"#mouhuojiCard", 0}}},
+        {"moujiewei", {{"#moujieweiCard", 0}}},
+        {"moujushou", {{"#moujushouCard", 1}}},
+        {"mouliangzhu", {{"#mouliangzhuCard", 0}}},
+        {"moulijian", {{"#moulijianCard", 1}}},
+        {"moumingce", {{"#moumingceCard", 1}}},
+        {"mouqicai", {{"#mouqicaiCard", 1}}},
+        {"mouqixi", {{"#mouqixiCard", 0}}},
+        {"mourende", {{"#mourendeCard", 1}}},
+        {"moutianxiang", {{"#moutianxiangCard", 1}}},
+        {"mouxuanhuo", {{"#mouxuanhuoCard", 1}}},
+        {"mouyanyu", {{"#mouyanyuCard", 1}}},
+        {"mouzhangwu", {{"#mouzhangwuCard", 0}}},
+        {"mouzhenliang", {{"#mouzhenliang", 1}}},
+        {"mx_hanhun", {{"#mx_hanhunCard", 1}}},
+        {"mx_xinghan", {{"#mx_xinghanCard", 0}}},
+        {"nhhuoqi", {{"#nhhuoqi", 1}}},
+        {"nhxianshou", {{"#nhxianshou", 0}}},
+        {"nosjinwanyi", {{"#nosjinwanyi", 3}}},
+        {"ny_10th_huace", {{"#ny_10th_huace", 3}}},
+        {"ny_10th_zhaowen", {{"#ny_10th_zhaowen", 3}}},
+        {"ny_ol_yanru", {{"#ny_ol_yanruCard", 0}}},
+        {"ny_tenth_shizong", {{"#ny_tenth_shizong", 2}}},
+        {"offunan", {{"#offunanCard", 0}}},
+        {"ofjixu", {{"#ofjixuCard", 1}}},
+        {"ofshezuo", {{"#ofshezuoCard", 0}}},
+        {"ofsifen", {{"#ofsifenCard", 1}}},
+        {"ofyouchong", {{"#ofyouchongCard", 2}}},
+        {"ol2shanjia", {{"OL2ShanjiaCard", 2}}},
+        {"oldimeng", {{"#oldimeng", 0}}},
+        {"olfuman", {{"#olfuman", 1}}},
+        {"oljinjin", {{"OLJinjinCard", 2}}},
+        {"oljueyan", {{"OLJueyanCard", 3}}},
+        {"olliyong", {{"OLLiyongCard", 1}}},
+        {"olmoubaojing", {{"#olmoubaojingCard", 0}}},
+        {"olqingshi", {{"OLQingshiCard", 1}}},
+        {"olshoushu", {{"#olshoushuCard", 0}}},
+        {"olspxixiang", {{"#olspxixiangCard", 3}}},
+        {"olspzhubei", {{"#olspzhubeiCard", 0}}},
+        {"olxiaofan", {{"#olxiaofan0Card", 1}}},
+        {"olyicheng", {{"olYicheng2Card", 1}, {"olYichengCard", 0}}},
+        {"pingduan", {{"PingduanCard", 0}}},
+        {"ps_huairou", {{"#ps_huairou", 1}}},
+        {"qiangang", {{"QiangangCard", 0}}},
+        {"qiaozhi", {{"QiaozhiCard", 1}}},
+        {"qiefu", {{"#qiefu", 1}}},
+        {"qushi", {{"QushiCard", 0}}},
+        {"reborns_transam", {{"#reborns_transam", 0}}},
+        {"redpacket", {{"#redpacket", 1}}},
+        {"renbinglun", {{"#renbinglunCard", 0}}},
+        {"renluanchou", {{"#renluanchouCard", 0}}},
+        {"renxian", {{"RenxianCard", 1}}},
+        {"ronghe", {{"#ronghe", 0}}},
+        {"se_banyun", {{"#se_banyuncard", 0}}},
+        {"se_bianhua", {{"#se_bianhuaCard", 1}}},
+        {"se_biling", {{"#se_bilingvscard", 0}}},
+        {"se_cairen", {{"#se_cairencard", 1}}},
+        {"se_chengling", {{"#se_chenglingcard", 0}}},
+        {"se_chenyan", {{"#se_chenyan", 1}}},
+        {"se_chongjing", {{"#se_chongjingcard", 0}}},
+        {"se_chouyuan", {{"#se_chouyuancard", 0}}},
+        {"se_dushe", {{"#se_dushecard", 0}}},
+        {"se_erdao", {{"#se_erdaocard", 1}}},
+        {"se_erdao_old", {{"#se_erdao_oldCard", 1}}},
+        {"se_gaobai", {{"#se_gaobaicard", 0}}},
+        {"se_gate", {{"#se_gatecard", 1}}},
+        {"se_hengsao", {{"#se_hengsaocard", 0}}},
+        {"se_huanyuan", {{"#se_huanyuancard", 1}}},
+        {"se_jiangui", {{"#se_jianguicard", 0}}},
+        {"se_jianshi", {{"#se_jianshicard", 0}}},
+        {"se_jianwu", {{"#se_jianwucard", 0}}},
+        {"se_jianyu", {{"#se_jianyucard", 0}}},
+        {"se_jiejie", {{"#se_jiejiecard", 0}}},
+        {"se_jieshu", {{"#se_jieshucard", 0}}},
+        {"se_kanhu", {{"#se_kanhucard", 0}}},
+        {"se_liaoli", {{"#se_liaolicard", 1}}},
+        {"se_mipa", {{"#se_mipacard", 1}}},
+        {"se_origin", {{"#se_origincard", 0}}},
+        {"se_paoji", {{"#se_paojicard", 0}}},
+        {"se_poyi", {{"#se_poyicard", 0}}},
+        {"se_qingqiangwei", {{"#se_qingqiangweicard", 0}}},
+        {"se_qiyuan", {{"#se_qiyuancard", 0}}},
+        {"se_shengjian", {{"#se_shengjiancard", 0}}},
+        {"se_shixian", {{"#se_shixiancard", 1}}},
+        {"se_shouren", {{"#se_shourencard", 0}}},
+        {"se_shunshan", {{"#se_shunshancard", 0}}},
+        {"se_tiaoyue", {{"#se_tiaoyuecard", 0}}},
+        {"se_tongling", {{"#se_tonglingcard", 0}}},
+        {"se_xunyu", {{"#se_xunyucard", 1}}},
+        {"se_yekong", {{"#se_yekongcard", 0}}},
+        {"se_youhuo", {{"#se_youhuocard", 1}}},
+        {"se_zhanjing", {{"#se_zhanjingcard", 0}}},
+        {"se_zhijian", {{"#se_zhijiancard", 1}}},
+        {"se_zhiling", {{"#se_zhilingcard", 1}}},
+        {"se_zhiyu", {{"#se_zhiyucard", 1}}},
+        {"se_zhuren", {{"#se_zhurencard", 1}}},
+        {"shanguang", {{"#shanguang", 1}}},
+        {"shengong", {{"ShengongCard", 1}}},
+        {"shenniao", {{"#shenniao", 1}}},
+        {"shenzhang", {{"#shenzhang", 1}}},
+        {"shijun", {{"#shijun", 1}}},
+        {"shineng", {{"#shineng", 0}}},
+        {"shuanglong", {{"#shuanglong", 1}}},
+        {"shuangpao", {{"#shuangpao", 0}}},
+        {"shuzi", {{"ShuziCard", 1}}},
+        {"sibing", {{"SibingCard", 1}}},
+        {"siqi", {{"SiqiCard", 1}}},
+        {"siyi", {{"#siyi", 0}}},
+        {"songli", {{"#songli", 1}}},
+        {"sp_chibi", {{"#sp_chibiCard", 0}}},
+        {"sp_dujiang", {{"#sp_dujiangCard", 1}}},
+        {"sp_feijiang", {{"#sp_feijiangCard", 0}}},
+        {"sp_guamu", {{"#sp_guamuCard", 0}}},
+        {"sp_guimen", {{"#sp_guimenCard", 0}}},
+        {"sp_kongju", {{"#sp_kongjuCard", 0}}},
+        {"sp_lingyun", {{"#sp_lingyunCard", 0}}},
+        {"sp_lvezhen", {{"#sp_lvezhenCard", 0}}},
+        {"sp_shenmou", {{"#sp_shenmouCard", 0}}},
+        {"sp_shenqi_ub", {{"#sp_shenqi_ubCard", 0}}},
+        {"sp_sishi", {{"#sp_sishiCard", 0}}},
+        {"sp_tianxia", {{"#sp_tianxiaCard", 0}}},
+        {"sp_xiying", {{"#sp_xiyingCard", 0}}},
+        {"sp_yaozhi_ub", {{"#sp_yaozhi_ubCard", 0}}},
+        {"sp_yuanzhi", {{"#sp_yuanzhiCard", 0}}},
+        {"sp_zhengbian", {{"#sp_zhengbianCard", 0}}},
+        {"sp_zhujiu", {{"#sp_zhujiuCard", 0}}},
+        {"suyi", {{"SuyiCard", 2}}},
+        {"tc_changbiao_sqrh", {{"#tc_changbiao_sqrh", 1}}},
+        {"tc_dingzhou", {{"#tc_dingzhou", 0}}},
+        {"tc_huashen", {{"#tc_huashen", 0}}},
+        {"tc_huishi", {{"#tc_huishi", 0}}},
+        {"tc_liuti", {{"#tc_liutiCard", 1}}},
+        {"tc_shenfen", {{"#tc_shenfen", 0}}},
+        {"tc_zuoxing", {{"#tc_zuoxing", 2}}},
+        {"tuci", {{"#tuci", 0}}},
+        {"tycuijue", {{"#tycuijueCard", 1}}},
+        {"tyshouli", {{"#tyshouli", 3}}},
+        {"virtue_transam", {{"#virtue_transam", 0}}},
+        {"weibo", {{"#weibo", 0}}},
+        {"weifu", {{"WeifuCard", 1}}},
+        {"weijie", {{"WeijieCard", 2}}},
+        {"weimeng", {{"WeimengCard", 0}}},
+        {"weimian", {{"WeimianCard", 0}}},
+        {"weixing", {{"#weixing", 0}}},
+        {"wenren", {{"WenrenCard", 0}}},
+        {"wxjifengEX", {{"#wxjifengEXCard", 1}}},
+        {"wzpoint", {{"#wzpoint", 0}}},
+        {"xdyifu", {{"#xdyifucard", 3}}},
+        {"xianying", {{"XianyingCard", 1}}},
+        {"xiewei", {{"XieweiCard", 3}}},
+        {"xiezhan", {{"#xiezhan", 1}}},
+        {"xin2chuhai", {{"#xin2chuhaiCard", 0}}},
+        {"xiongmang", {{"XiongmangCard", 0}}},
+        {"xiongsuan", {{"#xiongsuanCard", 1}}},
+        {"xuanzhu", {{"Xuanzhu2Card", 0}, {"XuanzhuCard", 3}}},
+        {"xunli", {{"XunliCard", 1}, {"XunliPutCard", 1}}},
+        {"yanduanbi", {{"#yanduanbiCard", 0}}},
+        {"yanliangvs", {{"YanliangCard", 1}}},
+        {"yanyangjie", {{"#yanyangjieCard", 0}}},
+        {"yijiao", {{"YijiaoCard", 0}}},
+        {"yingba", {{"#yingba", 0}}},
+        {"yinglve", {{"YinglveCard", 0}}},
+        {"yingxin", {{"#yingxin", 1}}},
+        {"yongshanxie", {{"#yongshanxieCard", 0}}},
+        {"youque", {{"YouqueCard", 1}}},
+        {"yuanyu", {{"YuanyuCard", 0}}},
+        {"yuexian", {{"#yuexian", 0}}},
+        {"yuqi", {{"YuqiCard", 1}}},
+        {"zaibi", {{"#zaibiCard", 1}}},
+        {"zaisheng", {{"#zaisheng", 1}}},
+        {"zaizhan", {{"#zaizhan", 0}}},
+        {"zaowang", {{"ZaowangCard", 0}}},
+        {"zhaoluan", {{"#zhaoluanCard", 0}}},
+        {"zhenya", {{"#zhenya", 0}}},
+        {"zhijue", {{"ZhijueCard", 1}}},
+        {"zhishi", {{"ZhishiCard", 1}}},
+        {"zhonggong", {{"#zhonggong", 0}}},
+        {"zonghu", {{"ZonghuCard", 3}}},
+        {"zuolian", {{"ZuolianCard", 0}}},
+        {"zuoxing", {{"#zuoxing", 2}}},
+    };
+    const auto found = rows.constFind(skill);
+    if (found == rows.cend()) return -1;
+    return found.value().value(prototype, -1);
+}
+
+void projectAIBorrowedCallbacks(AIWorldView &, Room &, ServerPlayer *);
+
+void projectAIUseCardDispatch(AIRequest &, Room &, ServerPlayer *);
+void projectAIAocaiInvokeDispatch(AIRequest &, Room &, const QStringList &);
+void projectAILianliSlashInvokeDispatch(AIRequest &, Room &, const QStringList &);
+
+// Read-only classification for the fixed Aocai askForCard(pattern,prompt,1)
+// call. No Card descriptor, authority receipt or material identity is returned.
+QJsonObject inspectAINestedCardaskString(Room &, ServerPlayer *, const AIRequest &, const QString &);
+// Call only after projectAIAocaiInvokeDispatch has installed current asked data.
+void projectAINestedCardaskCompulsory(AIRequest &, Room &, ServerPlayer *);
+// Finite source protected-call error sink; never invokes legacy AI or issues a card.
+QJsonObject reportAILianliCardaskError(Room &, ServerPlayer *, const AIRequest &, const QString &);
+
+// Fixed SmartAI getGuhuoCard/askForCard compulsory-Jink source product.
+// This is not the V1 GUI viewAs product (whose userString is "jink!").
+// Both issuance and final reconstruction must call this same live validator.
+bool isAITongyiSource(const AIRequest &, const QString &skill,
+                            const QString &policyClass);
+Card *buildAITongyiSource(const AIRequest &, Room &, ServerPlayer *,
+    const SkillInstanceRef &activation, const SkillInstanceRef &source,
+    const QString &policyClass, const QString &declaration, const QList<int> &costs);
+
+// Only the fixed sxzhitu Card-object callback. Created/attached objects remain
+// request-owned hypotheses; attachment does not issue or modify an authority.
+struct AICardsViewObject {
+    bool handled=false, absent=false;
+    QString error;
+    std::unique_ptr<Card> created;
+    const Card *attached=nullptr;
+    QJsonObject bindingSpec;
+    AICardsViewObject();
+    ~AICardsViewObject();
+    AICardsViewObject(AICardsViewObject &&) noexcept;
+    AICardsViewObject &operator=(AICardsViewObject &&) noexcept;
+};
+AICardsViewObject buildAICardsViewObject(const AIRequest &, Room &, ServerPlayer *,
+    const QJsonObject &scope, const QString &registry, const QString &hook,
+    const QJsonObject &proposal, bool attachRequest, const Card *ownedSource);
+
+bool aiTongyiConstruction(const AIRequest &, Room &, ServerPlayer *, const QJsonObject &spec);
+
+// Construction only. The caller must obtain issuedScope from the active
+// request's native ledger, never from a Lua-supplied object. No receipt is issued.
+struct AIResponseSourcePolicy {
+    enum Status { Parsed, Absent, Unknown } status = Unknown;
+    std::unique_ptr<Card> card;
+    const Card *physicalCard = nullptr; // Borrowed, disclosed owner card only.
+    QJsonObject bindingSpec;
+    QString error;
+    AIResponseSourcePolicy();
+    ~AIResponseSourcePolicy();
+    AIResponseSourcePolicy(AIResponseSourcePolicy &&) noexcept;
+    AIResponseSourcePolicy &operator=(AIResponseSourcePolicy &&) noexcept;
+};
+AIResponseSourcePolicy buildAIResponseSourcePolicy(
+    const AIRequest &, Room &, ServerPlayer *, const QJsonObject &issuedScope,
+    const QString &registry, const QString &hookKey, const QJsonValue &proposal,
+    bool attachRequest);
+
+// Fixed smart-ai.lua use_revises: V1 policy objects only, never V2 receipts.
+bool aiUseReviseEvaluationSource(const QString &sourceKey);
+std::unique_ptr<Card> aiUseReviseEvaluation(const AIRequest &request, Room &room,
+    const ServerPlayer *viewer, const QString &sourceKey, const QString &className,
+    const QJsonArray &costs, QString *error);
+
+bool recordAILihuoDelegateUse(const AIRequest &,ServerPlayer *,const CardUseStruct &,const AIReadonlyCardLease &,QString *error=nullptr);
+using AIDelegateUseProfile = std::function<QJsonObject(const Card *)>;
+void captureAIDelegateMetadata(Room &);
+int aiJieyinghDelegatePrototype(const AIRequest &, const ServerPlayer *, const QString &skill, const QString &prototype);
+// Exact current-question observation; no payment or native tag mutation.
+void projectAIDelegates(AIRequest &, Room &, ServerPlayer *, const AIDelegateUseProfile &, const QVariant &incoming = QVariant());
+bool recordAIDelegateUse(const AIRequest &, ServerPlayer *, const QString &sourceKey, QString *error = nullptr);
+// present=false means no AI write; native reader remains authoritative. A
+// present-but-unknown shadow must NOT fall back to an older native tag value.
+QJsonObject restoreAIDelegateUse(const AIRequest &, ServerPlayer *, const QString &destination, const AIDelegateUseProfile &, const AIDelegateUseProfile &constructedLihuoProfile = AIDelegateUseProfile());
+void noteAIDelegateTagWrite(const Player *, const QString &key);
+void noteAIDelegateTagsClear(const Player *);
+void clearAIDelegateObservations(Room &);
+
+#endif

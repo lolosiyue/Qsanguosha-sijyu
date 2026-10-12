@@ -10,7 +10,7 @@
 #include "package.h"
 #include "room.h"
 #include "room-runtime.h"
-#include "ai-strategy-round56-bootstrap-source.h"
+#include "ai-strategy/runtime.h"
 
 #include <QDebug>
 #include <QThread>
@@ -169,7 +169,7 @@ void RoomDefinitionRegistry::indexPackage(Package *package)
     for (int index = 0; index < packageCards.size(); ++index) {
         Card *card = packageCards.at(index);
         if (m_cardIds.contains(card)) {
-            card->aiRound56ReassertPhysicalDefinitionId(m_cardIds.value(card));
+            card->aiReassertPhysicalDefinitionId(m_cardIds.value(card));
             continue;
         }
         int id = index < bootstrapIds.size() ? bootstrapIds.at(index) : m_nextCardId++;
@@ -181,7 +181,7 @@ void RoomDefinitionRegistry::indexPackage(Package *package)
             id = m_nextCardId++;
         }
         card->setId(id);
-        card->aiRound56RecordPhysicalDefinitionIndexSource(id);
+        card->aiRecordPhysicalDefinitionIndexSource(id);
         m_cards.insert(id, card);
         m_cardSpan = qMax(m_cardSpan, id + 1);
         m_cardIds.insert(card, id);
@@ -457,7 +457,7 @@ void RoomDefinitionRegistry::observeFactoryMapWriter() noexcept
     // can collect writers; the complete source token closes that graph later.
     if (m_factorySourcePhase != FactorySourcePhase::Collecting
         || !m_factorySourceRoom
-        || !isAIRound56OriginalDefinitionProducer(*m_factorySourceRoom, this))
+        || !isAIOriginalDefinitionProducer(*m_factorySourceRoom, this))
         m_factorySourcePhase = FactorySourcePhase::Retired;
 }
 

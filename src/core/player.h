@@ -592,8 +592,8 @@ protected:
 
 private:
     friend class Room;
-    bool beginAIRound56PublicGeneralSkills(quint64 &serial) noexcept;
-    void finishAIRound56PublicGeneralSkills(quint64 serial, quint64 expected) noexcept;
+    bool beginAIPublicGeneralSkills(quint64 &serial) noexcept;
+    void finishAIPublicGeneralSkills(quint64 serial, quint64 expected) noexcept;
     friend class PlayerStateService;
     friend class RoomManagedState;
     // Commit receipts before mark_changed can re-enter game rules.
