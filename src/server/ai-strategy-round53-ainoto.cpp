@@ -17,9 +17,16 @@ public:
  bool initialized=false;QString viewer;quint64 generation=0,initialReads=0,choulveWrites=0,choulveAccepted=0;
  QHash<const ServerPlayer*,Witness>witnesses;QSet<const ServerPlayer*>watched;
  QPointer<ServerPlayer>writing;
- void retire(){++generation;witnesses.clear();}
+ // Callback/transport continuity is required only for policy-written values.
+ // Constructor absence survives until its actual QObject property changes.
+ void retire(){++generation;for(auto it=witnesses.begin();it!=witnesses.end();){
+  if(!it->initialAbsent)it=witnesses.erase(it);else ++it;
+ }}
  bool eventFilter(QObject*object,QEvent*e)override{
   if(e->type()==QEvent::DynamicPropertyChange&&static_cast<QDynamicPropertyChangeEvent*>(e)->propertyName()=="aiNoTo"){
+   // Every real property change ends constructor absence, including a
+   // certified write. Never reconstruct it by sampling a later missing value.
+   witnesses.remove(static_cast<ServerPlayer*>(object));
    // The same exact certified setter is checked again after all synchronous
    // observers. Every other setter loses permission; never imports its value.
    if(object!=writing.data())retire();
@@ -36,16 +43,14 @@ void createdAIRound53AiNoTo(Room&r,ServerPlayer*p){
  QObject::connect(p,&QObject::destroyed,s,[s,p](){s->witnesses.remove(p);s->watched.remove(p);});
  // Called only from ServerPlayer construction. A later runtime reset cannot
  // sample an already-running native property and turn it into a baseline.
- const auto transport=r.roomRuntime()?r.roomRuntime()->xufaTransportEpoch():0;
- if(transport&&!p->property("aiNoTo").isValid())s->witnesses.insert(p,{true,{},transport});
+ if(!p->property("aiNoTo").isValid())s->witnesses.insert(p,{true,{},0});
 }
 bool hasAIRound56InitialAiNoToWitness(const Room&r,const ServerPlayer*p) noexcept {
  auto*rt=const_cast<Room&>(r).roomRuntime();
  if(!p||p->getRoom()!=&r||!rt)return false;
  for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c)){
   const auto i=s->witnesses.constFind(p);
-  return i!=s->witnesses.cend()&&i->initialAbsent&&i->transport
-   &&i->transport==rt->xufaTransportEpoch();
+  return i!=s->witnesses.cend()&&i->initialAbsent;
  }
  return false;
 }
@@ -91,7 +96,9 @@ QJsonObject queryAIRound53AiNoTo(Room&r,const AIRequest&q,const ServerPlayer*vie
   s->witnesses.insert(target,{false,viewer->objectName(),transport});
  }else if(op!="read"||spec.size()!=3)return error("target-revise reader shape invalid");
  const auto it=s->witnesses.constFind(target);const QVariant actual=target->property("aiNoTo");
- const bool known=it!=s->witnesses.cend()&&it->transport&&it->transport==r.roomRuntime()->xufaTransportEpoch()&&(it->initialAbsent?!actual.isValid():(it->viewer==viewer->objectName()&&actual.userType()==QMetaType::Bool));
+ const bool known=it!=s->witnesses.cend()&&(it->initialAbsent?!actual.isValid():
+  (it->transport&&it->transport==r.roomRuntime()->xufaTransportEpoch()
+   &&it->viewer==viewer->objectName()&&actual.userType()==QMetaType::Bool));
  if(op=="read"&&known&&it->initialAbsent)++s->initialReads;
  QJsonObject row{{"kind","target_revise_property"},{"target",target->objectName()},{"known",known},{"viewer",viewer->objectName()},{"decision_id",q.getDecisionId()},{"state_revision",q.getStateRevision()}};
  if(known)row.insert("value",actual.toBool());else row.insert("reason","target-revise actual property has no lawful source witness for this viewer");

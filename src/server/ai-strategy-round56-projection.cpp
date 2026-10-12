@@ -83,7 +83,7 @@ AIRound56ProjectionScope::AIRound56ProjectionScope(Room&r,ServerPlayer*p,lua_Sta
  try{
   auto*rt=r.roomRuntime();
   if(!p||p->getRoom()!=&r||!rt||!L||rt->lua().rawState()!=L||rt->isClosing()
-   ||r.getMode()!="02p"||Config.EnableHegemony||ServerInfo.EnableHegemony||r.getScenario()
+   ||(r.getMode()!="02p"&&r.getMode()!="04p")||Config.EnableHegemony||ServerInfo.EnableHegemony||r.getScenario()
    ||!lua_checkstack(L,8192)){fail("projection public runtime domain");return;}
   if(!hasAIRound56CloneInputLineage(r,L)||!hasAIRound56ProjectionLineage(r,L)||!hasAIRound56PatternsLineage(r,L)||!hasAIRound56AsyncUniverse(r,L)
    ||!hasAIRound56ModeEvaluationLineage(r,L)||!proveAIRound56ServerLogEffects(r)){

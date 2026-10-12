@@ -3,6 +3,7 @@
 #include "wrapped-card.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-mode-evaluation.h"
 #include "ai-strategy-round56-projection-lineage.h"
 #include "ai-strategy-round56-clone-lineage.h"
 #include "ai-strategy-round56-async.h"
@@ -70,7 +71,7 @@ AIRound56MaxCardsScope::AIRound56MaxCardsScope(Room&r,ServerPlayer*p,lua_State*L
   if(!rt||rt->isClosing()||!p||typeid(*p)!=typeid(ServerPlayer)||p->getRoom()!=&r||p->parent()!=&r
    ||!L||rt->lua().rawState()!=L||LuaRuntime::current()!=&rt->lua()||!rt->lua().isCurrentThreadOwner()
    ||!Sanguosha->currentRoomContext()||Sanguosha->currentRoomContext()->roomRuntime()!=rt
-   ||r.getMode()!="02p"||Config.EnableHegemony||ServerInfo.EnableHegemony||r.getScenario()) {
+   ||(r.getMode()!="02p"&&r.getMode()!="04p")||Config.EnableHegemony||ServerInfo.EnableHegemony||r.getScenario()) {
    fail("original normal Game VM receiver domain");return;
   }
   d->lifetime.reset(new CardLifetimeScope(globalCardLifetimeManager(),root==ZunweiSeed?"R56ZunweiSeed":root==OwnerEquipmentQueries?"R56OwnerEquipmentQueries":root==PublicAttackRangeMatrix?"R56PublicAttackRangeMatrix":root==OwnerPindian?"R56OwnerPindian":root==OwnerJilei?"R56OwnerJilei":root==WorldSkillQueries?"R56WorldSkillQueries":root==OwnerCardState?"R56OwnerCardState":root==PublicSkillQueries?"R56PublicSkillQueries":root==PlayerSkillValidity?"R56SkillValidity":root==ConnectionQuery?"R56ConnectionQuery":root==OwnerPhysicalCandidates?"R56OwnerCandidates":root==FixedOwnerEvaluations?"R56OwnerEvaluations":root==FixedSlashProbes?"R56FixedSlashProbes":root==OwnerAnaleptic?"R56OwnerAnaleptic":root==OwnerSlashWithoutCrossbow?"R56OwnerSlash":root==PublicDistances?"R56PublicDistances":root==OwnerCardRules?"R56OwnerCardRules":root==AttackRangeFixedExtra?"R56AttackRangeFixedExtra":"R56MaxCardsFixedExtra"));
@@ -78,6 +79,13 @@ AIRound56MaxCardsScope::AIRound56MaxCardsScope(Room&r,ServerPlayer*p,lua_State*L
    ||!hasAIRound56AsyncUniverse(r,L)||!proveAIRound56ServerLogEffects(r)
    ||!rt->definitions().hasFactorySourceOrigin(r,L)||!hasAIRound56GlobalFactoryMapOrigin(Sanguosha)
    ||!lua_checkstack(L,8192)) {fail("complete bootstrap/native map/async source absent");return;}
+  // The 04p source domain has its own bootstrap-issued mode lineage. Prove
+  // its complete callback union independently of the selected skill/holder.
+  if(r.getMode()=="04p"){
+   QString why;if(!hasAIRound56ModeEvaluationLineage(r,L)||!proveAIRound56ModeEvaluationUnion(r,L,&why)){
+    fail(why.isEmpty()?QStringLiteral("ordinary identity mode source union"):why);return;
+   }
+  }
   d->generation=rt->lua().generation();d->mapGeneration=r.roomState()->aiRound56PhysicalIdMapGeneration();
   d->weaponRevision=Weapon::rangeRevision();
   // All public definitions and all necessary callback roles are proved before

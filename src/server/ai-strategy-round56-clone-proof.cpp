@@ -8,6 +8,9 @@
 #include "room.h"
 #include "room-runtime.h"
 #include "settings.h"
+#include "serverplayer.h"
+#include "player-initial-source-origin.h"
+#include <typeinfo>
 #include <QSet>
 #include <QHash>
 #include <cstring>
@@ -26,7 +29,13 @@ bool scalar(lua_State*L,int i){const int t=lua_type(L,i);return t==LUA_TNIL||t==
 struct Check {
  Room&r;lua_State*L;QString why;int env=0,ns=0,cls=0,dict=0;const void*standardModes=nullptr;QSet<const void*> protectedRoots;
  bool no(const QString&s){if(why.isEmpty())why=s;return false;}
- bool code(int i,const char*p,int first,int last){return matchAIRound45PinnedFunction(r,L,i,p,first,last)||no(QString("code %1:%2").arg(p).arg(first));}
+ bool code(int i,const char*p,int first,int last){
+  if(matchAIRound45PinnedFunction(r,L,i,p,first,last))return true;
+  QString actual=QStringLiteral("nonfunction");
+  if(lua_isfunction(L,i)){Stack z(L);lua_Debug ar{};lua_pushvalue(L,i);
+   if(lua_getinfo(L,">S",&ar))actual=QString("%1:%2..%3").arg(ar.source?ar.source:"?").arg(ar.linedefined).arg(ar.lastlinedefined);}
+  return no(QString("code %1:%2..%3 actual=%4").arg(p).arg(first).arg(last).arg(actual));
+ }
  bool capture(int i,const char*k){i=lua_absindex(L,i);for(int n=1;;++n){const char*name=lua_getupvalue(L,i,n);if(!name)return no(QString("missing capture ")+k);if(!std::strcmp(name,k))return true;lua_pop(L,1);}}
  bool closure(int i,const char*p,int first,int last,const QSet<QByteArray>&captures={}){
   i=lua_absindex(L,i);if(!code(i,p,first,last))return false;QSet<QByteArray>seen;
@@ -62,7 +71,7 @@ struct Check {
   i=lua_absindex(L,i);if(!closure(i,mode,2336,2353,{"standard_modes","policies","managed_rooms"}))return false;
   // Only standard_modes[public Room mode] is reached. Neither policies nor
   // managed_rooms is read on this public branch, regardless of hidden roles.
-  Stack z(L);if(!capture(i,"standard_modes")||!plain(L,-1))return no("standard mode public table");standardModes=lua_topointer(L,-1);protectedRoots.insert(standardModes);field(L,-1,"02p");return (lua_type(L,-1)==LUA_TSTRING||lua_type(L,-1)==LUA_TBOOLEAN)&&lua_toboolean(L,-1)||no("02p public mode registration");
+  Stack z(L);if(!capture(i,"standard_modes")||!plain(L,-1))return no("standard mode public table");standardModes=lua_topointer(L,-1);protectedRoots.insert(standardModes);field(L,-1,r.getMode().toUtf8().constData());return lua_type(L,-1)==LUA_TSTRING&&!std::strcmp(lua_tostring(L,-1),"identity")||no("ordinary identity public mode registration");
  }
  bool policy(int i){return closure(i,mode,2362,2366);}
  bool currentAI(int i){return closure(i,mode,2328,2333);}
@@ -86,7 +95,7 @@ struct Check {
    {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}
    {Stack a(L);if(!capture(f,"current_ai")||!currentAI(-1))return false;}
    // current_ai sees either the just-created raw room/player fields or an
-   // authenticated existing self below. policy always returns nil in 02p.
+   // authenticated existing self below. policy always returns nil in the proved standard identity modes.
    for(const char*k:{"policies","standard_modes"}){Stack a(L);if(!capture(f,k)||!plain(L,-1))return no("predictable mode table");protectedRoots.insert(lua_topointer(L,-1));if(!std::strcmp(k,"standard_modes")&&lua_topointer(L,-1)!=standardModes)return no("mode registration capture alias changed");}
   }
   {Stack z(L);field(L,env,"updateAlivePlayerRoles");const int f=lua_absindex(L,-1);
@@ -98,6 +107,81 @@ struct Check {
   {Stack z(L);field(L,ns,"qlist");const int f=lua_absindex(L,-1);
    if(!closure(f,utility,19,35,{"qlist_userdata_iterator","qlist_table_iterator"})
     ||!capturedClosure(f,"qlist_userdata_iterator",utility,7,11)||!capturedClosure(f,"qlist_table_iterator",utility,13,17))return false;}
+  return true;
+ }
+
+ bool ordinaryIdentityGraph(){
+  // The four-player identity constructor reaches both role outcomes. Prove
+  // the complete union before any role/mark/hand lookup. This finite domain
+  // uses the public non-humanized option, and the monotonic native no-controller
+  // history; neither a current private scalar nor an empty heap seeds authority.
+  if(r.getMode()!="04p")return true;
+  if(Config.value("AIHumanized",true).toBool()||Player::controllerTagEverSet())
+   return no("04p constructor public non-humanized/controller source domain");
+  if(r.getAllPlayers(true).size()!=4)return no("04p complete four-player roster source domain");
+  {Stack z(L);field(L,ns,"ai_humanized");if(!lua_isnil(L,-1)&&(lua_type(L,-1)!=LUA_TBOOLEAN||lua_toboolean(L,-1)))return no("public constructor cached humanized option");}
+  for(auto*p:r.getAllPlayers(true))
+   if(!p||typeid(*p)!=typeid(ServerPlayer)||!hasAIRound56PlayerEmptyMarksOrigin(*p))
+    return no("04p constructor complete original mark-writer domain");
+  struct F{const char*name;int first,last;bool method;};
+  for(const F&f:{F{"getActualController",1994,2018,true},F{"getOverflow",5209,5241,true},
+   F{"sort",1181,1249,true},F{"getKnownCards",5821,5847,false}}){
+   Stack z(L);if(f.method){if(!lookup(dict,f.name))return false;}else field(L,env,f.name);
+   if(!closure(-1,smart,f.first,f.last))return false;
+  }
+  {Stack z(L);if(!lookup(dict,"objectiveLevel")||!closure(-1,mode,2374,2381,{"policy","objective"}))return false;
+   const int f=lua_absindex(L,-1);
+   {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}
+   if(!capture(f,"objective")||!closure(-1,smart,2036,2045,{"_smartai_objectiveLevel"})
+    ||!capturedClosure(-1,"_smartai_objectiveLevel",smart,1688,1946))return false;
+  }
+  {Stack z(L);if(!lookup(dict,"adjustAIRole")||!closure(-1,mode,2429,2432,{"policy","adjust"}))return false;
+   const int f=lua_absindex(L,-1);
+   {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}
+   if(!capturedClosure(f,"adjust",smart,7812,7823))return false;
+  }
+  {Stack z(L);field(L,ns,"gameProcess");const int f=lua_absindex(L,-1);
+   if(!closure(f,mode,2443,2449,{"current_ai","policy","process"})
+    ||!capturedClosure(f,"process",smart,1642,1686))return false;
+   {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}
+   {Stack a(L);if(!capture(f,"current_ai")||!currentAI(-1))return false;}
+  }
+  for(const F&f:{F{"getCachedAlivePlayers",457,460,false},F{"isLordHealthy",1600,1611,false},F{"isLordInDanger",1613,1625,false}})
+   if(!fieldClosure(ns,f.name,smart,f.first,f.last))return false;
+  if(!fieldClosure(env,"aiRejectValueView","lua/ai/value-boundary.lua",12,16)
+   ||!fieldClosure(env,"aiValueKind","lua/ai/value-boundary.lua",5,8))return false;
+  // objective only passes literal hp/chaofeng to sort. Its start=true defense
+  // call takes getValue's scalar arm under the public AIHumanized=false domain.
+  // getKnownCards receives the exact owner userdata and default literal &h;
+  // original-empty public-card ancestry excludes hand-pile object recursion.
+  for(auto lib:{qMakePair("math",QStringList{"min","max"}),qMakePair("string",QStringList{"find","match"})}){
+   Stack z(L);field(L,env,lib.first);if(!plain(L,-1))return no("identity library metatable");
+   for(const auto&k:lib.second)if(!native(lua_absindex(L,-1),k.toUtf8().constData(),QString(lib.first)+'.'+k))return false;
+  }
+  {Stack z(L);field(L,env,"string");field(L,-1,"contains");
+   // Optional native-loaded addFunction replaces the core helper with the
+   // pattern-search variant. Both complete source bodies call only the same
+   // authenticated string.find; no selected runtime outcome is used here.
+   const bool extension=matchAIRound45PinnedFunction(r,L,-1,"extensions/addFunction.lua",1557,1559);
+   if(!closure(-1,extension?"extensions/addFunction.lua":utility,extension?1557:91,extension?1559:93))return false;
+  }
+  {Stack z(L);field(L,env,"table");if(!fieldClosure(lua_absindex(L,-1),"contains",utility,95,108))return false;}
+  if(!native(ns,"ControllerTagInUse","sgs.ControllerTagInUse"))return false;
+  for(const char*k:{"ai_gameProcess","ai_gameProcess_arg","UnknownRebel","target_role"}){
+   Stack z(L);field(L,!std::strcmp(k,"target_role")?env:ns,k);if(!scalar(L,-1))return no("identity scalar source operand");
+   if(std::strcmp(k,"target_role")&&lua_isnil(L,-1)&&!matchAIRound45NativeNamespaceRead(r,L,"sgs",k))return no("identity namespace scalar read");
+   if(std::strcmp(k,"target_role")&&!matchAIRound45NativeNamespaceWrite(r,L,"sgs",k))return no("identity namespace writer");
+  }
+  // All readonly native descendants, including complete validity/correction
+  // families, are admitted by the independent OwnerCardRules lexical scope.
+  const QHash<QString,QStringList> methods={
+   {"ServerPlayer",{"getMark","getMaxHp","hasFlag","hasSkill","getAliveSiblings","getHujia","getPhase","getKingdom","getCardCount","getMaxCards","getHandcards","canSeeHandcard","isCardLimited","inMyAttackRange"}},
+   {"Room",{"getLord","getCurrent"}}, {"SPlayerList",{"removeOne"}},
+   {"CardList",{"length","at"}}, {"PlayerList",{"length","at"}}, {"IntList",{"at"}}};
+  for(auto i=methods.cbegin();i!=methods.cend();++i)for(const auto&k:i.value())
+   if(!matchAIRound45NativeClassMethod(r,L,i.key(),k))return no("identity native method "+i.key()+'.'+k);
+  if(!matchAIRound45NativeDerivedMethods(r,L,"Card",{"hasFlag"}))return no("identity physical card flag method");
+  for(const char*k:{"Card_MethodIgnore","Player_Finish"}){Stack z(L);field(L,ns,k);if(!matchAIRound45NativeConstant(r,L,-1,QString("sgs.")+k))return no("identity constant");}
   return true;
  }
  bool rootsAndData(){
@@ -141,13 +225,15 @@ bool registerAIRound56CloneSources(Room&r,lua_State*L,QString*why){
   {mode,"cd0a6fa3b6de7e90db276846f04fe54b01199c28a1d68df3c452f6b14b8ac3e5"},
   {middle,"32938b2068cb9b8a5b6a8d734bce0a6c73020f6a128e9cf9bfca200490cedf6e"},
   {utility,"b76cdc44c0fec46f1e10d918c6e0676c5e301ed92cd5b0e35da882606a7d4d3a"},
-  {heg,"9ad128880b7876a95d022551533a8168ef924173a29d704af837cd5edb98ff7f"}};
+  {heg,"9ad128880b7876a95d022551533a8168ef924173a29d704af837cd5edb98ff7f"},
+  {"lua/ai/value-boundary.lua","6a4635d93a996a65e93f3981a726e1dcc0b4b25467ceae67d41fac403631a897"},
+  {"extensions/addFunction.lua","32938f895048d1abc62a119f179ed356fda155d1ccc8ba40664ff81c2ecba046"}};
  for(const auto&s:sources)if(!registerAIRound45PinnedSource(r,L,s.path,s.hash,why))return false;return true;
 }
 bool proveAIRound56CloneSource(Room&r,lua_State*L,QString*why){
  auto fail=[&](const char*s){if(why)*why=QString::fromLatin1(s);return false;};
- if(r.getMode()!="02p"||Config.EnableHegemony||r.getScenario())return fail("public constructor domain");
+ if((r.getMode()!="02p"&&r.getMode()!="04p")||Config.EnableHegemony||r.getScenario())return fail("public constructor domain");
  auto*rt=r.roomRuntime();if(!rt||rt->isClosing()||rt->lua().rawState()!=L||!rt->lua().isCurrentThreadOwner()||!capacity(L,8192))return fail("constructor native runtime/inspection stack");
  if(!proveAIRound56ServerLogEffects(r))return fail("constructor logging host graph");
- Stack z(L);Check c{r,L};const bool ok=c.rootsAndData()&&c.sourceGraph()&&c.leaves()&&c.rootsAndData();if(why)*why=c.why;return ok;
+ Stack z(L);Check c{r,L};const bool ok=c.rootsAndData()&&c.sourceGraph()&&c.ordinaryIdentityGraph()&&c.leaves()&&c.rootsAndData();if(why)*why=c.why;return ok;
 }

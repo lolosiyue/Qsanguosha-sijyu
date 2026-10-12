@@ -35,6 +35,7 @@
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <atomic>
+#include <limits>
 
 namespace {
 // Bumped whenever a Player is created or destroyed; sibling lists cached per
@@ -47,6 +48,7 @@ namespace {
 // map occupancy is ever examined; a mutation attempt cannot restore a receipt.
 struct InitialPlayerOrigin {
  bool marks=true,skills=true,publicCards=true,canonicalHand=true,limitations=true;
+ bool publicGeneralSkills=false,publicGeneralAttempted=false;quint64 skillWriterSerial=0;
  const RoomState *handMap=nullptr;quint64 handMapGeneration=0;
 };
 struct InitialPlayerOrigins {
@@ -83,7 +85,12 @@ bool initialPlayerOrigin(const Player*p,bool marks)noexcept{
 void retireInitialPlayerOrigin(const Player*p,bool marks)noexcept{
  if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
  try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
-  auto i=x.entries.find(p);if(i!=x.entries.end())(marks?i->second.marks:i->second.skills)=false;
+  auto i=x.entries.find(p);if(i!=x.entries.end()){
+   (marks?i->second.marks:i->second.skills)=false;
+   if(!marks){i->second.publicGeneralSkills=false;
+    if(i->second.skillWriterSerial==std::numeric_limits<quint64>::max())initialPlayerOriginsHealthy.store(false,std::memory_order_release);
+    else ++i->second.skillWriterSerial;}
+  }
  }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
 }
 }
@@ -93,6 +100,42 @@ bool hasAIRound56PlayerEmptyMarksOrigin(const Player&p)noexcept{
 bool hasAIRound56PlayerEmptySkillsOrigin(const Player&p)noexcept{return initialPlayerOrigin(&p,false);}
 void retireAIRound56PlayerMarksOrigin(const Player*p)noexcept{retireInitialPlayerOrigin(p,true);}
 void retireAIRound56PlayerSkillsOrigin(const Player*p)noexcept{retireInitialPlayerOrigin(p,false);}
+// Only Room::preparePlayers can start/finish this one-shot native source interval.
+// Every writer remains destructive, including writes nested in notification slots.
+// The mandatory addSkill/createSkillInstance count is derived from public general
+// metadata before execution; no current skill map or equality can restore origin.
+bool Player::beginAIRound56PublicGeneralSkills(quint64 &serial) noexcept {
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);auto i=x.entries.find(this);
+  if(i==x.entries.end()||!i->second.skills||i->second.publicGeneralAttempted)return false;
+  i->second.publicGeneralAttempted=true;serial=i->second.skillWriterSerial;return true;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+void Player::finishAIRound56PublicGeneralSkills(quint64 serial,quint64 expected) noexcept {
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);auto i=x.entries.find(this);
+  if(i!=x.entries.end()&&i->second.publicGeneralAttempted&&expected<=std::numeric_limits<quint64>::max()-serial
+   &&i->second.skillWriterSerial==serial+expected)i->second.publicGeneralSkills=true;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+bool hasAIRound56PlayerPublicGeneralSkillsOrigin(const Player&p) noexcept {
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);auto i=x.entries.find(&p);
+  return i!=x.entries.end()&&i->second.publicGeneralSkills;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+namespace {
+void retirePublicGeneralSkills(const Player*p) noexcept {
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);auto i=x.entries.find(p);
+  if(i!=x.entries.end()){
+   i->second.publicGeneralSkills=false;
+   if(i->second.skillWriterSerial==std::numeric_limits<quint64>::max())initialPlayerOriginsHealthy.store(false,std::memory_order_release);
+   else ++i->second.skillWriterSerial;
+  }
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+}
 // This bit covers the original default-constructed equipment, judging and pile
 // containers jointly. No occupancy/card/value read can issue or restore it.
 bool hasAIRound56PlayerEmptyPublicCardsOrigin(const Player&p)noexcept{
@@ -615,6 +658,7 @@ int Player::distanceTo(const Player *other, int distance_fix) const
 
 void Player::setGeneral(const General *new_general)
 {
+    retirePublicGeneralSkills(this);
     if (this->general != new_general){
         this->general = new_general;
 
@@ -627,6 +671,7 @@ void Player::setGeneral(const General *new_general)
 
 void Player::setGeneralName(const QString &general_name)
 {
+    retirePublicGeneralSkills(this);
     const General *new_general = Sanguosha->getGeneral(general_name);
     //Q_ASSERT(general_name.isEmpty() || new_general);
     if(new_general) setGeneral(new_general);
@@ -641,6 +686,7 @@ QString Player::getGeneralName() const
 
 void Player::setGeneral2Name(const QString &general_name)
 {
+    retirePublicGeneralSkills(this);
     const General *new_general = Sanguosha->getGeneral(general_name);
     if (general2 != new_general){
         general2 = new_general;

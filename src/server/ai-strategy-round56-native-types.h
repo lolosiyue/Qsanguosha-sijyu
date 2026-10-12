@@ -26,6 +26,11 @@ struct AIRound56ActivateNativeMethodSource {
     const char *method;
     const char *source;
     bool scalarBodyProved; // BODY ONLY; no caller, lineage or execution grant
+    // Separate Xufa notification body domain. Shushen reads the public native
+    // Config.EnableHegemony bool and returns 1/2 on BOTH branches; no authored
+    // call, allocation, mutation or private receiver selection. This does not
+    // promote that configuration-dependent body into Activate scalar proof.
+    bool notificationBodyProved = false;
 };
 struct AIRound56ActivateNativeTypeSource {
     const char *typeSpelling; // diagnostic, never used for lookup/authorization

@@ -4,7 +4,7 @@
 #include <QStringList>
 // Public native manifest metadata, BEFORE config/rules/private account source.
 // Exact frozen loader domain; this neither reads Lua cells nor executes code.
-// Config source SHA256: 617adfc3cda925ce1db97f14da503fb1c433346207a3dc14de49fdaa210e3b52
+// Config source SHA256: f5d0dcf80699f302b460f655b33372e9266301d9ac8fa2187084ce5c1df9b249
 inline bool matchAIRound56BootstrapDeclaredLists(const Engine&engine){
  const QStringList extension_names={
   QStringLiteral("extensions/addFunction.lua"),

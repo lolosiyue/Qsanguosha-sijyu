@@ -57,7 +57,7 @@ QJsonObject damageRow(Room&r,ServerPlayer*p,const QVariant&v,const std::function
 }
 }
 void clearAIRound50HTMSWitnesses(Room&r){if(auto*l=find(r)){l->frames.clear();l->pending.clear();l->damages.clear();l->currentDamage.clear();}}
-bool registerAIRound50HTMSSource(Room&r,lua_State*L){clearAIRound50HTMSWitnesses(r);return registerAIRound45PinnedSource(r,L,QString::fromLatin1(path),QByteArrayLiteral("03d463d67c11da985d0cfa369c1dfbc625c564a79b1d7b00b74c0bd050ed11bc"));}
+bool registerAIRound50HTMSSource(Room&r,lua_State*L){clearAIRound50HTMSWitnesses(r);return registerAIRound45PinnedSource(r,L,QString::fromLatin1(path),QByteArrayLiteral("90fb50d2d63de365ef5af92839558baa8093ec61a24f6ed5a9d505a33c5ac0fb"));}
 struct AIRound50HTMSFrame::Data {Ledger*l;int depth;};
 AIRound50HTMSFrame::AIRound50HTMSFrame(Room&r,const LuaTriggerSkillV2*s,ServerPlayer*p,int e,const SkillContext&ctx,bool cost):d(new Data{ledger(r),0}){
  d->depth=d->l->frames.size();Frame f;f.actor=ctx.invoker?ctx.invoker:p;f.event=e;f.data=ctx.original_data;

@@ -1,5 +1,7 @@
 #include "ai-strategy-round56-clone-scope.h"
 #include "ai-strategy-round56-clone-proof.h"
+#include "ai-strategy-round56-maxcards.h"
+#include <cstdio>
 #include "ai-strategy-round56-clone-lineage.h"
 #include "ai-strategy-round56-projection.h"
 #include <QScopeGuard>
@@ -14,6 +16,7 @@ extern bool matchAIRound56NativePlayer(lua_State*,int,const ServerPlayer*);
 namespace {thread_local AIRound56CloneScope*active=nullptr;}
 struct AIRound56CloneScope::Data {
  Room&r;ServerPlayer*p;lua_State*L;AIRound56CloneScope*previous=nullptr;
+ std::unique_ptr<AIRound56OwnerCardRulesScope>identityRules;
  std::unique_ptr<AIRound56AsyncScope>async;
  const void*function=nullptr;quint64 generation=0,transport=0;int depth=0;
  bool ready=false,entered=false,invalid=false;
@@ -29,7 +32,17 @@ AIRound56CloneScope::AIRound56CloneScope(Room&r,ServerPlayer*p,lua_State*L):d(ne
  auto*rt=r.roomRuntime();
  if(!p||p->getRoom()!=&r||!rt||!L||!lua_checkstack(L,8192))return;
  try{
-  if(!proveAIRound56CloneSource(r,L))return;
+  QString why;
+  if(!proveAIRound56CloneSource(r,L,&why)){
+   if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")){
+    std::fprintf(stderr,"R56_CLONE_SOURCE_REFUSAL reason=%s\n",qPrintable(why));std::fflush(stderr);
+   }
+   return;
+  }
+  if(r.getMode()=="04p"){
+   d->identityRules.reset(new AIRound56OwnerCardRulesScope(r,p,L));
+   if(!d->identityRules->accepted())return;
+  }
   d->generation=rt->lua().generation();d->transport=rt->xufaTransportEpoch();
   d->depth=rt->lua().protectedCallDepth();
   const int top=lua_gettop(L);AIRound45Inspect::globals(L);AIRound45Inspect::field(L,-1,"CloneAI");
@@ -40,7 +53,7 @@ AIRound56CloneScope::AIRound56CloneScope(Room&r,ServerPlayer*p,lua_State*L):d(ne
 }
 AIRound56CloneScope::~AIRound56CloneScope(){active=d->previous;}
 bool AIRound56CloneScope::accepted()const noexcept{
- auto*rt=d->r.roomRuntime();return d->ready&&!d->invalid&&rt&&!rt->isClosing()
+ auto*rt=d->r.roomRuntime();return d->ready&&!d->invalid&&(!d->identityRules||d->identityRules->accepted())&&rt&&!rt->isClosing()
   &&rt->lua().rawState()==d->L&&rt->lua().generation()==d->generation
   &&d->transport&&rt->xufaTransportEpoch()==d->transport
   &&hasAIRound56CloneInputLineage(d->r,d->L)&&hasAIRound56AsyncUniverse(d->r,d->L);

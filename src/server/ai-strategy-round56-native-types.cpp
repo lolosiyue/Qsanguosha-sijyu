@@ -136,6 +136,20 @@ void registerAIRound56NativeTypes_src_server_ai_strategy_round56_native_types_cp
  types.recordActivateSource<ArraySummonSkill>(3000u); AI_R56_REQUIRE_DECLARATION(ArraySummonSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ArraySummonSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ArraySummonSkill, isResponseOrUse, ViewAsSkill);
 }
 
+extern void registerAIRound56NativeTypes_src_package_ikai_do_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_ikai_ka_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_ikai_kin_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_ikai_moku_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_ikai_sui_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_bangai_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_hana_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_kami_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_kaze_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_shin_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_sp_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_tsuki_cpp(AIRound56NativeTypes&);
+extern void registerAIRound56NativeTypes_src_package_touhou_yuki_cpp(AIRound56NativeTypes&);
+
 extern void registerAIRound56NativeTypes_src_client_aux_skills_cpp(AIRound56NativeTypes&);
 extern void registerAIRound56NativeTypes_src_package_assassins_cpp(AIRound56NativeTypes&);
 extern void registerAIRound56NativeTypes_src_package_bgm_cpp(AIRound56NativeTypes&);
@@ -219,6 +233,19 @@ extern void registerAIRound56NativeTypes_src_server_gamerule_cpp(AIRound56Native
 static const AIRound56NativeTypes &aiRound56AllNativeTypes(){
  static const AIRound56NativeTypes types=[](){
  AIRound56NativeTypes types;types.reserve(5000);
+ registerAIRound56NativeTypes_src_package_ikai_do_cpp(types);
+ registerAIRound56NativeTypes_src_package_ikai_ka_cpp(types);
+ registerAIRound56NativeTypes_src_package_ikai_kin_cpp(types);
+ registerAIRound56NativeTypes_src_package_ikai_moku_cpp(types);
+ registerAIRound56NativeTypes_src_package_ikai_sui_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_bangai_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_hana_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_kami_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_kaze_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_shin_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_sp_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_tsuki_cpp(types);
+ registerAIRound56NativeTypes_src_package_touhou_yuki_cpp(types);
  registerAIRound56NativeTypes_src_client_aux_skills_cpp(types);
  registerAIRound56NativeTypes_src_package_assassins_cpp(types);
  registerAIRound56NativeTypes_src_package_bgm_cpp(types);

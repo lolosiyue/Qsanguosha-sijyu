@@ -666,8 +666,14 @@ static QJsonObject eventConversionPolicy(Room &room, ServerPlayer *viewer)
             // Match source short circuit: disabled/unregistered callbacks must
             // not invoke arbitrary producer enablement for unrelated skills.
             const bool enabled = hook && vs && vs->isEnabledAtResponse(viewer, enabledPattern);
-            rows.append(QJsonObject{{"skill_name", skill->objectName()}, {"view_as_exists", vs != nullptr},
-                {"enabled_at_response", enabled}, {"legacy_hooks", QJsonObject{{"ai_view_as", hook}}}});
+            QJsonObject row{{"skill_name", skill->objectName()}, {"view_as_exists", vs != nullptr},
+                {"enabled_at_response", enabled}, {"legacy_hooks", QJsonObject{{"ai_view_as", hook}}}};
+            // Native Xufa is V1 and has no buildSkillActionContext admission.
+            // cardsView asks for this absence before checking response enablement,
+            // including during card-use events. This is metadata, not a ticket.
+            if (skill->objectName() == "xufa" && vs && !dynamic_cast<const ViewAsSkillV2 *>(vs))
+                row.insert("request", false);
+            rows.append(row);
         }
         byClass.insert(entry.first, QJsonObject{{"complete", complete}, {"card_name", entry.second}, {"skills", rows}});
     }
@@ -3863,6 +3869,16 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         LuaRuntime::Binding game(m_room.roomRuntime()->lua(),false);
         ResponseNativeScope native(m_room,player,request.reason,request.pattern);
         const QString mode=proposal.value("mode").toString();QString error;
+        if(mode=="value_select") {
+            if(proposal.size()!=4||!proposal.value("card").isObject()||!proposal.value("targets").isArray())
+                return fail("Xufa pure-value proposal shape malformed");
+            QStringList names;for(const auto&v:proposal.value("targets").toArray()){
+                if(!v.isString()||v.toString().isEmpty())return fail("Xufa remembered target malformed");names<<v.toString();}
+            if(names.size()>128)return fail("Xufa target budget exceeded");
+            auto admit=[&](CardUseStruct&use){return m_skillRuntime.resolveCardSkillInstance(use)
+                &&!player->isCardLimited(use.card,use.card->getHandlingMethod())&&m_room.areCardTargetsLegal(use);};
+            return issueAIRound53XufaValue(request,player,proposal.value("card").toObject(),names,admit);
+        }
         if(mode=="capture") {
             if(proposal.size()!=5||!proposal.value("selector").isObject()||!proposal.value("targets").isArray()||!proposal.value("source_fields").isObject())return fail("Xufa capture shape malformed");
             QStringList names;for(const auto &v:proposal.value("targets").toArray()){if(!v.isString()||v.toString().isEmpty())return fail("Xufa target malformed");names<<v.toString();}
@@ -9461,7 +9477,20 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         context.insert("card", publicDecisionCard(response.m_card));
     } else if (data.canConvert<CardEffectStruct>()) {
         const CardEffectStruct effect = data.value<CardEffectStruct>();
-        request.worldView.strategyFacts.insert("response_effect_card", publicDecisionCard(effect.card, effect.from == viewer));
+        QJsonObject effectCard = publicDecisionCard(effect.card, effect.from == viewer);
+        // A response evaluates the currently declared effect. A virtual card's
+        // effective ID is its first material, not -1; disclose it only when that
+        // actual material is already in a public zone. Other costs stay redacted.
+        if (request.kind == AIRequest::RespondCard && effect.card && effect.card->isVirtualCard()) {
+            const int id = effect.card->getEffectiveId();
+            if (id >= 0) {
+                const auto place = m_room.getCardPlace(id);
+                if (place == Player::PlaceTable || place == Player::DiscardPile
+                    || place == Player::PlaceEquip || place == Player::PlaceDelayedTrick)
+                    effectCard.insert("effective_id", id);
+            }
+        }
+        request.worldView.strategyFacts.insert("response_effect_card", effectCard);
         projectNoJinkIdentity(effect.card);
         if (request.kind == AIRequest::Choice && request.choiceOptions.reason == "heg_nullification" && effect.card) {
             const QString tagName = "targets" + effect.card->toString();
@@ -9478,7 +9507,7 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         context.insert("effect", QJsonObject{
             {"from", effect.from ? effect.from->objectName() : QString()},
             {"to", effect.to ? effect.to->objectName() : QString()},
-            {"card", publicDecisionCard(effect.card, effect.from == viewer)},
+            {"card", effectCard},
             {"card_name", effect.card ? effect.card->objectName() : QString()}, {"offset_num", effect.offset_num}});
     } else if (data.canConvert<SlashEffectStruct>()) {
         const SlashEffectStruct effect = data.value<SlashEffectStruct>();

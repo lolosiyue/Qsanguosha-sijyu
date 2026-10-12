@@ -1,4 +1,6 @@
 #include "ai-strategy-public-action-flags.h"
+#include "ai-strategy-round53-xufa-response.h"
+#include "ai-strategy-round54-jijiang.h"
 #include "ai-strategy-events.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -174,6 +176,19 @@ void projectAIStrategyEvent(AIEventView &event, const AIWorldView &world, Room &
     if (actorCard) {
         QJsonObject card = event.details.value("card").toObject();
         if (!card.isEmpty()) {
+            // Two native constructor origins only, at the actual declared-use
+            // viewer boundary. Never export a different/private current chain.
+            if (cardActor != observer && event.triggerEvent == PreCardUsed
+                && event.kind == QStringLiteral("card_use") && data.canConvert<CardUseStruct>()) {
+                auto names = readAIRound53XufaConstructedSkills(room, observer, actorCard);
+                if (names.isEmpty()) names = readAIRound54OLJijiangConstructedSkills(room, observer, actorCard);
+                if (!names.isEmpty()) {
+                    card.insert("skill_names", names.value("skill_names"));
+                    card.insert("skill_names_complete", true);
+                    event.details.insert("card_skills", names.value("skill_names"));
+                    event.details.insert("card_skills_complete", true);
+                }
+            }
             QJsonObject flags = readAIStrategyPublicCardFlags(room, observer, actorCard);
             if (cardActor == observer) {
                 for (const QString &flag : actorCard->getFlags())
@@ -197,6 +212,27 @@ void projectAIStrategyEvent(AIEventView &event, const AIWorldView &world, Room &
             card.insert("skill_names",QJsonArray::fromStringList(actorCard->getSkillNames()));
             card.insert("skill_names_complete",true);
             card.insert("source_skill",actorCard->getSourceSkillName());
+            // Owner PreCardUsed valuation compares this declared recipe with
+            // the owner's current hand. Publish only currently owned/public
+            // material IDs; no foreign private cost is inferred from actorhood.
+            if (event.triggerEvent == PreCardUsed) {
+                bool known = true;
+                QJsonArray materials;
+                for (int id : actorCard->getSubcards()) {
+                    const auto place = room.getCardPlace(id);
+                    if (id < 0 || (room.getCardOwner(id) != observer
+                        && place != Player::PlaceTable && !publicPlace(place))) {
+                        known = false;
+                        break;
+                    }
+                    materials.append(id);
+                }
+                if (known) {
+                    card.insert("virtual_card", actorCard->isVirtualCard());
+                    card.insert("subcards", materials);
+                    card.insert("effective_id", actorCard->getEffectiveId());
+                }
+            }
             event.details.insert("card",card);
         }
     }

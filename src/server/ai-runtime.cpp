@@ -2679,10 +2679,36 @@ int AiLuaRuntime::luaTargetRecommendCache(lua_State *L)
     const QJsonObject proposal = value.toObject();
     const auto &request = *(runtime->m_activeEventRequest ? runtime->m_activeEventRequest : runtime->m_activeRequest);
     auto *viewer = runtime->m_room->findPlayerByObjectName(request.viewerObjectName, true);
-    if(proposal.value("op")=="source_connections"||proposal.value("op")=="source_alive"||proposal.value("op")=="source_skills") {
-        pushAIJsonValue(L,runtime->m_activeEventRequest?QJsonObject{{"applicable",false}}
-            :queryAIRound56ConnectionCache(*runtime->m_room,request,viewer,proposal));
-        return 1;
+    const QString cacheOp=proposal.value("op").toString();
+    const bool sourceCache=cacheOp=="source_connections"||cacheOp=="source_alive"||cacheOp=="source_skills";
+    if(sourceCache||cacheOp=="observer_epoch") {
+        const bool hasPlayer=cacheOp=="source_connections"||cacheOp=="source_skills";
+        if(proposal.size()!=(hasPlayer?2:1)||(hasPlayer&&!proposal.value("player").isString()))
+            return luaL_error(L,"invalid observer source cache proposal");
+        // The active native request/event above is the issuer. Player names
+        // are checked against its already-sanitized snapshot, never live private maps.
+        if(hasPlayer){
+            const QString name=proposal.value("player").toString();
+            bool present=name==request.worldView.self.objectName;
+            for(const auto &row:request.worldView.players)if(row.objectName==name){present=true;break;}
+            if(!present)return luaL_error(L,"observer cache player is outside the snapshot");
+        }
+        const bool event=runtime->m_activeEventRequest!=nullptr;
+        QJsonObject stamp;
+        if((event&&(!runtime->m_activePeiqiEvent||!runtime->m_activePeiqiEvent->sequence))
+            ||(!event&&!request.decisionId))
+            stamp={{"known",false},{"reason","observer cache has no current native question"}};
+        else {
+            stamp=queryAIRound30TargetCache(*runtime->m_room,request,viewer,{{"op","observer_epoch"}});
+            if(stamp.value("known")==QJsonValue(true))
+                stamp.insert("question",event?"event:"+QString::number(runtime->m_activePeiqiEvent->sequence)
+                    :"decision:"+QString::number(request.decisionId));
+        }
+        // No source array or foreign completeness bit is issued here. Lua's
+        // existing pure helpers consume their current PlayerView/RoomView data.
+        stamp.insert("snapshot",true);
+        if(sourceCache)stamp.insert("applicable",false);
+        pushAIJsonValue(L,stamp);return 1;
     }
     if (runtime->m_activeEventRequest && proposal.value("op") != "epoch"
         && request.choiceOptions.context.value("target_recommend_event_actor").toString() != request.viewerObjectName) {
@@ -3175,12 +3201,12 @@ int AiLuaRuntime::luaXufaActualSlot(lua_State *state)
     if(!request.conversionLedger||++request.conversionLedger->queryCount>128)return fail("Xufa query budget exceeded");
     QString mode;QJsonValue payload;int budget=512;
     if(lua_gettop(state)!=2||lua_type(state,1)!=LUA_TSTRING||!readBoundedString(state,1,mode)
-        ||(mode!="capture"&&mode!="construct"&&mode!="read"&&mode!="first_construct"&&mode!="first_select"&&mode!="saved_select")||!lua_istable(state,2)
+        ||(mode!="capture"&&mode!="construct"&&mode!="read"&&mode!="first_construct"&&mode!="first_select"&&mode!="saved_select"&&mode!="value_select")||!lua_istable(state,2)
         ||!readAIJson(state,2,payload,budget)||!payload.isObject())return fail("Xufa finite query shape malformed");
     QJsonObject proposal=payload.toObject();if(proposal.contains("kind")||proposal.contains("mode"))return fail("Xufa query discriminator supplied twice");
     // readAIJson cannot infer the array shape of an empty plain Lua table.
     // Normalize only the array field declared by this exact Xufa operation.
-    const char *arrayKey=(mode=="construct"||mode=="first_construct")?"costs":(mode=="capture"||mode=="saved_select")?"targets":nullptr;
+    const char *arrayKey=(mode=="construct"||mode=="first_construct")?"costs":(mode=="capture"||mode=="saved_select"||mode=="value_select")?"targets":nullptr;
     if(arrayKey){
         QJsonValue values=proposal.value(arrayKey);
         if(values.isObject()&&values.toObject().isEmpty())values=QJsonArray();
@@ -3508,13 +3534,15 @@ bool AiLuaRuntime::currentOLJijiangResponseEvent(const AIRequest &q, const Serve
 
 bool AiLuaRuntime::currentOLJijiangPlanningRequest(const AIRequest &q, const ServerPlayer *p) const
 {
- // Typed table effects belong to this exact active owner question. A copied
- // request, an event pseudo-question and another observer have no authority.
+ // Existing exact-request predicate also covers the donor's jijiang invoke
+ // reader. The native response source is observational, never a card receipt.
  return current()==this&&m_room&&p&&p->getRoom()==m_room
   &&m_activeRequest==&q&&!m_activeEventRequest&&q.decisionId!=0
-  &&(q.kind==AIRequest::Activate||q.kind==AIRequest::UseCard||q.kind==AIRequest::RespondCard)
-  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName();
- // planningRequest separately validates the original range/revision receipt.
+  &&(q.kind==AIRequest::Activate||q.kind==AIRequest::UseCard
+     ||q.kind==AIRequest::RespondCard||q.kind==AIRequest::SkillInvoke)
+  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName()
+  &&q.stateRevision==m_room->roomRuntime()->stateRevision()
+  &&q.worldView.revision==q.stateRevision;
 }
 
 int AiLuaRuntime::luaOLJijiangState(lua_State *L)

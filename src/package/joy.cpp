@@ -800,9 +800,15 @@ ADD_PACKAGE(JoyEquip)
 #include "ai-strategy-round56-native-types.h"
 void registerAIRound56NativeTypes_src_package_joy_cpp(AIRound56NativeTypes&types){
  types.emplace(std::type_index(typeid(ShitEffect)), 2u);
+ types.recordActivateSource<ShitEffect>(3049u); AI_R56_REQUIRE_DECLARATION(ShitEffect, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(GrabPeach)), 2u);
+ types.recordActivateSource<GrabPeach>(3050u); AI_R56_REQUIRE_DECLARATION(GrabPeach, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(GaleShellSkill)), 2u);
+ types.recordActivateSource<GaleShellSkill>(3051u); AI_R56_REQUIRE_DECLARATION(GaleShellSkill, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(FiveLinesVS)), 2u);
+ types.recordActivateSource<FiveLinesVS>(3052u); AI_R56_REQUIRE_DECLARATION(FiveLinesVS, getBaseAmount, ViewAsSkillV2);
  types.emplace(std::type_index(typeid(FiveLinesSkill)), 2u);
+ types.recordActivateSource<FiveLinesSkill>(3053u); AI_R56_REQUIRE_DECLARATION(FiveLinesSkill, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(YxSwordSkill)), 2u);
+ types.recordActivateSource<YxSwordSkill>(3054u); AI_R56_REQUIRE_DECLARATION(YxSwordSkill, getBaseAmount, TriggerSkillV2);
 }

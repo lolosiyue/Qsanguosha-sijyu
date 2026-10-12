@@ -1560,3 +1560,72 @@ TouhouBangaiPackage::TouhouBangaiPackage()
 }
 
 ADD_PACKAGE(TouhouBangai)
+
+// Xufa notification metadata: exact compiled dynamic types and declaring slots.
+// No correction-family bit or event/activation execution authority is granted.
+#include "ai-strategy-round56-native-types.h"
+
+namespace {
+template<class Owner> Owner *xufaExtraOwner(int (Owner::*)(const Player *) const);
+template<class Owner> Owner *xufaExtraModeOwner(int (Owner::*)(const Player *, MaxCardsType::MaxCardsCount) const);
+template<class Owner> Owner *xufaLimitOneOwner(QString (Owner::*)(const Player *) const);
+template<class Owner> Owner *xufaLimitTwoOwner(QString (Owner::*)(const Player *, const Card *) const);
+}
+void registerAIRound56NativeTypes_src_package_touhou_bangai_cpp(AIRound56NativeTypes &types) {
+ types.emplace(std::type_index(typeid(ThBianfang)), 2u);
+ types.recordActivateSource<ThBianfang>(4504u); AI_R56_REQUIRE_DECLARATION(ThBianfang, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThBianfang, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThBianfang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThBianfang, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThBianfang, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThBianfang, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThZhishi)), 2u);
+ types.recordActivateSource<ThZhishi>(4505u); AI_R56_REQUIRE_DECLARATION(ThZhishi, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThZhishi, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThZhishi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThZhishi, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThZhishi, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThZhishi, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThShoujuan)), 2u);
+ types.recordActivateSource<ThShoujuan>(4506u); AI_R56_REQUIRE_DECLARATION(ThShoujuan, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThShoujuan, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThShoujuan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThShoujuan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThShoujuan, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThShoujuan, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThMiqi)), 2u);
+ types.recordActivateSource<ThMiqi>(4507u); AI_R56_REQUIRE_DECLARATION(ThMiqi, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThMiqi, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThMiqi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThMiqi, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThMiqi, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThMiqi, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThJibu)), 3u); AI_R56_REQUIRE_DECLARATION(ThJibu, getCorrect, DistanceSkill); AI_R56_REQUIRE_DECLARATION(ThJibu, getFixed, DistanceSkill); AI_R56_REQUIRE_DECLARATION(ThJibu, getCorrection, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(ThJibu, getFixedValue, DistanceSkillV2);
+ types.recordActivateSource<ThJibu>(4508u); AI_R56_REQUIRE_DECLARATION(ThJibu, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThJibu, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThJibu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThJibu, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThJibu, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThJibu, getBaseAmount, DistanceSkillV2);
+ types.emplace(std::type_index(typeid(ThZhiyue)), 2u);
+ types.recordActivateSource<ThZhiyue>(4509u); AI_R56_REQUIRE_DECLARATION(ThZhiyue, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThZhiyue, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThZhiyue, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThZhiyue, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThZhiyue, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThZhiyue, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThZhongjie)), 2u);
+ types.recordActivateSource<ThZhongjie>(4510u); AI_R56_REQUIRE_DECLARATION(ThZhongjie, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThZhongjie, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThZhongjie, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThZhongjie, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThZhongjie, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThZhongjie, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThXumeiViewAs)), 2u);
+ types.recordActivateSource<ThXumeiViewAs>(4511u); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, getLimitScope, ThXumeiViewAs); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThXumeiViewAs, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThXumei)), 2u);
+ types.recordActivateSource<ThXumei>(4512u); AI_R56_REQUIRE_DECLARATION(ThXumei, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThXumei, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThXumei, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThXumei, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThXumei, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThXumei, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThXijing)), 2u);
+ types.recordActivateSource<ThXijing>(4513u); AI_R56_REQUIRE_DECLARATION(ThXijing, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThXijing, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThXijing, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThXijing, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThXijing, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThXijing, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThMengwei)), 2u);
+ types.recordActivateSource<ThMengwei>(4514u); AI_R56_REQUIRE_DECLARATION(ThMengwei, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThMengwei, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThMengwei, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThMengwei, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThMengwei, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThMengwei, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThSilian)), 2u);
+ types.recordActivateSource<ThSilian>(4515u); AI_R56_REQUIRE_DECLARATION(ThSilian, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThSilian, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThSilian, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThSilian, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThSilian, getUsageRef, Skill);
+ types.emplace(std::type_index(typeid(ThSilianWeapon)), 2u);
+ types.recordActivateSource<ThSilianWeapon>(4516u); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianWeapon, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThSilianBlade)), 3u); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, viewAsEquip, ThSilianBlade);
+ types.recordActivateSource<ThSilianBlade>(4517u); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThSilianBlade, getUsageRef, Skill);
+ types.emplace(std::type_index(typeid(ThLingzhanViewAs)), 2u);
+ types.recordActivateSource<ThLingzhanViewAs>(4518u); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhanViewAs, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThLingzhan)), 2u);
+ types.recordActivateSource<ThLingzhan>(4519u); AI_R56_REQUIRE_DECLARATION(ThLingzhan, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhan, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhan, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThLingzhan, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThYanmeng)), 2u);
+ types.recordActivateSource<ThYanmeng>(4520u); AI_R56_REQUIRE_DECLARATION(ThYanmeng, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThYanmeng, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThYanmeng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThYanmeng, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThYanmeng, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThYanmeng, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThQinshao)), 2u);
+ types.recordActivateSource<ThQinshao>(4521u); AI_R56_REQUIRE_DECLARATION(ThQinshao, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThQinshao, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThQinshao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThQinshao, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThQinshao, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThQinshao, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThXingxieViewAs)), 2u);
+ types.recordActivateSource<ThXingxieViewAs>(4522u); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, getLimitScope, ThXingxieViewAs); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxieViewAs, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThXingxie)), 2u);
+ types.recordActivateSource<ThXingxie>(4523u); AI_R56_REQUIRE_DECLARATION(ThXingxie, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxie, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxie, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxie, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxie, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThXingxie, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThYubo)), 2u);
+ types.recordActivateSource<ThYubo>(4524u); AI_R56_REQUIRE_DECLARATION(ThYubo, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThYubo, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThYubo, getLimitScope, ThYubo); AI_R56_REQUIRE_DECLARATION(ThYubo, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThYubo, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThYubo, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThQiongfa)), 2u);
+ types.recordActivateSource<ThQiongfa>(4525u); AI_R56_REQUIRE_DECLARATION(ThQiongfa, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThQiongfa, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThQiongfa, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThQiongfa, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThQiongfa, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThQiongfa, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThWeide)), 2u);
+ types.recordActivateSource<ThWeide>(4526u); AI_R56_REQUIRE_DECLARATION(ThWeide, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThWeide, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThWeide, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThWeide, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThWeide, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThWeide, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThGuijuan)), 2u);
+ types.recordActivateSource<ThGuijuan>(4527u); AI_R56_REQUIRE_DECLARATION(ThGuijuan, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThGuijuan, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThGuijuan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThGuijuan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThGuijuan, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThGuijuan, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThZhayou)), 2u);
+ types.recordActivateSource<ThZhayou>(4528u); AI_R56_REQUIRE_DECLARATION(ThZhayou, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThZhayou, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThZhayou, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThZhayou, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThZhayou, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThZhayou, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(ThHuilun)), 2u);
+ types.recordActivateSource<ThHuilun>(4529u); AI_R56_REQUIRE_DECLARATION(ThHuilun, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThHuilun, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThHuilun, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThHuilun, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThHuilun, getUsageRef, Skill);
+ types.emplace(std::type_index(typeid(ThWangdao)), 2u);
+ types.recordActivateSource<ThWangdao>(4530u); AI_R56_REQUIRE_DECLARATION(ThWangdao, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThWangdao, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThWangdao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThWangdao, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThWangdao, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThWangdao, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(ThKongxiang)), 2u);
+ types.recordActivateSource<ThKongxiang>(4531u); AI_R56_REQUIRE_DECLARATION(ThKongxiang, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(ThKongxiang, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(ThKongxiang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ThKongxiang, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ThKongxiang, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(ThKongxiang, getBaseAmount, ViewAsSkillV2);
+}

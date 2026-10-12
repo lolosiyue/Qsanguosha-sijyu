@@ -71,17 +71,14 @@ struct Graph {
   }
   if(!captured)return no("callback self absent");
   {Stack s(L);if(!pushAIRound45NaturalFilterSelf(r,L,4)||!lua_rawequal(L,self,-1))return no("callback self differs from current native observer");}
-  {Stack s(L);if(!lookup(self,"filterEvent")||!code(-1,"lua/ai/smart-ai.lua",2477,2867))return false;}
+  {Stack s(L);if(!lookup(self,"filterEvent")||!code(-1,"lua/ai/smart-ai.lua",2477,2867,"getCardIntention"))return false;}
   return selfRoom();
  }
  bool primitiveMetatables(){
-  Stack s(L);
-  for(int k:{LUA_TNIL,LUA_TBOOLEAN,LUA_TNUMBER,LUA_TFUNCTION})if(primitiveMetatable(L,k))return no("primitive metamethod capability");
-  if(!primitiveMetatable(L,LUA_TSTRING)||!plain(L,-1))return no("string metatable absent/indirect");
-  const int m=lua_absindex(L,-1);int count=0;lua_pushnil(L);
-  while(next(L,m)){++count;if(lua_type(L,-2)!=LUA_TSTRING||std::strcmp(lua_tostring(L,-2),"__index"))return no("extra string metamethod");
-   globals(L);field(L,-1,"string");const bool same=lua_rawequal(L,-1,-3);lua_pop(L,2);if(!same)return no("string dispatch replaced");lua_pop(L,1);}
-  return count==1;
+  for(int k:{LUA_TNIL,LUA_TBOOLEAN,LUA_TNUMBER,LUA_TFUNCTION})
+   if(primitiveMetatable(L,k))return no("primitive metamethod capability");
+  return matchAIRound47NativeStringMetatable(r,L)
+      ||no("string bootstrap metamethod bindings changed");
  }
  bool libraries(){
   for(const char*k:{"type","pcall","pairs","ipairs","tostring"})if(!globalNative(k))return false;
@@ -90,7 +87,15 @@ struct Graph {
   if(!memberNative("math","random"))return false;
   Stack s(L);globals(L);field(L,-1,"string");if(!plain(L,-1))return no("string library indirect");const int strings=lua_absindex(L,-1);
   for(const auto&row:{QPair<const char*,QPair<int,int>>{"split",{77,88}}, {"contains",{91,93}}, {"startsWith",{164,168}}}){
-   field(L,strings,row.first);if(!code(-1,"lua/utilities.lua",row.second.first,row.second.second))return false;lua_pop(L,1);
+   field(L,strings,row.first);
+   if(!std::strcmp(row.first,"contains")) {
+    // Installed addFunction keeps Lua pattern semantics; utilities uses plain
+    // search. Both source bodies close the same native string.find effect graph.
+    if(!(matchAIRound45PinnedFunction(r,L,-1,"lua/utilities.lua",91,93)
+       ||matchAIRound45PinnedFunction(r,L,-1,"extensions/addFunction.lua",1557,1559))
+       ||!env(-1))return no("string.contains source differs");
+   } else if(!code(-1,"lua/utilities.lua",row.second.first,row.second.second))return false;
+   lua_pop(L,1);
   }return primitiveMetatables();
  }
  bool qlist(){
@@ -179,6 +184,12 @@ bool registerAIRound45NaturalFilterSources(Room&r,lua_State*L,QString*reason){
 bool certifyAIRound45NaturalFilterGraph(Room&r,lua_State*L,int nargs,QString*reason){
  if(reason)reason->clear();AIRound45NaturalFilterProof proof;
  if(!readAIRound45NaturalFilterEntry(r,L,nargs,&proof)){if(reason)*reason="no authenticated native filterEvent frame";return false;}
+ // The fixed filter's captured getCardIntention is called only in these three
+ // exact switch arms. No family below admits them; make that source premise
+ // explicit before ignoring the otherwise-unreached capture in callbackRoot.
+ if(proof.event==int(TargetSpecified)||proof.event==int(DamageInflicted)||proof.event==int(HpRecover)){
+  if(reason)*reason="natural filter intention-helper arm outside finite event domain";return false;
+ }
  // The trusted bootstrap/central observer prepares this capacity. Admission
  // never grows the Lua stack or invokes a Lua allocator/finalizer.
  if(!AIRound45Inspect::capacity(L,4096)){if(reason)*reason="preallocated native inspection stack unavailable";return false;}

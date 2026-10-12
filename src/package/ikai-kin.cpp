@@ -681,3 +681,44 @@ IkaiKinPackage::IkaiKinPackage()
 }
 
 ADD_PACKAGE(IkaiKin)
+
+// Xufa notification metadata: exact compiled dynamic types and declaring slots.
+// No correction-family bit or event/activation execution authority is granted.
+#include "ai-strategy-round56-native-types.h"
+
+namespace {
+template<class Owner> Owner *xufaExtraOwner(int (Owner::*)(const Player *) const);
+template<class Owner> Owner *xufaExtraModeOwner(int (Owner::*)(const Player *, MaxCardsType::MaxCardsCount) const);
+template<class Owner> Owner *xufaLimitOneOwner(QString (Owner::*)(const Player *) const);
+template<class Owner> Owner *xufaLimitTwoOwner(QString (Owner::*)(const Player *, const Card *) const);
+}
+void registerAIRound56NativeTypes_src_package_ikai_kin_cpp(AIRound56NativeTypes &types) {
+ types.emplace(std::type_index(typeid(IkFansheng)), 2u);
+ types.recordActivateSource<IkFansheng>(4372u); AI_R56_REQUIRE_DECLARATION(IkFansheng, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkFansheng, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkFansheng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkFansheng, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkFansheng, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkFansheng, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkMohun)), 2u);
+ types.recordActivateSource<IkMohun>(4373u); AI_R56_REQUIRE_DECLARATION(IkMohun, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkMohun, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkMohun, getLimitScope, WakeSkill); AI_R56_REQUIRE_DECLARATION(IkMohun, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkMohun, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkMohun, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkZuyao)), 2u);
+ types.recordActivateSource<IkZuyao>(4374u); AI_R56_REQUIRE_DECLARATION(IkZuyao, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyao, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyao, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyao, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyao, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(IkZuyaoRecord)), 2u);
+ types.recordActivateSource<IkZuyaoRecord>(4375u); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoRecord, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkZuyaoTargetMod)), 3u); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getPattern, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getResidueNum, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getDistanceLimit, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getExtraTargetNum, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, requiresShowForUse, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getCorrection, IkZuyaoTargetMod); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getFixedValue, TargetModSkillV2);
+ types.recordActivateSource<IkZuyaoTargetMod>(4376u); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkZuyaoTargetMod, getBaseAmount, TargetModSkillV2);
+ types.emplace(std::type_index(typeid(IkXuanrenViewAs)), 2u);
+ types.recordActivateSource<IkXuanrenViewAs>(4377u); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenViewAs, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(IkXuanren)), 2u);
+ types.recordActivateSource<IkXuanren>(4378u); AI_R56_REQUIRE_DECLARATION(IkXuanren, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanren, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanren, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanren, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanren, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanren, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkXuanrenTargetMod)), 3u); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getPattern, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getResidueNum, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getDistanceLimit, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getExtraTargetNum, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, requiresShowForUse, TargetModSkill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getCorrection, IkXuanrenTargetMod); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getFixedValue, TargetModSkillV2);
+ types.recordActivateSource<IkXuanrenTargetMod>(4379u); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanrenTargetMod, getBaseAmount, TargetModSkillV2);
+ types.emplace(std::type_index(typeid(IkLanjian)), 2u);
+ types.recordActivateSource<IkLanjian>(4380u); AI_R56_REQUIRE_DECLARATION(IkLanjian, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkLanjian, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkLanjian, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkLanjian, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkLanjian, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkLanjian, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkXuanwu)), 2u);
+ types.recordActivateSource<IkXuanwu>(4381u); AI_R56_REQUIRE_DECLARATION(IkXuanwu, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanwu, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanwu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanwu, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanwu, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkXuanwu, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkNilan)), 2u);
+ types.recordActivateSource<IkNilan>(4382u); AI_R56_REQUIRE_DECLARATION(IkNilan, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkNilan, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkNilan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkNilan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkNilan, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkNilan, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkQilei)), 2u);
+ types.recordActivateSource<IkQilei>(4383u); AI_R56_REQUIRE_DECLARATION(IkQilei, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkQilei, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkQilei, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkQilei, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkQilei, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkQilei, getBaseAmount, TriggerSkillV2);
+ types.emplace(std::type_index(typeid(IkSizhuo)), 2u);
+ types.recordActivateSource<IkSizhuo>(4384u); AI_R56_REQUIRE_DECLARATION(IkSizhuo, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkSizhuo, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkSizhuo, getLimitScope, IkSizhuo); AI_R56_REQUIRE_DECLARATION(IkSizhuo, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkSizhuo, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkSizhuo, getBaseAmount, ViewAsSkillV2);
+ types.emplace(std::type_index(typeid(IkJunan)), 2u);
+ types.recordActivateSource<IkJunan>(4385u); AI_R56_REQUIRE_DECLARATION(IkJunan, getFrequency, Skill); AI_R56_REQUIRE_DECLARATION(IkJunan, isEquipSkill, Skill); AI_R56_REQUIRE_DECLARATION(IkJunan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IkJunan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(IkJunan, getUsageRef, Skill); AI_R56_REQUIRE_DECLARATION(IkJunan, getBaseAmount, ViewAsSkillV2);
+}

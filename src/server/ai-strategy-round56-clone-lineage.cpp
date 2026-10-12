@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-playloop-filter.h"
+#include "ai-strategy-round54-jijiang.h"
 #include "ai-strategy-round56-patterns.h"
 #include "ai-strategy-round56-connection-cache.h"
 #include <QSet>
@@ -32,6 +33,7 @@ struct State final:QObject {
  Room&r;lua_State*L;quint64 generation;bool alive=true,completed=false;
  const void*globals;const void*space;const void*root[rootCount]={};
  QHash<const void*,Kind>watches;QSet<QString>connectionKeys;
+ QHash<QString,const void*>constructorLists;
  State(Room&room,const LuaRuntime::NativeNamespaceBirth&birth):QObject(&room),r(room),L(birth.state()),generation(birth.generation()),globals(birth.globalsIdentity()),space(birth.namespaceIdentity()){}
  ~State()override{if(L)for(auto i=watches.cbegin();i!=watches.cend();++i)lua_unobservetableidentity(L,i.key(),observe,this);}
  void retire()noexcept{alive=false;retireAIRound56AsyncUniverse(L);retireAIRound53AiNoTo(r);if(auto*rt=r.roomRuntime())rt->revokePrioritySource();}
@@ -49,15 +51,15 @@ bool source(State&s,lua_State*L,const lua_TableObservation&e,const char*path,int
  return e.lua_function_identity&&(e.flags&(LUA_TABLE_OBSERVER_VM_SLOW|LUA_TABLE_OBSERVER_VM_FAST))
   &&matchAIRound56PinnedInstruction(s.r,L,e.lua_function_identity,e.lua_instruction_index,path,first,last,line);
 }
-bool namespaceSource(State&s,lua_State*L,const lua_TableObservation&e,const char*k,int line){
- if(source(s,L,e,smart,339,429,line))return true;
+bool namespaceSource(State&s,lua_State*L,const lua_TableObservation&e,const char*k,int line,int first=339,int last=429){
+ if(source(s,L,e,smart,first,last,line))return true;
  // The SWIG namespace __newindex is the sole native bridge. No stack push;
  // validate its exact actual frame and the parent Lua instruction provenance.
  if(!matchAIRound56NativeNamespaceWriteFrame(s.r,L,e.table_identity,QStringLiteral("sgs"),k))return false;
  auto*ci=L->ci->previous;if(!ci||!isLua(ci)||!ttisLclosure(s2v(ci->func.p)))return false;
  auto*cl=clLvalue(s2v(ci->func.p));auto*p=cl->p;
  if(ci->u.l.savedpc<=p->code||ci->u.l.savedpc>p->code+p->sizecode)return false;
- return matchAIRound56PinnedInstruction(s.r,L,cl,int(ci->u.l.savedpc-p->code)-1,smart,339,429,line);
+ return matchAIRound56PinnedInstruction(s.r,L,cl,int(ci->u.l.savedpc-p->code)-1,smart,first,last,line);
 }
 bool numberOrString(const lua_TableObservation&e){return e.value_type==LUA_TNUMBER||e.value_type==LUA_TSTRING;}
 bool sourceScalar(State&s,lua_State*L,const lua_TableObservation&e){
@@ -65,7 +67,11 @@ bool sourceScalar(State&s,lua_State*L,const lua_TableObservation&e){
  // Full constructor graph proves every such operand scalar before this event.
  for(int line:{399,401,406,407,408,411,412,414,415})
   if(source(s,L,e,smart,339,429,line))return true;
- return source(s,L,e,smart,2105,2116,2111)||source(s,L,e,smart,2105,2116,2114);
+ if(source(s,L,e,smart,2105,2116,2111)||source(s,L,e,smart,2105,2116,2114))return true;
+ if(s.r.getMode()!="04p")return false;
+ for(int line:{2121,2122,2123})if(source(s,L,e,smart,2118,2180,line))return true;
+ for(int line:{7816,7818,7819,7820})if(source(s,L,e,smart,7812,7823,line))return true;
+ return source(s,L,e,smart,1181,1249,1186);
 }
 bool rootWrite(State&s,lua_State*L,const lua_TableObservation&e,int n){
  const Root&r=roots[n];
@@ -74,7 +80,7 @@ bool rootWrite(State&s,lua_State*L,const lua_TableObservation&e,int n){
   // once here, from the actual fresh-allocation source branch.
   if(s.root[n]||!r.required||!matchAIRound56BootstrapWrite(s.r,L,e,r.source,r.line,r.key,true))return false;
  }else{
-  // The only root replacement in the complete 02p constructor graph.
+  // The only root replacement in the complete ordinary identity constructor graph.
   if(std::strcmp(r.key,"defense")||!inAIRound56CloneScope(s.r,L)
    ||!matchAIRound56BootstrapWrite(s.r,L,e,smart,378,"defense",true,339,429))return false;
  }
@@ -100,7 +106,7 @@ void observe(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
    if(kind==Namespace&&key(e,"qlist_cache")){
     int n=0;for(;n<rootCount;++n)if(!std::strcmp(roots[n].key,"qlist_cache"))break;
     if(n==rootCount||!s.watch(e.value_table_identity,PlayerCache)){s.retire();return;}
-    s.root[n]=e.value_table_identity;s.connectionKeys.clear();
+    s.root[n]=e.value_table_identity;s.connectionKeys.clear();s.constructorLists.clear();
    }
    return;
   }
@@ -122,6 +128,7 @@ void observe(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
    return;
   }
   if(kind==Namespace){
+   if(s.completed&&allowAIRound54JijiangWrite(s.r,L,e))return;
    for(int n=0;n<rootCount;++n)if(key(e,roots[n].key)){if(!rootWrite(s,L,e,n))s.retire();return;}
    if(s.completed){
     struct Write{const char*k;int line;};const Write writes[]={
@@ -133,6 +140,19 @@ void observe(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
     }
     // Any other namespace write could introduce a protected-root alias. This
     // conservative retirement is source-time, not a scan of its private value.
+    if(!ok&&s.r.getMode()=="04p"&&inAIRound56CloneScope(s.r,L)){
+     // Every admitted identity write is a scalar produced by the exact pinned
+     // source instruction; equal/alias/foreign writes still revoke immediately.
+     struct IdentityWrite{const char*k;int first,last,line;int type;};
+     const IdentityWrite identityWrites[]={
+      {"ai_gameProcess_arg",1642,1686,1649,LUA_TNUMBER},{"ai_gameProcess_arg",1642,1686,1652,LUA_TNUMBER},
+      {"ai_gameProcess_arg",1642,1686,1670,LUA_TNUMBER},{"ai_gameProcess",1642,1686,1650,LUA_TSTRING},
+      {"ai_gameProcess",1642,1686,1653,LUA_TSTRING},{"ai_gameProcess",1642,1686,1684,LUA_TSTRING},
+      {"UnknownRebel",1688,1946,1896,LUA_TBOOLEAN},{"sort_time",1181,1249,1188,LUA_TNUMBER},
+      {"explicit_renegade",7812,7823,7813,LUA_TBOOLEAN},{"explicit_renegade",7812,7823,7817,LUA_TBOOLEAN}};
+     for(const auto&w:identityWrites)if(key(e,w.k)&&e.value_type==w.type
+      &&namespaceSource(s,L,e,w.k,w.line,w.first,w.last)){ok=true;break;}
+    }
     if(!ok)s.retire();
    }
    return;
@@ -156,7 +176,14 @@ void observe(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
    ok=e.value_type==LUA_TTABLE&&source(s,L,e,smart,443,454,451);
    // Complete QList2Table copies borrowed native ServerPlayer handles into a
    // fresh plain array. All native methods on this cache were proved upfront.
-   if(ok)ok=s.watch(e.value_table_identity,PlayerArray);
+   if(ok){
+    ok=s.watch(e.value_table_identity,PlayerArray)&&e.string_key&&e.string_key_length<=4096;
+    if(ok){
+     const QString name=QString::fromUtf8(e.string_key,int(e.string_key_length));
+     if(s.constructorLists.contains(name))ok=false;
+     else s.constructorLists.insert(name,e.value_table_identity);
+    }
+   }
   }else if(kind==Ais){
    ok=e.value_type==LUA_TTABLE&&source(s,L,e,smart,339,429,427);
    if(ok)ok=s.watch(e.value_table_identity,AiSelf);
@@ -193,7 +220,8 @@ void clearAIRound56CloneInputLineage(Room&r)noexcept{delete find(r);}
 
 bool hasAIRound56InitialQlistKeyAbsence(const Room&r,lua_State*L,const QString&key)noexcept{
  return (key==QStringLiteral("global_alive_players")||key.startsWith(QStringLiteral("skills_")))
-  &&hasAIRound56CloneInputLineage(r,L)&&!find(r)->connectionKeys.contains(key);
+  &&hasAIRound56CloneInputLineage(r,L)&&!find(r)->connectionKeys.contains(key)
+  &&!find(r)->constructorLists.contains(key);
 }
 
 bool captureAIRound56InitialConnectionRoots(const Room&r,lua_State*L,const void*&space,const void*&qlist)noexcept{
@@ -201,4 +229,10 @@ bool captureAIRound56InitialConnectionRoots(const Room&r,lua_State*L,const void*
  for(int n=0;n<rootCount;++n)if(!std::strcmp(roots[n].key,"qlist_cache")){
   if(!s->space||!s->root[n])return false;space=s->space;qlist=s->root[n];return true;
  }return false;
+}
+
+const void* captureAIRound56CloneAliveCache(const Room&r,lua_State*L)noexcept{
+ if(!hasAIRound56CloneInputLineage(r,L))return nullptr;
+ auto*s=find(r);const void*p=s->constructorLists.value(QStringLiteral("global_alive_players"),nullptr);
+ return p&&s->watches.value(p,Globals)==PlayerArray?p:nullptr;
 }

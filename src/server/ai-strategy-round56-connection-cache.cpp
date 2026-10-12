@@ -100,7 +100,16 @@ void observe(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
    return;
   }
   if(kind==Namespace&&!key(e,"ai_connect_cache"))return; // Clone namespace watcher owns every other key.
-  if(kind==Qlist&&inAIRound56CloneScope(s.r,L))return; // Exact full Clone proof excludes every requested key.
+  if(kind==Qlist&&inAIRound56CloneScope(s.r,L)){
+   // CloneAI may now create the shared alive list in ordinary identity mode.
+   // Accept its exact first publication here, never a later heap snapshot.
+   if(key(e,"global_alive_players")){
+    if(e.value_type!=LUA_TTABLE||!at(s,L,e,443,454,451)||s.lists.contains("global_alive_players")
+     ||!s.watch(e.value_table_identity,Array)){s.retire();return;}
+    s.lists.insert("global_alive_players",e.value_table_identity);
+   }
+   return;
+  }
   if(!permitted(s,L,e)){s.retire();return;}
   if(kind==Namespace){if(!s.connect){if(!s.watch(e.value_table_identity,Connect)){s.retire();return;}s.connect=e.value_table_identity;}return;}
   // A fresh original producer publishes a plain array exactly once per key.
@@ -238,7 +247,7 @@ QJsonObject queryAIRound56ConnectionCache(Room&r,const AIRequest&q,ServerPlayer*
   const auto roster=r.getAllPlayers(true);ServerPlayer*player=nullptr;
   for(auto*p:roster){
    if(!p||typeid(*p)!=typeid(ServerPlayer)||p->getRoom()!=&r||!p->hasShownGeneral()||(p->getGeneral2()&&!p->hasShownGeneral2()))return unknown("public shown roster source domain unavailable");
-   if(p!=viewer&&(!hasAIRound56PlayerEmptyMarksOrigin(*p)||!hasAIRound56PlayerEmptySkillsOrigin(*p)))return unknown("foreign original empty maps source unavailable");
+   if(p!=viewer&&(!hasAIRound56PlayerEmptyMarksOrigin(*p)||(!hasAIRound56PlayerEmptySkillsOrigin(*p)&&!hasAIRound56PlayerPublicGeneralSkillsOrigin(*p))))return unknown("foreign original empty maps source unavailable");
    if(p->objectName()==proposal.value("player").toString())player=p;
   }
   if(!alive&&!player)return unknown("source cache player not in public roster");
@@ -249,13 +258,18 @@ QJsonObject queryAIRound56ConnectionCache(Room&r,const AIRequest&q,ServerPlayer*
    // filterEvent cache births. An empty/current-equal cache never supplies one.
    const void*space=nullptr,*qlist=nullptr,*connect=nullptr;quint64 resetSerial=0;
    const bool eventOrigin=captureAIRound56PlayLoopCacheOrigin(r,L,space,qlist,connect,resetSerial);
+   const void*cloneAlive=captureAIRound56CloneAliveCache(r,L);
    if((!eventOrigin&&!hasAIRound56InitialConnectAbsence(r,L))
-      ||!hasAIRound56InitialQlistKeyAbsence(r,L,"global_alive_players"))return unknown("original source cache absence unavailable");
+      ||(!cloneAlive&&!hasAIRound56InitialQlistKeyAbsence(r,L,"global_alive_players")))return unknown("original source cache absence unavailable");
    for(auto*p:roster)if(!hasAIRound56InitialQlistKeyAbsence(r,L,"skills_"+p->objectName()))return unknown("original skill-list cache absence unavailable");
    if(!eventOrigin&&!captureAIRound56InitialConnectionRoots(r,L,space,qlist))return unknown("original cache root custody unavailable");
    s=new State(r,L);s->space=space;s->qlist=qlist;s->connect=connect;
    if(!s->watch(s->space,Namespace)||!s->watch(s->qlist,Qlist)
       ||(eventOrigin&&(!resetSerial||!s->watch(s->connect,Connect)))){s->retire();return unknown("original cache root custody unavailable");}
+   if(cloneAlive){
+    if(!s->watch(cloneAlive,Array)){s->retire();return unknown("original Clone alive-cache custody unavailable");}
+    s->lists.insert("global_alive_players",cloneAlive);
+   }
   }
   if(!live(*s))return unknown("source cache lineage retired");
   // Source-proved full public roster, before requested-player execution. After

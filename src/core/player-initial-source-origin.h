@@ -11,6 +11,9 @@ class Player;
 // whole-map replacement, clears it permanently. No public begin/reseed API.
 bool hasAIRound56PlayerEmptyMarksOrigin(const Player&) noexcept;
 bool hasAIRound56PlayerEmptySkillsOrigin(const Player&) noexcept;
+// Actual finite public ol_liubei/sujiang preparePlayers source, issued once.
+// All skill/general writer attempts retire it; it is not an execution grant.
+bool hasAIRound56PlayerPublicGeneralSkillsOrigin(const Player&) noexcept;
 void retireAIRound56PlayerMarksOrigin(const Player*) noexcept;
 void retireAIRound56PlayerSkillsOrigin(const Player*) noexcept;
 // Structural source ancestry only. All three containers were default-born

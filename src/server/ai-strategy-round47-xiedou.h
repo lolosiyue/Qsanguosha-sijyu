@@ -9,6 +9,9 @@ class Room;
 // Sole production issuer: the real fresh Duel constructor in Xiedou.effectOnTarget.
 // No isolated binding, face lookup, mutation authority or gameplay-state change.
 void recordAIRound47FreshXiedouDuel(Room &, const Card *);
+// Sole issuer: current Xufa valuePlan's fresh Card::Parse product, before native
+// admission callbacks. Shares the existing literal-flag mutation epoch only.
+void recordAIRound53FreshXufaValueDuel(Room &, const Card *);
 void invalidateAIRound47XiedouFlags(const Card *) noexcept;
 // Only merge into an already lawfully disclosed actual-card descriptor.
 QJsonObject readAIRound47XiedouFlags(Room &, ServerPlayer *, const Card *);

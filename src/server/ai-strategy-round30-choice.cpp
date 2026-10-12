@@ -188,6 +188,21 @@ void invalidateAIRound30TargetCache(Room &room) {
 }
 QJsonObject queryAIRound30TargetCache(Room &room, const AIRequest &request,
                                     ServerPlayer *viewer, const QJsonObject &proposal) {
+    // Pure observer caches need only their actual snapshot/lifecycle stamp.
+    // Unlike legacy target-cache capture this does not read a GameVM table,
+    // attest an old absence, or depend on card/range payment certificates.
+    if (proposal.value(QStringLiteral("op")) == QStringLiteral("observer_epoch")) {
+        if (proposal.size() != 1 || !room.roomRuntime() || room.roomRuntime()->isClosing()
+            || !viewer || viewer->getRoom() != &room
+            || request.viewerObjectName != viewer->objectName()
+            || request.worldView.self.objectName != request.viewerObjectName
+            || request.worldView.revision != request.stateRevision
+            || request.stateRevision != room.roomRuntime()->stateRevision())
+            return unknownCache(QStringLiteral("observer cache snapshot is stale or foreign"));
+        const auto *state = cache(room);
+        return {{"known",true},{"scope",state->scope},{"epoch",QString::number(state->epoch)},
+                {"viewer",request.viewerObjectName},{"revision",QString::number(request.stateRevision)}};
+    }
     if (!viewer || viewer->getRoom() != &room || request.viewerObjectName != viewer->objectName()
         || request.worldView.self.objectName != viewer->objectName()
         || !aiRound44RangeRequestCurrent(room,request,viewer))

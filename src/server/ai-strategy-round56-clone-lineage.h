@@ -16,4 +16,7 @@ void retireAIRound56CloneInputLineage(Room&,lua_State*) noexcept;
 bool hasAIRound56InitialQlistKeyAbsence(const Room&,lua_State*,const QString&key) noexcept;
 // Native root identity handoff from actual genesis, never a current table scan.
 bool captureAIRound56InitialConnectionRoots(const Room&,lua_State*,const void*&space,const void*&qlist) noexcept;
+// Actual CloneAI's pinned qlist_cached publication. The returned identity is
+// watched from its source assignment, and remains invalid after any mutation.
+const void* captureAIRound56CloneAliveCache(const Room&,lua_State*) noexcept;
 #endif

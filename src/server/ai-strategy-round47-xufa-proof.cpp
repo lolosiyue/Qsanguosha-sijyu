@@ -452,7 +452,7 @@ bool xufaNotificationMetadata(Room&r,lua_State*L,QString*why){
   if(dynamic_cast<const AmountSkillV2*>(s)){
    const auto*source=aiRound56ActivateNativeTypeSource(s);bool amount=false;
    if(source)for(unsigned i=0;i<source->methodCount;++i)
-    if(!std::strcmp(source->methods[i].method,"getBaseAmount"))amount=source->methods[i].scalarBodyProved;
+    if(!std::strcmp(source->methods[i].method,"getBaseAmount"))amount=source->methods[i].scalarBodyProved||source->methods[i].notificationBodyProved;
    if(!amount)return fail("Xufa notification amount body unreviewed");
   }
   if(const auto*x=dynamic_cast<const LuaTriggerSkillV2*>(s))if(x->get_usage_ref!=0)

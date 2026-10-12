@@ -363,10 +363,10 @@ void initializeAIRound41ChoiceTables(Room&r,lua_State*L,bool isolated){
    // Each R56 certifier is a complete native/source lexical entry proof. Try
    // their union before any legacy partial/current-shape observer can revoke
    // or preserve another source. Unknown entries retire before execution.
-   observeAIRound54JijiangEntry(guard->room,state,arguments);
    bool round56=false;
    if(arguments>=0)try{
-    round56=acceptAIRound56BootstrapProtectedEntry(guard->room,state,arguments)
+    round56=acceptAIRound54JijiangEntry(guard->room,state,arguments)
+     ||acceptAIRound56BootstrapProtectedEntry(guard->room,state,arguments)
      ||acceptAIRound56CloneEntry(guard->room,state,arguments)
      ||acceptAIRound56ModeEvaluationEntry(guard->room,state,arguments)
      ||acceptAIRound56ProjectionGetterEntry(guard->room,state,arguments)
@@ -378,6 +378,7 @@ void initializeAIRound41ChoiceTables(Room&r,lua_State*L,bool isolated){
    }catch(...){}
    invalidateAIRound53Goodatwep(guard->room);
    if(round56)return;
+   observeAIRound54JijiangEntry(guard->room,state,arguments);
    if(hasAIRound56AsyncUniverse(guard->room,state)
       &&qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")){
     std::fprintf(stderr,"R56_QUERY_RETIRE site=protected-entry argc=%d\n",arguments);std::fflush(stderr);

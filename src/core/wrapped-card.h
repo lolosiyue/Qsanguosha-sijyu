@@ -323,6 +323,8 @@ public:
 
 private:
     friend class AIRound56MaxCardsScope;
+    friend class AIRound45XufaMoveBodyScope;
+    friend struct AIRound45XufaBodyAccess;
     // Borrow the actual first-adoption product identity only under the exact
     // Room/Game/lifetime query contract. No current face/ID/value comparison.
     const Card *aiRound56PhysicalCloneOwnedFaceOrigin() const noexcept;

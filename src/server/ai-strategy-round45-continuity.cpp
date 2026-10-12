@@ -57,7 +57,7 @@ const Source modeSource{"lua/ai/mode-ai.lua","f1f4b9ef3a5e9878bf0d66b521447e62c3
 const Source smartSource{"lua/ai/smart-ai.lua","f92033319db3c6aac3504b4b6ddccf5edb4403fb120679b303dedfe673a3efe5"};
 const Source utilitiesSource{"lua/utilities.lua","b76cdc44c0fec46f1e10d918c6e0676c5e301ed92cd5b0e35da882606a7d4d3a"};
 const Source sanguoshaSource{"lua/sanguosha.lua","fb7ac93090859f607f17158ea9a9ad92c86479457f5193de8c3486d606c5e601"};
-const Source sgsExSource{"lua/sgs_ex.lua","26445717639068578986fefa44c396f40426b155410b47c3538e450794e4aece"};
+const Source sgsExSource{"lua/sgs_ex.lua","786dfccf96d33c351f096f273af89cfd08d787affacb7a82bf305d87479cd315"};
 class Certificate final:public QObject {
 public:
  explicit Certificate(Room &r):QObject(&r),room(r){setObjectName(ledgerName);}
@@ -230,7 +230,7 @@ bool certifyPatterns(Certificate &c,int fn,int count,QString *reason){
  raw(L,globals,"table");const int tables=lua_absindex(L,-1);if(!plain(L,tables))return fail("patterns table library redirected");
  raw(L,tables,"insert");if(!matchAIRound45NativeBinding(c.room,L,-1,"table.insert"))return fail("patterns table.insert changed");lua_pop(L,1);
  raw(L,tables,"contains");
- if(!matchAIRound45PinnedFunction(c.room,L,-1,"lua/utilities.lua",95,109)||!exactEnvironment(L,-1))
+ if(!matchAIRound45PinnedFunction(c.room,L,-1,"lua/utilities.lua",95,108)||!exactEnvironment(L,-1))
   return fail("patterns table.contains fixed code/environment changed");
  // The complete pinned patterns body always supplies exactly two arguments to
  // contains. The compare_objectName userdata branch is unreachable by syntax,
@@ -325,7 +325,7 @@ bool certifyAIRound45ContinuityEntry(Room &r,lua_State *L,int count,QString *rea
  Stack stack(L);const int fn=lua_gettop(L)-count;
  if(c->naturalReady&&matchAIRound45PinnedFunction(r,L,fn,smartSource.path,344,375))
   return certifyAIRound45NaturalFilterGraph(r,L,count,reason);
- if(c->bossReady&&matchAIRound45PinnedFunction(r,L,fn,sgsExSource.path,387,389))
+ if(c->bossReady&&matchAIRound45PinnedFunction(r,L,fn,sgsExSource.path,404,406))
   return certifyBoss(*c,fn,count,reason);
  if(c->patternsReady&&matchAIRound45PinnedFunction(r,L,fn,smartSource.path,33,61))
   return certifyPatterns(*c,fn,count,reason);

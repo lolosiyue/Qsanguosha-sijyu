@@ -32,6 +32,12 @@ QJsonObject issueAIRound53XufaFirst(const AIRequest&,ServerPlayer*,AIReadonlyCar
  const std::function<bool(CardUseStruct&)>&);
 QJsonObject issueAIRound53XufaSaved(const AIRequest&,ServerPlayer*,AIReadonlyCardLease,const QStringList&,
  const std::function<bool(CardUseStruct&)>&);
+// Pure remembered values are revalidated and receive NEW current-request authority.
+QJsonObject issueAIRound53XufaValue(const AIRequest&,ServerPlayer*,const QJsonObject&,const QStringList&,
+ const std::function<bool(CardUseStruct&)>&);
+// Used only by the existing declared PreCardUsed viewer projection. Returns
+// the fixed constructor list only while this exact live object's list matches.
+QJsonObject readAIRound53XufaConstructedSkills(Room&,ServerPlayer*,const Card*);
 bool hasAIRound53XufaReceipt(const AIRequest&,int);
 bool applyAIRound53XufaReceipt(const AIRequest&,ServerPlayer*,const AICardSpec&,const QStringList&,
  const std::function<bool(CardUseStruct&)>&,CardUseStruct&);

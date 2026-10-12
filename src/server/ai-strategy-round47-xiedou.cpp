@@ -66,11 +66,18 @@ public:
   if(card && card->m_aiXiedouNosJiefanEpoch != ~quint64(0))
    ++card->m_aiXiedouNosJiefanEpoch;
  }
- static void record(Room &room,const Card *card)
+ static void record(Room &room,const Card *card,bool xufaValue=false)
  {
-  if(!card||!card->isVirtualCard()||!card->getSubcards().isEmpty()
-    ||card->getClassName()!=QStringLiteral("Duel")||card->getSkillName(false)!=QStringLiteral("xiedou")
-    ||card->getSuit()!=Card::NoSuit||card->getNumber()!=0||card->hasFlag("nosjiefan-slash"))return;
+  if(!card||!card->isVirtualCard()||card->getClassName()!=QStringLiteral("Duel")
+    ||card->hasFlag("nosjiefan-slash"))return;
+  if(xufaValue){
+   // Only the fresh zero/one-material Duel parsed by the actual Xufa value
+   // continuation calls this issuer. A class/skill match alone grants nothing.
+   if(card->getSkillName(false)!=QStringLiteral("xufa")
+     ||card->getSubcards().size()>1
+     ||(!card->getSubcards().isEmpty()&&card->getSubcards().first()<0))return;
+  }else if(!card->getSubcards().isEmpty()||card->getSkillName(false)!=QStringLiteral("xiedou")
+    ||card->getSuit()!=Card::NoSuit||card->getNumber()!=0)return;
   const auto token=globalCardLifetimeManager().liveToken(card);
   if(!token||!token->live||card->m_aiXiedouNosJiefanEpoch==~quint64(0))return;
   auto *l=xiedouFlagLedger(room,true);
@@ -95,6 +102,8 @@ public:
 };
 void recordAIRound47FreshXiedouDuel(Room &room,const Card *card)
 {AIRound47XiedouObservation::record(room,card);}
+void recordAIRound53FreshXufaValueDuel(Room &room,const Card *card)
+{AIRound47XiedouObservation::record(room,card,true);}
 void invalidateAIRound47XiedouFlags(const Card *card) noexcept
 {AIRound47XiedouObservation::invalidate(card);}
 QJsonObject readAIRound47XiedouFlags(Room &room,ServerPlayer *viewer,const Card *card)

@@ -7232,6 +7232,27 @@ void Room::preparePlayers()
     foreach(ServerPlayer*player, getPlayers()){
         const General*gen = Config.EnableHegemony ? player->getActualGeneral1() : player->getGeneral();
         if(!gen) continue;
+        // Finite public OL response source domain. Source ancestry is independent
+        // of applicability and never grants callback/notification authority.
+        quint64 publicSkillSerial=0,publicSkillWriters=0;
+        bool publicSkillSource=!Config.EnableHegemony&&getMode()=="04p"
+            &&!player->getGeneral2()&&player->hasShownGeneral()
+            &&(gen->objectName()=="ol_liubei"||gen->objectName()=="sujiang");
+        if(publicSkillSource){
+            QSet<QString> sourceRelated;
+            for(const Skill*parent:gen->getSkillList())
+                for(const Skill*related:Sanguosha->getRelatedSkills(parent->objectName()))
+                    sourceRelated.insert(related->objectName());
+            for(const Skill*skill:gen->getSkillList()){
+                if(sourceRelated.contains(skill->objectName()))continue;
+                if(Sanguosha->getSkill(skill->objectName())!=skill||skill->inherits("ViewAsEquipSkill")){
+                    publicSkillSource=false;break;
+                }
+                // addSkill(bool), createSkillInstance(simple), createSkillInstance(full).
+                publicSkillWriters+=3+Sanguosha->getRelatedSkills(skill->objectName()).size();
+            }
+            if(publicSkillSource)publicSkillSource=player->beginAIRound56PublicGeneralSkills(publicSkillSerial);
+        }
         player->setGender(Config.EnableHegemony ? General::Sexless : gen->getGender());
 		QSet<QString> relatedNames;
 		foreach (const Skill *parent, gen->getSkillList()) {
@@ -7276,6 +7297,7 @@ void Room::preparePlayers()
                 }
             }
         }
+        if(publicSkillSource)player->finishAIRound56PublicGeneralSkills(publicSkillSerial,publicSkillWriters);
     }
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_PREPARE_SKILL;

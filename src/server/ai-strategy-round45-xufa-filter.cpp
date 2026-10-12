@@ -1,4 +1,10 @@
 #include "ai-strategy-round45-xufa-filter.h"
+#include "ai-strategy-round47-xufa-proof.h"
+#include "ol.h"
+#include "wrapped-card.h"
+#include "room-state.h"
+#include "ai-strategy-round56-projection.h"
+#include <typeinfo>
 #include "ai-strategy-round45-natural-event.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai-strategy-round45-native-seal.h"
@@ -74,7 +80,12 @@ struct Graph {
   }return true;
  }
  bool handPileBody(){
-  return fail("Xufa hand-pile notification/controller graph not yet certified");
+  // This delegate is not a native event admission root. The complete event
+  // preselection scope must already hold its correction/notification lifetime;
+  // a momentary metadata result or matching end value supplies no authority.
+  QString why;
+  if(!proveAIRound47XufaCorrectionUnion(r,L,&why))
+   return fail("Xufa hand-pile notification scope unavailable: "+why);
   // Full hand->pile branch: never inspect PresentCard or any individual flag.
   // Both give outcomes have m_playerId=="", and native roster identities are
   // nonempty, so BeMan returns nil before poisonCards/getUseValue/intention.
@@ -83,13 +94,15 @@ struct Graph {
    Stack st(L);globals(L);field(L,-1,"string");
    if(!plain(L,-1))return fail("Xufa string library redirected");
    const int strings=lua_absindex(L,-1);field(L,strings,"contains");
-   if(!code(-1,"lua/utilities.lua",91,93))return false;lua_pop(L,1);
-   if(!primitiveMetatable(L,LUA_TSTRING)||!plain(L,-1))return fail("Xufa string metatable redirected");
-   const int mt=lua_absindex(L,-1);int n=0;lua_pushnil(L);
-   while(next(L,mt)){++n;
-    if(lua_type(L,-2)!=LUA_TSTRING||std::strcmp(lua_tostring(L,-2),"__index")||!lua_rawequal(L,-1,strings))return fail("Xufa string lookup changed");
-    lua_pop(L,1);
-   }if(n!=1)return fail("Xufa string metatable shape changed");
+   // Both exact installed implementations are read-only native string.find
+   // graphs. Preserve their distinct plain/pattern result semantics.
+   if(!(matchAIRound45PinnedFunction(r,L,-1,"lua/utilities.lua",91,93)
+      ||matchAIRound45PinnedFunction(r,L,-1,"extensions/addFunction.lua",1557,1559))
+      ||!env(-1))return fail("Xufa string.contains source differs");lua_pop(L,1);
+   // Lua 5.4's trusted compatibility metatable also contains native
+   // arithmetic entries. Match the whole sealed bootstrap metatable rather
+   // than inventing a one-field shape incompatible with the actual runtime.
+   if(!matchAIRound47NativeStringMetatable(r,L))return fail("Xufa string bootstrap metamethod bindings changed");
   }
   for(const char*k:{"getCurrent","setCardFlag"})if(!method("Room",k))return false;
   // getFlags is a copied QStringList. Fixed source clears only visible_*;
@@ -122,20 +135,36 @@ struct Graph {
 }
 struct AIRound45XufaMoveBodyScope::Data {
  Room*room=nullptr;QPointer<ServerPlayer>owner;QPointer<const Card>card;
- QList<int>ids;QList<Player::Place>places;bool discard=false,valid=false,entryConsumed=false;
+ QList<int>ids;QList<Player::Place>places;QHash<int,QPointer<const WrappedCard>>physical;QHash<int,QPointer<const Card>>faces;bool discard=false,valid=false,entryConsumed=false;
 };
 struct AIRound45XufaMoveEntry::Data {
  Room*room=nullptr;const AIRound45XufaMoveBodyScope*scope=nullptr;bool valid=false;
 };
 struct AIRound45XufaBodyAccess {
  static AIRound45XufaMoveBodyScope::Data*top(Room&r){auto i=frames.constFind(&r);return i==frames.cend()||i->isEmpty()?nullptr:i->last()->d.get();}
+ static bool cardOrigins(Room&r){
+  const auto*d=top(r);if(!d||!d->valid)return false;
+  for(int id:d->ids){
+   const auto wrapper=d->physical.value(id);const auto face=d->faces.value(id);
+   if(!wrapper||!face||r.getCard(id)!=wrapper.data()
+    ||!r.roomState()->aiRound56PhysicalIdSourceContains(wrapper.data())
+    ||wrapper->aiRound56PhysicalCloneOwnedFaceOrigin()!=face.data())return false;
+  }return true;
+ }
  static bool currentEntry(Room&r){auto e=entries.constFind(&r);auto f=frames.constFind(&r);return e!=entries.cend()&&!e->isEmpty()&&f!=frames.cend()&&!f->isEmpty()&&e->last()->d->valid&&e->last()->d->scope==f->last();}
 };
 AIRound45XufaMoveBodyScope::AIRound45XufaMoveBodyScope(Room&r,ServerPlayer*p,const Card*c,bool discard):d(new Data){
  d->room=&r;d->owner=p;d->card=c;d->discard=discard;frames[&r].append(this);
- if(!p||p->getRoom()!=&r||!c||QString::fromLatin1(c->metaObject()->className())!="XufaCard"||p->getPhase()!=Player::Play)return;
+ if(!p||p->getRoom()!=&r||!c||typeid(*c)!=typeid(XufaCard)||p->getPhase()!=Player::Play)return;
  d->ids=c->getSubcards();QSet<int>seen;if(d->ids.isEmpty())return;
  for(int id:d->ids){if(id<0||seen.contains(id)||r.getCardOwner(id)!=p)return;seen.insert(id);
+  const Card*physical=r.getCard(id);
+  if(!physical||!r.roomState()->aiRound56PhysicalIdSourceContains(physical)
+   ||typeid(*physical)!=typeid(WrappedCard))return;
+  const auto*wrapper=static_cast<const WrappedCard*>(physical);
+  const Card*face=wrapper->aiRound56PhysicalCloneOwnedFaceOrigin();
+  if(!face||!aiRound56OrdinaryCardPolicyType(face))return;
+  d->physical.insert(id,wrapper);d->faces.insert(id,face);
   if(discard){if(r.getCardPlace(id)!=Player::PlaceSpecial||!p->getPile("xufa").contains(id))return;}
   else if(r.getCardPlace(id)!=Player::PlaceHand&&r.getCardPlace(id)!=Player::PlaceEquip)return;
   d->places.append(r.getCardPlace(id));
@@ -158,7 +187,7 @@ bool registerAIRound45XufaBodySources(Room&r,lua_State*L,QString*why){for(const 
 bool certifyAIRound45XufaFilterBody(Room&r,lua_State*L,int selfIndex,const AIRound45NaturalFilterProof&proof,QString*reason){
  if(reason)reason->clear();const auto*scope=AIRound45XufaBodyAccess::top(r);
  const auto fail=[&](const QString&s){if(reason)*reason=s;return false;};
- if(!AIRound45XufaBodyAccess::currentEntry(r)||!scope||!scope->valid||!scope->owner||!scope->card||scope->owner->getRoom()!=&r||scope->card->getSubcards()!=scope->ids)return fail("Xufa exact compiled move custody absent/stale");
+ if(!AIRound45XufaBodyAccess::currentEntry(r)||!AIRound45XufaBodyAccess::cardOrigins(r)||!scope||!scope->valid||!scope->owner||!scope->card||scope->owner->getRoom()!=&r||scope->card->getSubcards()!=scope->ids)return fail("Xufa exact compiled move custody absent/stale");
  // Only the exact compiled, one-use move entry admits these two envelopes.
  // No private tag/flag result can determine whether the proof succeeds.
  if(!AIRound45Inspect::capacity(L,512))return fail("Xufa metadata stack unavailable");Stack stack(L);selfIndex=lua_absindex(L,selfIndex);
@@ -180,7 +209,7 @@ bool certifyAIRound45XufaFilterBody(Room&r,lua_State*L,int selfIndex,const AIRou
 // false until that transport union and the trigger roots are certified.
 bool matchesAIRound47XufaMoveEvent(Room&r,int event,ServerPlayer*target,const QVariant&payload){
  const auto*scope=AIRound45XufaBodyAccess::top(r);
- if(!AIRound45XufaBodyAccess::currentEntry(r)||!scope||!scope->valid||!scope->owner||!scope->card
+ if(!AIRound45XufaBodyAccess::currentEntry(r)||!AIRound45XufaBodyAccess::cardOrigins(r)||!scope||!scope->valid||!scope->owner||!scope->card
   ||scope->owner->getRoom()!=&r||scope->card->getSubcards()!=scope->ids||scope->owner->getPhase()!=Player::Play)return false;
  const auto roster=r.getPlayers();for(const auto*p:roster)if(!p||p->objectName().isEmpty())return false;
 
