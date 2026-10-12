@@ -81,6 +81,8 @@ public:
     Card(Suit suit = SuitToBeDecided, int number = -1, bool target_fixed = false, bool damage_card = false, bool is_gift = false, bool single_target = false);
 
     QString objectName(bool different_slash = true) const;
+    void setObjectName(const QString &name);
+    void setParent(QObject *parent);
 
     // property getters/setters
     QString getSuitString() const;
@@ -259,6 +261,9 @@ public:
     quint64 aiRound56ScalarWriteEpoch() const noexcept;
     bool aiRound56OriginalPhysicalDefinitionMaterialsOrigin() const noexcept;
     bool aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept;
+    // ID-only continuity through the registry's own repeated assignment. The
+    // older first-write/material receipt above remains strictly unchanged.
+    bool aiRound56PhysicalDefinitionIdIndex(int *index) const noexcept;
     void retireAIRound56RecursiveFieldOrigins(unsigned fields) const noexcept;
     const QList<const Card *> &getChangeCards() const noexcept { return change_cards; }
     void clearChangeCards() const;
@@ -306,9 +311,11 @@ private:
     mutable std::atomic<quint64> m_aiRound56MaterialWriteEpoch{0};
     mutable std::atomic<quint64> m_aiRound56ScalarWriteEpoch{0};
     std::atomic<int> m_aiRound56PhysicalDefinitionIndex{-2};
+    std::atomic<quint64> m_aiRound56DefinitionIdSourceEpoch{0};
     friend class Engine;
     friend class RoomDefinitionRegistry;
     void aiRound56RecordPhysicalDefinitionIndexSource(int index) noexcept;
+    void aiRound56ReassertPhysicalDefinitionId(int index);
     friend class Room;
     friend class RoomManagedState;
     friend class AIRound47XiedouObservation;

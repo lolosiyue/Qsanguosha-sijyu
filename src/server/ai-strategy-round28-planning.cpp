@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round28-planning.h"
 #include "ai-strategy-round44-fc-frame.h"
 #include "ai-strategy-round26-planning.h"
@@ -21,8 +23,8 @@ bool absent(const QVariant&v){return !v.isValid()||v.isNull();}
 bool ask(const AIRequest&r,AIRequest::DecisionKind kind,const QString&key){return r.kind==kind&&r.choiceOptions.reason==key;}
 bool useAsk(const AIRequest&r,const QString&pattern){return r.kind==AIRequest::UseCard&&r.pattern==pattern;}
 QString tagKey(const QString&key){return key.startsWith("fcDIY_context:")?key.mid(14):QString();}
-bool extraQuestion(const AIRequest&r,const ServerPlayer*p,const QString&key){
- if(!p||!p->hasSkill(key))return false;
+bool extraQuestion(const AIRequest&r,const ServerPlayer*p,const QString&key,const std::function<bool()> &skillQuery={}){
+ if(!p||!(skillQuery ? skillQuery() : p->hasSkill(key)))return false;
  if(key=="sp_hengsaoqianjun")return ask(r,AIRequest::Choice,key)||ask(r,AIRequest::PlayersChosen,key);
  if(key=="sp_lvezhen"||key=="fcjielianhuan")return ask(r,AIRequest::PlayerChosen,key);
  return key=="fcmoujiang"&&ask(r,AIRequest::PlayersChosen,key);
@@ -117,7 +119,13 @@ void projectAIRound28PlanningContext(AIRequest&r,Room&room,const ServerPlayer*p,
   const auto value=room.getTag("ahmoutaozei");if(absent(value))row.insert("ahmoutaozei",false);
   else if(value.canConvert<CardUseStruct>()){const auto use=value.value<CardUseStruct>();if(!use.from)row.insert("ahmoutaozei",QJsonObject{{"from",false},{"to",QJsonArray{}}});else if(room.getAllPlayers(true).contains(use.from))row.insert("ahmoutaozei",QJsonObject{{"from",use.from->objectName()},{"to",QJsonArray{}}});}
  }
- for(const QString&key:{QStringLiteral("sp_hengsaoqianjun"),QStringLiteral("sp_lvezhen"),QStringLiteral("fcjielianhuan"),QStringLiteral("fcmoujiang")})if(extraQuestion(r,p,key)){
+ for(const QString&key:{QStringLiteral("sp_hengsaoqianjun"),QStringLiteral("sp_lvezhen"),QStringLiteral("fcjielianhuan"),QStringLiteral("fcmoujiang")})if(extraQuestion(r,p,key,[&] {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill(key);
+    })){
   const auto value=room.getTag(key);if(absent(value)){row.insert(key,false);continue;}
   const QString source="fcDIY_context:"+key;const Card*c=aiRound28PlanningEvaluation(r,room,p,source);if(!c||!profile)continue;
   const auto use=value.value<CardUseStruct>();const auto card=profile(c,aiRound28PlanningExtraTarget(r,room,p,source),source);if(card.isEmpty())continue;

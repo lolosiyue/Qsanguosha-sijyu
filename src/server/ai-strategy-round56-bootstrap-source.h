@@ -2,6 +2,8 @@
 #define AI_STRATEGY_ROUND56_BOOTSTRAP_SOURCE_H
 #include <QJsonObject>
 class Room;
+class RoomDefinitionRegistry;
+class AIRound56BootstrapSourceProof;
 struct lua_State;
 // Original RoomRuntime::initialize boundaries only. These functions never
 // replace authored execution or make a later snapshot into source authority.
@@ -20,4 +22,7 @@ QJsonObject inspectAIRound56BootstrapSourceBoundary(const Room &);
 // Completing the one-shot source token is issued but async is not yet seeded;
 // after Completed the ordinary Clone/async lineage must still be live.
 bool hasAIRound56BootstrapMetadataContinuity(Room&,lua_State*) noexcept;
+// Original native definition producer boundary; registry writer observer only.
+bool isAIRound56OriginalDefinitionProducer(Room &,const RoomDefinitionRegistry *) noexcept;
+bool completeAIRound56FactoryMapOrigin(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
 #endif

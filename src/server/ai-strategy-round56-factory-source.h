@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QVector>
 class Room;
+class Engine;
 class RoomDefinitionRegistry;
 // Native-only source facts; no userdata, prototype pointer or dispatch token.
 struct AIRound56FactorySourceRow {
@@ -12,8 +13,19 @@ struct AIRound56FactorySourceRow {
     // source recipe. It does NOT certify its effects or product lifetime.
     bool luaSkillCloneRecipe = false;
 };
+struct AIRound56EquipmentFactorySourceRow {
+    QString publicName, exactType, reason;
+    bool recipe = false, roomLocal = false, nullResult = false;
+};
 struct AIRound56FactorySourceReport {
     bool enumerationComplete = false;
+    bool globalMapOrigin = false, roomMapOrigin = false;
+    bool equipmentRecipeFamilyComplete = false;
+    // Fixed public ZunweiCard native metaobject alternatives, no product custody.
+    bool zunweiSkillRecipeComplete = false;
+    bool globalHorseCallbackSourceComplete = false;
+    int globalHorseOriginalNullCallbacks = 0;
+    QVector<AIRound56EquipmentFactorySourceRow> equipmentRows;
     bool luaSkillCloneSourceFamilyComplete = false;
     QVector<AIRound56FactorySourceRow> rows;
     QString firstUncoveredLuaSkillCloneSource;
@@ -29,4 +41,6 @@ bool proveAIRound56LuaSkillCloneSourceFamily(Room &, QString *reason = nullptr);
 // Internal cross-TU enumerator; never executes Parse, clone, metaObject or callback.
 void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &,
     AIRound56FactorySourceReport &);
+// History check only. Unknown global registration attempts retire permanently.
+bool hasAIRound56GlobalFactoryMapOrigin(const Engine *) noexcept;
 #endif

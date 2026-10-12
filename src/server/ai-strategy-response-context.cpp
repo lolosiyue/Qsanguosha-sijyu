@@ -1,3 +1,6 @@
+#include "room-runtime.h"
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round49-extra-response.h"
 #include "ai-strategy-round26-response.h"
 #include "ai-strategy-response-context.h"
@@ -412,7 +415,11 @@ void projectAIStrategyResponseContext(AIRequest &request, Room &room, ServerPlay
 
     // The seven removed legacy Lua prototypes affect early policy declines.
     // Card_Parse only constructs a registered prototype; no policy is called.
-    if (viewer->hasSkills("lualveji|luawu|luamouce|luahuntian|luafentian|luajice|luajiejiang")) {
+    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkills("lualveji|luawu|luamouce|luahuntian|luafentian|luajice|luajiejiang"); }())) {
         QJsonObject facts = request.worldView.strategyFacts.value("new").toObject(), prototypes;
         for (const QString &selector : {"#lualveji", "#luawu", "#luamouce", "#luahuntian", "#luafentian", "#luajice", "#luajiejiang"}) {
             const std::unique_ptr<SkillCard> card(LuaSkillCard::Parse(selector + ":.:"));

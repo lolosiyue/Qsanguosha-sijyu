@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-projection.h"
 #include "maneuvering.h"
 //#include "client.h"
@@ -57,6 +58,8 @@ bool Analeptic::IsAvailable(const Player *player, const Card *analeptic)
 {
 	if (!analeptic){
 		Card *ac = new Analeptic(Card::NoSuit, 0);
+        if(auto*r=Sanguosha->currentRoom())
+            AIRound56AnalepticNullBirth sourceBirth(*r,player,ac);
         if(auto*r=Sanguosha->currentRoom())recordAIRound56ProjectionSourceCard(*r,ac,QStringLiteral("analeptic"));
 		ac->deleteLater();
 		analeptic = ac;

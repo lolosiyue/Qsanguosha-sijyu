@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round45-planning.h"
 #include "ai-strategy-round46-planning-slots.h"
 #include "ai-strategy-round44-certificate.h"
@@ -132,8 +134,24 @@ void projectAIRound45PlanningFacts(AIWorldView&w,Room&room,const ServerPlayer*p)
  auto by=facts.value("player_properties").toObject();auto own=by.value(p->objectName()).toObject();
  // Fixed newgenerals-ai6138/6936 reads only self.player's values. QVariant's
  // absent toString() is the source's known empty string, never a foreign guess.
- if(p->hasSkill("xdyifuvs")||p->hasSkill("xdyifuvs&"))own.insert("Suijiyingbian",p->property("Suijiyingbian").toString());
- if(p->hasSkill("ofyouchongvs")||p->hasSkill("ofyouchongvs&"))own.insert("ofyouchongCN",p->property("ofyouchongCN").toString());
+ if(([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("xdyifuvs"); }())||([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("xdyifuvs&"); }()))own.insert("Suijiyingbian",p->property("Suijiyingbian").toString());
+ if(([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("ofyouchongvs"); }())||([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("ofyouchongvs&"); }()))own.insert("ofyouchongCN",p->property("ofyouchongCN").toString());
  by.insert(p->objectName(),own);facts.insert("player_properties",by);w.strategyFacts.insert("newgenerals",facts);
 }
 

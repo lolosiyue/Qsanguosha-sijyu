@@ -25,7 +25,7 @@ struct State final:QObject{
   phase=Retired;
  }
  enum Phase{Started,Finished,Retired};Phase phase=Started;
- enum Cell{Awaiting,Absence,Literal,Lost};Cell zunwei=Awaiting,jink=Awaiting;
+ enum Cell{Awaiting,Absence,Literal,Lost};Cell zunwei=Awaiting,jink=Awaiting,exnihilo=Awaiting;
 };
 State*get(Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c))return s;return nullptr;}
 bool key(const lua_TableObservation&e,const char*k){return e.string_key&&e.string_key_length==std::strlen(k)&&!std::memcmp(e.string_key,k,e.string_key_length);}
@@ -55,10 +55,16 @@ void observed(lua_State*L,const lua_TableObservation*ep,void*data)noexcept{
   }
   const void*created=e.value_table_identity;
   if(!lua_observetableidentity(L,created,observed,s)){s->retire("priority-root-watch",ep);return;}
-  s->priority=created;s->jink=State::Absence;s->zunwei=State::Absence;return;
+  s->priority=created;s->jink=State::Absence;s->zunwei=State::Absence;s->exnihilo=State::Absence;return;
  }
  if(e.table_identity!=s->priority)return;
  if(key(e,"Jink")){s->jink=State::Lost;return;} // includes same-value nil write
+ if(key(e,"ExNihilo")){
+  if(s->phase==State::Started&&s->exnihilo==State::Absence&&e.value_type==LUA_TNUMBER
+   &&matchAIRound56BootstrapWrite(s->room,L,e,QStringLiteral("lua/ai/standard_cards-ai.lua"),1873,"ExNihilo",false))
+   s->exnihilo=State::Literal;
+  else s->exnihilo=State::Lost;
+ }
  if(key(e,"ZunweiCard")){
   if(s->phase==State::Started&&s->zunwei==State::Absence&&e.value_type==LUA_TNUMBER
    &&matchAIRound56BootstrapWrite(s->room,L,e,QStringLiteral("lua/ai/tenyear_hc-ai.lua"),5238,"ZunweiCard",false))
@@ -103,6 +109,7 @@ bool completeAIRound56PriorityBootstrap(Room&r,lua_State*L,const AIRound56Bootst
  if(!roots(s))return fail("completion-root-continuity");
  if(s->zunwei!=State::Literal)return fail("completion-zunwei-origin");
  if(s->jink!=State::Absence)return fail("completion-jink-origin");
+ if(s->exnihilo!=State::Literal)return fail("completion-exnihilo-origin");
  // Crucially, the original epoch is not changed/restamped here. Any earlier
  // native, callback, async or unknown-source interruption remains permanent.
  s->phase=State::Finished;return true;
@@ -111,7 +118,8 @@ void retireAIRound56PriorityBootstrap(Room&r)noexcept{if(auto*s=get(r))s->retire
 void clearAIRound56PriorityBootstrap(Room&r)noexcept{delete get(r);}
 bool hasAIRound56InitialPriority(Room&r,lua_State*L,const QString&k)noexcept{
  auto*s=get(r);return s&&s->L==L&&s->phase==State::Finished&&roots(s)
-  &&((k==QStringLiteral("ZunweiCard")&&s->zunwei==State::Literal)||(k==QStringLiteral("Jink")&&s->jink==State::Absence));
+  &&((k==QStringLiteral("ZunweiCard")&&s->zunwei==State::Literal)||(k==QStringLiteral("Jink")&&s->jink==State::Absence)
+   ||(k==QStringLiteral("ExNihilo")&&s->exnihilo==State::Literal));
 }
 QJsonObject readAIRound56InitialPriority(Room&r,lua_State*L,const QString&k){
  const auto no=[](){return QJsonObject{{"known",false}};};
@@ -145,5 +153,6 @@ QJsonObject inspectAIRound56PriorityBootstrap(Room&r){
  return{{"phase",phases[int(s->phase)]},{"failureTag",s->failureTag},
   {"event",s->failureEvent},{"instruction",s->failurePC},{"first",s->failureFirst},{"last",s->failureLast},
   {"epoch_matches",rt&&rt->prioritySourceEpoch()==s->epoch},
-  {"root_seen",s->priority!=nullptr},{"zunwei_origin",cells[int(s->zunwei)]},{"jink_origin",cells[int(s->jink)]}};
+  {"root_seen",s->priority!=nullptr},{"zunwei_origin",cells[int(s->zunwei)]},{"jink_origin",cells[int(s->jink)]},
+  {"exnihilo_origin",cells[int(s->exnihilo)]}};
 }

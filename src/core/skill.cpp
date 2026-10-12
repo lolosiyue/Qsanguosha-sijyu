@@ -457,9 +457,16 @@ ViewAsSkill::ViewAsSkill(const QString &name)
 bool ViewAsSkill::isAvailable(const Player *invoker,
     CardUseStruct::CardUseReason reason, const QString &pattern) const
 {
+    return aiRound56AvailableForConversion(invoker, reason, pattern, {});
+}
+
+bool ViewAsSkill::aiRound56AvailableForConversion(const Player *invoker,
+    CardUseStruct::CardUseReason reason, const QString &pattern,
+    const std::function<bool()> &ownershipQuery) const
+{
     if(invoker->getMark("ViewAsSkill_"+objectName()+"Effect")>0
 	// For skills like Shuangxiong(ViewAsSkill effect remains even if the player has lost the skill)
-	||invoker->hasSkill(objectName())){//||invoker->hasLordSkill(objectName())
+	||(ownershipQuery ? ownershipQuery() : invoker->hasSkill(objectName()))){//||invoker->hasLordSkill(objectName())
 		switch (reason) {
 		case CardUseStruct::CARD_USE_REASON_PLAY: return isEnabledAtPlay(invoker);
 		case CardUseStruct::CARD_USE_REASON_RESPONSE:

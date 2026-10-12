@@ -31,4 +31,6 @@ void recordAIRound56ProjectionSourceCard(Room&,const Card*,const QString&literal
 // source owner. Only fixed producer callsites may use this; never parsed tags
 // or a later selected card/unchanged pointer observation.
 void recordAIRound56ProjectionOwnerSourceCard(Room&,const Player*,const Card*,const QString&literalName) noexcept;
+// Source type membership only: not custody or an execution grant.
+bool aiRound56OrdinaryCardPolicyType(const Card *) noexcept;
 #endif

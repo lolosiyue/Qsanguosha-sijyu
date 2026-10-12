@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-yjcm2012.h"
 #include "ai.h"
 #include "engine.h"
@@ -55,7 +57,11 @@ void projectAIStrategyYjcm2012(AIWorldView &world, Room &room, ServerPlayer *vie
         const std::unique_ptr<Card> analeptic(Sanguosha->cloneCard("analeptic", Card::NoSuit, 0));
         if (analeptic) facts.insert("dying_analeptic_locked", dying->isLocked(analeptic.get()));
     }
-    if (viewer->hasSkill("qice") && world.strategyFacts.value("pattern_names").isArray()) {
+    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill("qice"); }()) && world.strategyFacts.value("pattern_names").isArray()) {
         QJsonObject patterns;
         for (const QJsonValue &value : world.strategyFacts.value("pattern_names").toArray()) {
             const QString name = value.toString();

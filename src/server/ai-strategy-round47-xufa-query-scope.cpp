@@ -1,3 +1,9 @@
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-playloop-filter.h"
+#include <cstdio>
+#ifdef Q_OS_LINUX
+#include <execinfo.h>
+#endif
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round47-xufa-query-scope.h"
 #include "ai-strategy-round53-ainoto.h"
@@ -105,11 +111,25 @@ struct AIRound47XufaQueryAccess{
 };
 AIRound47XufaQueryScope::AIRound47XufaQueryScope(Room*r,const Card*c,bool required,bool preserveAiNoTo,bool preservePriority,bool scalarCardOnly):d(new Data){
  d->room=r;if(!r)return;
- if(preserveAIRound56ProjectionNativeQuery(*r,c,required,scalarCardOnly))return;
+ if(preserveAIRound56ProjectionNativeQuery(*r,c,required,scalarCardOnly)
+   ||preserveAIRound56PlayerCorrectionNativeQuery(*r,c,required))return;
  // R55: the separate priority flag is supplied only by the complete native-only
  // public skill-query proofs. It does not follow a callback-only aiNoTo proof.
  // No grant is created, refreshed or restamped; Lua/async entries still revoke.
- if(!preservePriority)r->roomRuntime()->revokePrioritySource(); // before private selection
+ if(!preservePriority){
+  // First default native revocation while the exact source ledger is still
+  // live. Code addresses only; this diagnostic never changes admission.
+  if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")
+    &&hasAIRound56PlayLoopSource(*r,r->roomRuntime()->lua().rawState())){
+   std::fprintf(stderr,"R56_FIRST_NATIVE_PRIORITY_REVOKE required=%d scalar_only=%d\n",int(required),int(scalarCardOnly));std::fflush(stderr);
+#ifdef Q_OS_LINUX
+   std::fprintf(stderr,"R56_PRIORITY_REVOKE_NATIVE_STACK_BEGIN\n");std::fflush(stderr);
+   void *frames[32];const int count=::backtrace(frames,32);::backtrace_symbols_fd(frames,count,2);
+   std::fprintf(stderr,"R56_PRIORITY_REVOKE_NATIVE_STACK_END\n");std::fflush(stderr);
+#endif
+  }
+  r->roomRuntime()->revokePrioritySource(); // before private selection
+ }
  // The separate R54 native public-definition proof may preserve aiNoTo only.
  // Every other query retains preselection revocation; Xufa admission is unchanged.
  if(!preserveAiNoTo)retireAIRound53AiNoTo(*r);

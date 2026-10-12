@@ -5059,6 +5059,7 @@ void registerAIRound56NativeTypes_src_package_tenshi_reihou_cpp(AIRound56NativeT
 unsigned aiRound56CardMetadataLocalTenshiSourceEffects(const std::type_info &type) noexcept
 {
     static_assert(std::is_same<decltype(&RhChuiluPeach::getClassName), decltype(&Card::getClassName)>::value, "R56 metadata RhChuiluPeach::getClassName declaring owner changed");
+    static_assert(std::is_same<decltype(&RhChuiluPeach::getPackage), decltype(&Card::getPackage)>::value, "R56 patterns RhChuiluPeach::getPackage declaring owner changed");
     static_assert(std::is_same<decltype(&RhChuiluPeach::getKindOfNames), decltype(&Card::getKindOfNames)>::value, "R56 metadata RhChuiluPeach::getKindOfNames declaring owner changed");
     static_assert(std::is_same<decltype(&RhChuiluPeach::isVirtualCard), decltype(&Card::isVirtualCard)>::value, "R56 metadata RhChuiluPeach::isVirtualCard declaring owner changed");
     static_assert(std::is_same<decltype(&RhChuiluPeach::isKindOf), decltype(&Card::isKindOf)>::value, "R56 metadata RhChuiluPeach::isKindOf declaring owner changed");

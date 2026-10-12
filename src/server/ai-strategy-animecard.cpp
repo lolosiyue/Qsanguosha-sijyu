@@ -1,3 +1,6 @@
+#include "room-runtime.h"
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-animecard.h"
 #include "ai.h"
 #include "room.h"
@@ -55,16 +58,32 @@ void projectAIStrategyAnimecardCatalog(AIWorldView &world, Room &room,
     // The attached view-as skill uses an old SkillCard parse spelling even
     // though the fixed package now registers its product as a BasicCard.
     // Report public registry metadata; do not manufacture a replacement card.
-    if (viewer->hasSkill(QStringLiteral("Promote_jiuyuanVS"))
-        || viewer->hasSkill(QStringLiteral("Promote_jiuyuan"))) {
+    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(viewer),gameLua));
+        return viewer->hasSkill(QStringLiteral("Promote_jiuyuanVS")); }())
+        || ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(viewer),gameLua));
+        return viewer->hasSkill(QStringLiteral("Promote_jiuyuan")); }())) {
         std::unique_ptr<LuaSkillCard> prototype(
             LuaSkillCard::Parse(QStringLiteral("#Promote_jiuyuanCard:.:")));
         QJsonObject dragon = world.strategyFacts.value(QStringLiteral("dragon")).toObject();
         dragon.insert(QStringLiteral("promote_jiuyuan_skill_prototype"), bool(prototype));
         world.strategyFacts.insert(QStringLiteral("dragon"), dragon);
     }
-    if (!viewer->hasSkill(QStringLiteral("ark_guozai"))
-        && !viewer->hasSkill(QStringLiteral("ark_zhuilie"))) return;
+    if (!([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(viewer),gameLua));
+        return viewer->hasSkill(QStringLiteral("ark_guozai")); }())
+        && !([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(viewer),gameLua));
+        return viewer->hasSkill(QStringLiteral("ark_zhuilie")); }())) return;
     QJsonObject prototypes;
     for (const QString &name : {QStringLiteral("#ark_guozai"), QStringLiteral("#ark_zhuilie")}) {
         // Public registered prototype metadata only. This never invokes an AI

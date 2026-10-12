@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round47-xufa-query-scope.h"
 #include "ai-strategy-round54-public-skill.h"
@@ -15,6 +16,7 @@
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "room.h"
+#include "room-state.h"
 #include "skill-instance-utils.h"
 //#include "client.h"
 #include "standard.h"
@@ -26,6 +28,7 @@
 #include <src/util/ThreadSafeHelper.h>
 #include "ai-probe.h"
 #include "skill-set-generation.h"
+#include <QMutex>
 #include <QDynamicPropertyChangeEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -42,7 +45,10 @@ std::atomic<quint64> g_playerGeneration{1};
 namespace {
 // Only the real Player constructor issues these receipts. No gameplay value or
 // map occupancy is ever examined; a mutation attempt cannot restore a receipt.
-struct InitialPlayerOrigin { bool marks=true,skills=true,publicCards=true; };
+struct InitialPlayerOrigin {
+ bool marks=true,skills=true,publicCards=true,canonicalHand=true,limitations=true;
+ const RoomState *handMap=nullptr;quint64 handMapGeneration=0;
+};
 struct InitialPlayerOrigins {
  std::mutex mutex;std::map<const Player*,InitialPlayerOrigin> entries;
 };
@@ -91,6 +97,60 @@ void retireAIRound56PlayerPublicCardsOrigin(const Player*p)noexcept{
  try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
   auto i=x.entries.find(p);if(i!=x.entries.end())i->second.publicCards=false;
  }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+
+bool hasAIRound56PlayerEmptyLimitationsOrigin(const Player&p) noexcept
+{
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(&p);return i!=x.entries.end()&&i->second.limitations;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+void retireAIRound56PlayerLimitationsOrigin(const Player*p) noexcept
+{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);if(i!=x.entries.end())i->second.limitations=false;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+
+void retireAIRound56PlayerCanonicalHandOrigin(const Player*p) noexcept
+{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);if(i!=x.entries.end())i->second.canonicalHand=false;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+bool hasAIRound56PlayerCanonicalHandOrigin(const Player&p) noexcept
+{
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  const auto i=x.entries.find(&p);if(i==x.entries.end()||!i->second.canonicalHand)return false;
+  const auto &origin=i->second;
+  // A null map denotes the actual constructor-empty hand, never current empty.
+  // Compare context identity before dereferencing a former map (it may be gone).
+  return !origin.handMap || (Sanguosha && Sanguosha->currentRoomState()==origin.handMap
+   && origin.handMapGeneration==origin.handMap->aiRound56PhysicalIdMapGeneration()
+   && origin.handMap->aiRound56PhysicalIdMapSourceOrigin());
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+namespace {
+void recordCanonicalHandAddition(const Player*p,const Card*card) noexcept
+{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{
+  auto*room=Sanguosha?Sanguosha->currentRoom():nullptr;
+  auto*map=Sanguosha?Sanguosha->currentRoomState():nullptr;
+  const bool source=room&&p->parent()==room&&map&&map->aiRound56PhysicalIdSourceContains(card);
+  const quint64 generation=source?map->aiRound56PhysicalIdMapGeneration():0;
+  auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);if(i==x.entries.end()||!i->second.canonicalHand)return;
+  auto &origin=i->second;
+  if(!source||!generation||(origin.handMap&&(origin.handMap!=map||origin.handMapGeneration!=generation)))
+   origin.canonicalHand=false;
+  else {origin.handMap=map;origin.handMapGeneration=generation;}
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
 }
 
 
@@ -351,6 +411,20 @@ void Player::clearFlags()
 
 namespace {
 
+// Constructed before worker publication, independently of local-static guards.
+QMutex attackRangeWeaponSnapshotMutex;
+
+QList<const Weapon *> attackRangeWeaponSnapshot()
+{
+    QMutexLocker locker(&attackRangeWeaponSnapshotMutex);
+    // XP disables compiler-generated local-static synchronization. Serialize
+    // both initialization and the owned copy explicitly, including an empty
+    // first snapshot. This lock does not protect Engine's QObject registry or
+    // Weapon lifetime; the existing stable-registry/lifetime premise remains.
+    static const QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
+    return weapons;
+}
+
 bool playerMayHaveVirtualEquip(const Player *player)
 {
     if (!player) return false;
@@ -389,7 +463,7 @@ int Player::getAttackRange(bool include_weapon) const
             else range = qMax(range, w->getRange(this));
         }
         if (playerMayHaveVirtualEquip(this)) {
-            static QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
+            const QList<const Weapon *> weapons = attackRangeWeaponSnapshot();
             foreach (const Weapon *w, weapons) {
                 if (hasWeapon(w->objectName())) {
                     if (range == 1) range = w->getRange(this);
@@ -835,7 +909,7 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
         return skill && skill->isLordSkill() && isLord() && hasSkill(skill_name, include_lose);
     }
 	if(isLord()){
-		static QString ban_gm = QString("06_3v3|06_XMode|02_1v1|03_1v2");
+		const QString ban_gm = QString("06_3v3|06_XMode|02_1v1|03_1v2");
 		if(ServerInfo.EnableHegemony||ban_gm.contains(ServerInfo.GameMode)
 		||Config.value("WithoutLordskill").toBool()) return false;
 		return hasSkill(skill_name,include_lose);
@@ -1564,6 +1638,7 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
 		}
 		if(viewAsEquip(weapon_name)){
 			Card *ec = Sanguosha->cloneCard(weapon_name);
+            if (!ec) return false; // No original factory in this public mode.
 			ec->deleteLater();
 			return !isEquipsNullified(ec, sourcePlayer);
 		}
@@ -1618,6 +1693,7 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 		foreach(QString an,view_as_equips){
 			if(a_equips.contains(an)){
 				Card *ac = Sanguosha->cloneCard(an);
+                if (!ac) continue;
 				ac->deleteLater();
 				if(!isEquipsNullified(ac, sourcePlayer))
 					return true;
@@ -1631,6 +1707,7 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 		}
 		if(viewAsEquip(armor_name)){
 			Card *ec = Sanguosha->cloneCard(armor_name);
+            if (!ec) return false;
 			ec->deleteLater();
 			return !isEquipsNullified(ec, sourcePlayer);
 		}
@@ -1650,6 +1727,7 @@ bool Player::hasDefensiveHorse(const QString &horse_name, bool need_area) const
 		}
 		if(viewAsEquip(horse_name)){
 			Card*ec = Sanguosha->cloneCard(horse_name);
+            if (!ec) return false;
 			ec->deleteLater();
 			return !isEquipsNullified(ec);
 		}
@@ -1669,6 +1747,7 @@ bool Player::hasOffensiveHorse(const QString &horse_name, bool need_area) const
 		}
 		if(viewAsEquip(horse_name)){
 			Card*ec = Sanguosha->cloneCard(horse_name);
+            if (!ec) return false;
 			ec->deleteLater();
 			return !isEquipsNullified(ec);
 		}
@@ -1688,6 +1767,7 @@ bool Player::hasTreasure(const QString &treasure_name, bool need_area) const
 		}
 		if(viewAsEquip(treasure_name)){
 			Card*ec = Sanguosha->cloneCard(treasure_name);
+            if (!ec) return false;
 			ec->deleteLater();
 			return !isEquipsNullified(ec);
 		}
@@ -3223,6 +3303,8 @@ bool Player::canSlashWithoutCrossbow(const Card *slash) const
 {
 	if(!slash){
 		Slash *newslash = new Slash(Card::NoSuit, 0);
+        if(auto*r=Sanguosha->currentRoom())
+            AIRound56PlayerSlashBirth sourceBirth(*r,this,newslash);
         // Source birth, before copying own equipment and before any private
         // target-mod applicability. No existing/foreign card is adopted.
         if(auto*r=Sanguosha->currentRoom())
@@ -3241,6 +3323,7 @@ bool Player::canSlashWithoutCrossbow(const Card *slash) const
 
 void Player::setCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason, bool single_turn)
 {
+    retireAIRound56PlayerLimitationsOrigin(this);
     const auto previousLimitations = card_limitation;
     const auto previousReasons = card_limitation_reasons;
     QString _pattern = pattern;
@@ -3258,6 +3341,7 @@ void Player::setCardLimitation(const QString &limit_list, const QString &pattern
 
 void Player::removeCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason)
 {
+    retireAIRound56PlayerLimitationsOrigin(this);
     const auto previousLimitations = card_limitation;
     const auto previousReasons = card_limitation_reasons;
     QString _pattern = pattern;
@@ -3281,6 +3365,7 @@ void Player::removeCardLimitation(const QString &limit_list, const QString &patt
 
 void Player::removeCardLimitationByReason(const QString &reason)
 {
+    retireAIRound56PlayerLimitationsOrigin(this);
     if (reason.isEmpty()) return;
     const auto previousLimitations = card_limitation;
     const auto previousReasons = card_limitation_reasons;
@@ -3305,6 +3390,7 @@ void Player::removeCardLimitationByReason(const QString &reason)
 
 void Player::clearCardLimitation(bool single_turn)
 {
+    retireAIRound56PlayerLimitationsOrigin(this);
     const auto previousLimitations = card_limitation;
     const auto previousReasons = card_limitation_reasons;
     foreach(Card::HandlingMethod method, card_limitation.keys()){
@@ -3399,6 +3485,7 @@ void Player::removeQinggangTag(const Card *card)
 
 void Player::copyFrom(Player *p)
 {
+    retireAIRound56PlayerLimitationsOrigin(this);
     retireAIRound56PlayerPublicCardsOrigin(this);
     retireAIRound56PlayerMarksOrigin(this);
     retireAIRound56PlayerSkillsOrigin(this);
@@ -3854,8 +3941,12 @@ void Player::addCard(int id, Place place)
     if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
         retireAIRound56PlayerPublicCardsOrigin(this);
     // Keep the shared physical-card collections free of hidden/unresolved cards.
-    if (id < 0) return;
+    if (id < 0) {
+        if (place == PlaceHand) retireAIRound56PlayerCanonicalHandOrigin(this);
+        return;
+    }
     const Card *card = Sanguosha->getCard(id);
+    if (place == PlaceHand) recordCanonicalHandAddition(this, card);
     if (card == nullptr) return;
     switch (place){
     case PlaceHand: {
@@ -3930,6 +4021,7 @@ const Card *Player::getRandomHandCard() const
 
 void Player::drawCard(const Card *card)
 {
+    recordCanonicalHandAddition(this, card);
     handcards << card;
     numericStateCommitted("hand_draw", hp, max_hp, handcards.size() - 1);
 }
@@ -3941,6 +4033,7 @@ void Player::sortHandCards(const QString &hands)
 
 void Player::sortHandCards(QList<int>hands)
 {
+    retireAIRound56PlayerCanonicalHandOrigin(this);
     if(hands.length()!=handcards.length()) return;
 	handcards.clear();
 	foreach(int id, hands)

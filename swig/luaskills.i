@@ -3492,12 +3492,13 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 
 int LuaHorse::getCorrect(const Player *player) const
 {
-	if (correct_func == 0)
+	const LuaFunction callback = correct_func;
+	if (callback == 0)
 		return Horse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	correct_func.push(L);
+	callback.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3623,12 +3624,13 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 
 int LuaOffensiveHorse::getCorrect(const Player *player) const
 {
-	if (correct_func == 0)
+	const LuaFunction callback = correct_func;
+	if (callback == 0)
 		return OffensiveHorse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	correct_func.push(L);
+	callback.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3755,12 +3757,13 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 
 int LuaDefensiveHorse::getCorrect(const Player *player) const
 {
-	if (correct_func == 0)
+	const LuaFunction callback = correct_func;
+	if (callback == 0)
 		return DefensiveHorse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	correct_func.push(L);
+	callback.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 

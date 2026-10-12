@@ -1,4 +1,7 @@
 #include "ai-strategy-yjcm2015.h"
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-projection.h"
+#include "room-runtime.h"
 #include "ai.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -68,24 +71,30 @@ void projectAIYjcm2015(AIWorldView &world, Room &room, const ServerPlayer *viewe
     QList<AIPlayerView> rangePlayers=world.players;rangePlayers.prepend(world.self);
     bool rangeKnown=true;for(const auto &p:rangePlayers)if(!p.skillsComplete)rangeKnown=false;
     QJsonObject ranges;
-    if(rangeKnown){
-        for(const auto &fromView:rangePlayers){
-            if(!fromView.alive)continue;
-            const auto *from=room.findPlayerByObjectName(fromView.objectName,true);
-            if(!from){rangeKnown=false;break;}
-            QSet<int> offsets{0,1};
-            for(const auto &equip:fromView.equips)if(equip.weaponRange>=1)offsets.insert(equip.weaponRange-1);
-            QJsonObject targets;
-            for(const auto &toView:rangePlayers){
-                if(!toView.alive)continue;
-                const auto *to=room.findPlayerByObjectName(toView.objectName,true);
-                if(!to){rangeKnown=false;break;}
-                QJsonObject values;
-                for(int offset:offsets)values.insert(QString::number(offset),from->inMyAttackRange(to,offset));
-                targets.insert(toView.objectName,values);
+    {
+        std::unique_ptr<AIRound56PublicAttackRangeMatrixScope> rangeSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            rangeSource.reset(new AIRound56PublicAttackRangeMatrixScope(room,const_cast<ServerPlayer *>(viewer),gameLua));
+        if(rangeKnown){
+            for(const auto &fromView:rangePlayers){
+                if(!fromView.alive)continue;
+                const auto *from=room.findPlayerByObjectName(fromView.objectName,true);
+                if(!from){rangeKnown=false;break;}
+                QSet<int> offsets{0,1};
+                for(const auto &equip:fromView.equips)if(equip.weaponRange>=1)offsets.insert(equip.weaponRange-1);
+                QJsonObject targets;
+                for(const auto &toView:rangePlayers){
+                    if(!toView.alive)continue;
+                    const auto *to=room.findPlayerByObjectName(toView.objectName,true);
+                    if(!to){rangeKnown=false;break;}
+                    QJsonObject values;
+                    for(int offset:offsets)values.insert(QString::number(offset),from->inMyAttackRange(to,offset));
+                    targets.insert(toView.objectName,values);
+                }
+                if(!rangeKnown)break;
+                ranges.insert(fromView.objectName,targets);
             }
-            if(!rangeKnown)break;
-            ranges.insert(fromView.objectName,targets);
         }
     }
     facts.insert("attack_range_known",rangeKnown);

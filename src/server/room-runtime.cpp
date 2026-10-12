@@ -626,6 +626,7 @@ bool RoomRuntime::initialize(QString *error)
     beginPhase("rules");
     // Optional source provenance begins at the original native namespace birth.
     // Failure does not change ordinary rules/AI bootstrap behavior.
+    m_definitions.beginFactorySourceOrigin(*m_room);
     installAIRound56BootstrapSourceBoundary(*m_room);
     if (!m_lua.initialize(error))
         return failPhase();

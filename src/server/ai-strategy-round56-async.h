@@ -23,6 +23,7 @@ private:
  friend bool completeAIRound56ModeEvaluationLineage(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
  friend bool completeAIRound56PlayLoopSource(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
  friend bool completeAIRound56PatternsLineage(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
+ friend bool completeAIRound56FactoryMapOrigin(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
  friend bool completeAIRound56ProjectionLineage(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
  friend bool completeAIRound56CloneInputLineage(Room &,lua_State *,const AIRound56BootstrapSourceProof &) noexcept;
  friend std::unique_ptr<AIRound56BootstrapSourceProof>

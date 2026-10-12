@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round29-original.h"
 #include "ai.h"
 #include "room.h"
@@ -44,10 +46,10 @@ QJsonObject face(const Card *c) {
         {"red",c->isRed()},{"black",c->isBlack()},{"name_length",c->nameLength()},
         {"flags_complete",false},{"skill_names_complete",false}};
 }
-QJsonObject read(Room &room, ServerPlayer *viewer) {
+QJsonObject read(Room &room, ServerPlayer *viewer, const std::function<bool()> &skillQuery = {}) {
     const QJsonObject unknown{{"known",false}};
     if(!viewer||viewer->getRoom()!=&room||room.roomRuntime()->isClosing()
-        ||viewer->getPhase()!=Player::Play||!viewer->hasSkill("guandu_shicai"))return unknown;
+        ||viewer->getPhase()!=Player::Play||!(skillQuery ? skillQuery() : viewer->hasSkill("guandu_shicai")))return unknown;
     auto *l=ledger(room,false);if(!l)return unknown;
     const auto it=l->rows.constFind(viewer->objectName());
     if(it==l->rows.cend()||it->pending||!it->card)return unknown;
@@ -139,7 +141,13 @@ void clearAIRound29ShicaiPreview(Room &room) {
 }
 void projectAIRound29ExtraWorld(AIWorldView &world,Room &room,ServerPlayer *viewer) {
     if(!viewer||world.self.objectName!=viewer->objectName()||viewer->getRoom()!=&room)return;
-    world.strategyFacts.insert("extra29",QJsonObject{{"shicai_preview",read(room,viewer)}});
+    world.strategyFacts.insert("extra29",QJsonObject{{"shicai_preview",read(room,viewer,[&] {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill("guandu_shicai");
+    })}});
 }
 const Card *aiRound29ShicaiPreview(const AIRequest &r,Room &room,ServerPlayer *viewer) {
     if(!viewer||viewer->getRoom()!=&room||r.viewerObjectName!=viewer->objectName()

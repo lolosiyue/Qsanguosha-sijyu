@@ -3550,8 +3550,9 @@ QJsonObject AiLuaRuntime::queryStandardMode(LuaRuntime &modeRuntime, const AIReq
     LuaRuntime::Binding binding(modeRuntime);
     LuaRuntime::LuaInvocationScope invocation(modeRuntime);
     lua_State *mode = modeRuntime.rawState();
-    // Complete ordinary objective prepare/commit graph BEFORE registry guard,
-    // hook changes or world allocation. Event/refresh/update routes are distinct.
+    // Complete the exact ordinary objective or Activate relations prepare/commit
+    // graph BEFORE registry guard, hook changes or world allocation. Event and
+    // updatePlayers routes remain distinct and receive no refresh scope.
     Room *modeRoom = Sanguosha ? Sanguosha->currentRoom() : nullptr;
     std::unique_ptr<AIRound56ModeEvaluationScope> objectiveSource;
     if (!refresh && !updatePlayers && !prefixDeltas && !prefixEffects
@@ -3562,6 +3563,15 @@ QJsonObject AiLuaRuntime::queryStandardMode(LuaRuntime &modeRuntime, const AIReq
         && aiRound44RangeRequestCurrent(*modeRoom, request))
         objectiveSource.reset(new AIRound56ModeEvaluationScope(*modeRoom, mode,
             request.worldView.modeId, AIRound56ModeEvaluationScope::StandardObjective));
+    else if (refresh && !updatePlayers && !prefixDeltas && !prefixEffects
+        && !m_activeEventRequest && m_activeRequest == &request && current() == this
+        && request.kind == AIRequest::Activate && request.worldView.self.phase == Player::Play
+        && identityMode && toUseCount >= -1
+        && modeRoom && modeRoom == m_room && modeRoom->roomRuntime()
+        && &modeRoom->roomRuntime()->lua() == &modeRuntime
+        && aiRound44RangeRequestCurrent(*modeRoom, request))
+        objectiveSource.reset(new AIRound56ModeEvaluationScope(*modeRoom, mode,
+            request.worldView.modeId, AIRound56ModeEvaluationScope::StandardRelations));
     const int top = lua_gettop(mode);
     const auto restoreStack = qScopeGuard([mode, top] { lua_settop(mode, top); });
     lua_getfield(mode, LUA_REGISTRYINDEX, "qsan.mode_ai.active");

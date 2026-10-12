@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round26-choice.h"
 #include "ai.h"
 #include "card.h"
@@ -121,7 +123,11 @@ void projectAIRound26ChoiceContext(AIRequest&r,Room&room,ServerPlayer*p,const QV
  auto row=context.value("round26_choice").toObject();row.remove("flag_witness");const QString reason=r.choiceOptions.reason;
  const auto roster=[&](const Player*v){return v&&room.findPlayerByObjectName(v->objectName(),true)==v;};
  const bool play=r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY;
- if((play&&(p->hasSkill("sr_xionglve")||p->hasSkill("sr_qingcheng")||p->hasSkill("sr_xiahou")||p->hasSkill("sr_jiwu")))
+ if((play&&([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,p,gameLua));
+        return (p->hasSkill("sr_xionglve")||p->hasSkill("sr_qingcheng")||p->hasSkill("sr_xiahou")||p->hasSkill("sr_jiwu")); }()))
   ||(r.kind==AIRequest::Choice&&(reason=="sr_xionglvebasic"||reason=="sr_xiahou"))
   ||(r.choiceOptions.question=="askForAG"&&reason=="sr_xionglvecard"))row.insert("slash_available",Slash::IsAvailable(p,nullptr));
  // srkill.lua178..184 broadcasts the two face-up moves before this exact cardask.

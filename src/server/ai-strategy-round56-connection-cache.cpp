@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-connection-cache.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-playloop-filter.h"
 #include "ai-strategy-round56-clone-lineage.h"
 #include "ai-strategy-round56-clone-scope.h"
@@ -48,7 +49,7 @@ struct State final:QObject{
  }
 };
 State*find(const Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c))return s;return nullptr;}
-bool live(const State&s){auto*rt=s.r.roomRuntime();return s.live&&!s.resetPending&&rt&&!rt->isClosing()&&rt->lua().rawState()==s.L&&rt->lua().generation()==s.generation&&inAIRound56ProjectionScope(s.r,s.L)&&hasAIRound56AsyncUniverse(s.r,s.L);}
+bool live(const State&s){auto*rt=s.r.roomRuntime();return s.live&&!s.resetPending&&rt&&!rt->isClosing()&&rt->lua().rawState()==s.L&&rt->lua().generation()==s.generation&&(inAIRound56ProjectionScope(s.r,s.L)||inAIRound56ConnectionQueryScope(s.r,s.L))&&hasAIRound56AsyncUniverse(s.r,s.L);}
 bool key(const lua_TableObservation&e,const QByteArray&k){return e.string_key&&e.string_key_length==size_t(k.size())&&!std::memcmp(e.string_key,k.constData(),size_t(k.size()));}
 bool at(State&s,lua_State*L,const lua_TableObservation&e,int first,int last,int line){return e.lua_function_identity&&(e.flags&(LUA_TABLE_OBSERVER_VM_FAST|LUA_TABLE_OBSERVER_VM_SLOW))&&matchAIRound56PinnedInstruction(s.r,L,e.lua_function_identity,e.lua_instruction_index,smart,first,last,line);}
 struct Call{
@@ -156,6 +157,9 @@ QJsonObject unknown(const char*reason){return{{"applicable",true},{"known",false
 int fail(lua_State*L,Call*w,const char*message){w->error=message;w->s->retire();return luaL_error(L,"%s",message);}
 int run(lua_State*L){
  auto*w=static_cast<Call*>(lua_touserdata(L,1));auto&s=*w->s;
+ // lua_pcall creates a new C frame with LUA_MINSTACK, independently of the
+ // caller reservation. Reserve this actual frame before raw metadata inspection.
+ if(!lua_checkstack(L,8192))return fail(L,w,"source cache bridge stack unavailable");
  if(!live(s)||!current(s.r,*w->q,w->viewer))return fail(L,w,"source cache scope changed before execution");
  AIRound45Inspect::globals(L);const int env=lua_absindex(L,-1);
  if(w->op=="source_connections")AIRound45Inspect::field(L,env,"aiConnect");
@@ -213,15 +217,22 @@ QJsonObject queryAIRound56ConnectionCache(Room&r,const AIRequest&q,ServerPlayer*
  const bool choulve=q.kind==AIRequest::PlayerChosen&&q.choiceOptions.reason=="choulve"&&q.choiceOptions.question=="askForPlayerChosen";
  const bool activate=q.kind==AIRequest::Activate&&q.reason==CardUseStruct::CARD_USE_REASON_PLAY;
  if(!choulve&&!activate)return{{"applicable",false}};
- // This applicability adds no source/allocation authority: the independently
- // complete enclosing projection scope below remains mandatory for either kind.
+ // Public applicability supplies no source/allocation authority. The complete
+ // independent native/helper/receiver proof below precedes all private choices.
  const QString op=proposal.value("op").toString();const bool alive=op=="source_alive";
  if((!alive&&op!="source_connections"&&op!="source_skills")||proposal.size()!=(alive?1:2)
   ||(!alive&&!proposal.value("player").isString()))return unknown("source cache proposal malformed");
  auto*rt=r.roomRuntime();if(!rt||!current(r,q,viewer))return unknown("source cache request stale");
  LuaRuntime::Binding binding(rt->lua(),false);auto*L=rt->lua().state();
- if(!L||!inAIRound56ProjectionScope(r,L)||!hasAIRound56AsyncUniverse(r,L))return unknown("complete source request and allocation union unavailable");
+ if(!L)return unknown("source cache Game VM unavailable");
  try{
+  std::unique_ptr<AIRound56ConnectionQueryScope> queryScope;
+  if(!activate&&!inAIRound56ProjectionScope(r,L))
+   return unknown("complete source request and allocation union unavailable");
+  if(!inAIRound56ProjectionScope(r,L))
+   queryScope.reset(new AIRound56ConnectionQueryScope(r,viewer,L));
+  if((queryScope&&!queryScope->accepted())||!hasAIRound56AsyncUniverse(r,L))
+   return unknown("complete source query and allocation union unavailable");
   // This whole public roster is proved BEFORE choosing the requested player,
   // reading a cache, or allowing an original helper's private branch.
   const auto roster=r.getAllPlayers(true);ServerPlayer*player=nullptr;

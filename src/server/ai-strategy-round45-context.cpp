@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round45-context.h"
 #include "ai.h"
 #include "room.h"
@@ -125,8 +127,20 @@ void projectAIRound45Newgenerals(AIRequest &q,Room &r,ServerPlayer *p,const std:
    }
   }
  }
- if(q.kind==AIRequest::Activate&&p->hasSkill("mouzhangwu"))out.insert("TurnLengthCount",r.getTag("TurnLengthCount").toInt());
- if((q.kind==AIRequest::SkillInvoke&&reason=="rensongshu")||(q.kind==AIRequest::Activate&&(p->hasSkill("renbinglun")||p->hasSkill("mobile_youyi"))))out.insert("ren_pile_count",r.getTag("ren_pile").toList().size());
+ if(q.kind==AIRequest::Activate&&([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=r.roomRuntime()->lua().rawState();
+        if(q.kind==AIRequest::Activate&&q.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(r,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(r,p,gameLua));
+        return p->hasSkill("mouzhangwu"); }()))out.insert("TurnLengthCount",r.getTag("TurnLengthCount").toInt());
+ if((q.kind==AIRequest::SkillInvoke&&reason=="rensongshu")||(q.kind==AIRequest::Activate&&(([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=r.roomRuntime()->lua().rawState();
+        if(q.kind==AIRequest::Activate&&q.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(r,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(r,p,gameLua));
+        return p->hasSkill("renbinglun"); }())||([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=r.roomRuntime()->lua().rawState();
+        if(q.kind==AIRequest::Activate&&q.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(r,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(r,p,gameLua));
+        return p->hasSkill("mobile_youyi"); }()))))out.insert("ren_pile_count",r.getTag("ren_pile").toList().size());
  if(q.kind==AIRequest::UseCard){
   const QHash<QString,QString> piles={{"@@keolzhubi","keolzhubi"},{"@@keolzhuri","keolzhuri"},{"@@keolsaoguslash","keolsaoguslash"},{"@@olxiaofan2","olxiaofan"},{"@@ol_xiongdiqixin!","ol_xiongdiqixin"},{"@@ofjixu!","ofjixu"}};
   if(piles.contains(q.pattern))pileRow(q,r,p,out,piles.value(q.pattern));

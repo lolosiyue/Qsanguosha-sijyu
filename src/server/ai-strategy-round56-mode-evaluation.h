@@ -19,10 +19,11 @@ void clearAIRound56ModeEvaluationLineage(Room&) noexcept;
 // Lexical native evaluateModePolicy or ordinary queryStandardMode, BEFORE registry guard
 // and pushAIWorldView allocations. publicMode is AIWorldView.modeId. The fixed
 // producer builds a fresh plain primitive graph: world,bool for evaluation;
-// world,target-string for ordinary objective prepare, then its actual token.
+// world,target-string for ordinary objective prepare; world,nil/nonnegative
+// integer for the independent Activate relations refresh; then its actual token.
 class AIRound56ModeEvaluationScope final {
 public:
- enum Entry { Evaluation, StandardObjective };
+ enum Entry { Evaluation, StandardObjective, StandardRelations };
  AIRound56ModeEvaluationScope(Room&,lua_State*,const QString&publicMode,Entry=Evaluation);
  // Original prepare return only; records actual born result/token identities.
  // Refusal retires optional proof without changing native schema/error behavior.

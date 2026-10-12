@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-playloop-filter.h"
 #include "ai-strategy-round56-patterns.h"
 #include "ai-strategy-round56-async.h"
@@ -368,6 +369,7 @@ void initializeAIRound41ChoiceTables(Room&r,lua_State*L,bool isolated){
      ||acceptAIRound56CloneEntry(guard->room,state,arguments)
      ||acceptAIRound56ModeEvaluationEntry(guard->room,state,arguments)
      ||acceptAIRound56ProjectionGetterEntry(guard->room,state,arguments)
+     ||acceptAIRound56PlayerCorrectionGetterEntry(guard->room,state,arguments)
      ||acceptAIRound56ChoulveTargetWriteEntry(guard->room,state,arguments)
      ||acceptAIRound56ConnectionEntry(guard->room,state,arguments)
      ||acceptAIRound56PatternsEntry(guard->room,state,arguments)

@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round26-planning.h"
 #include "ai.h"
 #include "card.h"
@@ -141,7 +143,11 @@ void projectAIRound26PlanningContext(AIRequest&r,Room&room,const ServerPlayer*p,
    }
   }
  }
- if(p->hasSkill("luacaokong")&&(caokongQuestion(r)||(r.kind==AIRequest::PlayerChosen&&r.choiceOptions.reason=="luacaokong"))){
+ if(([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("luacaokong"); }())&&(caokongQuestion(r)||(r.kind==AIRequest::PlayerChosen&&r.choiceOptions.reason=="luacaokong"))){
   const auto v=room.getTag("caokong_tos");if(absent(v))row.insert("caokong_targets",false);
   else if(v.canConvert<CardUseStruct>()){
    const auto use=v.value<CardUseStruct>();QJsonArray names;bool valid=true;

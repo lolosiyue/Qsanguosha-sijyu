@@ -329,6 +329,40 @@ extern thread_local Player *Self;
 
 // ----------------------------------------
 
+%exception QObject::setObjectName {
+    if (hasPublishedGlobalCardOwnership(arg1)) {
+        lua_pushliteral(L, "published global card name is read-only"); SWIG_fail;
+    }
+    $action
+}
+%exception QObject::setProperty {
+    if (isPublishedGlobalCard(arg1)
+        || (arg2 && std::strcmp(arg2, "objectName") == 0
+            && hasPublishedGlobalCardOwnership(arg1))) {
+        lua_pushliteral(L, "published global card properties are read-only"); SWIG_fail;
+    }
+    $action
+}
+%exception QObject::setParent {
+    if (!canReparentDefinitionObject(arg1, arg2)) {
+        lua_pushliteral(L, "published global card ownership is read-only"); SWIG_fail;
+    }
+    $action
+}
+%exception QObject::deleteLater {
+    // Even an explicit QObject alias must retain Card's definition-ignore rule.
+    if (Card *card = qobject_cast<Card *>(arg1)) {
+        QByteArray error;
+        if (!globalCardLifetimeManager().requestLuaDelete(card, &error)) {
+            lua_pushlstring(L, error.constData(), error.size()); SWIG_fail;
+        }
+    } else if (!canReparentDefinitionObject(arg1, nullptr)) {
+        lua_pushliteral(L, "published global card owner cannot be deleted"); SWIG_fail;
+    } else {
+        $action
+    }
+}
+
 class QObject {
 public:
 	QString objectName() const;
@@ -381,6 +415,13 @@ struct SkillDialogInfo {
     QVariantMap parameters;
     bool isValid() const;
 };
+
+%exception General::General {
+    if (!canReparentDefinitionObject(nullptr, arg1)) {
+        lua_pushliteral(L, "construction under published global card owner is forbidden"); SWIG_fail;
+    }
+    $action
+}
 
 class General: public QObject {
 public:

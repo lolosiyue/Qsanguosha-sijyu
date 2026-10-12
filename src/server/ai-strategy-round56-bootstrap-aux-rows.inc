@@ -31,7 +31,7 @@
  {"lua/ai/isolated/challengedeveloper-ai.lua","7fae8289d90e4e5206af680ee854ae43f765865ea4ca77314645cabede299359"},
  {"lua/ai/isolated/christmas-ai.lua","4ac780737350fd03658b795a1430127187f93ce1f84040d58b6d978776effb05"},
  {"lua/ai/isolated/ck-ai.lua","22e2c7eafde8059dc522ceeaf4b9188157893611604cfa853869235f961c6f25"},
- {"lua/ai/isolated/decision-core.lua","03587afdb5cc35f792ecca71c606944d4656e035c87a678a2bc228f51d5e6cbe"},
+ {"lua/ai/isolated/decision-core.lua","21c24a0d0bd5f6cd6454fb0b0849a4d6d753d5194a2002325ab9ae3c8002f0a9"},
  {"lua/ai/isolated/dmpdiva-ai.lua","ec05963ba1695fdabcaf19f7603cb379fe5e91bc0c23470ed1d39de4af1ea416"},
  {"lua/ai/isolated/dmpkancolle-ai.lua","c5eb6f1aedd31a1259a780cdff8e5f6ac35e01315072b148b1224f6d04bba96c"},
  {"lua/ai/isolated/dmptouhou-ai.lua","8d24da1b834221bf62965ed8905d8b619a4eb2c7ae44a2989edf32e2602ebc00"},

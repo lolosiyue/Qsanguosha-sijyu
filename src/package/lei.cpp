@@ -2520,7 +2520,10 @@ void registerAIRound56NativeTypes_src_package_lei_cpp(AIRound56NativeTypes&types
  types.emplace(std::type_index(typeid(Kongsheng)), 2u);
  types.emplace(std::type_index(typeid(QianjieChain)), 2u);
  types.emplace(std::type_index(typeid(Qianjie)), 3u);
- types.emplace(std::type_index(typeid(QianjiePindianPro)), 2u);
+ // Exact isPindianProhibited body: to->hasSkill("qianjie") && from != to.
+ // Bit4 closes this outer dispatcher only; nested hasSkill owes the complete
+ // independent metadata/invalidity/correction family before applicability.
+ types.emplace(std::type_index(typeid(QianjiePindianPro)), 6u);
  types.emplace(std::type_index(typeid(Jueyan)), 2u);
  types.emplace(std::type_index(typeid(JueyanClear)), 2u);
  types.emplace(std::type_index(typeid(JueyanTargetMod)), 3u);

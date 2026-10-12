@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round53-pingjian.h"
 #include "ai-strategy-round21-choice.h"
@@ -375,9 +376,16 @@ void projectAIStrategyWorld(AIWorldView &world, Room &room, ServerPlayer *viewer
     for (const auto &player : world.players) projectJudgingRules(player);
     if (eventOnly) return;
     projectAIStrategySlashProbes(world, room, viewer);
+    // Separate finite owner evaluation/material consumer, after the fixed
+    // Slash-probe lifetime ended; never extends over the earlier world work.
+    std::unique_ptr<AIRound56OwnerEvaluationsScope> ownerEvaluationsScope;
+    auto *evaluationLua=room.roomRuntime()->lua().rawState();
+    if(!inAIRound56ProjectionScope(room,evaluationLua))
+        ownerEvaluationsScope.reset(new AIRound56OwnerEvaluationsScope(room,viewer,evaluationLua));
     int budget = 8192;
     QJsonObject evaluations;
     for (auto it = world.evaluationCards.begin(); it != world.evaluationCards.end(); ++it) {
+        if(ownerEvaluationsScope)ownerEvaluationsScope->prepareFactory(it.key());
         Card *card = Sanguosha->cloneCard(it.key());
         if (!card) continue;
         // This fresh world's keys come only from the coordinator's fixed
@@ -694,13 +702,25 @@ QJsonObject projectAIOwnerFilteredCard(Room &room, ServerPlayer *viewer, int id,
     if (!original) return {};
     QList<const FilterSkill *> filters;
     for (const Skill *skill : viewer->getSkillList(true)) {
-        if (skill->isLordSkill() ? !viewer->hasLordSkill(skill) : !viewer->hasSkill(skill)) continue;
+        if (skill->isLordSkill() ? !([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasLordSkill(skill); }()) : !([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill(skill); }())) continue;
         if (const auto *filter = dynamic_cast<const FilterSkill *>(Sanguosha->getViewAsSkill(skill->objectName()))) filters.append(filter);
     }
     // sgs.getPlayerSkillList appends the lord's visible lord skills for Weidi,
     // without deduplication or rechecking them as the viewer's owned instances.
     const ServerPlayer *lord = room.getLord();
-    if (viewer->hasSkill("weidi") && lord && lord != viewer) {
+    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill("weidi"); }()) && lord && lord != viewer) {
         for (const Skill *skill : lord->getSkillList(true))
             if (skill->isLordSkill())
                 if (const auto *filter = dynamic_cast<const FilterSkill *>(Sanguosha->getViewAsSkill(skill->objectName()))) filters.append(filter);

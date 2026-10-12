@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-owner.h"
 #include "ai-strategy-borrowed-callbacks.h"
@@ -394,6 +395,22 @@ QJsonObject sampleAIStrategyPatternLogName(Room &room, ServerPlayer *viewer, con
 
 void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer)
 {
+    // Four original presence queries only. Each full-source lifetime ends
+    // before its bool is consumed by the owner projection's conditional body.
+    const auto hasOwnerSkill = [&](const QString &name) {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            skillSource.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill(name);
+    };
+    const auto hasShownPublicSkill = [&](const ServerPlayer *subject, const QString &name) {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            skillSource.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return subject->hasShownSkill(name);
+    };
     world.strategyFacts.insert(QStringLiteral("clock_seconds"), double(QDateTime::currentSecsSinceEpoch()));
     world.strategyFacts.insert(QStringLiteral("has_current_active"), room.hasCurrent(true));
     // AI::relationTo (ai.cpp133): expose only the selected public rule family,
@@ -679,7 +696,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
         const auto *weapon = viewer->getWeapon();
         const auto *xuejiSkill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill("xueji"));
         if (room.getCurrent() == viewer && viewer->getPhase() == Player::Play
-            && viewer->hasSkill("xueji") && weapon && weapon->getEffectiveId() >= 0
+            && hasOwnerSkill("xueji") && weapon && weapon->getEffectiveId() >= 0
             && room.getCardOwner(weapon->getEffectiveId()) == viewer
             && room.getCardPlace(weapon->getEffectiveId()) == Player::PlaceEquip
             && weapon->isRed() && !viewer->isJilei(weapon) && xuejiSkill) {
@@ -697,7 +714,11 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
             runtimeState->setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
             runtimeState->setCurrentCardUsePattern(QString());
             bool selectable = false;
-            for (int instance : viewer->getValidSkillInstanceIds("xueji")) {
+            for (int instance : ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->getValidSkillInstanceIds("xueji"); }())) {
                 ActiveSkillRequest request;
                 request.initiator = viewer; request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
                 request.activationRef = SkillInstanceRef(viewer->objectName(), SkillInstanceKey("xueji", instance));
@@ -858,7 +879,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
                 for (const auto &skill : row.skills) disclosedSkills.insert(skill.skillName);
             for (const Skill *skill : player->getVisibleSkillList()) {
                 if (!HegemonyMode::enabled() && (!skill || !disclosedSkills.contains(skill->objectName()))) continue;
-                if (!skill || !player->hasShownSkill(skill->objectName())) continue;
+                if (!skill || !hasShownPublicSkill(player,skill->objectName())) continue;
                 const bool head = player->inHeadSkills(skill->objectName());
                 const General *general = head ? player->getGeneral() : player->getGeneral2();
                 shownSkills.insert(skill->objectName(), QJsonObject{{"head", head},
@@ -869,7 +890,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
             // inSiegeRelation(holder, victim) reads only public adjacency and
             // isFriendWith(..., false): unrevealed affiliations are rejected by
             // HegemonyMode before kingdom comparison; recruited roles are public.
-            if (HegemonyMode::enabled() && player->hasShownSkill("heg_niaoxiang"))
+            if (HegemonyMode::enabled() && hasShownPublicSkill(player,"heg_niaoxiang"))
                 for (const ServerPlayer *target : room.getAllPlayers(true))
                     siegeTargets.insert(target->objectName(), player->inSiegeRelation(player, target));
             const General *knownHead = nullptr;
@@ -949,14 +970,20 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     world.strategyFacts.insert(QStringLiteral("public_display_cards"), publicDisplayCards);
     if (!viewer || world.self.objectName != viewer->objectName()) return;
 
-    QJsonObject pindianTargets, pindianIncludingSelf;
-    for (const auto *target : room.getAllPlayers(true)) {
-        pindianTargets.insert(target->objectName(), viewer->canPindian(target, true));
-        pindianIncludingSelf.insert(target->objectName(), viewer->canPindian(target, false));
+    {
+        std::unique_ptr<AIRound56OwnerPindianScope> pindianSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            pindianSource.reset(new AIRound56OwnerPindianScope(room,viewer,gameLua));
+        QJsonObject pindianTargets, pindianIncludingSelf;
+        for (const auto *target : room.getAllPlayers(true)) {
+            pindianTargets.insert(target->objectName(), viewer->canPindian(target, true));
+            pindianIncludingSelf.insert(target->objectName(), viewer->canPindian(target, false));
+        }
+        world.strategyFacts.insert(QStringLiteral("owner_can_pindian"), QJsonObject{
+            {"targets", pindianTargets}, {"targets_including_self", pindianIncludingSelf},
+            {"any", viewer->canPindian(nullptr, true)}, {"any_including_self", viewer->canPindian(nullptr, false)}});
     }
-    world.strategyFacts.insert(QStringLiteral("owner_can_pindian"), QJsonObject{
-        {"targets", pindianTargets}, {"targets_including_self", pindianIncludingSelf},
-        {"any", viewer->canPindian(nullptr, true)}, {"any_including_self", viewer->canPindian(nullptr, false)}});
     world.strategyFacts.insert(QStringLiteral("owner_shuangxiong_colors_turn"), viewer->property("shuangxiong_colors_turn").toString());
 
     QJsonObject ownerTags;
@@ -1015,7 +1042,14 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     const int respondedCards = room.countHistoryCards(viewer, QStringLiteral("turn"), QStringLiteral("."), true);
     world.strategyFacts.insert("owner_card_used_times", usedCards < 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(usedCards));
     world.strategyFacts.insert("owner_card_responded_times", respondedCards < 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(respondedCards));
-    world.strategyFacts.insert("owner_can_slash_without_crossbow", viewer->canSlashWithoutCrossbow());
+    {
+        std::unique_ptr<AIRound56OwnerSlashScope> ownerSlashScope;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            ownerSlashScope.reset(new AIRound56OwnerSlashScope(room,viewer,gameLua));
+        world.strategyFacts.insert("owner_can_slash_without_crossbow", viewer->canSlashWithoutCrossbow());
+    }
+
     world.strategyFacts.insert("owner_wenji_record", viewer->property("wenji_record").toString());
     world.strategyFacts.insert("owner_extra_slash_specific_assignee", viewer->property("extra_slash_specific_assignee").toString());
     QJsonObject noResponseById;
@@ -1051,7 +1085,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     }
     QJsonObject skillProperties = world.strategyFacts.value("owner_skill_properties").toObject();
     skillProperties.insert("LuaYanjiu", viewer->property("LuaYanjiu").toString());
-    if (viewer->hasSkill("chuming")) skillProperties.insert("chumingSubcard", viewer->property("chumingSubcard").toString());
+    if (hasOwnerSkill("chuming")) skillProperties.insert("chumingSubcard", viewer->property("chumingSubcard").toString());
     skillProperties.insert("nyarz_zhishi", viewer->property("nyarz_zhishi").toString());
     skillProperties.insert("nyarz_baguan", viewer->property("nyarz_baguan").toString());
     skillProperties.insert("jinqingleng_now_target", viewer->property("jinqingleng_now_target").toString());
@@ -1072,7 +1106,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     // Names are limited to this viewer's skills and disclosed Weidi lord skills.
     QSet<QString> hookNames;
     for (const auto &skill : world.self.skills) hookNames.insert(skill.skillName);
-    if (viewer->hasSkill("weidi"))
+    if (hasOwnerSkill("weidi"))
         for (const auto &player : world.players)
             if (player.lord)
                 for (const auto &skill : player.skills) if (skill.lordSkill) hookNames.insert(skill.skillName);
@@ -1176,7 +1210,7 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     // current viewer's giver prefix, never private per-instance recipients.
     QJsonObject songci = world.strategyFacts.value("sp_songci").toObject();
     songci.remove("given_marks");
-    if (viewer->hasSkill("songci")) {
+    if (hasOwnerSkill("songci")) {
         QJsonObject given;
         const QString key = QStringLiteral("songci") + viewer->objectName();
         for (const ServerPlayer *target : room.getAllPlayers(true))
@@ -1186,11 +1220,17 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     world.strategyFacts.insert("sp_songci", songci);
     // SP jilei explicitly passes isHandcard=true for its empty-cost prototype.
     // Ordinary limits omit that argument and are not an equivalent query.
-    if (Card *exNihilo = Sanguosha->cloneCard("ex_nihilo", Card::NoSuit, 0)) {
-        const auto retire = qScopeGuard([exNihilo] { exNihilo->deleteLater(); });
-        QJsonObject jilei = world.strategyFacts.value("sp_jilei").toObject();
-        jilei.insert("owner_ex_nihilo_hand_limited", viewer->isCardLimited(exNihilo, Card::MethodUse, true));
-        world.strategyFacts.insert("sp_jilei", jilei);
+    {
+        std::unique_ptr<AIRound56OwnerJileiScope> jileiSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            jileiSource.reset(new AIRound56OwnerJileiScope(room,viewer,gameLua));
+        if (Card *exNihilo = Sanguosha->cloneCard("ex_nihilo", Card::NoSuit, 0)) {
+            const auto retire = qScopeGuard([exNihilo] { exNihilo->deleteLater(); });
+            QJsonObject jilei = world.strategyFacts.value("sp_jilei").toObject();
+            jilei.insert("owner_ex_nihilo_hand_limited", viewer->isCardLimited(exNihilo, Card::MethodUse, true));
+            world.strategyFacts.insert("sp_jilei", jilei);
+        }
     }
     // AnimationCardpack.lua1517-1521: owner tag exists only around the discard
     // prompt; export a roster name, never a pointer or the damage object.
@@ -1220,13 +1260,25 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
 
 
     // Exact owner-only static availability used by searchForAnaleptic.
+    std::unique_ptr<AIRound56OwnerAnalepticScope> ownerAnalepticScope;
+    auto *analepticLua=room.roomRuntime()->lua().rawState();
+    if(!inAIRound56ProjectionScope(room,analepticLua))
+        ownerAnalepticScope.reset(new AIRound56OwnerAnalepticScope(room,viewer,analepticLua));
     const Analeptic analeptic(Card::NoSuit, 0);
+    AIRound56OwnerAnalepticBirth analepticBirth(room,viewer,&analeptic);
     recordAIRound56ProjectionOwnerSourceCard(room,viewer,&analeptic,QStringLiteral("analeptic"));
     world.strategyFacts.insert(QStringLiteral("owner_analeptic_available"), Analeptic::IsAvailable(viewer, &analeptic));
+    ownerAnalepticScope.reset(); // End only the getter grant, not the original stack Card lifetime.
 
     int ignoreLimitCount = 0;
-    for (const Card *card : viewer->getHandcards())
-        if (viewer->isCardLimited(card, Card::MethodIgnore)) ++ignoreLimitCount;
+    {
+        std::unique_ptr<AIRound56OwnerCardStateScope> ignoreLimitSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            ignoreLimitSource.reset(new AIRound56OwnerCardStateScope(room,viewer,gameLua));
+        for (const Card *card : viewer->getHandcards())
+            if (viewer->isCardLimited(card, Card::MethodIgnore)) ++ignoreLimitCount;
+    }
     world.strategyFacts.insert(QStringLiteral("owner_ignore_limit_count"), ignoreLimitCount);
 
     QJsonArray disabledIds;
@@ -1249,16 +1301,22 @@ void projectAIStrategyOwner(AIWorldView &world, Room &room, ServerPlayer *viewer
     world.strategyFacts.insert(QStringLiteral("owner_yinni"), originals);
 
     QJsonObject equipment;
-    for (const Skill *skill : viewer->getVisibleSkillList(true)) {
-        if (!skill || !skill->inherits("ViewAsEquipSkill")) continue;
-        QJsonArray names;
-        if (const ViewAsEquipSkill *viewAs = Sanguosha->getViewAsEquipSkill(skill->objectName())) {
-            // Owner-only: arbitrary extension viewAsEquip callbacks can depend
-            // on hand cards or private marks. Never run this for other players.
-            const QString declared = viewAs->viewAsEquip(viewer);
-            for (const QString &name : declared.split(QChar(','), Qt::SkipEmptyParts)) names.append(name);
+    {
+        std::unique_ptr<AIRound56OwnerEquipmentQueriesScope> equipmentSource;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(!inAIRound56ProjectionScope(room,gameLua))
+            equipmentSource.reset(new AIRound56OwnerEquipmentQueriesScope(room,viewer,gameLua));
+        for (const Skill *skill : viewer->getVisibleSkillList(true)) {
+            if (!skill || !skill->inherits("ViewAsEquipSkill")) continue;
+            QJsonArray names;
+            if (const ViewAsEquipSkill *viewAs = Sanguosha->getViewAsEquipSkill(skill->objectName())) {
+                // Owner-only: arbitrary extension viewAsEquip callbacks can depend
+                // on hand cards or private marks. Never run this for other players.
+                const QString declared = viewAs->viewAsEquip(viewer);
+                for (const QString &name : declared.split(QChar(','), Qt::SkipEmptyParts)) names.append(name);
+            }
+            equipment.insert(skill->objectName(), names);
         }
-        equipment.insert(skill->objectName(), names);
     }
     world.strategyFacts.insert(QStringLiteral("owner_view_as_equips"), equipment);
     world.strategyFacts.insert(QStringLiteral("owner_view_as_equips_complete"), true);
@@ -1321,6 +1379,12 @@ void projectAIStrategySlashProbes(AIWorldView &world, Room &room, ServerPlayer *
         }
         // Missing field means the nonempty declaration could not be projected.
     }
+    // Independent root for the entire fixed public clone/flag/skill-name loop.
+    // The preceding arbitrary extra-target declaration is outside this scope.
+    std::unique_ptr<AIRound56FixedSlashProbesScope> fixedSlashScope;
+    auto *fixedSlashLua=room.roomRuntime()->lua().rawState();
+    if(!inAIRound56ProjectionScope(room,fixedSlashLua))
+        fixedSlashScope.reset(new AIRound56FixedSlashProbesScope(room,viewer,fixedSlashLua));
     // Standard Slash's Xiansi branch calls CanToCard on this exact no-cost
     // declaration. targetFilter is kept separate from prohibition/availability.
     if (Card *slash = Sanguosha->cloneCard("slash")) {

@@ -1,5 +1,7 @@
 #ifndef _SKILL_H
 #define _SKILL_H
+#include <functional>
+class AiDecisionCoordinator;
 
 class Room;
 class Skill;
@@ -330,6 +332,13 @@ public:
         return response_pattern;
     }
     QList<int> getExpandPileCardIds(const Player *player) const;
+
+private:
+    friend class AiDecisionCoordinator;
+    // The conversion projector may scope only the original ownership query.
+    // The callback returns before either virtual availability provider runs.
+    bool aiRound56AvailableForConversion(const Player *invoker, CardUseStruct::CardUseReason reason,
+        const QString &pattern, const std::function<bool()> &ownershipQuery) const;
 
 protected:
     QString response_pattern;

@@ -19,6 +19,7 @@
 #include <src/util/ThreadSafeHelper.h>
 #include <QEvent>
 #include <QRegularExpression>
+#include <atomic>
 #include <cstring>
 #include <memory>
 
@@ -31,7 +32,10 @@ const Card::Suit Card::AllSuits[4] = {
 	Card::Diamond
 };
 
-static unsigned int cardId = 0;
+// Allocate in one process-wide modification order. This counter publishes no
+// Card fields or lifetime state, so relaxed ordering is sufficient. Keep the
+// original unsigned decrement/wrap and subsequent conversion to the int ID.
+static std::atomic<unsigned int> cardId{0};
 
 static const Card *roomOrEngineCard(int id)
 {
@@ -58,7 +62,7 @@ static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
 
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
-	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
+	m_suit(suit), m_number(number), m_id(cardId.fetch_sub(1u, std::memory_order_relaxed) - 1u), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
 	single_target(single_target),handling_method(MethodUse), m_skillInstanceId(0),
 	m_sourceSkillInstanceId(0), m_activationSkillInstanceId(0)
 {
@@ -131,8 +135,10 @@ void Card::aiRound56RecordPhysicalDefinitionIndexSource(int index) noexcept
     int neverAttempted = -2;
     if (!m_aiRound56PhysicalDefinitionIndex.compare_exchange_strong(
             neverAttempted, -1, std::memory_order_acq_rel)) return;
-    if (index >= 0 && aiRound56IdWriteEpoch() == 1)
+    if (index >= 0 && aiRound56IdWriteEpoch() == 1) {
         m_aiRound56PhysicalDefinitionIndex.store(index, std::memory_order_release);
+        m_aiRound56DefinitionIdSourceEpoch.store(1, std::memory_order_release);
+    }
 }
 
 bool Card::aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept
@@ -141,6 +147,29 @@ bool Card::aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept
     if (source < 0 || aiRound56IdWriteEpoch() != 1) return false;
     if (index) *index = source;
     return true;
+}
+
+bool Card::aiRound56PhysicalDefinitionIdIndex(int *index) const noexcept
+{
+    const int source = m_aiRound56PhysicalDefinitionIndex.load(std::memory_order_acquire);
+    const quint64 epoch = m_aiRound56DefinitionIdSourceEpoch.load(std::memory_order_acquire);
+    if (source < 0 || !epoch || epoch == ~quint64(0) || aiRound56IdWriteEpoch() != epoch)
+        return false;
+    if (index) *index = source;
+    return true;
+}
+
+void Card::aiRound56ReassertPhysicalDefinitionId(int index)
+{
+    int recorded = -1;
+    const bool continuous = aiRound56PhysicalDefinitionIdIndex(&recorded) && recorded == index;
+    const quint64 before = m_aiRound56DefinitionIdSourceEpoch.exchange(0, std::memory_order_acq_rel);
+    // The actual registry writer still executes on all paths. Its source index,
+    // not a current ID comparison, can continue an already-valid lineage only.
+    // Retire before dispatch so failure/reentry/unknown ID writes never heal it.
+    setId(index);
+    if (continuous && before && before < ~quint64(0) - 1 && aiRound56IdWriteEpoch() == before + 1)
+        m_aiRound56DefinitionIdSourceEpoch.store(before + 1, std::memory_order_release);
 }
 
 void Card::appendChangeCardForEvent(const Card *card)
@@ -158,6 +187,7 @@ void Card::clearChangeCards() const
 
 void Card::deleteLater()
 {
+    if (isPublishedGlobalCard(this)) return;
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const auto token = manager.observeCard(this);
     if (manager.mode() == CardLifetimeMode::ObserveOnly) {
@@ -1461,7 +1491,29 @@ bool Card::sameNameWith(const QString &card_name, bool different_slash) const
 	return objectName() == card_name;
 }
 
+void Card::setObjectName(const QString &name)
+{
+    if (isPublishedGlobalCard(this)) {
+        qWarning("Published global card name mutation rejected");
+        return;
+    }
+    QObject::setObjectName(name);
+}
+
+void Card::setParent(QObject *parent)
+{
+    if (!canReparentDefinitionObject(this, parent)) {
+        qWarning("Published global card ownership mutation rejected");
+        return;
+    }
+    QObject::setParent(parent);
+}
+
 bool Card::setProperty(const char* name, const QVariant& value) {
+    if (isPublishedGlobalCard(this)) {
+        qWarning("Published global card property mutation rejected");
+        return false;
+    }
 	return ThreadSafeHelper::setProperty(this, name, value);
 }
 

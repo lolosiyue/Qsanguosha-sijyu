@@ -538,6 +538,7 @@ add_library(qsanguosha_engine STATIC
     src/server/ai-strategy-round56-mode-evaluation.cpp
     src/server/ai-strategy-round56-patterns.cpp
     src/server/ai-strategy-round56-projection.cpp
+    src/server/ai-strategy-round56-maxcards.cpp
     src/server/ai-strategy-round56-projection-lineage.cpp
     src/server/ai-strategy-round56-native-types.cpp
     src/server/ai-strategy-round54-public-skill.cpp

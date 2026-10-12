@@ -1,4 +1,10 @@
 #include "ai-strategy-round56-patterns.h"
+#include "ai-strategy-round56-clone-lineage.h"
+#include "ai-strategy-round56-projection-lineage.h"
+#include "ai-strategy-round56-factory-source.h"
+#include "ai-strategy-round56-host.h"
+#include "room-definition-registry.h"
+#include "card-lifetime-manager.h"
 #include "ai-strategy-round56-async.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round45-code-seal.h"
@@ -36,10 +42,20 @@ struct State final:QObject{
   try{tables.insert(p,k);return true;}catch(...){lua_unobservetableidentity(L,p,changed,this);throw;}
  }
 };
-struct Call{State*s;const void*function;int depth;bool entered=false;Call*previous;};
+struct Call{State*s;const void*function;int depth;bool entered=false;Call*previous;bool independent=false;};
 State*find(const Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c))return s;return nullptr;}
 bool current(const State&s){auto*rt=s.r.roomRuntime();return s.alive&&rt&&!rt->isClosing()&&rt->lua().rawState()==s.L&&rt->lua().generation()==s.generation&&rt->lua().isCurrentThreadOwner();}
-bool executing(State&s,lua_State*L){return current(s)&&s.ready&&L==s.L&&(!s.completed||(active&&active->s==&s&&active->entered&&inAIRound56ProjectionScope(s.r,L)&&hasAIRound56AsyncUniverse(s.r,L)));}
+bool nativeContext(const Call &c){
+ const auto&s=*c.s;
+ if(inAIRound56ProjectionScope(s.r,s.L))return hasAIRound56AsyncUniverse(s.r,s.L);
+ auto*rt=s.r.roomRuntime();
+ return c.independent&&current(s)&&rt&&LuaRuntime::current()==&rt->lua()
+  &&Sanguosha->currentRoom()==&s.r&&hasAIRound56CloneInputLineage(s.r,s.L)
+  &&hasAIRound56ProjectionLineage(s.r,s.L)&&hasAIRound56AsyncUniverse(s.r,s.L)
+  &&hasAIRound56GlobalFactoryMapOrigin(Sanguosha)
+  &&rt->definitions().hasFactorySourceOrigin(s.r,s.L);
+}
+bool executing(State&s,lua_State*L){return current(s)&&s.ready&&L==s.L&&(!s.completed||(active&&active->s==&s&&active->entered&&nativeContext(*active)));}
 bool key(const lua_TableObservation&e,const char*k){return e.string_key&&e.string_key_length==std::strlen(k)&&!std::memcmp(e.string_key,k,e.string_key_length);}
 bool instruction(State&s,lua_State*L,const void*f,int pc,int first,int last,int line){return executing(s,L)&&f&&matchAIRound56PinnedInstruction(s.r,L,f,pc,source,first,last,line);}
 bool at(State&s,lua_State*L,const lua_TableObservation&e,int first,int last,int line){return (e.flags&(LUA_TABLE_OBSERVER_VM_FAST|LUA_TABLE_OBSERVER_VM_SLOW))&&instruction(s,L,e.lua_function_identity,e.lua_instruction_index,first,last,line);}
@@ -144,7 +160,12 @@ bool graph(State&s,lua_State*L,int fn){
  return matchAIRound45NativeDerivedMethods(s.r,L,"Card",{"objectName","getClassName","getPackage","getTypeId"});
 }
 }
-struct AIRound56PatternsScope::Data{Call call;explicit Data(State*s):call{s,nullptr,0,false,active}{}};
+struct AIRound56PatternsScope::Data{
+ Call call;
+ std::unique_ptr<CardLifetimeScope> lifetime;
+ std::unique_ptr<AIRound56AsyncScope> async;
+ explicit Data(State*s):call{s,nullptr,0,false,active}{}
+};
 bool beginAIRound56PatternsLineage(Room&r,const LuaRuntime::NativeNamespaceBirth&b)noexcept{
  try{auto*rt=r.roomRuntime();if(!b.isCurrent()||!rt||rt->lua().rawState()!=b.state()||find(r))return false;
   auto*s=new State(r,b);if(!s->watch(s->globals,Globals)||!lua_observetablebirth(s->L,born,s)){s->retire("native-birth-observer");return false;}return true;
@@ -169,28 +190,43 @@ bool hasAIRound56PatternsLineage(const Room&r,lua_State*L)noexcept{auto*s=find(r
 void retireAIRound56PatternsLineage(Room&r,lua_State*L)noexcept{if(auto*s=find(r))if(s->L==L)s->alive=false;}
 void clearAIRound56PatternsLineage(Room&r)noexcept{delete find(r);}
 AIRound56PatternsScope::AIRound56PatternsScope(Room&r,lua_State*L)noexcept{
- // Other existing callers retain their original behavior and refusal path.
- if(!inAIRound56ProjectionScope(r,L))return;
+ // The exact public catalogue call can prove its own complete source graph.
+ // It does not grant full Projection, native Card policy or any factory input.
  auto*s=find(r);
  try{
   if(!s||!hasAIRound56PatternsLineage(r,L)||active||!hasAIRound56AsyncUniverse(r,L)||Sanguosha->currentRoom()!=&r
    ||lua_gettop(L)<2||lua_type(L,-1)!=LUA_TBOOLEAN||!lua_toboolean(L,-1)||!lua_checkstack(L,4096)||!graph(*s,L,-2)){
    if(s)s->retire("query-source-graph");else retireAIRound56Projection(r,L);return;
   }
-  d.reset(new Data(s));d->call.function=lua_topointer(L,-2);d->call.depth=r.roomRuntime()->lua().protectedCallDepth();active=&d->call;
+  d.reset(new Data(s));
+  if(!inAIRound56ProjectionScope(r,L)) {
+   auto*rt=r.roomRuntime();QString why;
+   if(!rt||LuaRuntime::current()!=&rt->lua()||!rt->lua().isCurrentThreadOwner()
+     ||!hasAIRound56CloneInputLineage(r,L)||!hasAIRound56ProjectionLineage(r,L)
+     ||!proveAIRound56ServerLogEffects(r)||!Sanguosha->aiRound56PublicPatternMetadataDefinitions(r,&why)) {
+    if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP"))
+     std::fprintf(stderr,"R56_PATTERNS_NATIVE_REFUSAL reason=%s\n",qPrintable(why));
+    s->retire("independent-native-source");d.reset();return;
+   }
+   d->lifetime.reset(new CardLifetimeScope(globalCardLifetimeManager(),"R56PatternsCatalogue"));
+   d->async.reset(new AIRound56AsyncScope(r,L,AIRound56AsyncScope::GameplayVariants));
+   if(!d->async->accepted()){s->retire("independent-allocation-source");d.reset();return;}
+   d->call.independent=true;
+  }
+  d->call.function=lua_topointer(L,-2);d->call.depth=r.roomRuntime()->lua().protectedCallDepth();active=&d->call;
  }catch(...){if(s)s->retire("query-preflight-exception");else retireAIRound56Projection(r,L);}
 }
 AIRound56PatternsScope::~AIRound56PatternsScope(){
  if(!d)return;auto&c=d->call;auto&s=*c.s;
  try{
-  if(!c.entered||!current(s)||!inAIRound56ProjectionScope(s.r,s.L))s.retire("query-exit-continuity");
+  if(!c.entered||!current(s)||!nativeContext(c))s.retire("query-exit-continuity");
   else{Stack z(s.L);AIRound45Inspect::globals(s.L);AIRound45Inspect::field(s.L,-1,"patterns");if(!graph(s,s.L,-1))s.retire("query-exit-source-graph");}
  }catch(...){s.retire("query-exit-exception");}
  active=c.previous;
 }
 bool acceptAIRound56PatternsEntry(Room&r,lua_State*L,int n)noexcept{
  auto*c=active;if(!c||&c->s->r!=&r||c->s->L!=L||c->entered||n!=1||lua_gettop(L)<2||!current(*c->s)
-  ||!inAIRound56ProjectionScope(r,L)||!hasAIRound56AsyncUniverse(r,L)||r.roomRuntime()->lua().protectedCallDepth()!=c->depth
+  ||!nativeContext(*c)||!hasAIRound56AsyncUniverse(r,L)||r.roomRuntime()->lua().protectedCallDepth()!=c->depth
   ||lua_topointer(L,-2)!=c->function||lua_type(L,-1)!=LUA_TBOOLEAN||!lua_toboolean(L,-1))return false;
  c->entered=true;return true;
 }

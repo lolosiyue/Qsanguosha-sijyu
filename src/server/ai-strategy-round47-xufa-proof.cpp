@@ -295,6 +295,25 @@ bool proveAIRound56ActivateGetterFunction(Room&r,lua_State*L,int i,QString*why){
  const bool ok=c.primitiveMeta()&&matchAIRound47NativeValueMetamethods(r,L,&metaWhy)&&c.function(i);
  if(why)*why=c.why.isEmpty()?metaWhy:c.why;return ok;
 }
+bool proveAIRound56ActivateGetterFamily(Room&r,lua_State*L,const QList<LuaCallbackRef>&family,QString*why){
+ if(!L||!r.roomRuntime()||r.roomRuntime()->lua().rawState()!=L||!capacity(L,4096)){
+  if(why)*why="Activate getter family inspection frame unavailable";return false;
+ }
+ // Same complete Check as the single-root API and original bootstrap union.
+ // Its graph budget is unchanged (100000 for this whole family), with no
+ // outcome memoization and no visitor surviving this one preflight call.
+ Stack stack(L);Check c{r,L};c.includeActivateRows=true;c.requireCaptureOrigin=true;
+ QString metaWhy;
+ bool ok=c.primitiveMeta()&&matchAIRound47NativeValueMetamethods(r,L,&metaWhy);
+ const auto generation=r.roomRuntime()->lua().generation();
+ if(ok)for(const LuaCallbackRef &fn:family){
+  if(fn==0)continue;
+  if(fn.state()!=L||fn.generation()!=generation){ok=c.no("getter family callback VM changed");break;}
+  Stack entry(L);AIRound45Inspect::rawGeti(L,LUA_REGISTRYINDEX,fn.registryRef());
+  if(!c.function(-1)){ok=false;break;}
+ }
+ if(why)*why=c.why.isEmpty()?metaWhy:c.why;return ok;
+}
 bool proveAIRound56ActivateSelectionFunction(Room&r,lua_State*L,int i,const char*role,QString*why){
  if(!L||!role||!r.roomRuntime()||r.roomRuntime()->lua().rawState()!=L||!capacity(L,4096)){
   if(why)*why="Activate selection source inspection frame unavailable";return false;

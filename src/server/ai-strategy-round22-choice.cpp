@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round22-choice.h"
 #include "ai-strategy-projection.h"
 #include "ai-strategy-judge-context.h"
@@ -44,7 +46,11 @@ void projectAIRound22ChoiceContext(AIRequest&r,Room&room,ServerPlayer*viewer,QJs
  if(!current(r,viewer)||viewer->getRoom()!=&room||!publicCard)return;
  auto facts=context.value("round22_choice").toObject();
  // Exact source static null-Slash call; never enumerate conversions first.
- if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&viewer->hasSkill("kexianchanxin"))
+ if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill("kexianchanxin"); }()))
   facts.insert("chanxin_slash_available",Slash::IsAvailable(viewer,nullptr));
  if(r.kind==AIRequest::UseCard&&r.reason==CardUseStruct::CARD_USE_REASON_RESPONSE_USE&&r.pattern=="@@MeowLiuli"
     &&r.handlingMethod==Card::MethodDiscard&&viewer->hasSkill("MeowLiuli")){

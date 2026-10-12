@@ -1096,69 +1096,101 @@ void *LuaRuntime::memoryAllocator(void *userData, void *pointer,
     return resized;
 }
 
+
 LuaCallbackRef::LuaCallbackRef()
     : m_state(nullptr), m_generation(0), m_registryRef(LUA_NOREF)
 {
 }
 
 LuaCallbackRef::LuaCallbackRef(int nullValue)
-    : m_state(nullptr), m_generation(0), m_registryRef(LUA_NOREF)
+    : m_originalNull(nullValue == 0 || nullValue == LUA_NOREF || nullValue == LUA_REFNIL),
+      m_state(nullptr), m_generation(0), m_registryRef(LUA_NOREF)
 {
     Q_ASSERT(nullValue == 0 || nullValue == LUA_NOREF || nullValue == LUA_REFNIL);
 }
 
 LuaCallbackRef::LuaCallbackRef(lua_State *state, int registryRef)
-    : m_state(state), m_generation(0), m_registryRef(registryRef)
+    : m_originalNull(false), m_state(state), m_generation(0), m_registryRef(registryRef)
 {
     LuaRuntime *runtime = LuaRuntime::fromState(state);
-    if (runtime)
-        m_generation = runtime->generation();
+    if (runtime) m_generation = runtime->generation();
+}
+
+LuaCallbackRef::LuaCallbackRef(const LuaCallbackRef &other)
+    : m_originalNull(false), m_state(nullptr), m_generation(0), m_registryRef(LUA_NOREF)
+{
+    QMutexLocker lock(&other.m_tupleMutex);
+    m_state = other.m_state; m_generation = other.m_generation; m_registryRef = other.m_registryRef;
+}
+
+LuaCallbackRef &LuaCallbackRef::operator=(const LuaCallbackRef &other)
+{
+    if (this == &other) {
+        QMutexLocker lock(&m_tupleMutex); m_originalNull = false; return *this;
+    }
+    // Snapshot the source first; never acquire two descriptor locks together.
+    const LuaCallbackRef source(other);
+    QMutexLocker lock(&m_tupleMutex);
+    m_originalNull = false;
+    m_state = source.m_state; m_generation = source.m_generation; m_registryRef = source.m_registryRef;
+    return *this;
 }
 
 LuaCallbackRef &LuaCallbackRef::operator=(int nullValue)
 {
     Q_ASSERT(nullValue == 0 || nullValue == LUA_NOREF || nullValue == LUA_REFNIL);
-    m_state = nullptr;
-    m_generation = 0;
-    m_registryRef = LUA_NOREF;
+    QMutexLocker lock(&m_tupleMutex);
+    m_originalNull = false;
+    m_state = nullptr; m_generation = 0; m_registryRef = LUA_NOREF;
     return *this;
+}
+
+bool LuaCallbackRef::hasOriginalNullSource() const
+{
+    QMutexLocker lock(&m_tupleMutex); return m_originalNull;
 }
 
 bool LuaCallbackRef::isValid() const
 {
+    QMutexLocker lock(&m_tupleMutex);
     return m_state && m_registryRef != LUA_NOREF && m_registryRef != LUA_REFNIL;
 }
 
 bool LuaCallbackRef::operator==(int nullValue) const
 {
-    Q_ASSERT(nullValue == 0);
-    return !isValid();
+    Q_ASSERT(nullValue == 0); return !isValid();
 }
 
 bool LuaCallbackRef::push(lua_State *target) const
 {
-    if (!target || !isValid()) {
-        if (target)
-            lua_pushnil(target);
+    const LuaCallbackRef source(*this);
+    if (!target || !source.isValid()) {
+        if (target) lua_pushnil(target);
         return false;
     }
-
     LuaRuntime *runtime = LuaRuntime::fromState(target);
-    if (target != m_state || !runtime || runtime->generation() != m_generation
+    if (target != source.m_state || !runtime || runtime->generation() != source.m_generation
         || !runtime->isCurrentThreadOwner()) {
         qWarning() << "Rejected Lua callback from another runtime or owner thread";
         lua_pushnil(target);
         return false;
     }
-
-    lua_rawgeti(target, LUA_REGISTRYINDEX, m_registryRef);
+    lua_rawgeti(target, LUA_REGISTRYINDEX, source.m_registryRef);
     return lua_isfunction(target, -1);
 }
 
 lua_State *LuaCallbackRef::state() const
 {
-    LuaRuntime *runtime = LuaRuntime::fromState(m_state);
-    if (!runtime || runtime->generation() != m_generation)
-        return nullptr;
+    const LuaCallbackRef source(*this);
+    LuaRuntime *runtime = LuaRuntime::fromState(source.m_state);
+    if (!runtime || runtime->generation() != source.m_generation) return nullptr;
     return runtime->state();
+}
+int LuaCallbackRef::registryRef() const
+{
+    QMutexLocker lock(&m_tupleMutex); return m_registryRef;
+}
+quint64 LuaCallbackRef::generation() const
+{
+    QMutexLocker lock(&m_tupleMutex); return m_generation;
 }

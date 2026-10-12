@@ -8,10 +8,16 @@ static_assert(std::is_same<decltype(&LuaSkillCard::clone), LuaSkillCard *(LuaSki
     "clone must remain the original nonoverloaded LuaSkillCard member");
 static_assert(std::is_same<decltype(&LuaSkillCard::setSkillName), void(Card::*)(const QString &)>::value,
     "fresh clone setter must remain Card::setSkillName");
-static_assert(std::is_trivially_copy_assignable<LuaCallbackRef>::value,
-    "clone callback copies must not acquire registry/host effects");
-static_assert(std::is_trivially_destructible<LuaCallbackRef>::value,
-    "clone callback handle destruction must remain trivial");
+// The reviewed descriptor source is now a short, per-object scalar-tuple
+// snapshot/assignment (lua-runtime.cpp). No registry ref/unref, Lua API,
+// QObject operation, logging or callback occurs while either tuple is locked;
+// source and destination locks are never held together. Its QMutex destructor
+// has no authored/Lua dispatch. Product lifetime remains a separate obligation.
+using CallbackCopyAssignment = LuaCallbackRef &(LuaCallbackRef::*)(const LuaCallbackRef &);
+static_assert(std::is_same<decltype(static_cast<CallbackCopyAssignment>(&LuaCallbackRef::operator=)),
+    CallbackCopyAssignment>::value, "clone uses the reviewed scalar tuple assignment");
+static_assert(std::is_nothrow_destructible<LuaCallbackRef>::value,
+    "callback handle destruction must not throw");
 void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &definitions,
     AIRound56FactorySourceReport &out)
 {
@@ -27,7 +33,7 @@ void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &definit
             // Exact compiled type, never QObject inherits() or a name comparison.
             row.luaSkillCloneRecipe = card && typeid(*card) == typeid(LuaSkillCard);
             row.source = row.luaSkillCloneRecipe
-                ? QStringLiteral("src/core/lua-wrapper.cpp:LuaSkillCard::clone -> LuaSkillCard(empty,empty) -> SkillCard::SkillCard -> Card::Card; setters + seven trivial LuaCallbackRef copies")
+                ? QStringLiteral("src/core/lua-wrapper.cpp:LuaSkillCard::clone -> LuaSkillCard(empty,empty) -> SkillCard::SkillCard -> Card::Card; setters + seven synchronized scalar LuaCallbackRef copies (lua-runtime.cpp), no registry ownership")
                 : QStringLiteral("uncovered public LuaSkillCard clone exact type");
             if (!row.luaSkillCloneRecipe) {
                 complete = false;

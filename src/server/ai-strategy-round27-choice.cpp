@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round27-choice.h"
 #include "ai.h"
@@ -210,7 +212,11 @@ void projectAIRound27ChoiceContext(AIRequest&r,Room&room,ServerPlayer*p,const QV
  if(r.kind==AIRequest::UseCard&&r.pattern=="@@ov_qianxiong")addIds("ov_qianxiongForAI");
  if(r.kind==AIRequest::PlayerChosen&&reason=="ov_zenhui")addUse("ov_zenhuiData");
  if(r.kind==AIRequest::PlayerChosen&&reason=="ov_qirang")addUse("ov_qirangData");
- if(r.kind==AIRequest::Activate&&p->hasSkill("ov_yanshiYL")){
+ if(r.kind==AIRequest::Activate&&([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,p,gameLua));
+        return p->hasSkill("ov_yanshiYL"); }())){
   QJsonArray values;for(const auto&name:Sanguosha->getZhinangCards())values.append(name);row.insert("zhinang_cards",values);
  }
 

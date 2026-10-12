@@ -225,6 +225,8 @@ class LuaCallbackRef
 public:
     LuaCallbackRef();
     LuaCallbackRef(int nullValue);
+    LuaCallbackRef(const LuaCallbackRef &other);
+    LuaCallbackRef &operator=(const LuaCallbackRef &other);
     LuaCallbackRef(lua_State *state, int registryRef);
 
     LuaCallbackRef &operator=(int nullValue);
@@ -236,10 +238,17 @@ public:
 
     bool push(lua_State *target) const;
     lua_State *state() const;
-    int registryRef() const { return m_registryRef; }
-    quint64 generation() const { return m_generation; }
+    int registryRef() const;
+    quint64 generation() const;
+    // Birth-only absence fact. Every assignment, including equal/null/self and
+    // copied handles, retires it. It never inspects a current reference value.
+    bool hasOriginalNullSource() const;
 
 private:
+    // Protect this scalar tuple only. No lock across Lua/registry access,
+    // callback execution, QObject operations or logging.
+    mutable QMutex m_tupleMutex;
+    bool m_originalNull = true;
     lua_State *m_state;
     quint64 m_generation;
     int m_registryRef;

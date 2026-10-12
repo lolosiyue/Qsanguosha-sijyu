@@ -464,6 +464,7 @@ void registerAIRound56NativeTypes_src_package_zombine_cpp(AIRound56NativeTypes&t
 unsigned aiRound56CardMetadataLocalZombineSourceEffects(const std::type_info &type) noexcept
 {
     static_assert(std::is_same<decltype(&ZbDanyuCard::getClassName), decltype(&Card::getClassName)>::value, "R56 metadata ZbDanyuCard::getClassName declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getPackage), decltype(&Card::getPackage)>::value, "R56 patterns ZbDanyuCard::getPackage declaring owner changed");
     static_assert(std::is_same<decltype(&ZbDanyuCard::getKindOfNames), decltype(&Card::getKindOfNames)>::value, "R56 metadata ZbDanyuCard::getKindOfNames declaring owner changed");
     static_assert(std::is_same<decltype(&ZbDanyuCard::isVirtualCard), decltype(&Card::isVirtualCard)>::value, "R56 metadata ZbDanyuCard::isVirtualCard declaring owner changed");
     static_assert(std::is_same<decltype(&ZbDanyuCard::isKindOf), decltype(&Card::isKindOf)>::value, "R56 metadata ZbDanyuCard::isKindOf declaring owner changed");

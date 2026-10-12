@@ -46,6 +46,10 @@ public:
     // Complete original factory identity/material lineage, never a comparison
     // of live card IDs/values. Does not itself grant virtual effects or a scope.
     bool aiRound56PhysicalCloneIdentityOrigin(int *definitionId) const noexcept;
+    // Independent ID-only factory fact. Face/material mutations do not grant
+    // or retire this fact; any ID write or adoption attempt retires it. This
+    // proves neither coherent field access nor receiver lifetime/execution.
+    bool aiRound56PhysicalCloneIdOrigin(int *definitionId) const noexcept;
 
 
 
@@ -318,13 +322,18 @@ public:
     }
 
 private:
+    friend class AIRound56MaxCardsScope;
+    // Borrow the actual first-adoption product identity only under the exact
+    // Room/Game/lifetime query contract. No current face/ID/value comparison.
+    const Card *aiRound56PhysicalCloneOwnedFaceOrigin() const noexcept;
     struct PhysicalCloneBirth {};
     WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThread *ownerThread,
-                bool originalDefinitionSource);
+                bool originalDefinitionSource, bool originalDefinitionIdSource);
     std::atomic<bool> m_aiRound56PhysicalCloneBirth{false};
     const std::type_info *m_aiRound56BornInnerType = nullptr;
     int m_aiRound56BornDefinitionId = -1;
     bool m_aiRound56OriginalCloneIdentity = false;
+    bool m_aiRound56OriginalCloneId = false;
     std::shared_ptr<const CardLifetimeToken> m_aiRound56BornInnerLifetime;
 
 protected:

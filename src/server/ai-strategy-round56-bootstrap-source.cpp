@@ -24,6 +24,7 @@
 #include "player-self-source-origin.h"
 #include "room.h"
 #include "room-runtime.h"
+#include "room-definition-registry.h"
 #include "lua-runtime.h"
 #include <QObject>
 #include <QPointer>
@@ -434,6 +435,7 @@ bool completeAIRound56BootstrapSourceBoundary(Room &r,lua_State *L) noexcept {
   s->phase=State::Completing;
   auto proof=proveAIRound56BootstrapSourceUnion(r,L);
   if(!proof){retire(*s,"completion-source-token");return false;}
+  if(!completeAIRound56FactoryMapOrigin(r,L,*proof)){retire(*s,"completion-factory-maps");return false;}
   if(!completeAIRound56PriorityBootstrap(r,L,*proof)){retire(*s,"completion-priority");return false;}
   if(!completeAIRound56CloneInputLineage(r,L,*proof)){retire(*s,"completion-clone");return false;}
   if(!completeAIRound56ProjectionLineage(r,L,*proof)){retire(*s,"completion-projection");return false;}
@@ -476,4 +478,25 @@ bool hasAIRound56BootstrapMetadataContinuity(Room&r,lua_State*L)noexcept{
  auto*s=find(r);if(!s||!s->preludeProved||!s->tokenIssued||!current(r,L,s->serial)
   ||!hasAIRound56CloneInputLineage(r,L))return false;
  return s->phase==State::Completing||(s->phase==State::Completed&&hasAIRound56AsyncUniverse(r,L));
+}
+
+bool isAIRound56OriginalDefinitionProducer(Room &r,const RoomDefinitionRegistry *definitions) noexcept {
+ auto *s=find(r);auto *rt=r.roomRuntime();
+ return s&&rt&&definitions==&rt->definitions()&&s->phase==State::Prepared
+  &&s->preludeProved&&rt->isLoadingDefinitions()&&!rt->isClosing()
+  &&s->L&&s->L==rt->lua().rawState()&&s->generation==rt->lua().generation()
+  &&rt->lua().isCurrentThreadOwner()&&Sanguosha->currentRoomContext()
+  &&Sanguosha->currentRoomContext()->roomRuntime()==rt;
+}
+bool completeAIRound56FactoryMapOrigin(Room &r,lua_State *L,const AIRound56BootstrapSourceProof &proof) noexcept {
+ auto *rt=r.roomRuntime();if(!rt)return false;auto &defs=rt->definitions();
+ const bool ok=defs.m_factorySourcePhase==RoomDefinitionRegistry::FactorySourcePhase::Collecting
+  &&defs.m_factorySourceRoom==&r&&L&&rt->lua().rawState()==L
+  &&!proof.m_consumed&&proof.m_roomLifetime.data()==&r&&proof.m_room==&r
+  &&proof.m_lua==L&&proof.m_generation==rt->lua().generation()
+  &&proof.m_serial&&proof.m_current&&proof.m_current(r,L,proof.m_serial);
+ defs.m_factorySourcePhase=ok?RoomDefinitionRegistry::FactorySourcePhase::Sealed
+                            :RoomDefinitionRegistry::FactorySourcePhase::Retired;
+ if(ok)defs.m_factorySourceGeneration=rt->lua().generation();
+ return ok;
 }

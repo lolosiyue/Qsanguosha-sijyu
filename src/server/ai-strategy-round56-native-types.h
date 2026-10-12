@@ -18,7 +18,9 @@ public:
         "R56 source method declaring class changed: " #Type "::" #Method)
 // Exact compiled type registration. Bit1: complete correction-family type;
 // bit2: the reviewed frequency/equipment/quota virtual implementation union.
-// Neither bit proves captured Lua callbacks, allocation or host descendants.
+// Bit4: exact native Pindian prohibition body, requiring the independent
+// complete public metadata/correction union for its nested Player queries.
+// No bit proves captured Lua callbacks, allocation or host descendants.
 unsigned aiRound56NativeEffectClass(const Skill*);
 struct AIRound56ActivateNativeMethodSource {
     const char *method;

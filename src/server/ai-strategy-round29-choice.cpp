@@ -1,5 +1,6 @@
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round29-choice.h"
+#include "ai-strategy-round54-priority.h"
 #include "ai-strategy-choice-continuity.h"
 #include "ai-strategy-round40-choice.h"
 #include "ai-strategy-round36-planning.h"
@@ -105,6 +106,22 @@ QJsonObject queryAIRound29ChoicePriority(Room &room,const AIRequest &r,ServerPla
  if(op=="read"&&spec.size()==3) {
   const auto own=s->values.value(p->objectName());
   row=own.contains(key)?own.value(key):(s->baselineLive?s->baseline.value(key,unknown()):unknown());
+  // Preserve already-issued R29 writes/baselines. The original mixed-sort
+  // ExNihilo read can instead consume its independent source-born cell when
+  // the generic baseline was conservatively retired by the Play event.
+  // This performs a fresh actual read behind monotonic writer history; it
+  // never repairs R29 state or trusts an equal current registry value.
+  if(!row.value("known").toBool()&&key==QStringLiteral("ExNihilo")
+   &&r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY) {
+   const auto actual=readAIRound54Priority(room,p,r,{{"op","source_priority_read"},{"key",key}});
+   if(actual.value("known")==true&&actual.value("present").isBool()) {
+    const bool present=actual.value("present").toBool();const auto value=actual.value("value");
+    if(!present||(value.isDouble()&&std::isfinite(value.toDouble()))) {
+     row={{"known",true},{"removed",!present},{"basis","original_source_cell_read"}};
+     if(present)row.insert("value",value);
+    }
+   }
+  }
  }else if(op=="write"&&spec.size()==5&&spec.value("removed").isBool()) {
   const bool removed=spec.value("removed").toBool();const auto v=spec.value("value");
   if((removed&&!v.isNull())||(!removed&&(!v.isDouble()||!std::isfinite(v.toDouble()))))return rejected("invalid raw priority assignment");

@@ -220,9 +220,12 @@ void changed(lua_State*L,const lua_TableObservation*ep,void*u)noexcept{
    for(const auto&w:resets)if(key(e,w.key)){
     if(!s.completed)return; // complete bootstrap graph owns unrelated initial cache roots
     if(permitted(s,L,e)){noteWrite(s,L,e);return;}
-    // Existing connection helper can publish only its own source-born root.
-    // An already recorded reset root must never be replaced by late adoption.
-    if(w.kind==Connect&&!s.root[Connect]&&allowAIRound56ConnectionCacheWrite(s.r,L,e))return;
+    // The pinned aiConnect producer assigns its root even after the event
+    // reset. Preserve that actual source write only when it carries the exact
+    // previously issued reset identity. Never adopt a replacement or restore
+    // a retired lineage; equal contents alone grant nothing.
+    if(w.kind==Connect&&allowAIRound56ConnectionCacheWrite(s.r,L,e)
+      &&(!s.root[Connect]||s.root[Connect]==e.value_table_identity))return;
     s.retire(__LINE__);return;
    }
    if(key(e,"ai_active_recommends_cache")&&s.completed){if(permitted(s,L,e))noteWrite(s,L,e);else s.retire(__LINE__);}
@@ -427,7 +430,15 @@ bool allowAIRound56PlayLoopWrite(Room&r,lua_State*L,const lua_TableObservation&e
 }
 bool captureAIRound56PlayLoopCacheOrigin(const Room&r,lua_State*L,const void*&space,const void*&qlist,const void*&connect,quint64&serial)noexcept{
  space=qlist=connect=nullptr;serial=0;auto*s=find(r);
- if(!hasAIRound56PlayLoopSource(r,L)||!s->pristine||!s->resetComplete||!s->resetSerial||!s->root[Qlist]||!s->root[Connect])return false;
+ if(!hasAIRound56PlayLoopSource(r,L)||!s->pristine||!s->resetComplete||!s->resetSerial||!s->root[Qlist]||!s->root[Connect]){
+  if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")){
+   auto*rt=const_cast<Room&>(r).roomRuntime();
+   std::fprintf(stderr,"R56_CACHE_RESET_ORIGIN_REFUSAL state=%d alive=%d completed=%d current=%d pristine=%d reset_complete=%d serial=%llu qlist=%d connect=%d saved_epoch=%llu actual_epoch=%llu clone=%d projection=%d mode=%d patterns=%d async=%d\n",
+    int(s!=nullptr),int(s&&s->alive),int(s&&s->completed),int(s&&current(*s)),int(s&&s->pristine),int(s&&s->resetComplete),s?static_cast<unsigned long long>(s->resetSerial):0ULL,int(s&&s->root[Qlist]),int(s&&s->root[Connect]),s?static_cast<unsigned long long>(s->epoch):0ULL,rt?static_cast<unsigned long long>(rt->prioritySourceEpoch()):0ULL,
+    int(hasAIRound56CloneInputLineage(r,L)),int(hasAIRound56ProjectionLineage(r,L)),int(hasAIRound56ModeEvaluationLineage(r,L)),int(hasAIRound56PatternsLineage(r,L)),int(hasAIRound56AsyncUniverse(r,L)));std::fflush(stderr);
+  }
+  return false;
+ }
  space=s->root[Namespace];qlist=s->root[Qlist];connect=s->root[Connect];serial=s->resetSerial;return true;
 }
 AIRound56PlayLoopFilterScope::AIRound56PlayLoopFilterScope(Room&r,LuaAI*ai,ServerPlayer*p,int event,const QVariant&data,lua_State*L)noexcept{

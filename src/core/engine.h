@@ -11,6 +11,7 @@
 #include "json.h"
 #include "engine-translation-catalog.h"
 #include <QMutex>
+#include <QSharedPointer>
 #include <functional>
 #include <QThread>
 #include <QVariantMap>
@@ -21,6 +22,12 @@
 // lock levels (yield) and re-acquiring them later (restore), which is
 // essential for preventing deadlocks when the server thread sleeps
 // while holding the Lua lock.
+// Published global card QObject API boundary. Identity is recorded at publication,
+// never inferred from the object's current name, parent, property, or Lua alias.
+bool isPublishedGlobalCard(const QObject *object);
+bool hasPublishedGlobalCardOwnership(const QObject *object);
+bool canReparentDefinitionObject(const QObject *object, const QObject *parent);
+
 struct AIRound56FactorySourceReport;
 class Room;
 
@@ -254,6 +261,7 @@ public:
     bool aiRound56StandardCloneFactory(const QString &name) const;
     // Public source definitions only; requires separate live-card birth ancestry.
     bool aiRound56PublicPhysicalMetadataDefinitions(QString *why = nullptr) const;
+    bool aiRound56PublicPatternMetadataDefinitions(Room &, QString *why = nullptr) const;
     Card *cloneCard(const QString &name, Card::Suit suit = Card::NoSuit, int number = 0, const QStringList &flags = QStringList()) const;
     SkillCard *cloneSkillCard(const QString &name) const;
     QString getVersionNumber() const;
@@ -434,7 +442,10 @@ private:
     QSet<QString> m_customModeIds;
     QMultiMap<QString, QString> related_skills;
     mutable QMap<QString, const CardPattern *> patterns;
-    mutable QMap<QString, ExpPattern *> exp_patterns;
+    // The cache owns immutable parsed patterns; callers retain a reference while
+    // matching outside the mutex. Engine destruction still requires quiescence.
+    mutable QMutex exp_patterns_mutex;
+    mutable QMap<QString, QSharedPointer<const ExpPattern>> exp_patterns;
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
     QHash<QString, QHash<QString, QStringList> > m_resourceAliasLists;

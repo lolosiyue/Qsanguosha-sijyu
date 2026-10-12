@@ -8,6 +8,9 @@
 #include "h-rule-cards.h"
 #include "lua-wrapper.h"
 #include "package.h"
+#include "room.h"
+#include "room-runtime.h"
+#include "ai-strategy-round56-bootstrap-source.h"
 
 #include <QDebug>
 #include <QThread>
@@ -62,8 +65,12 @@ bool RoomDefinitionRegistry::moveOwnedObjectsToThread(QThread *targetThread, QSt
 
 void RoomDefinitionRegistry::clear()
 {
+    observeFactoryMapWriter();
     const QObjectList children = m_definitionRoot.children();
     CardLifetimeManager &manager = globalCardLifetimeManager();
+    // Keep externally borrowed identity distinct from the additional direct
+    // child entries used only for shutdown accounting below.
+    const QSet<const void *> originalBaselineAddresses = m_baselineAddresses;
     QSet<const void *> baselineAddresses = m_baselineAddresses;
     for (const Card *card : std::as_const(m_engine.cards))
         if (card)
@@ -86,17 +93,25 @@ void RoomDefinitionRegistry::clear()
             || m_engine.cards.contains(const_cast<Card *>(card)));
     };
     for (QObject *child : children) {
+        bool borrowedRoot = false;
         QList<Card *> cards = child->findChildren<Card *>();
         if (Card *card = qobject_cast<Card *>(child))
             cards.prepend(card);
         for (Card *card : cards) {
+            // Published globals cannot enter this ownership tree through an
+            // admitted API. Do not silently delete or unseal one after a native
+            // caller bypasses the contract with an explicit QObject base call.
+            if (isPublishedGlobalCard(card))
+                qFatal("Published global card illegally owned by Room definition tree");
             if (borrowedCard(card)) {
+                borrowedRoot = borrowedRoot || (card == child
+                    && originalBaselineAddresses.contains(card));
                 card->setParent(m_engine.cards.contains(const_cast<Card *>(card)) ? &m_engine : nullptr);
                 continue;
             }
             manager.observeCard(card);
         }
-        delete child;
+        if (!borrowedRoot) delete child;
     }
     if (!m_definitionRoot.children().isEmpty())
         qFatal("Room definition root retained children after shutdown");
@@ -117,6 +132,11 @@ void RoomDefinitionRegistry::clear()
 
 void RoomDefinitionRegistry::addPackage(Package *package)
 {
+    observeFactoryMapWriter();
+    if (!canReparentDefinitionObject(package, nullptr)) {
+        qWarning("Room registration of published global card owner rejected");
+        return;
+    }
     if (!package || m_packages.contains(package->objectName()))
         return;
     if (!package->parent())
@@ -127,6 +147,11 @@ void RoomDefinitionRegistry::addPackage(Package *package)
 
 void RoomDefinitionRegistry::setPackage(Package *package)
 {
+    observeFactoryMapWriter();
+    if (!canReparentDefinitionObject(package, nullptr)) {
+        qWarning("Room registration of published global card owner rejected");
+        return;
+    }
     if (!package)
         return;
     if (!m_packages.contains(package->objectName())) {
@@ -138,12 +163,13 @@ void RoomDefinitionRegistry::setPackage(Package *package)
 
 void RoomDefinitionRegistry::indexPackage(Package *package)
 {
+    observeFactoryMapWriter();
     const QList<int> bootstrapIds = m_engine.m_packageCardIds.value(package->objectName());
     const QList<Card *> packageCards = package->findChildren<Card *>();
     for (int index = 0; index < packageCards.size(); ++index) {
         Card *card = packageCards.at(index);
         if (m_cardIds.contains(card)) {
-            card->setId(m_cardIds.value(card));
+            card->aiRound56ReassertPhysicalDefinitionId(m_cardIds.value(card));
             continue;
         }
         int id = index < bootstrapIds.size() ? bootstrapIds.at(index) : m_nextCardId++;
@@ -396,6 +422,10 @@ QList<const ProhibitPindianSkill *> RoomDefinitionRegistry::prohibitPindianSkill
 
 void RoomDefinitionRegistry::registerLuaSkillCard(const QString &name, const LuaSkillCard *card)
 {
+    if (isPublishedGlobalCard(card)) {
+        qWarning("Room registration of published global card template rejected");
+        return;
+    }
     LuaSkillCard *ownedCard = const_cast<LuaSkillCard *>(card);
     if (ownedCard && !ownedCard->parent())
         ownedCard->setParent(&m_definitionRoot);
@@ -406,4 +436,37 @@ void RoomDefinitionRegistry::registerLuaSkillCard(const QString &name, const Lua
 const LuaSkillCard *RoomDefinitionRegistry::luaSkillCard(const QString &name) const
 {
     return m_luaSkillCards.value(name, nullptr);
+}
+
+// Issued only from the original RoomRuntime::initialize, before namespace birth.
+// The member starts Pristine at native construction; no map inspection seeds it.
+void RoomDefinitionRegistry::beginFactorySourceOrigin(Room &room) noexcept
+{
+    if (m_factorySourcePhase != FactorySourcePhase::Pristine) {
+        m_factorySourcePhase = FactorySourcePhase::Retired;
+        return;
+    }
+    m_factorySourceRoom = &room;
+    m_factorySourcePhase = FactorySourcePhase::Collecting;
+}
+
+void RoomDefinitionRegistry::observeFactoryMapWriter() noexcept
+{
+    // Even null, duplicate and equal/no-op public attempts retire after seal.
+    // During bootstrap, only the original synchronous definition-loading graph
+    // can collect writers; the complete source token closes that graph later.
+    if (m_factorySourcePhase != FactorySourcePhase::Collecting
+        || !m_factorySourceRoom
+        || !isAIRound56OriginalDefinitionProducer(*m_factorySourceRoom, this))
+        m_factorySourcePhase = FactorySourcePhase::Retired;
+}
+
+bool RoomDefinitionRegistry::hasFactorySourceOrigin(const Room &room, lua_State *L) const noexcept
+{
+    auto *runtime = const_cast<Room &>(room).roomRuntime();
+    return m_factorySourcePhase == FactorySourcePhase::Sealed
+        && m_factorySourceRoom == &room && runtime && &runtime->definitions() == this
+        && !runtime->isClosing() && runtime->lua().isCurrentThreadOwner()
+        && runtime->lua().rawState() == L
+        && runtime->lua().generation() == m_factorySourceGeneration;
 }

@@ -5,6 +5,7 @@
 #include "room.h"
 #include "room-runtime.h"
 #include <QHash>
+#include <QMutex>
 #include <QSet>
 #include <QObject>
 #include <QPointer>
@@ -18,10 +19,15 @@ struct State final : QObject {
  QSet<const Table*> protectedTables;
  bool attempted = false, valid = false, freshLuaAIOrigin = false, gameplayVariantOrigin = false;
 };
+// Different Room initialization/gameplay VMs can insert/read concurrently.
+// Protect the index only; never hold this lock over Lua, callbacks or QObject
+// construction/destruction. State access still requires its owning VM/lifetime.
+QMutex statesMutex;
 QHash<lua_State *,QPointer<State>> states;
 thread_local AIRound56AsyncScope *active = nullptr;
 State *find(lua_State *L) noexcept {
  if(!L)return nullptr;
+ QMutexLocker lock(&statesMutex);
  return states.value(G(L)->mainthread,nullptr);
 }
 bool hook(lua_State *L) noexcept {
@@ -95,7 +101,7 @@ bool initializeAIRound56AsyncUniverse(Room&r,lua_State*L,
  }
  proof.m_consumed=true;
  State*s=find(L);if(s&&s->attempted){if(why)*why="async bootstrap already attempted";return false;}
- if(!s){s=new State(r);s->lua=L;states.insert(L,s);}
+ if(!s){s=new State(r);s->lua=L;QMutexLocker lock(&statesMutex);states.insert(L,s);}
  s->attempted=true;s->generation=r.roomRuntime()->lua().generation();
  s->hostEpoch=aiRound56ServerMessageSinkEpoch();
  s->gameplayVariantOrigin=proof.m_gameplayVariants;

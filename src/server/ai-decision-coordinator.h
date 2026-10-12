@@ -212,6 +212,8 @@ private:
     mutable QList<ServerPlayer *> m_publicBoardAlivePlayers;
     // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
     mutable bool m_distanceCacheValid = false;
+    // Issued only by the original distance-table writer under complete source.
+    mutable bool m_distanceCorrectionSource = false;
     mutable quint64 m_distanceRevision = 0;
     mutable quint64 m_distanceSkillGeneration = 0;
     mutable quint64 m_distanceWeaponRangeRevision = 0;

@@ -1272,6 +1272,7 @@ void RoomManagedState::publishRunning(NativeSlice &native) noexcept
         auto *p=s.player.data();
         retireAIRound56PlayerPublicCardsOrigin(p);
         std::swap(p->face_up,s.faceUp);std::swap(p->chained,s.chained);
+        retireAIRound56PlayerCanonicalHandOrigin(p);
         p->handcards.swap(s.hand);p->equips.swap(s.equips);p->judging_area.swap(s.judge);
         p->piles.swap(s.piles);p->pile_open.swap(s.pileOpen);p->history.swap(s.history);p->flags.swap(s.flags);
         p->shown_handcards.swap(s.shown);p->broken_equips.swap(s.broken);p->phases.swap(s.phases);

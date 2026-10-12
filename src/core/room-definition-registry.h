@@ -11,6 +11,9 @@
 
 struct AIRound56FactorySourceReport;
 class Room;
+class RoomRuntime;
+class AIRound56BootstrapSourceProof;
+struct lua_State;
 
 class DistanceSkillCache;
 struct DefinitionListCaches;
@@ -60,6 +63,9 @@ public:
     QMap<int, QString> printedSkillSnapshot() const;
     bool restorePrintedSkillSnapshot(const QMap<int, QString> &snapshot, QString *error = nullptr);
     const Card *cardTemplate(const QString &name) const;
+    // Native map writer history, independent of contents/name/type equality.
+    // Not an execution, receiver-lifetime, or factory-effect grant.
+    bool hasFactorySourceOrigin(const Room &, lua_State *) const noexcept;
     int cardCount(int bootstrapCount) const;
 
     const CardPattern *pattern(const QString &name) const;
@@ -84,6 +90,14 @@ public:
     const LuaSkillCard *luaSkillCard(const QString &name) const;
 
 private:
+    friend class RoomRuntime;
+    friend bool completeAIRound56FactoryMapOrigin(Room &, lua_State *, const AIRound56BootstrapSourceProof &) noexcept;
+    void beginFactorySourceOrigin(Room &) noexcept;
+    void observeFactoryMapWriter() noexcept;
+    enum class FactorySourcePhase { Pristine, Collecting, Sealed, Retired };
+    FactorySourcePhase m_factorySourcePhase = FactorySourcePhase::Pristine;
+    Room *m_factorySourceRoom = nullptr;
+    quint64 m_factorySourceGeneration = 0;
     friend AIRound56FactorySourceReport inspectAIRound56PublicFactorySources(Room &);
     friend void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &, AIRound56FactorySourceReport &);
     void indexPackage(Package *package);

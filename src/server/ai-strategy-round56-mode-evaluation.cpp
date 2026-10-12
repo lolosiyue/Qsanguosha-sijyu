@@ -7,6 +7,7 @@
 #include "ai-strategy-round56-async.h"
 #include "ai-strategy-round56-clone-lineage.h"
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-projection-lineage.h"
 #include "ai-strategy-round53-ainoto.h"
 #include "ai-strategy-round45-continuity.h"
 #include <QScopeGuard>
@@ -51,7 +52,7 @@ struct State final:QObject {
  }
 };
 State*find(const Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c))return s;return nullptr;}
-const QList<int>modeAnchors={10,24,40,49,59,209,221,240,250,310,317,321,327,333,360,621,627,636,846,860,1027,1158,1234,1240,1252,1262,1286,1307,1346,1364,1538,1549,1576,1594};
+const QList<int>modeAnchors={10,24,40,49,59,209,221,240,250,310,317,321,327,333,360,621,627,636,846,860,1027,1158,1234,1240,1252,1262,1286,1307,1346,1364,1538,1549,1576,1594,1602};
 thread_local AIRound56ModeEvaluationScope*active=nullptr;
 thread_local Room*activeRoom=nullptr;thread_local lua_State*activeLua=nullptr;
 struct NativeWorld{Room*r;lua_State*L;CallInfo*frame;int depth;NativeWorld*previous;const void*root=nullptr;};
@@ -126,6 +127,15 @@ void observeBirth(lua_State*L,const lua_TableBirthObservation*e,void*u)noexcept{
   // unrelated roots are covered separately by its complete source receipt.
   else if(!source&&!native&&inModeScope(s.room,L))s.retire();
  }catch(...){s.retire();}
+}
+// Independent refresh uses the Game VM binding and continuous source histories,
+// never a completed projection scope as a transferable capability.
+bool refreshContext(const Room&r,lua_State*L){
+ auto*rt=const_cast<Room&>(r).roomRuntime();
+ return rt&&!rt->isClosing()&&rt->lua().rawState()==L&&rt->lua().isCurrentThreadOwner()
+  &&LuaRuntime::current()==&rt->lua()&&Sanguosha&&Sanguosha->currentRoom()==&r
+  &&hasAIRound56CloneInputLineage(r,L)&&hasAIRound56ProjectionLineage(r,L)
+  &&hasAIRound56AsyncUniverse(r,L);
 }
 bool publicMode(const QString&m){return m==QStringLiteral("02p")||m==QStringLiteral("04p");}
 struct Check {
@@ -271,7 +281,7 @@ bool graph(State&s,QString*why){
  const int ns=lua_absindex(s.L,-1);
  if(!check.primitiveMetatables()){if(why)*why=check.failure;return false;}
  struct Root{const char*name;int first,last;};
- for(const auto&root:{Root{"evaluateModeAI",1364,1530},Root{"prepareStandardObjective",1594,1600},Root{"commitStandardObjective",1576,1592}}){
+ for(const auto&root:{Root{"evaluateModeAI",1364,1530},Root{"prepareStandardObjective",1594,1600},Root{"prepareStandardRelations",1602,1607},Root{"commitStandardObjective",1576,1592}}){
   Stack item(s.L);raw(s.L,ns,root.name);
   if(!matchAIRound45PinnedFunction(s.room,s.L,-1,modeSource.path,root.first,root.last)||!check.function(-1,QString::fromLatin1(root.name),0)){
    if(why)*why=check.failure.isEmpty()?QStringLiteral("mode root source differs: ")+QString::fromLatin1(root.name):check.failure;return false;
@@ -353,19 +363,21 @@ AIRound56ModeEvaluationScope::AIRound56ModeEvaluationScope(Room&r,lua_State*L,co
  d->previous=active;d->previousRoom=activeRoom;d->previousLua=activeLua;active=this;activeRoom=&r;activeLua=L;auto*rt=r.roomRuntime();
  try{
   if(!rt||publicMode!=r.getMode()||!Sanguosha||Sanguosha->currentRoom()!=&r
-   ||(entry==StandardObjective&&(!inAIRound56ProjectionScope(r,L)||d->previous||objectiveReceipt))
+   ||(entry==StandardObjective&&!inAIRound56ProjectionScope(r,L))
+   ||(entry==StandardRelations&&!refreshContext(r,L))
+   ||(entry!=Evaluation&&(d->previous||objectiveReceipt))
    ||!proveAIRound56ModeEvaluationUnion(r,L))return;
   Stack z(L);AIRound45Inspect::globals(L);raw(L,-1,"sgs");int ns=lua_absindex(L,-1);
-  raw(L,ns,entry==Evaluation?"evaluateModeAI":"prepareStandardObjective");d->function=lua_topointer(L,-1);lua_pop(L,1);
-  if(entry==StandardObjective){raw(L,ns,"commitStandardObjective");d->commit=lua_topointer(L,-1);objectiveReceipt=&d->objective;}
+  raw(L,ns,entry==Evaluation?"evaluateModeAI":entry==StandardRelations?"prepareStandardRelations":"prepareStandardObjective");d->function=lua_topointer(L,-1);lua_pop(L,1);
+  if(entry!=Evaluation){raw(L,ns,"commitStandardObjective");d->commit=lua_topointer(L,-1);objectiveReceipt=&d->objective;}
   d->depth=rt->lua().protectedCallDepth();d->async.reset(new AIRound56AsyncScope(r,L));d->ready=d->async->accepted();
  }catch(...){d->invalid=true;}
 }
 AIRound56ModeEvaluationScope::~AIRound56ModeEvaluationScope(){objectiveReceipt=d->previousObjective;active=d->previous;activeRoom=d->previousRoom;activeLua=d->previousLua;}
 bool AIRound56ModeEvaluationScope::accepted()const noexcept{return d->ready&&!d->invalid&&hasAIRound56ModeEvaluationLineage(d->r,d->L)
- &&(d->entry==Evaluation||inAIRound56ProjectionScope(d->r,d->L));}
+ &&(d->entry==Evaluation||(d->entry==StandardRelations?refreshContext(d->r,d->L):inAIRound56ProjectionScope(d->r,d->L)));}
 void AIRound56ModeEvaluationScope::preparedObjective(int resultIndex,int tokenIndex)noexcept{
- if(d->entry!=StandardObjective)return;
+ if(d->entry==Evaluation)return;
  auto*s=find(d->r);
  if(!accepted()||!d->entered||d->objective.returned||!s||!d->objective.result||!d->objective.token
   ||lua_topointer(d->L,resultIndex)!=d->objective.result||lua_topointer(d->L,tokenIndex)!=d->objective.token
@@ -380,10 +392,13 @@ bool acceptAIRound56ModeEvaluationEntry(Room&r,lua_State*L,int n)noexcept{
  if(!active->accepted()||!rt||n<0||lua_gettop(L)<n+1)return false;
  const int f=lua_gettop(L)-n;
  if(!d.entered&&n==2&&rt->lua().protectedCallDepth()==d.depth&&lua_topointer(L,f)==d.function){
-  if(d.entry==AIRound56ModeEvaluationScope::StandardObjective&&(!d.world||lua_topointer(L,f+1)!=d.world||lua_type(L,f+2)!=LUA_TSTRING))return false;
+  if(d.entry!=AIRound56ModeEvaluationScope::Evaluation&&(!d.world||lua_topointer(L,f+1)!=d.world))return false;
+  if(d.entry==AIRound56ModeEvaluationScope::StandardObjective&&lua_type(L,f+2)!=LUA_TSTRING)return false;
+  if(d.entry==AIRound56ModeEvaluationScope::StandardRelations&&!lua_isnil(L,f+2)
+    &&(!lua_isinteger(L,f+2)||lua_tointeger(L,f+2)<0))return false;
   d.entered=true;return true;
  }
- if(d.entry==AIRound56ModeEvaluationScope::StandardObjective&&d.entered&&d.objective.returned&&!d.objective.committed&&n==1
+ if(d.entry!=AIRound56ModeEvaluationScope::Evaluation&&d.entered&&d.objective.returned&&!d.objective.committed&&n==1
   &&rt->lua().protectedCallDepth()==d.depth&&lua_topointer(L,f)==d.commit&&d.objective.token
   &&lua_topointer(L,f+1)==d.objective.token){d.objective.committed=true;return true;}
  // Reentrant pcall targets can only be the proved fixed query hooks/helpers or
@@ -402,7 +417,7 @@ AIRound56ModeWorldSource::AIRound56ModeWorldSource(Room&r,lua_State*L):d(new Dat
  d->source={&r,L,L->ci,rt->lua().protectedCallDepth(),nativeWorld};nativeWorld=&d->source;d->installed=true;
 }
 AIRound56ModeWorldSource::~AIRound56ModeWorldSource(){if(d->installed){
- if(active&&activeRoom==d->source.r&&activeLua==d->source.L&&active->d->entry==AIRound56ModeEvaluationScope::StandardObjective){
+ if(active&&activeRoom==d->source.r&&activeLua==d->source.L&&active->d->entry!=AIRound56ModeEvaluationScope::Evaluation){
   // Actual first native table born inside this exact pushAIWorldView span.
   if(active->d->world||!d->source.root){active->d->invalid=true;barrier(*d->source.r,d->source.L);}
   else active->d->world=d->source.root;

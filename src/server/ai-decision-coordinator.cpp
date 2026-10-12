@@ -1,3 +1,5 @@
+#include "room-runtime.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-patterns.h"
 #include <cstdio>
 #include "ai-strategy-round53-ainoto.h"
@@ -1730,28 +1732,50 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         playerView.wounded = player->isWounded();
         playerView.faceUp = player->faceUp();
         playerView.chained = player->isChained();
-        playerView.maxCards = player->getMaxCards();
+        {
+            // Preserve the existing ordinary full-world caller's own proof.
+            // The new exact consumer is for the previously unscoped path.
+            std::unique_ptr<AIRound56MaxCardsScope> maxCardsScope;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                maxCardsScope.reset(new AIRound56MaxCardsScope(m_room,player,gameLua));
+            playerView.maxCards = player->getMaxCards();
+        }
         playerView.hujia = player->getHujia();
-        playerView.attackRange = player->getAttackRange();
-        playerView.attackRangeWithoutWeapon = player->getAttackRange(false);
+        {
+            std::unique_ptr<AIRound56AttackRangeScope> attackRangeScope;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                attackRangeScope.reset(new AIRound56AttackRangeScope(m_room,player,gameLua));
+            playerView.attackRange = player->getAttackRange();
+            playerView.attackRangeWithoutWeapon = player->getAttackRange(false);
+        }
         playerView.gender = int(player->getGender());
         playerView.lord = player->isLord();
         // Armor visibility still depends on the viewer in hegemony. The blocking
         // scan and the physical armor do not, so they are resolved once.
         bool armorBlocked = false;
-        // Same 50p cost trap as Player::viewAsEquipSources: scan the small
-        // ViewAsEquipSkill list instead of every attached skill instance.
-        foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
-            if (!skill) continue;
-            const QString skillName = skill->objectName();
-            if (!player->hasSkill(skillName)) continue;
-            for (int id : player->getSkillInstanceIds(skillName)) {
-                if (!player->isSkillInvalid(skillName, id)) {
-                    armorBlocked = true;
-                    break;
+        {
+            // Exact original hasSkill/isSkillInvalid source union, established
+            // before choosing any ViewAsEquip holder or instance branch.
+            std::unique_ptr<AIRound56PublicSkillQueriesScope> skillSource;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                skillSource.reset(new AIRound56PublicSkillQueriesScope(m_room,player,gameLua));
+            // Same 50p cost trap as Player::viewAsEquipSources: scan the small
+            // ViewAsEquipSkill list instead of every attached skill instance.
+            foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
+                if (!skill) continue;
+                const QString skillName = skill->objectName();
+                if (!player->hasSkill(skillName)) continue;
+                for (int id : player->getSkillInstanceIds(skillName)) {
+                    if (!player->isSkillInvalid(skillName, id)) {
+                        armorBlocked = true;
+                        break;
+                    }
                 }
+                if (armorBlocked) break;
             }
-            if (armorBlocked) break;
         }
         row.armorBasis = !armorBlocked
             && player->property("View_As_Equips_List").toString().isEmpty();
@@ -1814,38 +1838,46 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
             }
         }
 
-        foreach (const SkillInstance &instance, player->getSkillInstances()) {
-            const Skill *skill = Sanguosha->getSkill(instance.skillName);
-            if (!instance.visible || !skill || !skill->isVisible())
-                continue;
-            PublicSkill cached;
-            cached.instance = instance;
-            AISkillView &skillView = cached.view;
-            skillView.skillName = instance.skillName;
-            skillView.instanceId = instance.instanceID;
-            skillView.source = int(instance.source);
-            skillView.invalid = player->isSkillInvalid(instance.skillName, instance.instanceID);
-            skillView.hasAmountOverride = instance.hasAmountOverride;
-            skillView.amount = instance.hasAmountOverride ? instance.amountOverride : 0;
-            skillView.hasViewAsSkill = ViewAsSkill::parseViewAsSkill(skill) != nullptr;
-            for (const QMetaObject *meta = skill->metaObject(); meta; meta = meta->superClass())
-                skillView.skillClasses << QString::fromLatin1(meta->className());
-            skillView.frequency = int(skill->getFrequency(player));
-            skillView.description = skill->getDescription();
-            if (const auto *trigger = dynamic_cast<const TriggerSkill *>(skill)) {
-                for (TriggerEvent event : trigger->getTriggerEvents()) skillView.triggerEvents << int(event);
-                skillView.retrialTrigger = trigger->getTriggerEvents().contains(AskForRetrial);
-                const QString description = skill->getDescription();
-                skillView.loseEquipDescriptionTrigger = trigger->getTriggerEvents().contains(CardsMoveOneTime)
-                    && description.contains(QStringLiteral("装备区")) && description.contains(QStringLiteral("失去"));
+        {
+            // Separate visible-definition/validity lifetime; excludes physical
+            // armor, cards, piles and every later request consumer.
+            std::unique_ptr<AIRound56PublicSkillQueriesScope> skillSource;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                skillSource.reset(new AIRound56PublicSkillQueriesScope(m_room,player,gameLua));
+            foreach (const SkillInstance &instance, player->getSkillInstances()) {
+                const Skill *skill = Sanguosha->getSkill(instance.skillName);
+                if (!instance.visible || !skill || !skill->isVisible())
+                    continue;
+                PublicSkill cached;
+                cached.instance = instance;
+                AISkillView &skillView = cached.view;
+                skillView.skillName = instance.skillName;
+                skillView.instanceId = instance.instanceID;
+                skillView.source = int(instance.source);
+                skillView.invalid = player->isSkillInvalid(instance.skillName, instance.instanceID);
+                skillView.hasAmountOverride = instance.hasAmountOverride;
+                skillView.amount = instance.hasAmountOverride ? instance.amountOverride : 0;
+                skillView.hasViewAsSkill = ViewAsSkill::parseViewAsSkill(skill) != nullptr;
+                for (const QMetaObject *meta = skill->metaObject(); meta; meta = meta->superClass())
+                    skillView.skillClasses << QString::fromLatin1(meta->className());
+                skillView.frequency = int(skill->getFrequency(player));
+                skillView.description = skill->getDescription();
+                if (const auto *trigger = dynamic_cast<const TriggerSkill *>(skill)) {
+                    for (TriggerEvent event : trigger->getTriggerEvents()) skillView.triggerEvents << int(event);
+                    skillView.retrialTrigger = trigger->getTriggerEvents().contains(AskForRetrial);
+                    const QString description = skill->getDescription();
+                    skillView.loseEquipDescriptionTrigger = trigger->getTriggerEvents().contains(CardsMoveOneTime)
+                        && description.contains(QStringLiteral("装备区")) && description.contains(QStringLiteral("失去"));
+                }
+                skillView.lordSkill = skill->isLordSkill();
+                skillView.attachedLordSkill = skill->isAttachedLordSkill();
+                // A lord skill only works while its owner is the lord of a played kingdom.
+                skillView.lordSkillEffective = skill->isLordSkill()
+                    && player->hasLordSkill(skill->objectName());
+                skillView.correctState = makeAIStateObject(instance.correctState);
+                row.skills << cached;
             }
-            skillView.lordSkill = skill->isLordSkill();
-            skillView.attachedLordSkill = skill->isAttachedLordSkill();
-            // A lord skill only works while its owner is the lord of a played kingdom.
-            skillView.lordSkillEffective = skill->isLordSkill()
-                && player->hasLordSkill(skill->objectName());
-            skillView.correctState = makeAIStateObject(instance.correctState);
-            row.skills << cached;
         }
         board.players << row;
     }
@@ -1960,6 +1992,17 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     world.customRoles = board.customRoles;
     if (!viewer || viewer->getRoom() != &m_room) return world;
 
+    // Each invocation has its own exact native Skill-query lifetime. The full
+    // public metadata/correction family is proved before the original query;
+    // its result is consumed only after this scope has ended.
+    const auto queryPublicSkill = [&](const auto &query) -> bool {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
+            skillSource.reset(new AIRound56WorldSkillQueriesScope(m_room,viewer,gameLua));
+        return query();
+    };
+
     const bool hegemony = ServerInfo.EnableHegemony;
     int ownCardBudget = 2048;
     for (const PublicPlayer &row : board.players) {
@@ -1972,6 +2015,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         for (const QString &name : {QStringLiteral("ShenfenCard"), QStringLiteral("LihunCard")})
             playerView.usedHistory.insert(name, player->hasUsed(name));
         if (player == viewer && !eventOnly) {
+            std::unique_ptr<AIRound56OwnerCardRulesScope> ownerCardRulesScope;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                ownerCardRulesScope.reset(new AIRound56OwnerCardRulesScope(m_room,player,gameLua));
             const auto addRules = [&](const QString &key, const Card *card) {
                 if (!card) return;
                 QJsonObject limits, prohibited;
@@ -2115,9 +2162,15 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
 
         if (player == viewer) {
             // These facts are owner-only, never stored in the shared public cache.
-            for (AICardView &card : playerView.equips) projectOwnCardState(card, viewer, ownCardBudget);
-            for (AICardPileView &pile : playerView.piles)
-                for (AICardView &card : pile.cards) projectOwnCardState(card, viewer, ownCardBudget);
+            {
+                std::unique_ptr<AIRound56OwnerCardStateScope> ownerStateSource;
+                auto *gameLua=m_room.roomRuntime()->lua().rawState();
+                if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
+                    ownerStateSource.reset(new AIRound56OwnerCardStateScope(m_room,viewer,gameLua));
+                for (AICardView &card : playerView.equips) projectOwnCardState(card, viewer, ownCardBudget);
+                for (AICardPileView &pile : playerView.piles)
+                    for (AICardView &card : pile.cards) projectOwnCardState(card, viewer, ownCardBudget);
+            }
             playerView.privateFlagsVisible = true;
             playerView.inYinniState = player->inYinniState();
             playerView.aiNoTo = player->property("aiNoTo").toBool();
@@ -2126,22 +2179,36 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             for (int phase = int(Player::RoundStart); phase <= int(Player::Finish); ++phase)
                 playerView.skippedPhases.insert(phase, player->isSkipped(Player::Phase(phase)));
             world.self = playerView;
-            foreach (const Card *card, player->getHandcards()) {
-                // The owner sees this exact live hand object even if no prior
-                // gameplay Lua/SWIG callback happened to observe its lifetime.
-                // Issue native identity here, before projecting derived fields;
-                // never synthesize an identity later from a caller-supplied ID.
-                AICardView ownCard = makeAICardView(card, true);
-                projectOwnCardState(ownCard, viewer, ownCardBudget);
-                // Diou reads the exact getHandcards object, before any planning.
-                // Do not project arbitrary tips from disclosed foreign faces.
-                ownCard.knownTips.insert(QStringLiteral("tanban"), card->hasTip(QStringLiteral("tanban")));
-                world.handCards << ownCard;
+            {
+                std::unique_ptr<AIRound56OwnerCardStateScope> ownerStateSource;
+                auto *gameLua=m_room.roomRuntime()->lua().rawState();
+                if(!eventOnly&&!inAIRound56ProjectionScope(m_room,gameLua))
+                    ownerStateSource.reset(new AIRound56OwnerCardStateScope(m_room,viewer,gameLua));
+                foreach (const Card *card, player->getHandcards()) {
+                    // The owner sees this exact live hand object even if no prior
+                    // gameplay Lua/SWIG callback happened to observe its lifetime.
+                    // Issue native identity here, before projecting derived fields;
+                    // never synthesize an identity later from a caller-supplied ID.
+                    AICardView ownCard = makeAICardView(card, true);
+                    projectOwnCardState(ownCard, viewer, ownCardBudget);
+                    // Diou reads the exact getHandcards object, before any planning.
+                    // Do not project arbitrary tips from disclosed foreign faces.
+                    ownCard.knownTips.insert(QStringLiteral("tanban"), card->hasTip(QStringLiteral("tanban")));
+                    world.handCards << ownCard;
+                }
             }
         } else {
             world.players << playerView;
         }
     }
+    {
+    std::unique_ptr<AIRound56DistanceScope> distanceScope;
+    auto *distanceLua=m_room.roomRuntime()->lua().rawState();
+    const bool originalFullProjection=inAIRound56ProjectionScope(m_room,distanceLua);
+    if(!eventOnly&&!originalFullProjection)
+        distanceScope.reset(new AIRound56DistanceScope(m_room,viewer,distanceLua));
+    // The entire public distance callback family is proved before cache choice
+    // or any receiver pair. Current cache-key equality never issues source.
     // RoomThread broadcasts every distanceTo_<player> pair to all clients.
     // Preserve that public geometry for strategies such as Quhu, including
     // asymmetric foreign-to-foreign pairs; no provider state is disclosed.
@@ -2158,6 +2225,8 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         && m_distanceRevision == distanceRevision
         && m_distanceSkillGeneration == skillGeneration
         && m_distancePlayers == distancePlayers && m_distanceSkills == distanceSkills) {
+        if(distanceScope&&!m_distanceCorrectionSource)
+            retireAIRound56Projection(m_room,distanceLua);
         world.distances = m_worldDistances;
     } else {
         foreach (ServerPlayer *from, distancePlayers) {
@@ -2168,6 +2237,9 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             }
             world.distances.insert(from->objectName(), row);
         }
+        // Receipt belongs to this actual producer, including failed attempts.
+        m_distanceCorrectionSource=originalFullProjection
+            ||(distanceScope&&distanceScope->accepted());
         // A callback that mutates gameplay must never publish a reusable stale table.
         m_distanceCacheValid = Weapon::rangeRevisionCurrent(distanceWeaponRangeRevision)
             && distanceRevision == m_room.roomRuntime()->stateRevision()
@@ -2181,6 +2253,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             m_worldDistances = world.distances;
         }
     }
+    } // exact distance lifetime ends before discard/event/skill projection
     if (!eventOnly) foreach (const int cardId, m_room.getDiscardPile()) {
         if (const Card *card = Sanguosha->getCard(cardId))
             world.discardPile << makeAICardView(card, true);
@@ -2197,7 +2270,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 bool skillsComplete = candidate == viewer || !ServerInfo.EnableHegemony
                     || candidate->hasShownAllGenerals() || candidate->isDead();
                 if (!skillsComplete) { complete = false; break; }
-                if (!ownerSkill.isEmpty() && candidate->hasSkill(ownerSkill)) {
+                if (!ownerSkill.isEmpty() && queryPublicSkill([&] { return candidate->hasSkill(ownerSkill); })) {
                     owner = candidate->objectName(); break;
                 }
             }
@@ -2212,9 +2285,15 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     if (!eventOnly) {
         QJsonObject fillContexts;
         QStringList names;
-        for (const Skill *skill : viewer->getSkillList(true))
-            if (skill && (skill->isLordSkill() ? viewer->hasLordSkill(skill->objectName()) : viewer->hasSkill(skill)))
-                names << skill->objectName();
+        {
+            std::unique_ptr<AIRound56WorldSkillQueriesScope> skillSource;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                skillSource.reset(new AIRound56WorldSkillQueriesScope(m_room,viewer,gameLua));
+            for (const Skill *skill : viewer->getSkillList(true))
+                if (skill && (skill->isLordSkill() ? viewer->hasLordSkill(skill->objectName()) : viewer->hasSkill(skill)))
+                    names << skill->objectName();
+        }
         for (const QString &mark : viewer->getMarkNames()) {
             if (viewer->getMark(mark) > 0 && mark.startsWith("ViewAsSkill_")) {
                 QString name = mark;
@@ -2377,7 +2456,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             facts.insert("jlyingshi_eagle", eagle);
             world.strategyFacts.insert("hunliesp", facts);
         }
-        if (viewer->hasSkills("jinfan|jinfanTake|duYinling|du_zhouxuan|jiuwei|jieyou")) {
+        if (queryPublicSkill([&] { return viewer->hasSkills("jinfan|jinfanTake|duYinling|du_zhouxuan|jiuwei|jieyou"); })) {
             QJsonObject prototypes, flags;
             for (const QString &name : {"#jfTakeCard", "#duYinlingCard", "#du_zhouxuanCard"}) {
                 std::unique_ptr<SkillCard> card(LuaSkillCard::Parse(name + ":.:"));
@@ -2391,22 +2470,28 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
 
     // Fixed Round16 source vocabulary; no arbitrary tag/flag query bridge.
     if (viewer) {
-        if (viewer->hasSkills("se_mopao|se_kuixin|se_huixiang")) {
+        if (queryPublicSkill([&] { return viewer->hasSkills("se_mopao|se_kuixin|se_huixiang"); })) {
             QJsonObject prototypes, flags;
             for (const QString &name : {"#se_mopaocard", "#se_kuixincard", "#se_huixiang"}) {
                 std::unique_ptr<SkillCard> prototype(LuaSkillCard::Parse(name + ":.:"));
                 prototypes.insert(name, bool(prototype));
             }
-            if (viewer->hasSkill("se_kuixin"))
+            if (queryPublicSkill([&] { return viewer->hasSkill("se_kuixin"); }))
                 for (const ServerPlayer *target : m_room.getAlivePlayers())
                     flags.insert(target->objectName(), target->hasFlag("se_kuixin_used"));
             world.strategyFacts.insert("dmptouhou", QJsonObject{{"legacy_prototypes", prototypes}, {"kuixin_used", flags}});
         }
-        if (viewer->hasSkills("shenjiZHCMT|zhuiluZHCMT|XiansiZHCMT|XiansiZHCMTSlash|zhengsiZHCMT"))
+        if (queryPublicSkill([&] { return viewer->hasSkills("shenjiZHCMT|zhuiluZHCMT|XiansiZHCMT|XiansiZHCMTSlash|zhengsiZHCMT"); }))
             world.strategyFacts.insert("zhenghuo_cmt", QJsonObject{{"slash_available", Slash::IsAvailable(viewer)}});
         // etushou2 is explicitly broadcast by Room::setPlayerFlag; this does
         // not disclose whether an otherwise hidden skill is possessed.
-        world.strategyFacts.insert("owner_can_slash_without_crossbow", viewer->canSlashWithoutCrossbow());
+        {
+            std::unique_ptr<AIRound56OwnerSlashScope> ownerSlashScope;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(!inAIRound56ProjectionScope(m_room,gameLua))
+                ownerSlashScope.reset(new AIRound56OwnerSlashScope(m_room,viewer,gameLua));
+            world.strategyFacts.insert("owner_can_slash_without_crossbow", viewer->canSlashWithoutCrossbow());
+        }
         const auto ownTagPlayer = [&](const char *key) -> QJsonValue {
             const auto value = viewer->getTag(key);
             const auto *target = value.canConvert<ServerPlayer *>() ? value.value<ServerPlayer *>() : nullptr;
@@ -2456,7 +2541,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                     for (const auto &value : row.value(part).toArray()) {
                         const auto skill = value.toObject();
                         if (skill.value("visible").toBool() && skill.value("lord").toBool())
-                            effective.insert(skill.value("name").toString(), player->hasLordSkill(skill.value("name").toString(), true));
+                            effective.insert(skill.value("name").toString(), queryPublicSkill([&] { return player->hasLordSkill(skill.value("name").toString(), true); }));
                     }
                 row.insert("lord_effective_including_lose", effective);
             }
@@ -2479,7 +2564,13 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         for (const auto &view : world.self.judgingArea) publicCardFact(view);
         for (const auto &player : world.players) for (const auto &view : player.judgingArea) publicCardFact(view);
         world.strategyFacts.insert("yongjian", QJsonObject{{"card_is_present", presentCards}, {"fulei_counts", fuleiCounts},
-            {"defensive_horse_zhanxiang", QJsonObject{{viewer->objectName(), viewer->hasDefensiveHorse("yj_zhanxiang")}}}});
+            {"defensive_horse_zhanxiang", QJsonObject{{viewer->objectName(), [&] {
+                std::unique_ptr<AIRound56OwnerEquipmentQueriesScope> equipmentSource;
+                auto *gameLua=m_room.roomRuntime()->lua().rawState();
+                if(!inAIRound56ProjectionScope(m_room,gameLua))
+                    equipmentSource.reset(new AIRound56OwnerEquipmentQueriesScope(m_room,viewer,gameLua));
+                return viewer->hasDefensiveHorse("yj_zhanxiang");
+            }()}}}});
         QJsonObject hayateFlags;
         for (const QString &name : {"haremu_target", "youshui_target"}) {
             QJsonObject values;
@@ -2494,7 +2585,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         for (const ServerPlayer *target : m_room.getAlivePlayers())
             etushou.insert(target->objectName(), target->hasFlag("etushou2"));
         world.strategyFacts.insert("emjr", QJsonObject{{"etushou2", etushou}});
-        if (viewer->hasSkills("jinyishi|jinciwei")) {
+        if (queryPublicSkill([&] { return viewer->hasSkills("jinyishi|jinciwei"); })) {
             const auto playerName = [&](const char *key) -> QJsonValue {
                 const QVariant value = viewer->getTag(key);
                 const ServerPlayer *target = value.canConvert<ServerPlayer *>() ? value.value<ServerPlayer *>() : nullptr;
@@ -2567,7 +2658,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     projectAIRound45PlanningFacts(world,m_room,viewer);
     projectAIRound36Formation(world, m_room, viewer);
     projectAIRound31IntentionWorld(world, m_room, const_cast<ServerPlayer *>(viewer));
-    if (viewer->hasSkill("ollongdan"))
+    if (queryPublicSkill([&] { return viewer->hasSkill("ollongdan"); }))
         world.strategyFacts.insert("ol_st_standard", QJsonObject{{"analeptic_available", Analeptic::IsAvailable(viewer)}});
     // Original phase/removal and keep-value policies ask isFriend(a, b).
     // Build every relation row from THIS observer's already filtered world and
@@ -2681,12 +2772,19 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
                 request.skillActions << actionContext;
         }
         int projectionBudget = 16384;
-        foreach (const Card *card, player->getHandcards())
-            request.cardCandidates << makeAICardCandidate(m_room, player, card, method,
-                                                          kind, pattern, projectionBudget);
-        foreach (const Card *card, player->getEquips())
-            request.cardCandidates << makeAICardCandidate(m_room, player, card, method,
-                                                          kind, pattern, projectionBudget);
+        {
+            std::unique_ptr<AIRound56OwnerCandidatesScope> ownerCandidatesScope;
+            auto *gameLua=m_room.roomRuntime()->lua().rawState();
+            if(kind==AIRequest::Activate&&reason==CardUseStruct::CARD_USE_REASON_PLAY
+                &&!inAIRound56ProjectionScope(m_room,gameLua))
+                ownerCandidatesScope.reset(new AIRound56OwnerCandidatesScope(m_room,player,gameLua));
+            foreach (const Card *card, player->getHandcards())
+                request.cardCandidates << makeAICardCandidate(m_room, player, card, method,
+                                                              kind, pattern, projectionBudget);
+            foreach (const Card *card, player->getEquips())
+                request.cardCandidates << makeAICardCandidate(m_room, player, card, method,
+                                                              kind, pattern, projectionBudget);
+        }
         const int borrowedId = request.worldView.strategyFacts.value("yjcm2015").toObject()
             .value("taoxi_borrowed").toObject().value("card_id").toInt(-1);
         if (liveTaoxiBorrow(m_room, player, request.worldView, borrowedId))
@@ -2843,6 +2941,14 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     ResponseNativeScope requestScope(m_room, player, request.reason, request.pattern);
+    const auto nativeSkillInvalid = [&](const QString &name, int instanceId) {
+        std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
+            &&!inAIRound56ProjectionScope(m_room,gameLua))
+            validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+        return player->isSkillInvalid(name,instanceId);
+    };
     bool enumerated = true;
     bool staged = !request.hasSkillActionContext;
     int probesLeft = 512;
@@ -2868,11 +2974,18 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
         const ViewAsSkill *skill = Sanguosha->getViewAsSkill(instance.skillName);
         if (skill && !skill->getExpandPile().isEmpty()) enumerated = false;
         if (skill && !dynamic_cast<const ViewAsSkillV2 *>(skill)
-            && !player->isSkillInvalid(instance.skillName, instance.instanceID)
+            && !nativeSkillInvalid(instance.skillName, instance.instanceID)
             // V1 response availability has separate nullification hooks and legacy
             // pattern conventions. Treat it as unknown without duplicating them.
             && (request.reason != CardUseStruct::CARD_USE_REASON_PLAY
-                || skill->isAvailable(player, request.reason, request.pattern)))
+                || skill->aiRound56AvailableForConversion(player, request.reason, request.pattern, [&] {
+                    std::unique_ptr<AIRound56WorldSkillQueriesScope> ownershipSource;
+                    auto *gameLua=m_room.roomRuntime()->lua().rawState();
+                    if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
+                        &&!inAIRound56ProjectionScope(m_room,gameLua))
+                        ownershipSource.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+                    return player->hasSkill(skill->objectName());
+                })))
             enumerated = false;
     }
 
@@ -3149,11 +3262,23 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
     // no private opponent skills are inspected, including weidi's lord suffix.
     QList<const Skill *> skillList;
     for (const Skill *skill : player->getSkillList(true)) {
-        if (skill && (skill->isLordSkill() ? player->hasLordSkill(skill->objectName()) : player->hasSkill(skill)))
+        if (skill && (skill->isLordSkill() ? ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+        return player->hasLordSkill(skill->objectName()); }()) : ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+        return player->hasSkill(skill); }())))
             skillList << skill;
     }
     bool rosterComplete = true;
-    if (player->hasSkill("weidi")) {
+    if (([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(m_room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(m_room,player,gameLua));
+        return player->hasSkill("weidi"); }())) {
         const ServerPlayer *lord = m_room.getLord();
         if (lord && lord != player) {
             if (ServerInfo.EnableHegemony && !lord->hasShownAllGenerals() && lord->isAlive())
@@ -3192,6 +3317,10 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
         for (const Skill *skill : skillList)
             appendKeepClasses(skill->objectName().toUtf8() + "_keep_value");
     } else policyComplete = false;
+    if(qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")) {
+        std::fprintf(stderr,"R56_CONVERSION_CATALOG_SOURCE classes=%d patterns_classes=%d skills=%d\n",
+            int(classes.size()),catalogClassCount,int(skillList.size()));std::fflush(stderr);
+    }
     int classIndex = 0;
     for (const auto &entry : classes) {
         const bool discoveredByPatterns = classIndex++ < catalogClassCount;
@@ -3257,7 +3386,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             }
             if (!hasAction) {
                 for (const SkillInstance &instance : player->getSkillInstances()) {
-                    if (instance.skillName != skillName || player->isSkillInvalid(skillName, instance.instanceID)) continue;
+                    if (instance.skillName != skillName || nativeSkillInvalid(skillName, instance.instanceID)) continue;
                     action.activationRef = SkillInstanceRef(player->objectName(), instance.key());
                     action.sourceRef = m_skillRuntime.resolveSkillInstanceRootRef(action.activationRef);
                     if (!action.sourceRef.isValid()) action.sourceRef = action.activationRef;
@@ -3318,7 +3447,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
                 AiSkillActionContext playAction;
                 bool playEnabled = false;
                 for (const SkillInstance &instance : player->getSkillInstances()) {
-                    if (instance.skillName != skillName || player->isSkillInvalid(skillName, instance.instanceID)) continue;
+                    if (instance.skillName != skillName || nativeSkillInvalid(skillName, instance.instanceID)) continue;
                     if (v2) {
                         if (!buildSkillActionContext(player, instance, request.reason, request.pattern, playAction)) continue;
                     } else {
@@ -3367,7 +3496,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
         if ((instance.skillName == "ol2shanjia" || instance.skillName == "jiewan")
             && !aiRound52OlspQuestion(request, player)) continue;
         AiSkillActionContext action;
-        if (player->isSkillInvalid(instance.skillName, instance.instanceID)
+        if (nativeSkillInvalid(instance.skillName, instance.instanceID)
             || !buildSkillActionContext(player, instance, request.reason, request.pattern, action)) continue;
         const int scopeId = nextScope++;
         const QJsonObject identity = responseIdentity(action);
@@ -5497,13 +5626,27 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
         bool enabled = false;
         for (const SkillInstance &instance : player->getSkillInstances()) {
             if (activation.ownerObjectName != player->objectName() || instance.key() != activation.key
-                || player->isSkillInvalid(instance.skillName, instance.instanceID)) continue;
+                || ([&] {
+                    std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+                    auto *gameLua=m_room.roomRuntime()->lua().rawState();
+                    if(parentRequest.kind==AIRequest::Activate&&request.kind==AIRequest::Activate
+                        &&request.reason==CardUseStruct::CARD_USE_REASON_PLAY
+                        &&!inAIRound56ProjectionScope(m_room,gameLua))
+                        validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+                    return player->isSkillInvalid(instance.skillName,instance.instanceID);
+                }())) continue;
             AiSkillActionContext current;
             enabled = buildSkillActionContext(player, instance, request.reason, request.pattern, current)
                 && current.sourceRef == source;
             break;
         }
         if (!enabled) return failure("strategy seed activation changed");
+        std::unique_ptr<AIRound56ZunweiSeedScope> zunweiSource;
+        if(parentRequest.kind==AIRequest::Activate&&request.kind==AIRequest::Activate
+            &&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&request.pattern.isEmpty()
+            &&skillName=="zunwei"&&prototype=="ZunweiCard"
+            &&!inAIRound56ProjectionScope(m_room,m_room.roomRuntime()->lua().rawState()))
+            zunweiSource.reset(new AIRound56ZunweiSeedScope(m_room,player,m_room.roomRuntime()->lua().rawState()));
         std::unique_ptr<SkillCard> card(prototype.startsWith('#')
             ? LuaSkillCard::Parse(prototype + ":.:") : Sanguosha->cloneSkillCard(prototype));
         if (!card || !card->getSubcards().isEmpty()) return failure("legacy strategy prototype unavailable");
@@ -5559,6 +5702,7 @@ QJsonObject AiDecisionCoordinator::resolveConversionProposal(const AIRequest &pa
             candidate.cardId = -1000000-scopeId;
             result.insert("candidate", responseCandidateJson(candidate));
         }
+        zunweiSource.reset(); // All native evaluation ends before DTO publication.
         if (!aiRound44RangeRequestCurrent(m_room,parentRequest)) return failure("strategy prototype changed state");
         if (nestedPlay) {
             const auto recipeKey = m_room.roomRuntime()->ai().issueReadonlyCard(parentRequest,
@@ -7810,6 +7954,14 @@ bool AiDecisionCoordinator::buildSkillActionContext(
     AiSkillActionContext &actionContext) const
 {
     if (!player || !player->hasSkillInstance(instance.skillName, instance.instanceID)) return false;
+    const auto nativeSkillInvalid = [&](const QString &name, int instanceId) {
+        std::unique_ptr<AIRound56SkillValidityScope> validitySource;
+        auto *gameLua=m_room.roomRuntime()->lua().rawState();
+        if(reason==CardUseStruct::CARD_USE_REASON_PLAY&&pattern.isEmpty()
+            &&!inAIRound56ProjectionScope(m_room,gameLua))
+            validitySource.reset(new AIRound56SkillValidityScope(m_room,player,gameLua));
+        return player->isSkillInvalid(name,instanceId);
+    };
     const ViewAsSkill *native = Sanguosha->getViewAsSkill(instance.skillName);
     const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(native);
     if (!skill) {
@@ -7836,7 +7988,7 @@ bool AiDecisionCoordinator::buildSkillActionContext(
             && pattern == "@@" + instance.skillName
             && aiRound52OlspInstance(m_room, player, instance.skillName, instance.instanceID);
         if (!native || (!auditedV1.contains(instance.skillName) && !nestedJieyingh && !promptedZhifeng && !jijiaoPlay && !zunweiPlay && !olspResponse)
-            || player->isSkillInvalid(instance.skillName, instance.instanceID)) return false;
+            || nativeSkillInvalid(instance.skillName, instance.instanceID)) return false;
         const bool play = reason == CardUseStruct::CARD_USE_REASON_PLAY;
         if (play ? !native->isEnabledAtPlay(player) : !native->isEnabledAtResponse(player, pattern)) return false;
         actionContext.activationRef = SkillInstanceRef(player->objectName(), instance.key());

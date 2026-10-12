@@ -85,7 +85,7 @@ WrappedCard::WrappedCard(Card *card)
 // Private, once per object, and called only by the public-definition factory
 // loop. A generic constructor/adoption never obtains this structural receipt.
 WrappedCard::WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThread *ownerThread,
-                         bool originalDefinitionSource)
+                         bool originalDefinitionSource, bool originalDefinitionIdSource)
     : WrappedCard(nullptr)
 {
     // The actual public factory source, not a later selected-object scan.
@@ -93,6 +93,8 @@ WrappedCard::WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThr
         && clone->aiRound56IdWriteEpoch() == 1
         && clone->aiRound56MaterialWriteEpoch() == 1
         && (clone->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+    const bool originalCloneId = originalDefinitionIdSource && clone
+        && clone->aiRound56IdWriteEpoch() == 1;
     setAdoptionOwnerThread(ownerThread);
     copyEverythingFrom(clone);
     // Exact writer postcondition, not a scan/regrant of an existing instance.
@@ -106,6 +108,8 @@ WrappedCard::WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThr
             && aiRound56ScalarWriteEpoch() == 2
             && (aiRound56OriginalRecursiveFieldOrigins() & 2u) == 2u
             && (clone->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+        m_aiRound56OriginalCloneId = originalCloneId && m_aiRound56BornInnerLifetime
+            && aiRound56IdWriteEpoch() == 1 && clone->aiRound56IdWriteEpoch() == 2;
         m_aiRound56PhysicalCloneBirth.store(true, std::memory_order_release);
     }
 }
@@ -132,6 +136,32 @@ bool WrappedCard::aiRound56PhysicalCloneIdentityOrigin(int *definitionId) const 
         return false;
     if (definitionId) *definitionId = m_aiRound56BornDefinitionId;
     return true;
+}
+
+bool WrappedCard::aiRound56PhysicalCloneIdOrigin(int *definitionId) const noexcept
+{
+    if (!m_aiRound56PhysicalCloneBirth.load(std::memory_order_acquire)
+        || !m_aiRound56OriginalCloneId || !m_aiRound56BornInnerLifetime
+        || !globalCardLifetimeManager().isLive(m_aiRound56BornInnerLifetime)) return false;
+    // As with the stronger lineage above, callers require native confinement.
+    // The lifetime token is an identity check, not a pin or a field mutex.
+    const auto *inner = static_cast<const Card *>(m_aiRound56BornInnerLifetime->address);
+    if (aiRound56IdWriteEpoch() != 1 || inner->aiRound56IdWriteEpoch() != 2)
+        return false;
+    if (definitionId) *definitionId = m_aiRound56BornDefinitionId;
+    return true;
+}
+
+const Card *WrappedCard::aiRound56PhysicalCloneOwnedFaceOrigin() const noexcept
+{
+    // The original RoomState constructor records this token after successful
+    // first adoption. Every later adoption attempt (even equal/null/failed)
+    // permanently clears the birth bit BEFORE touching m_card. Mutable face
+    // fields need not be pristine; this receipt proves custody, not values.
+    // Retain the scope's independently required canonical physical-ID history
+    // continuously as well; equal ID writes cannot keep a stale policy grant.
+    if (!aiRound56PhysicalCloneIdOrigin(nullptr)) return nullptr;
+    return static_cast<const Card *>(m_aiRound56BornInnerLifetime->address);
 }
 
 WrappedCard::~WrappedCard()

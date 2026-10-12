@@ -208,3 +208,5 @@ void recordAIRound56ProjectionOwnerSourceCard(Room&r,const Player*owner,const Ca
   ||active->d->viewer.data()!=owner)return;
  recordAIRound56ProjectionSourceCard(r,c,name);
 }
+
+bool aiRound56OrdinaryCardPolicyType(const Card *card) noexcept { return ordinaryPolicy(card); }

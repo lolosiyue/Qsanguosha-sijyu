@@ -17,4 +17,13 @@ void retireAIRound56PlayerSkillsOrigin(const Player*) noexcept;
 // empty and have had no writer attempt. This is not metadata/effect authority.
 bool hasAIRound56PlayerEmptyPublicCardsOrigin(const Player&) noexcept;
 void retireAIRound56PlayerPublicCardsOrigin(const Player*) noexcept;
+// Source-owned hand additions only. This fact is independent of hand contents,
+// and never recovers after an unknown writer or canonical map replacement.
+// Receiver lifetime and coherent native execution remain separate obligations.
+bool hasAIRound56PlayerCanonicalHandOrigin(const Player&) noexcept;
+void retireAIRound56PlayerCanonicalHandOrigin(const Player*) noexcept;
+// Constructor-empty limitation source. Every public writer attempt retires it,
+// including clears/removals/copy, regardless of current contents or equality.
+bool hasAIRound56PlayerEmptyLimitationsOrigin(const Player&) noexcept;
+void retireAIRound56PlayerLimitationsOrigin(const Player*) noexcept;
 #endif

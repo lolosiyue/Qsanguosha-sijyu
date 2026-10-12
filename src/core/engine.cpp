@@ -1,7 +1,91 @@
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-factory-source.h"
 #include "ai-strategy-round47-xufa-query-scope.h"
 #include "ai-strategy-round45-continuity.h"
 #include "ai-owner-range-query-scope.h"
 #include "engine.h"
+#include <QMutexLocker>
+#include "card.h"
+#include "card-lifetime-manager.h"
+
+namespace {
+struct PublishedCardDefinitions {
+    QMutex mutex;
+    QHash<const QObject *, const Engine *> cards;
+    QHash<const QObject *, const Engine *> owners;
+};
+Q_GLOBAL_STATIC(PublishedCardDefinitions, publishedCardDefinitions)
+// This lock protects only registry storage/copies. Never hold it across a clone,
+// callback, QObject allocation/destruction, event dispatch or Lua execution.
+struct FactoryRegistrySource {
+    QMutex mutex;
+    struct Origin { bool valid = true; QList<const Card *> equipment; };
+    QHash<const Engine *, Origin> origins;
+};
+Q_GLOBAL_STATIC(FactoryRegistrySource, factoryRegistrySource)
+void observeGlobalFactoryWriter(const Engine *engine)
+{
+    auto &source = *factoryRegistrySource;
+    QMutexLocker lock(&source.mutex);
+    auto it = source.origins.find(engine);
+    if (it != source.origins.end()) it->valid = false;
+}
+
+
+void publishGlobalCardDefinitions(Engine *engine, const QList<const Card *> &cards)
+{
+    auto &registry = *publishedCardDefinitions;
+    QMutexLocker locker(&registry.mutex);
+    for (const Card *card : cards) {
+        if (!card) continue;
+        globalCardLifetimeManager().observeCard(const_cast<Card *>(card), true);
+        registry.cards.insert(card, engine);
+        for (const QObject *owner = card; owner; owner = owner->parent())
+            registry.owners.insert(owner, engine);
+    }
+}
+
+void releaseGlobalCardDefinitions(const Engine *engine)
+{
+    auto &registry = *publishedCardDefinitions;
+    QMutexLocker locker(&registry.mutex);
+    for (auto it = registry.cards.begin(); it != registry.cards.end(); )
+        if (it.value() == engine) it = registry.cards.erase(it); else ++it;
+    for (auto it = registry.owners.begin(); it != registry.owners.end(); )
+        if (it.value() == engine) it = registry.owners.erase(it); else ++it;
+}
+}
+
+bool isPublishedGlobalCard(const QObject *object)
+{
+    auto &registry = *publishedCardDefinitions;
+    QMutexLocker locker(&registry.mutex);
+    return registry.cards.contains(object);
+}
+
+bool hasPublishedGlobalCardOwnership(const QObject *object)
+{
+    auto &registry = *publishedCardDefinitions;
+    QMutexLocker locker(&registry.mutex);
+    return registry.owners.contains(object);
+}
+
+bool canReparentDefinitionObject(const QObject *object, const QObject *parent)
+{
+    auto &registry = *publishedCardDefinitions;
+    QMutexLocker locker(&registry.mutex);
+    // Any attachment/removal beneath a published owner changes the native
+    // findChildren catalogue traversal, including an intermediate General or
+    // a package with no cards. Protect only ownership here; unrelated Skill
+    // names/properties and every Room-local tree retain their existing API.
+    const auto beneathPublishedOwner = [&](const QObject *node) {
+        for (; node; node = node->parent())
+            if (registry.owners.contains(node)) return true;
+        return false;
+    };
+    return !beneathPublishedOwner(object) && !beneathPublishedOwner(parent);
+}
+
 #include "standard.h"
 #include "maneuvering.h"
 #include <typeinfo>
@@ -500,6 +584,7 @@ void Engine::_loadModScenarios()
 
 void Engine::addPackage(const QString &name)
 {
+    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
     QSanStartupTiming startupPhase("package.lookup", QString(), true);
     // Prevent duplicates; packages are direct Engine children, so recursive lookup would also search every general, skill and card.
     if (findChild<const Package*>(name, Qt::FindDirectChildrenOnly)) {
@@ -685,7 +770,8 @@ Engine::Engine(bool isManualMode)
 
     // V2 actions travel as this core proxy, independently of content packages.
     // Without its factory, Card::Parse rejects Mark Card replies as empty plays.
-    metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject);
+    { QMutexLocker lock(&factoryRegistrySource->mutex);
+      metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject); }
 
     QString packageError;
     if (!QSanPackages::prepareRuntime(&packageError)) {
@@ -889,6 +975,18 @@ Engine::Engine(bool isManualMode)
 #endif // Q_OS_ANDROID
 
     startupPhase.next("engine.finalize");
+    QList<const Card *> publishedCards;
+    for (const Card *card : std::as_const(cards)) publishedCards.append(card);
+    publishedCards.append(LuaSkillCard::globalDefinitionTemplates());
+    publishGlobalCardDefinitions(this, publishedCards);
+    {
+        FactoryRegistrySource::Origin origin;
+        for (const Card *card : findChildren<EquipCard *>()) origin.equipment.append(card);
+        QMutexLocker lock(&factoryRegistrySource->mutex);
+        factoryRegistrySource->origins.insert(this, std::move(origin));
+    }
+
+
     if (isManualMode) {
         ManualSkillList allSkills;
         foreach (const General*general, getAllGenerals()) {
@@ -1060,6 +1158,10 @@ bool Engine::addGameMode(const GameModeStruct &mode)
 
 Engine::~Engine()
 {
+    { QMutexLocker lock(&factoryRegistrySource->mutex); factoryRegistrySource->origins.remove(this); }
+    // Engine shutdown already requires all Room readers to have joined. Only
+    // destruction releases publication; rejected writes never clear the seal.
+    releaseGlobalCardDefinitions(this);
     delete m_customScene;
     delete m_testScene;
     if (LuaRuntime::current() == m_bootstrapLua.get())
@@ -1221,6 +1323,11 @@ QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 
 void Engine::addPackage(Package*package)
 {
+    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
+    if (!canReparentDefinitionObject(package, nullptr)) {
+        qWarning("Published global card package registration rejected");
+        return;
+    }
     markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
@@ -1241,14 +1348,18 @@ void Engine::addPackage(Package*package)
     related_skills.unite(package->getRelatedSkills());
 
 	foreach (Card*card, package->findChildren<Card*>()) {
-        const int physicalDefinitionIndex = cards.length();
+        int physicalDefinitionIndex;
+        { QMutexLocker lock(&factoryRegistrySource->mutex); physicalDefinitionIndex=cards.length(); }
+        // Keep the original virtual setup outside the container lock.
         card->setId(physicalDefinitionIndex);
         card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
-        cards << card;
-		m_packageCardIds[package->objectName()] << card->getId();
-		if (m_loadingLuaDefinitions) {
-			m_luaCardIds.insert(card->getId());
-		}
+        const int registeredId=card->getId();
+        { QMutexLocker lock(&factoryRegistrySource->mutex);
+          cards << card;
+          if(m_loadingLuaDefinitions)m_luaCardIds.insert(registeredId);
+        }
+        m_packageCardIds[package->objectName()] << registeredId;
+		QMutexLocker factoryMapLock(&factoryRegistrySource->mutex);
 		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
@@ -1327,9 +1438,17 @@ void Engine::addPackage(Package*package)
 		m_luaPackageNames.insert(package->objectName());
 
     foreach(const QMetaObject*meta, package->getMetaObjects()){
+        QMutexLocker factoryMapLock(&factoryRegistrySource->mutex);
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
 	}
+    // Later native catalogue additions publish only after their own assembly.
+    // Bootstrap packages are sealed together after all authored Lua setup.
+    if (hasPublishedGlobalCardOwnership(this)) {
+        QList<const Card *> added;
+        for (const Card *card : package->findChildren<Card *>()) added.append(card);
+        publishGlobalCardDefinitions(this, added);
+    }
 }
 
 void Engine::addBanPackage(const QString &package_name)
@@ -1388,6 +1507,11 @@ Package *Engine::clonePackageDefinition(const QString &objectName) const
 
 void Engine::setPackage(Package*package)
 {
+    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
+    if (!canReparentDefinitionObject(package, nullptr)) {
+        qWarning("Published global card package registration rejected");
+        return;
+    }
     markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
@@ -1400,15 +1524,21 @@ void Engine::setPackage(Package*package)
     //sp_convert_pairs.unite(package->getConvertPairs());
 
     foreach (Card*card, package->findChildren<Card*>()) {
-        if (card->getId()>=0||cards.contains(card)) continue;
-		const int physicalDefinitionIndex = cards.length();
-		card->setId(physicalDefinitionIndex);
-		card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
-        cards << card;
-		m_packageCardIds[package->objectName()] << card->getId();
-		if (m_loadingLuaDefinitions) {
-			m_luaCardIds.insert(card->getId());
-		}
+        if(card->getId()>=0)continue;
+        int physicalDefinitionIndex;
+        { QMutexLocker lock(&factoryRegistrySource->mutex);
+          if(cards.contains(card))continue;
+          physicalDefinitionIndex=cards.length();
+        }
+        card->setId(physicalDefinitionIndex);
+        card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
+        const int registeredId=card->getId();
+        { QMutexLocker lock(&factoryRegistrySource->mutex);
+          cards << card;
+          if(m_loadingLuaDefinitions)m_luaCardIds.insert(registeredId);
+        }
+        m_packageCardIds[package->objectName()] << registeredId;
+		QMutexLocker factoryMapLock(&factoryRegistrySource->mutex);
 		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
@@ -1481,10 +1611,18 @@ void Engine::setPackage(Package*package)
 			m_luaGeneralNames.insert(general->objectName());
     }
     foreach(const QMetaObject*meta, package->getMetaObjects()){
+        QMutexLocker factoryMapLock(&factoryRegistrySource->mutex);
 		if(metaobjects.contains(meta->className())) continue;
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
 	}
+    // Later native catalogue additions publish only after their own assembly.
+    // Bootstrap packages are sealed together after all authored Lua setup.
+    if (hasPublishedGlobalCardOwnership(this)) {
+        QList<const Card *> added;
+        for (const Card *card : package->findChildren<Card *>()) added.append(card);
+        publishGlobalCardDefinitions(this, added);
+    }
 }
 
 QStringList Engine::getZhinangCards() const
@@ -1559,15 +1697,20 @@ bool Engine::matchPattern(const QString &pattern, const Player*player, const Car
 
 bool Engine::matchExpPattern(const QString &pattern, const Player*player, const Card*card) const
 {
-    ExpPattern*ptn = exp_patterns.value(pattern, nullptr);
-    if (ptn==nullptr) {
-		ptn = new ExpPattern(pattern);
-		exp_patterns.insert(pattern, ptn);
-	}
-	return ptn->match(player, card);
-	/*
-	ExpPattern p(pattern);
-    return p.match(player, card);*/
+    QSharedPointer<const ExpPattern> ptn;
+    {
+        QMutexLocker locker(&exp_patterns_mutex);
+        ptn = exp_patterns.value(pattern);
+        if (ptn.isNull()) {
+            // ExpPattern construction only parses the expression; no card/player
+            // callbacks run here. Publish once even for concurrent cache misses.
+            ptn.reset(new ExpPattern(pattern));
+            exp_patterns.insert(pattern, ptn);
+        }
+    }
+    // Matching can reenter the engine or invoke virtual card/player methods.
+    // Keep the parsed value alive without holding the cache mutex across them.
+    return ptn->match(player, card);
 }
 
 Card::HandlingMethod Engine::getCardHandlingMethod(const QString &method_name) const
@@ -1827,8 +1970,9 @@ const Card*Engine::getEngineCard(int cardId) const
 	if (runtime) {
 		const Card *runtimeCard = runtime->engineCard(cardId);
 		if (runtimeCard) return runtimeCard;
-		if (m_luaCardIds.contains(cardId)) return nullptr;
 	}
+    QMutexLocker lock(&factoryRegistrySource->mutex);
+    if(runtime&&m_luaCardIds.contains(cardId))return nullptr;
 	return cards.value(cardId,nullptr);
 }
 
@@ -1859,6 +2003,10 @@ Card*Engine::cloneCard(const Card*card) const
 // authored clone. All alternatives are public registered definitions.
 bool Engine::aiRound56StandardCloneFactory(const QString &name) const
 {
+ QHash<QString, const Card *> namedSnapshot;
+ QHash<QString, const QMetaObject *> metaSnapshot;
+ { QMutexLocker lock(&factoryRegistrySource->mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
+
  RoomRuntime *runtime=currentRoomRuntime();
  if(HegemonyMode::enabledForCatalog(runtime!=nullptr))return false;
  // Bootstrap can fall back to the earlier Engine catalogue before the Room
@@ -1869,34 +2017,38 @@ bool Engine::aiRound56StandardCloneFactory(const QString &name) const
  if(name==QStringLiteral("OffensiveHorse")){horseMeta=&OffensiveHorse::staticMetaObject;horseType=&typeid(OffensiveHorse);}
  if(name==QStringLiteral("DefensiveHorse")){horseMeta=&DefensiveHorse::staticMetaObject;horseType=&typeid(DefensiveHorse);}
  if(horseMeta){
-  const Card *globalTemplate=name2cards.value(name,nullptr);
-  const QMetaObject *globalFactory=metaobjects.value(name,nullptr);
+  const Card *globalTemplate=namedSnapshot.value(name,nullptr);
+  const QMetaObject *globalFactory=metaSnapshot.value(name,nullptr);
   if(globalTemplate&&(typeid(*globalTemplate)!=*horseType||globalTemplate->metaObject()!=horseMeta))return false;
   if(globalFactory&&globalFactory!=horseMeta)return false;
   return globalTemplate||globalFactory;
  }
  const Card *c=runtime?runtime->cardTemplate(name):nullptr;
- if(!c)c=name2cards.value(name,nullptr);
+ if(!c)c=namedSnapshot.value(name,nullptr);
  const QMetaObject *expected=nullptr;const std::type_info *type=nullptr;
 #define R56_FACTORY(N,T) if(name==QStringLiteral(N)){expected=&T::staticMetaObject;type=&typeid(T);}
  R56_FACTORY("jink",Jink) R56_FACTORY("slash",Slash) R56_FACTORY("peach",Peach)
  R56_FACTORY("fire_slash",FireSlash) R56_FACTORY("thunder_slash",ThunderSlash) R56_FACTORY("analeptic",Analeptic)
- R56_FACTORY("dismantlement",Dismantlement)
+ R56_FACTORY("dismantlement",Dismantlement) R56_FACTORY("ex_nihilo",ExNihilo)
 #undef R56_FACTORY
  if(!expected)return false;
  // Exact outer type makes the following metaObject/getPackage dispatch fixed.
  // Rejecting a heg overlay is conservative: normal cloneCard would fall back.
  if(c)return typeid(*c)==*type&&c->metaObject()==expected
   &&!isOriginalHegemonyCardPackage(c->getPackage());
- return metaobjects.value(name,nullptr)==expected;
+ return metaSnapshot.value(name,nullptr)==expected;
 }
 
 Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const QStringList &flags) const
 {
+    QHash<QString, const Card *> namedSnapshot;
+    QHash<QString, const QMetaObject *> metaSnapshot;
+    { QMutexLocker lock(&factoryRegistrySource->mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
+
     Card*card = nullptr;
 	RoomRuntime *runtime = currentRoomRuntime();
 	const bool hegemony = HegemonyMode::enabledForCatalog(runtime != nullptr);
-	const Card *modeTemplate = hegemony ? name2cards.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
+	const Card *modeTemplate = hegemony ? namedSnapshot.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
 	if (modeTemplate && runtime) {
 		// Resolve the physical template, not just its class: multiple horses share a class.
 		const Card *overlay = runtime->engineCard(modeTemplate->getId());
@@ -1907,7 +2059,7 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 	if (!hegemony && cardTemplate && isOriginalHegemonyCardPackage(cardTemplate->getPackage())
 		&& name != QString::fromLatin1(cardTemplate->metaObject()->className()))
 		cardTemplate = nullptr;
-	if (!cardTemplate) cardTemplate = name2cards.value(name, nullptr);
+	if (!cardTemplate) cardTemplate = namedSnapshot.value(name, nullptr);
 	if(cardTemplate){
 		const Card*lcard = cardTemplate;
 		if(lcard->inherits("LuaBasicCard"))
@@ -1926,8 +2078,8 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 			card = qobject_cast<const LuaTreasure*>(lcard)->clone(suit,number);
 		else
 			card = qobject_cast<Card*>(lcard->metaObject()->newInstance(Q_ARG(Card::Suit,suit),Q_ARG(int,number)));
-	}else if(metaobjects.contains(name))
-		card = qobject_cast<Card*>(metaobjects.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number)));
+	}else if(metaSnapshot.contains(name))
+		card = qobject_cast<Card*>(metaSnapshot.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number)));
 	/*if (metaobjects.contains(name)){
 		QObject*card_obj = metaobjects.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number));
 		card_obj->setObjectName(className2objectName.value(name, name));
@@ -1963,20 +2115,27 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 		else if(name!=card->getClassName())
 			card->setObjectName(name);
 	}
+    AIRound56CardRulesCloneBirth(this,card,name);
     return card;
 }
 
 SkillCard*Engine::cloneSkillCard(const QString &name) const
 {
+    QHash<QString, const Card *> namedSnapshot;
+    QHash<QString, const QMetaObject *> metaSnapshot;
+    { QMutexLocker lock(&factoryRegistrySource->mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
+
 	RoomRuntime *runtime = currentRoomRuntime();
 	const Card *runtimeTemplate = runtime ? runtime->cardTemplate(name) : nullptr;
+    SkillCard *card=nullptr;
 	if (runtimeTemplate)
-		return qobject_cast<SkillCard *>(runtimeTemplate->metaObject()->newInstance());
-	if(metaobjects.contains(name))
-		return qobject_cast<SkillCard*>(metaobjects.value(name)->newInstance());
-    if (name2cards.contains(name))
-		return qobject_cast<SkillCard*>(name2cards.value(name)->metaObject()->newInstance());
-	return nullptr;
+		card=qobject_cast<SkillCard *>(runtimeTemplate->metaObject()->newInstance());
+	else if(metaSnapshot.contains(name))
+		card=qobject_cast<SkillCard*>(metaSnapshot.value(name)->newInstance());
+    else if (namedSnapshot.contains(name))
+		card=qobject_cast<SkillCard*>(namedSnapshot.value(name)->metaObject()->newInstance());
+    AIRound56ZunweiSkillCloneBirth(this,card,name);
+	return card;
 }
 
 #ifndef USE_BUILDBOT
@@ -2477,7 +2636,9 @@ QString Engine::getRoleByAbbreviation(const QString& targetValue, const QString&
 int Engine::getCardCount() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return runtime ? runtime->cardCount(cards.length()) : cards.length();
+    int bootstrapCount;
+    { QMutexLocker lock(&factoryRegistrySource->mutex); bootstrapCount=cards.length(); }
+    return runtime ? runtime->cardCount(bootstrapCount) : bootstrapCount;
 }
 
 QStringList Engine::getLords(bool contain_banned) const
@@ -2952,19 +3113,20 @@ const ProhibitPindianSkill*Engine::isPindianProhibited(const Player*from, const 
 const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card, Card::HandlingMethod method, bool isHandcard) const
 {
     AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true,false,false,true);
-    static QMap<Card::HandlingMethod, QString> method_map;
-    if (method_map.isEmpty()) {
-        method_map.insert(Card::MethodUse, "use");
-        method_map.insert(Card::MethodResponse, "response");
-        method_map.insert(Card::MethodDiscard, "discard");
-        method_map.insert(Card::MethodRecast, "recast");
-        method_map.insert(Card::MethodPindian, "pindian");
-        method_map.insert(Card::MethodIgnore, "ignore");
-        method_map.insert(Card::MethodEffect, "effect");
-        method_map.insert(Card::MethodMove, "move");
-        method_map.insert(Card::MethodGet, "get");
+    // Immutable per-call dispatch avoids shared lazy map writes before lua_mutex.
+    QString method_name;
+    switch (method) {
+    case Card::MethodUse: method_name = QStringLiteral("use"); break;
+    case Card::MethodResponse: method_name = QStringLiteral("response"); break;
+    case Card::MethodDiscard: method_name = QStringLiteral("discard"); break;
+    case Card::MethodRecast: method_name = QStringLiteral("recast"); break;
+    case Card::MethodPindian: method_name = QStringLiteral("pindian"); break;
+    case Card::MethodIgnore: method_name = QStringLiteral("ignore"); break;
+    case Card::MethodEffect: method_name = QStringLiteral("effect"); break;
+    case Card::MethodMove: method_name = QStringLiteral("move"); break;
+    case Card::MethodGet: method_name = QStringLiteral("get"); break;
+    default: break;
     }
-    QString method_name = method_map.value(method, "");
 	if(method_name=="") return nullptr;
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_isCardLimited);
 
@@ -3770,8 +3932,10 @@ bool Engine::aiRound56PublicPhysicalMetadataDefinitions(QString *why) const
             && (definition->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
     };
     // Include global fallback even when a runtime definition overlays it.
-    for (int id = 0; id < cards.size(); ++id)
-        if (!known(cards.at(id), id))
+    QList<Card *> physicalSnapshot;
+    { QMutexLocker lock(&factoryRegistrySource->mutex); physicalSnapshot=cards; }
+    for (int id = 0; id < physicalSnapshot.size(); ++id)
+        if (!known(physicalSnapshot.at(id), id))
             return fail("global physical metadata definition/index source unavailable");
     // Public runtime indices include runtime overlays, Lua additions and the
     // original global fallback. No player/container/card selection is read.
@@ -3779,6 +3943,41 @@ bool Engine::aiRound56PublicPhysicalMetadataDefinitions(QString *why) const
         if (!known(getEngineCard(id), id))
             return fail("runtime physical metadata definition/index source unavailable");
     return true;
+}
+
+// Exact patterns(true) getter family: objectName, getClassName, getPackage,
+// getTypeId. It reads no suit/material/change-card/flags, target policy or Self.
+// Full public registry source precedes every lookup; no selected card can grant.
+bool Engine::aiRound56PublicPatternMetadataDefinitions(Room &room,QString *why) const
+{
+    const auto fail=[why](const char *text){if(why)*why=QString::fromLatin1(text);return false;};
+    auto *runtime=room.roomRuntime();
+    if(this!=Sanguosha||!runtime||runtime->isClosing()||!runtime->lua().isCurrentThreadOwner()
+       ||currentRoomRuntime()!=runtime||!hasAIRound56GlobalFactoryMapOrigin(this)
+       ||!runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState()))
+        return fail("patterns original global/Room catalogue source unavailable");
+    const auto known=[](const Card *card){
+        if(!card)return true; // Public sparse definition slot, preserved.
+        const unsigned mask=aiRound56CardMetadataSourceEffects(typeid(*card));
+        // Unknown implementations and WrappedCard delegations are not admitted.
+        return (mask&1u)!=0&&(mask&8u)==0;
+    };
+    QList<Card *> physicalSnapshot;
+    { QMutexLocker lock(&factoryRegistrySource->mutex);
+      const auto origin=factoryRegistrySource->origins.constFind(this);
+      if(origin==factoryRegistrySource->origins.cend()||!origin->valid)
+          return fail("patterns global source changed before snapshot");
+      physicalSnapshot=cards;
+    }
+    for(const Card *card:physicalSnapshot)
+        if(!known(card)||(card&&!isPublishedGlobalCard(card)))
+            return fail("patterns global metadata implementation/custody unavailable");
+    // getEngineCard implements the actual Room overlay/normal global fallback.
+    // Its Room map is source-sealed and confined by this Game runtime binding.
+    for(int id=0;id<getCardCount();++id)
+        if(!known(getEngineCard(id)))return fail("patterns Room metadata implementation unavailable");
+    return hasAIRound56GlobalFactoryMapOrigin(this)
+        &&runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState());
 }
 
 #include "ai-strategy-round56-factory-source.inc"

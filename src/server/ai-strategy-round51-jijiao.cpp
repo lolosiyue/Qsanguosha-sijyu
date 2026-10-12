@@ -1,3 +1,6 @@
+#include "room-runtime.h"
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round51-jijiao.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai.h"
@@ -9,13 +12,13 @@
 #include <QJsonArray>
 
 namespace {
-bool scope(const AIRequest &r, const ServerPlayer *p) {
+bool scope(const AIRequest &r, const ServerPlayer *p, const std::function<bool()> &query = {}) {
     return p && p->getRoom() && Sanguosha && Sanguosha->currentRoom()==p->getRoom()
         && r.kind==AIRequest::Activate && r.reason==CardUseStruct::CARD_USE_REASON_PLAY
         && r.pattern.isEmpty() && r.viewerObjectName==p->objectName()
         && r.worldView.self.objectName==p->objectName()
         && p->getRoom()->getCurrent()==p && p->getPhase()==Player::Play
-        && p->isAlive() && p->hasSkill("jijiao")
+        && p->isAlive() && (query ? query() : p->hasSkill("jijiao"))
         && aiRound44RangeRequestCurrent(*p->getRoom(),r,p);
 }
 bool exactDiscard(const AICardView &v, const Card *c) {
@@ -29,10 +32,15 @@ bool exactDiscard(const AICardView &v, const Card *c) {
 }
 }
 void projectAIRound51Jijiao(AIRequest &r, Room &room, ServerPlayer *p) {
+    const auto nativeHasJijiao = [&] { return ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,p,gameLua));
+        return p->hasSkill("jijiao"); }()); };
     auto facts=r.worldView.strategyFacts.value("tenyear_hc").toObject();
     facts.remove("JijiaoRecord"); facts.remove("jijiao_discard");
     r.worldView.strategyFacts.insert("tenyear_hc",facts);
-    if(!scope(r,p) || p->getRoom()!=&room) return;
+    if(!scope(r,p,nativeHasJijiao) || p->getRoom()!=&room) return;
     // Exact SWIG QVariant::toIntList (qvariant.i145): append toInt()
     // without an ok filter. Native effect separately uses ListV2I, which
     // skips failed conversions; normal fixed writers store integers only.
@@ -59,7 +67,7 @@ void projectAIRound51Jijiao(AIRequest &r, Room &room, ServerPlayer *p) {
         // Inconsistent/stale public pile, mapping, wrapper or face: omit the
         // membership row (typed unknown). Do not reveal any non-discard location.
     }
-    if(!scope(r,p)) return;
+    if(!scope(r,p,nativeHasJijiao)) return;
     facts.insert("JijiaoRecord",record); facts.insert("jijiao_discard",membership);
     r.worldView.strategyFacts.insert("tenyear_hc",facts);
 }

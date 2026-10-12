@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round28-choice.h"
 #include "ai.h"
@@ -28,7 +30,11 @@ bool disclosed(const AIRequest &r, Room &room, ServerPlayer *p, int id) {
 }
 }
 bool aiRound28NiwoResponseQuestion(const AIRequest &r, Room &room, const ServerPlayer *p) {
- return current(r,room,p) && room.getCurrent()==p && p->hasSkill("ov_niwo")
+ return current(r,room,p) && room.getCurrent()==p && ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("ov_niwo"); }())
   && p->getPhase()==Player::Play && p->getHandcardNum()>0
   && r.kind==AIRequest::UseCard && r.pattern=="@@ov_niwo" && r.prompt=="ov_niwo0"
   && r.reason==CardUseStruct::CARD_USE_REASON_RESPONSE_USE && r.handlingMethod==Card::MethodUse;
@@ -37,7 +43,13 @@ bool aiRound28ChoicePlanningQuestion(const AIRequest &r, Room &room, const Serve
  if(aiRound28NiwoResponseQuestion(r,room,p))return true;
  // Fixed ov_shelie asks before replacing Finish -> NotActive, after its mark
  // increments. The consumed suit tag has already been removed; do not read it.
- return current(r,room,p) && room.getCurrent()==p && p->hasSkill("ov_shelie")
+ return current(r,room,p) && room.getCurrent()==p && ([&] {
+        std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(r.kind==AIRequest::Activate&&r.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,const_cast<ServerPlayer *>(p),gameLua));
+        return p->hasSkill("ov_shelie");
+    }())
   && p->getPhase()==Player::Finish && p->getMark("ov_shelieUse")>0
   && r.kind==AIRequest::Choice && r.choiceOptions.question=="askForChoice"
   && r.choiceOptions.reason=="ov_shelie"

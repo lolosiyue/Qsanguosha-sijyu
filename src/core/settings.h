@@ -2,6 +2,7 @@
 #define _SETTINGS_H
 
 #include <QSettings>
+#include "synchronized-ban-packages.h"
 #include <QtGlobal>
 #ifndef QSAN_ENGINE_BUILD
 #include <QColor>
@@ -65,7 +66,7 @@ public:
     bool EnableMinimizeDialog;
     GameModeStruct GameMode;
     QStringList EnabledPackages;
-    QStringList BanPackages;
+    SynchronizedBanPackages BanPackages;
     bool RandomSeat;
     bool EnableCheat;
     bool FreeChoose;

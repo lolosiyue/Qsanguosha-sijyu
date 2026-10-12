@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round24-choice.h"
 #include "ai-strategy-public-disclosure.h"
 #include "ai.h"
@@ -85,7 +87,8 @@ bool lawfulFace(const AIRequest &request, const ServerPlayer *viewer, int id)
     for(const auto &p:request.worldView.players)for(const auto &row:p.knownCards)if(exactFace(row,card))return true;
     return false;
 }
-bool chumingSource(const AIRequest &request,const ServerPlayer *viewer)
+bool chumingSource(const AIRequest &request,const ServerPlayer *viewer,
+    const std::function<bool()> &query = {})
 {
     if(!current(request,viewer))return false;
     for(const auto &instance:viewer->getSkillInstances()) {
@@ -95,7 +98,7 @@ bool chumingSource(const AIRequest &request,const ServerPlayer *viewer)
     }
     // Direct owner source is legal as a readonly predicate; it does not create
     // the accepted effect state required for payment below.
-    return viewer->hasSkill("chuming");
+    return query ? query() : viewer->hasSkill("chuming");
 }
 }
 
@@ -130,8 +133,13 @@ void projectAIRound24ChoiceRegistry(AIWorldView &world,Room &room)
 }
 void projectAIRound24ChoiceContext(AIRequest &request,Room &room,ServerPlayer *viewer)
 {
+    const auto nativeHasChuming = [&] { return ([&] { std::unique_ptr<AIRound56WorldSkillQueriesScope> source;
+        auto *gameLua=room.roomRuntime()->lua().rawState();
+        if(request.kind==AIRequest::Activate&&request.reason==CardUseStruct::CARD_USE_REASON_PLAY&&!inAIRound56ProjectionScope(room,gameLua))
+            source.reset(new AIRound56WorldSkillQueriesScope(room,viewer,gameLua));
+        return viewer->hasSkill("chuming"); }()); };
     projectAIRound24ChoiceRegistry(request.worldView,room);
-    if(!chumingSource(request,viewer) || !((request.kind==AIRequest::Choice && request.choiceOptions.reason=="chuming")
+    if(!chumingSource(request,viewer,nativeHasChuming) || !((request.kind==AIRequest::Choice && request.choiceOptions.reason=="chuming")
         ||(request.kind==AIRequest::UseCard && request.pattern=="@@chuming!")))return;
     auto props=request.worldView.strategyFacts.value("owner_skill_properties").toObject();
     props.insert("chumingSubcard",viewer->property("chumingSubcard").toString());
