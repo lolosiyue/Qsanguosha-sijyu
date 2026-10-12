@@ -7698,9 +7698,10 @@ bool Room::isPlayOrderReversed() const
 
 void Room::updateCardDescription(const QString &card_name, const QVariantMap &placeholders)
 {
-	JsonArray arg;
-	arg << card_name << placeholders;
-	doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
+	foreach (ServerPlayer *player, getPlayers()) {
+		for (auto it = placeholders.constBegin(); it != placeholders.constEnd(); ++it)
+			player->setCardDescriptionSwap(card_name, it.key(), it.value().toString());
+	}
 }
 
 QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout)

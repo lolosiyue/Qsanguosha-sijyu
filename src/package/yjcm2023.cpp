@@ -124,6 +124,7 @@ public:
         const int distance = ctx.owner->distanceTo(original);
         for (ServerPlayer *target : room->getCardTargets(ctx.owner, use.card, use.to))
             if (ctx.owner->distanceTo(target) == distance) candidates << target;
+        room->setTag("zhituData", QVariant::fromValue(use));
         ctx.targets = room->askForPlayersChosen(ctx.owner, candidates, objectName(), 0, 9,
             "zhitu0:" + use.card->objectName(), false, true);
         return !ctx.targets.isEmpty();
