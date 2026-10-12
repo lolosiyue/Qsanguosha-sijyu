@@ -1028,6 +1028,7 @@ public:
 	void skillInvoked(const Skill*skill, int type = -1, ServerPlayer*owner = nullptr);
 	QList<ServerPlayer*> getRandomTargets(const Card*card, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value, int instanceId = 0);
+	void setCardDescriptionSwap(const char*card_name, const char*key, const char*value);
 	void setAvatarIcon(const char*avatar_name, bool small = false);
 bool damageRevises(QVariant&data, int n);
 
