@@ -11,7 +11,6 @@
 #include "json.h"
 #include "engine-translation-catalog.h"
 #include <QMutex>
-#include <QSharedPointer>
 #include <functional>
 #include <QThread>
 #include <QVariantMap>
@@ -22,15 +21,6 @@
 // lock levels (yield) and re-acquiring them later (restore), which is
 // essential for preventing deadlocks when the server thread sleeps
 // while holding the Lua lock.
-// Published global card QObject API boundary. Identity is recorded at publication,
-// never inferred from the object's current name, parent, property, or Lua alias.
-bool isPublishedGlobalCard(const QObject *object);
-bool hasPublishedGlobalCardOwnership(const QObject *object);
-bool canReparentDefinitionObject(const QObject *object, const QObject *parent);
-
-struct AIFactorySourceReport;
-class Room;
-
 class SafeLuaMutex {
 public:
     void lock();
@@ -87,78 +77,6 @@ private:
     static thread_local TargetModSkillQueryScope *s_current;
 };
 
-// Owner-only hypothetical history, scoped to read-only AI planning. It never
-// edits Player history and nests independently of target-selection replay.
-class AIHistoryQueryScope final {
-public:
-    AIHistoryQueryScope(const Player *owner, const QString &key, int offset);
-    ~AIHistoryQueryScope();
-    static int value(const Player *owner, const QString &key, int actual);
-    static QHash<QString, int> project(const Player *owner, QHash<QString, int> actual);
-    static bool isActive() { return s_current != nullptr; }
-private:
-    Q_DISABLE_COPY(AIHistoryQueryScope)
-    const Player *m_owner;
-    QString m_key;
-    int m_offset;
-    AIHistoryQueryScope *m_previous;
-    static thread_local AIHistoryQueryScope *s_current;
-};
-
-// Read-only substitute for canUse's temporary xiyan mark. This scope never
-// changes marks, emits mark signals or advances a Room revision.
-class AIMarkQueryScope final {
-public:
-    AIMarkQueryScope(const Player *owner, const QString &key, int value);
-    ~AIMarkQueryScope();
-    static int value(const Player *owner, const QString &key, int actual);
-    static QStringList names(const Player *owner, QStringList actual);
-    static bool isActive() { return s_current != nullptr; }
-private:
-    Q_DISABLE_COPY(AIMarkQueryScope)
-    const Player *m_owner;
-    QString m_key;
-    int m_value;
-    AIMarkQueryScope *m_previous;
-    static thread_local AIMarkQueryScope *s_current;
-};
-
-// Native-only owner declaration overlay. Callers validate the declaration
-// key and value before entering; no policy-supplied arbitrary tags are exposed.
-class AITagQueryScope final {
-public:
-    AITagQueryScope(const Player *owner, const QString &key, const QVariant &value);
-    ~AITagQueryScope();
-    static QVariant value(const Player *owner, const QString &key, const QVariant &actual);
-    static bool isActive() { return s_current != nullptr; }
-private:
-    Q_DISABLE_COPY(AITagQueryScope)
-    const Player *m_owner;
-    QString m_key;
-    QVariant m_value;
-    AITagQueryScope *m_previous;
-    static thread_local AITagQueryScope *s_current;
-};
-
-// Native-only hypothetical Tianyi Slash plan. It overlays one owner's distance
-// flag and one evaluation card's target count without writing Player state.
-class AITianyiQueryScope final {
-public:
-    AITianyiQueryScope(const Player *owner, const Card *card, int extraTargets = 1, bool noDistance = true);
-    ~AITianyiQueryScope();
-    static bool noDistance(const Player *owner);
-    static int extraTarget(const Player *owner, const Card *card);
-    static bool isActive() { return s_current != nullptr; }
-private:
-    Q_DISABLE_COPY(AITianyiQueryScope)
-    const Player *m_owner;
-    const Card *m_card;
-    int m_extraTargets;
-    bool m_noDistance;
-    AITianyiQueryScope *m_previous;
-    static thread_local AITianyiQueryScope *s_current;
-};
-
 // Cache identical target, distance and attack-range queries during one unchanged UI refresh.
 // The cache is local to its thread and lifetime and keyed by the server request revision.
 // TargetModSkillQueryScope replay bypasses it.
@@ -175,7 +93,6 @@ private:
     QHash<QString, int> m_values;
     std::function<quint64()> m_revision;
     quint64 m_seenRevision = 0;
-    QString m_printedDefinitionKey;
     TargetModMemoScope *m_previous;
     static thread_local TargetModMemoScope *s_current;
 };
@@ -258,10 +175,6 @@ public:
     QStringList getZhinangCards() const;
     void setZhinangCard(const QString &flag);
     Card *cloneCard(const Card *card) const;
-    bool aiStandardCloneFactory(const QString &name) const;
-    // Public source definitions only; requires separate live-card birth ancestry.
-    bool aiPublicPhysicalMetadataDefinitions(QString *why = nullptr) const;
-    bool aiPublicPatternMetadataDefinitions(Room &, QString *why = nullptr) const;
     Card *cloneCard(const QString &name, Card::Suit suit = Card::NoSuit, int number = 0, const QStringList &flags = QStringList()) const;
     SkillCard *cloneSkillCard(const QString &name) const;
     QString getVersionNumber() const;
@@ -345,7 +258,6 @@ public:
     QStringList getLords(bool contain_banned = false) const;
     QStringList getRandomLords() const;
     QStringList getRandomGenerals(int count, const QSet<QString> &ban_set = QSet<QString>(), const QString &kingdom = "") const;
-    QList<int> getDeckCardIds(bool derivative = false) const;
     QList<int> getRandomCards(bool derivative = false) const;
     QString getRandomGeneralName() const;
     QStringList getLimitedGeneralNames(const QString &kingdom = "" , bool available = true) const;
@@ -418,7 +330,6 @@ private:
     QJsonObject m_rulesLuaSnapshot;
     QStringList m_rulesPackageOrder;
     friend class RoomDefinitionRegistry;
-    friend AIFactorySourceReport inspectAIPublicFactorySources(Room &);
 
     EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);
     RoomRuntime *currentRoomRuntime() const;
@@ -442,10 +353,7 @@ private:
     QSet<QString> m_customModeIds;
     QMultiMap<QString, QString> related_skills;
     mutable QMap<QString, const CardPattern *> patterns;
-    // The cache owns immutable parsed patterns; callers retain a reference while
-    // matching outside the mutex. Engine destruction still requires quiescence.
-    mutable QMutex exp_patterns_mutex;
-    mutable QMap<QString, QSharedPointer<const ExpPattern>> exp_patterns;
+    mutable QMap<QString, ExpPattern *> exp_patterns;
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
     QHash<QString, QHash<QString, QStringList> > m_resourceAliasLists;

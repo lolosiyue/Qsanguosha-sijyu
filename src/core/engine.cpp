@@ -1,125 +1,4 @@
-#include "ai-strategy/native-registry.h"
-#include "ai-strategy/xufa.h"
-#include "ai-strategy/runtime.h"
-#include "ai-owner-range-query-scope.h"
 #include "engine.h"
-#include <QMutexLocker>
-#include "card.h"
-#include "card-lifetime-manager.h"
-
-namespace {
-struct PublishedCardDefinitions {
-    QMutex mutex;
-    QHash<const QObject *, const Engine *> cards;
-    QHash<const QObject *, const Engine *> owners;
-};
-Q_GLOBAL_STATIC(PublishedCardDefinitions, publishedCardDefinitions)
-// This lock protects only registry storage/copies. Never hold it across a clone,
-// callback, QObject allocation/destruction, event dispatch or Lua execution.
-struct FactoryRegistrySource {
-    QMutex mutex;
-    struct Origin { bool valid = true; QList<const Card *> equipment; };
-    QHash<const Engine *, Origin> origins;
-};
-Q_GLOBAL_STATIC(FactoryRegistrySource, factoryRegistrySource)
-#ifdef QSAN_XP_LEGACY
-// Qt 5.6 can select compiler local-static guards even though the XP build
-// disables them. Serialize lazy construction before acquiring either registry's
-// own storage lock; keep Q_GLOBAL_STATIC's lifetime and retry behavior.
-QBasicMutex publishedCardDefinitionsInitializationMutex;
-QBasicMutex factoryRegistrySourceInitializationMutex;
-QBasicMutex cardLimitFilterVerifyInitializationMutex;
-#endif
-PublishedCardDefinitions &globalPublishedCardDefinitions()
-{
-#ifdef QSAN_XP_LEGACY
-    QMutexLocker locker(&publishedCardDefinitionsInitializationMutex);
-#endif
-    return *publishedCardDefinitions;
-}
-FactoryRegistrySource &globalFactoryRegistrySource()
-{
-#ifdef QSAN_XP_LEGACY
-    QMutexLocker locker(&factoryRegistrySourceInitializationMutex);
-#endif
-    return *factoryRegistrySource;
-}
-bool cardLimitFilterVerify()
-{
-#ifdef QSAN_XP_LEGACY
-    QMutexLocker locker(&cardLimitFilterVerifyInitializationMutex);
-#endif
-    static const bool verify = !qgetenv("QSAN_LIMIT_FILTER_VERIFY").isEmpty()
-                              && qgetenv("QSAN_LIMIT_FILTER_VERIFY") != "0";
-    return verify;
-}
-void observeGlobalFactoryWriter(const Engine *engine)
-{
-    auto &source = globalFactoryRegistrySource();
-    QMutexLocker lock(&source.mutex);
-    auto it = source.origins.find(engine);
-    if (it != source.origins.end()) it->valid = false;
-}
-
-
-void publishGlobalCardDefinitions(Engine *engine, const QList<const Card *> &cards)
-{
-    auto &registry = globalPublishedCardDefinitions();
-    QMutexLocker locker(&registry.mutex);
-    for (const Card *card : cards) {
-        if (!card) continue;
-        globalCardLifetimeManager().observeCard(const_cast<Card *>(card), true);
-        registry.cards.insert(card, engine);
-        for (const QObject *owner = card; owner; owner = owner->parent())
-            registry.owners.insert(owner, engine);
-    }
-}
-
-void releaseGlobalCardDefinitions(const Engine *engine)
-{
-    auto &registry = globalPublishedCardDefinitions();
-    QMutexLocker locker(&registry.mutex);
-    for (auto it = registry.cards.begin(); it != registry.cards.end(); )
-        if (it.value() == engine) it = registry.cards.erase(it); else ++it;
-    for (auto it = registry.owners.begin(); it != registry.owners.end(); )
-        if (it.value() == engine) it = registry.owners.erase(it); else ++it;
-}
-}
-
-bool isPublishedGlobalCard(const QObject *object)
-{
-    auto &registry = globalPublishedCardDefinitions();
-    QMutexLocker locker(&registry.mutex);
-    return registry.cards.contains(object);
-}
-
-bool hasPublishedGlobalCardOwnership(const QObject *object)
-{
-    auto &registry = globalPublishedCardDefinitions();
-    QMutexLocker locker(&registry.mutex);
-    return registry.owners.contains(object);
-}
-
-bool canReparentDefinitionObject(const QObject *object, const QObject *parent)
-{
-    auto &registry = globalPublishedCardDefinitions();
-    QMutexLocker locker(&registry.mutex);
-    // Any attachment/removal beneath a published owner changes the native
-    // findChildren catalogue traversal, including an intermediate General or
-    // a package with no cards. Protect only ownership here; unrelated Skill
-    // names/properties and every Room-local tree retain their existing API.
-    const auto beneathPublishedOwner = [&](const QObject *node) {
-        for (; node; node = node->parent())
-            if (registry.owners.contains(node)) return true;
-        return false;
-    };
-    return !beneathPublishedOwner(object) && !beneathPublishedOwner(parent);
-}
-
-#include "standard.h"
-#include "maneuvering.h"
-#include <typeinfo>
-#include "room-definition-registry.h"
 #include "invalidity-gate.h"
 #include "distance-skill-cache.h"
 #include "hegemony-mode.h"
@@ -190,7 +69,7 @@ TargetModMemoScope::~TargetModMemoScope() { s_current = m_previous; }
 
 TargetModMemoScope *TargetModMemoScope::active()
 {
-    if (!s_current || AIOwnerRangeQueryScope::isActive() || TargetModSkillQueryScope::isActive() || AIHistoryQueryScope::isActive() || AIMarkQueryScope::isActive() || AITagQueryScope::isActive() || AITianyiQueryScope::isActive()) return nullptr;
+    if (!s_current || TargetModSkillQueryScope::isActive()) return nullptr;
     if (s_current->m_revision) {
         const quint64 revision = s_current->m_revision();
         if (revision != s_current->m_seenRevision) {
@@ -198,81 +77,7 @@ TargetModMemoScope *TargetModMemoScope::active()
             s_current->m_seenRevision = revision;
         }
     }
-    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
-    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
-    const QString definitionKey = QStringLiteral("printed:%1:%2|").arg(quintptr(runtime))
-        .arg(runtime ? runtime->definitions().printedSkillGeneration() : 0);
-    if (definitionKey != s_current->m_printedDefinitionKey) {
-        s_current->m_values.clear();
-        s_current->m_printedDefinitionKey = definitionKey;
-    }
     return s_current;
-}
-
-thread_local AIHistoryQueryScope *AIHistoryQueryScope::s_current = nullptr;
-AIHistoryQueryScope::AIHistoryQueryScope(const Player *owner, const QString &key, int offset)
-    : m_owner(owner), m_key(key), m_offset(offset), m_previous(s_current) { s_current = this; }
-AIHistoryQueryScope::~AIHistoryQueryScope() { s_current = m_previous; }
-int AIHistoryQueryScope::value(const Player *owner, const QString &key, int actual)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && scope->m_key == key) return actual + scope->m_offset;
-    return actual;
-}
-
-QHash<QString, int> AIHistoryQueryScope::project(const Player *owner, QHash<QString, int> actual)
-{
-    QSet<QString> seen;
-    for (auto *scope = s_current; scope; scope = scope->m_previous) {
-        if (scope->m_owner != owner || seen.contains(scope->m_key)) continue;
-        actual.insert(scope->m_key, actual.value(scope->m_key) + scope->m_offset);
-        seen.insert(scope->m_key);
-    }
-    return actual;
-}
-thread_local AIMarkQueryScope *AIMarkQueryScope::s_current = nullptr;
-AIMarkQueryScope::AIMarkQueryScope(const Player *owner, const QString &key, int value)
-    : m_owner(owner), m_key(key), m_value(value), m_previous(s_current) { s_current = this; }
-AIMarkQueryScope::~AIMarkQueryScope() { s_current = m_previous; }
-int AIMarkQueryScope::value(const Player *owner, const QString &key, int actual)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && scope->m_key == key) return scope->m_value;
-    return actual;
-}
-QStringList AIMarkQueryScope::names(const Player *owner, QStringList actual)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && !actual.contains(scope->m_key)) actual.append(scope->m_key);
-    actual.sort(); return actual;
-}
-
-thread_local AITianyiQueryScope *AITianyiQueryScope::s_current = nullptr;
-AITianyiQueryScope::AITianyiQueryScope(const Player *owner, const Card *card, int extraTargets, bool noDistance)
-    : m_owner(owner), m_card(card), m_extraTargets(extraTargets), m_noDistance(noDistance), m_previous(s_current) { s_current = this; }
-AITianyiQueryScope::~AITianyiQueryScope() { s_current = m_previous; }
-bool AITianyiQueryScope::noDistance(const Player *owner)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && scope->m_noDistance) return true;
-    return false;
-}
-int AITianyiQueryScope::extraTarget(const Player *owner, const Card *card)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && scope->m_card == card) return scope->m_extraTargets;
-    return 0;
-}
-
-thread_local AITagQueryScope *AITagQueryScope::s_current = nullptr;
-AITagQueryScope::AITagQueryScope(const Player *owner, const QString &key, const QVariant &value)
-    : m_owner(owner), m_key(key), m_value(value), m_previous(s_current) { s_current = this; }
-AITagQueryScope::~AITagQueryScope() { s_current = m_previous; }
-QVariant AITagQueryScope::value(const Player *owner, const QString &key, const QVariant &actual)
-{
-    for (auto *scope = s_current; scope; scope = scope->m_previous)
-        if (scope->m_owner == owner && scope->m_key == key) return scope->m_value;
-    return actual;
 }
 
 TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
@@ -287,7 +92,6 @@ TargetModSkillQueryScope::~TargetModSkillQueryScope() { s_current = m_previous; 
 
 int TargetModSkillQueryScope::historyValue(const Player *owner, const QString &key, int value)
 {
-    value = AIHistoryQueryScope::value(owner, key, value);
     // A later explicit target selection may be planned after this use was
     // counted. Discount only that increment in queries, never in real history.
     return s_current && s_current->m_owner == owner && !s_current->m_historyKey.isEmpty()
@@ -614,7 +418,6 @@ void Engine::_loadModScenarios()
 
 void Engine::addPackage(const QString &name)
 {
-    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
     QSanStartupTiming startupPhase("package.lookup", QString(), true);
     // Prevent duplicates; packages are direct Engine children, so recursive lookup would also search every general, skill and card.
     if (findChild<const Package*>(name, Qt::FindDirectChildrenOnly)) {
@@ -800,8 +603,7 @@ Engine::Engine(bool isManualMode)
 
     // V2 actions travel as this core proxy, independently of content packages.
     // Without its factory, Card::Parse rejects Mark Card replies as empty plays.
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-      metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject); }
+    metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject);
 
     QString packageError;
     if (!QSanPackages::prepareRuntime(&packageError)) {
@@ -1005,18 +807,6 @@ Engine::Engine(bool isManualMode)
 #endif // Q_OS_ANDROID
 
     startupPhase.next("engine.finalize");
-    QList<const Card *> publishedCards;
-    for (const Card *card : std::as_const(cards)) publishedCards.append(card);
-    publishedCards.append(LuaSkillCard::globalDefinitionTemplates());
-    publishGlobalCardDefinitions(this, publishedCards);
-    {
-        FactoryRegistrySource::Origin origin;
-        for (const Card *card : findChildren<EquipCard *>()) origin.equipment.append(card);
-        QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-        globalFactoryRegistrySource().origins.insert(this, std::move(origin));
-    }
-
-
     if (isManualMode) {
         ManualSkillList allSkills;
         foreach (const General*general, getAllGenerals()) {
@@ -1188,10 +978,6 @@ bool Engine::addGameMode(const GameModeStruct &mode)
 
 Engine::~Engine()
 {
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex); globalFactoryRegistrySource().origins.remove(this); }
-    // Engine shutdown already requires all Room readers to have joined. Only
-    // destruction releases publication; rejected writes never clear the seal.
-    releaseGlobalCardDefinitions(this);
     delete m_customScene;
     delete m_testScene;
     if (LuaRuntime::current() == m_bootstrapLua.get())
@@ -1363,11 +1149,6 @@ static void addCardNameMetaObject(QHash<QString, const QMetaObject *> &metaobjec
 
 void Engine::addPackage(Package*package)
 {
-    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
-    if (!canReparentDefinitionObject(package, nullptr)) {
-        qWarning("Published global card package registration rejected");
-        return;
-    }
     markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
@@ -1388,18 +1169,12 @@ void Engine::addPackage(Package*package)
     related_skills.unite(package->getRelatedSkills());
 
 	foreach (Card*card, package->findChildren<Card*>()) {
-        int physicalDefinitionIndex;
-        { QMutexLocker lock(&globalFactoryRegistrySource().mutex); physicalDefinitionIndex=cards.length(); }
-        // Keep the original virtual setup outside the container lock.
-        card->setId(physicalDefinitionIndex);
-        card->aiRecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
-        const int registeredId=card->getId();
-        { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-          cards << card;
-          if(m_loadingLuaDefinitions)m_luaCardIds.insert(registeredId);
-        }
-        m_packageCardIds[package->objectName()] << registeredId;
-		QMutexLocker factoryMapLock(&globalFactoryRegistrySource().mutex);
+        card->setId(cards.length());
+        cards << card;
+		m_packageCardIds[package->objectName()] << card->getId();
+		if (m_loadingLuaDefinitions) {
+			m_luaCardIds.insert(card->getId());
+		}
 		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
@@ -1478,18 +1253,10 @@ void Engine::addPackage(Package*package)
 		m_luaPackageNames.insert(package->objectName());
 
     foreach(const QMetaObject*meta, package->getMetaObjects()){
-        QMutexLocker factoryMapLock(&globalFactoryRegistrySource().mutex);
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
 		addCardNameMetaObject(metaobjects, meta);
 	}
-    // Later native catalogue additions publish only after their own assembly.
-    // Bootstrap packages are sealed together after all authored Lua setup.
-    if (hasPublishedGlobalCardOwnership(this)) {
-        QList<const Card *> added;
-        for (const Card *card : package->findChildren<Card *>()) added.append(card);
-        publishGlobalCardDefinitions(this, added);
-    }
 }
 
 void Engine::addBanPackage(const QString &package_name)
@@ -1548,11 +1315,6 @@ Package *Engine::clonePackageDefinition(const QString &objectName) const
 
 void Engine::setPackage(Package*package)
 {
-    if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
-    if (!canReparentDefinitionObject(package, nullptr)) {
-        qWarning("Published global card package registration rejected");
-        return;
-    }
     markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
@@ -1565,21 +1327,13 @@ void Engine::setPackage(Package*package)
     //sp_convert_pairs.unite(package->getConvertPairs());
 
     foreach (Card*card, package->findChildren<Card*>()) {
-        if(card->getId()>=0)continue;
-        int physicalDefinitionIndex;
-        { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-          if(cards.contains(card))continue;
-          physicalDefinitionIndex=cards.length();
-        }
-        card->setId(physicalDefinitionIndex);
-        card->aiRecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
-        const int registeredId=card->getId();
-        { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-          cards << card;
-          if(m_loadingLuaDefinitions)m_luaCardIds.insert(registeredId);
-        }
-        m_packageCardIds[package->objectName()] << registeredId;
-		QMutexLocker factoryMapLock(&globalFactoryRegistrySource().mutex);
+        if (card->getId()>=0||cards.contains(card)) continue;
+		card->setId(cards.length());
+        cards << card;
+		m_packageCardIds[package->objectName()] << card->getId();
+		if (m_loadingLuaDefinitions) {
+			m_luaCardIds.insert(card->getId());
+		}
 		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
@@ -1652,19 +1406,11 @@ void Engine::setPackage(Package*package)
 			m_luaGeneralNames.insert(general->objectName());
     }
     foreach(const QMetaObject*meta, package->getMetaObjects()){
-        QMutexLocker factoryMapLock(&globalFactoryRegistrySource().mutex);
 		if(metaobjects.contains(meta->className())) continue;
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
 		addCardNameMetaObject(metaobjects, meta);
 	}
-    // Later native catalogue additions publish only after their own assembly.
-    // Bootstrap packages are sealed together after all authored Lua setup.
-    if (hasPublishedGlobalCardOwnership(this)) {
-        QList<const Card *> added;
-        for (const Card *card : package->findChildren<Card *>()) added.append(card);
-        publishGlobalCardDefinitions(this, added);
-    }
 }
 
 QStringList Engine::getZhinangCards() const
@@ -1739,20 +1485,15 @@ bool Engine::matchPattern(const QString &pattern, const Player*player, const Car
 
 bool Engine::matchExpPattern(const QString &pattern, const Player*player, const Card*card) const
 {
-    QSharedPointer<const ExpPattern> ptn;
-    {
-        QMutexLocker locker(&exp_patterns_mutex);
-        ptn = exp_patterns.value(pattern);
-        if (ptn.isNull()) {
-            // ExpPattern construction only parses the expression; no card/player
-            // callbacks run here. Publish once even for concurrent cache misses.
-            ptn.reset(new ExpPattern(pattern));
-            exp_patterns.insert(pattern, ptn);
-        }
-    }
-    // Matching can reenter the engine or invoke virtual card/player methods.
-    // Keep the parsed value alive without holding the cache mutex across them.
-    return ptn->match(player, card);
+    ExpPattern*ptn = exp_patterns.value(pattern, nullptr);
+    if (ptn==nullptr) {
+		ptn = new ExpPattern(pattern);
+		exp_patterns.insert(pattern, ptn);
+	}
+	return ptn->match(player, card);
+	/*
+	ExpPattern p(pattern);
+    return p.match(player, card);*/
 }
 
 Card::HandlingMethod Engine::getCardHandlingMethod(const QString &method_name) const
@@ -2012,9 +1753,8 @@ const Card*Engine::getEngineCard(int cardId) const
 	if (runtime) {
 		const Card *runtimeCard = runtime->engineCard(cardId);
 		if (runtimeCard) return runtimeCard;
+		if (m_luaCardIds.contains(cardId)) return nullptr;
 	}
-    QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-    if(runtime&&m_luaCardIds.contains(cardId))return nullptr;
 	return cards.value(cardId,nullptr);
 }
 
@@ -2041,56 +1781,12 @@ Card*Engine::cloneCard(const Card*card) const
     return result;
 }
 
-// Native-only factory metadata proof. Never constructs a card or calls an
-// authored clone. All alternatives are public registered definitions.
-bool Engine::aiStandardCloneFactory(const QString &name) const
-{
- QHash<QString, const Card *> namedSnapshot;
- QHash<QString, const QMetaObject *> metaSnapshot;
- { QMutexLocker lock(&globalFactoryRegistrySource().mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
-
- RoomRuntime *runtime=currentRoomRuntime();
- if(HegemonyMode::enabledForCatalog(runtime!=nullptr))return false;
- // Bootstrap can fall back to the earlier Engine catalogue before the Room
- // has created its own horse definitions. Prove BOTH public global factory
- // alternatives for the complete finite horse-name family; never inspect a
- // Lua correct_func, hidden card, or selected private bootstrap branch.
- const QMetaObject *horseMeta=nullptr;const std::type_info *horseType=nullptr;
- if(name==QStringLiteral("OffensiveHorse")){horseMeta=&OffensiveHorse::staticMetaObject;horseType=&typeid(OffensiveHorse);}
- if(name==QStringLiteral("DefensiveHorse")){horseMeta=&DefensiveHorse::staticMetaObject;horseType=&typeid(DefensiveHorse);}
- if(horseMeta){
-  const Card *globalTemplate=namedSnapshot.value(name,nullptr);
-  const QMetaObject *globalFactory=metaSnapshot.value(name,nullptr);
-  if(globalTemplate&&(typeid(*globalTemplate)!=*horseType||globalTemplate->metaObject()!=horseMeta))return false;
-  if(globalFactory&&globalFactory!=horseMeta)return false;
-  return globalTemplate||globalFactory;
- }
- const Card *c=runtime?runtime->cardTemplate(name):nullptr;
- if(!c)c=namedSnapshot.value(name,nullptr);
- const QMetaObject *expected=nullptr;const std::type_info *type=nullptr;
-#define NATIVE_CARD_FACTORY_CASE(N,T) if(name==QStringLiteral(N)){expected=&T::staticMetaObject;type=&typeid(T);}
- NATIVE_CARD_FACTORY_CASE("jink",Jink) NATIVE_CARD_FACTORY_CASE("slash",Slash) NATIVE_CARD_FACTORY_CASE("peach",Peach)
- NATIVE_CARD_FACTORY_CASE("fire_slash",FireSlash) NATIVE_CARD_FACTORY_CASE("thunder_slash",ThunderSlash) NATIVE_CARD_FACTORY_CASE("analeptic",Analeptic)
- NATIVE_CARD_FACTORY_CASE("dismantlement",Dismantlement) NATIVE_CARD_FACTORY_CASE("ex_nihilo",ExNihilo)
-#undef NATIVE_CARD_FACTORY_CASE
- if(!expected)return false;
- // Exact outer type makes the following metaObject/getPackage dispatch fixed.
- // Rejecting a heg overlay is conservative: normal cloneCard would fall back.
- if(c)return typeid(*c)==*type&&c->metaObject()==expected
-  &&!isOriginalHegemonyCardPackage(c->getPackage());
- return metaSnapshot.value(name,nullptr)==expected;
-}
-
 Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const QStringList &flags) const
 {
-    QHash<QString, const Card *> namedSnapshot;
-    QHash<QString, const QMetaObject *> metaSnapshot;
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
-
     Card*card = nullptr;
 	RoomRuntime *runtime = currentRoomRuntime();
 	const bool hegemony = HegemonyMode::enabledForCatalog(runtime != nullptr);
-	const Card *modeTemplate = hegemony ? namedSnapshot.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
+	const Card *modeTemplate = hegemony ? name2cards.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
 	if (modeTemplate && runtime) {
 		// Resolve the physical template, not just its class: multiple horses share a class.
 		const Card *overlay = runtime->engineCard(modeTemplate->getId());
@@ -2101,7 +1797,7 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 	if (!hegemony && cardTemplate && isOriginalHegemonyCardPackage(cardTemplate->getPackage())
 		&& name != QString::fromLatin1(cardTemplate->metaObject()->className()))
 		cardTemplate = nullptr;
-	if (!cardTemplate) cardTemplate = namedSnapshot.value(name, nullptr);
+	if (!cardTemplate) cardTemplate = name2cards.value(name, nullptr);
 	if(cardTemplate){
 		const Card*lcard = cardTemplate;
 		if(lcard->inherits("LuaBasicCard"))
@@ -2120,8 +1816,8 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 			card = qobject_cast<const LuaTreasure*>(lcard)->clone(suit,number);
 		else
 			card = qobject_cast<Card*>(lcard->metaObject()->newInstance(Q_ARG(Card::Suit,suit),Q_ARG(int,number)));
-	}else if(metaSnapshot.contains(name))
-		card = qobject_cast<Card*>(metaSnapshot.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number)));
+	}else if(metaobjects.contains(name))
+		card = qobject_cast<Card*>(metaobjects.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number)));
 	/*if (metaobjects.contains(name)){
 		QObject*card_obj = metaobjects.value(name)->newInstance(Q_ARG(Card::Suit, suit), Q_ARG(int, number));
 		card_obj->setObjectName(className2objectName.value(name, name));
@@ -2157,27 +1853,20 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 		else if(name!=card->getClassName())
 			card->setObjectName(name);
 	}
-    AICardRulesCloneBirth(this,card,name);
     return card;
 }
 
 SkillCard*Engine::cloneSkillCard(const QString &name) const
 {
-    QHash<QString, const Card *> namedSnapshot;
-    QHash<QString, const QMetaObject *> metaSnapshot;
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex); namedSnapshot=name2cards;metaSnapshot=metaobjects; }
-
 	RoomRuntime *runtime = currentRoomRuntime();
 	const Card *runtimeTemplate = runtime ? runtime->cardTemplate(name) : nullptr;
-    SkillCard *card=nullptr;
 	if (runtimeTemplate)
-		card=qobject_cast<SkillCard *>(runtimeTemplate->metaObject()->newInstance());
-	else if(metaSnapshot.contains(name))
-		card=qobject_cast<SkillCard*>(metaSnapshot.value(name)->newInstance());
-    else if (namedSnapshot.contains(name))
-		card=qobject_cast<SkillCard*>(namedSnapshot.value(name)->metaObject()->newInstance());
-    AIZunweiSkillCloneBirth(this,card,name);
-	return card;
+		return qobject_cast<SkillCard *>(runtimeTemplate->metaObject()->newInstance());
+	if(metaobjects.contains(name))
+		return qobject_cast<SkillCard*>(metaobjects.value(name)->newInstance());
+    if (name2cards.contains(name))
+		return qobject_cast<SkillCard*>(name2cards.value(name)->metaObject()->newInstance());
+	return nullptr;
 }
 
 #ifndef USE_BUILDBOT
@@ -2678,9 +2367,7 @@ QString Engine::getRoleByAbbreviation(const QString& targetValue, const QString&
 int Engine::getCardCount() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    int bootstrapCount;
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex); bootstrapCount=cards.length(); }
-    return runtime ? runtime->cardCount(bootstrapCount) : bootstrapCount;
+    return runtime ? runtime->cardCount(cards.length()) : cards.length();
 }
 
 QStringList Engine::getLords(bool contain_banned) const
@@ -2925,7 +2612,7 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
     return general_list;
 }
 
-QList<int> Engine::getDeckCardIds(bool derivative) const
+QList<int> Engine::getRandomCards(bool derivative) const
 {
 	const bool hegemony = HegemonyMode::enabledForCatalog(currentRoomRuntime() != nullptr);
     bool exclude_disaster = !hegemony && Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
@@ -2980,12 +2667,6 @@ QList<int> Engine::getDeckCardIds(bool derivative) const
         list.removeOne(98);
     }else if(using_2012_3v3)
         list.removeOne(98);
-    return list;
-}
-
-QList<int> Engine::getRandomCards(bool derivative) const
-{
-    QList<int> list = getDeckCardIds(derivative);
     qsanShuffle(list);
     return list;
 }
@@ -3107,7 +2788,6 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
 
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
     if (!card) return nullptr;
@@ -3159,21 +2839,19 @@ const ProhibitPindianSkill*Engine::isPindianProhibited(const Player*from, const 
 
 const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card, Card::HandlingMethod method, bool isHandcard) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true,false,false,true);
-    // Immutable per-call dispatch avoids shared lazy map writes before lua_mutex.
-    QString method_name;
-    switch (method) {
-    case Card::MethodUse: method_name = QStringLiteral("use"); break;
-    case Card::MethodResponse: method_name = QStringLiteral("response"); break;
-    case Card::MethodDiscard: method_name = QStringLiteral("discard"); break;
-    case Card::MethodRecast: method_name = QStringLiteral("recast"); break;
-    case Card::MethodPindian: method_name = QStringLiteral("pindian"); break;
-    case Card::MethodIgnore: method_name = QStringLiteral("ignore"); break;
-    case Card::MethodEffect: method_name = QStringLiteral("effect"); break;
-    case Card::MethodMove: method_name = QStringLiteral("move"); break;
-    case Card::MethodGet: method_name = QStringLiteral("get"); break;
-    default: break;
+    static QMap<Card::HandlingMethod, QString> method_map;
+    if (method_map.isEmpty()) {
+        method_map.insert(Card::MethodUse, "use");
+        method_map.insert(Card::MethodResponse, "response");
+        method_map.insert(Card::MethodDiscard, "discard");
+        method_map.insert(Card::MethodRecast, "recast");
+        method_map.insert(Card::MethodPindian, "pindian");
+        method_map.insert(Card::MethodIgnore, "ignore");
+        method_map.insert(Card::MethodEffect, "effect");
+        method_map.insert(Card::MethodMove, "move");
+        method_map.insert(Card::MethodGet, "get");
     }
+    QString method_name = method_map.value(method, "");
 	if(method_name=="") return nullptr;
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_isCardLimited);
 
@@ -3221,7 +2899,8 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
     // With QSAN_LIMIT_FILTER_VERIFY=1, evaluate every skill as before and log
     // any skill that the filter would skip but that actually matches.
     // This verifies the filter without changing behavior.
-    const bool s_filterVerify = cardLimitFilterVerify();
+    static const bool s_filterVerify = !qgetenv("QSAN_LIMIT_FILTER_VERIFY").isEmpty()
+                                       && qgetenv("QSAN_LIMIT_FILTER_VERIFY") != "0";
 
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()) {
         foreach (int id, card->getSubcards()) {
@@ -3449,11 +3128,10 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     // Distance ignores cards; hand refreshes recalculate each Slash against every player.
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
+    const QString memoKey = memo ? QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
         .arg(quintptr(to)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3494,7 +3172,6 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
 int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCardsCount type) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (target && target->inherits("ClientPlayer")) return 0;
@@ -3615,10 +3292,9 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
     if (!from || !card) return 0;
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
 
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
+    const QString memoKey = memo ? QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
         .arg(quintptr(from)).arg(quintptr(to)).arg(quintptr(card)).arg(card->toString()) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3688,7 +3364,6 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         }
     }
     if (locked) lua_mutex.unlock();
-    if (type == TargetModSkill::ExtraTarget) x += AITianyiQueryScope::extraTarget(from, card);
     if (memo) memo->m_values.insert(memoKey, x);
     return x;
 }
@@ -3739,7 +3414,6 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_correctSkillValidity);
     if (player && player->isClientPlayer()) {
         return true; 
@@ -3765,10 +3439,9 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
-    AIXufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     // Attack range depends only on the source; target selection asks again for each candidate.
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
+    const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
         .arg(int(include_weapon)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3952,78 +3625,3 @@ bool Engine::setAiData(const QString &json) const
 {
     return AiDataStore::write(json);
 }
-
-#include "ai-strategy/card-metadata-rows.inc"
-
-// Complete PUBLIC physical definition alternatives, before card/owner selection.
-// This proves reviewed implementation classes and original definition field/index
-// sources. Live holder ancestry and clone/construction effects need separate proof.
-bool Engine::aiPublicPhysicalMetadataDefinitions(QString *why) const
-{
-    const auto fail = [why](const char *message) {
-        if (why) *why = QString::fromLatin1(message);
-        return false;
-    };
-    if (!hasAIEngineSelfNullSourceOrigin())
-        return fail("public metadata engine Self source origin unavailable");
-    const auto known = [](const Card *definition, int publicIndex) {
-        if (!definition) return true; // Sparse PUBLIC definition slot.
-        const unsigned mask = aiCardMetadataSourceEffects(typeid(*definition));
-        if ((mask & 3u) != 3u || (mask & 8u) != 0) return false;
-        // Source registration fact + unchanged writer epoch; never getId().
-        int assignedIndex = -1;
-        return definition->aiOriginalPhysicalDefinitionIndex(&assignedIndex)
-            && assignedIndex == publicIndex
-            && definition->aiOriginalPhysicalDefinitionMaterialsOrigin()
-            && (definition->aiOriginalRecursiveFieldOrigins() & 14u) == 14u;
-    };
-    // Include global fallback even when a runtime definition overlays it.
-    QList<Card *> physicalSnapshot;
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex); physicalSnapshot=cards; }
-    for (int id = 0; id < physicalSnapshot.size(); ++id)
-        if (!known(physicalSnapshot.at(id), id))
-            return fail("global physical metadata definition/index source unavailable");
-    // Public runtime indices include runtime overlays, Lua additions and the
-    // original global fallback. No player/container/card selection is read.
-    for (int id = 0; id < getCardCount(); ++id)
-        if (!known(getEngineCard(id), id))
-            return fail("runtime physical metadata definition/index source unavailable");
-    return true;
-}
-
-// Exact patterns(true) getter family: objectName, getClassName, getPackage,
-// getTypeId. It reads no suit/material/change-card/flags, target policy or Self.
-// Full public registry source precedes every lookup; no selected card can grant.
-bool Engine::aiPublicPatternMetadataDefinitions(Room &room,QString *why) const
-{
-    const auto fail=[why](const char *text){if(why)*why=QString::fromLatin1(text);return false;};
-    auto *runtime=room.roomRuntime();
-    if(this!=Sanguosha||!runtime||runtime->isClosing()||!runtime->lua().isCurrentThreadOwner()
-       ||currentRoomRuntime()!=runtime||!hasAIGlobalFactoryMapOrigin(this)
-       ||!runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState()))
-        return fail("patterns original global/Room catalogue source unavailable");
-    const auto known=[](const Card *card){
-        if(!card)return true; // Public sparse definition slot, preserved.
-        const unsigned mask=aiCardMetadataSourceEffects(typeid(*card));
-        // Unknown implementations and WrappedCard delegations are not admitted.
-        return (mask&1u)!=0&&(mask&8u)==0;
-    };
-    QList<Card *> physicalSnapshot;
-    { QMutexLocker lock(&globalFactoryRegistrySource().mutex);
-      const auto origin=globalFactoryRegistrySource().origins.constFind(this);
-      if(origin==globalFactoryRegistrySource().origins.cend()||!origin->valid)
-          return fail("patterns global source changed before snapshot");
-      physicalSnapshot=cards;
-    }
-    for(const Card *card:physicalSnapshot)
-        if(!known(card)||(card&&!isPublishedGlobalCard(card)))
-            return fail("patterns global metadata implementation/custody unavailable");
-    // getEngineCard implements the actual Room overlay/normal global fallback.
-    // Its Room map is source-sealed and confined by this Game runtime binding.
-    for(int id=0;id<getCardCount();++id)
-        if(!known(getEngineCard(id)))return fail("patterns Room metadata implementation unavailable");
-    return hasAIGlobalFactoryMapOrigin(this)
-        &&runtime->definitions().hasFactorySourceOrigin(room,runtime->lua().rawState());
-}
-
-#include "ai-strategy/factory-source-inspect.inc"

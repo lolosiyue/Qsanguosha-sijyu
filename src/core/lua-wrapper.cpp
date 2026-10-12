@@ -366,13 +366,6 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
 
 static QHash<QString, const LuaSkillCard *> LuaSkillCards;
 
-QList<const Card *> LuaSkillCard::globalDefinitionTemplates()
-{
-    QList<const Card *> result;
-    for (const LuaSkillCard *card : std::as_const(LuaSkillCards)) result.append(card);
-    return result;
-}
-
 LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)
     : SkillCard(), filter(0), feasible(0), about_to_use(0), on_use(0), on_effect(0), on_validate(0), on_validate_in_response(0)
 {
@@ -760,5 +753,3 @@ LuaScenarioRule::LuaScenarioRule(Scenario *scenario)
     //events << GameReady << EventPhaseStart << FetchDrawPileCard;
 }
 
-
-#include "ai-strategy/factory-source-lua-skill.inc"

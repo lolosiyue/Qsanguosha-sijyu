@@ -1,8 +1,4 @@
-#include "skill-generated-card.h"
-#include "ai-strategy/anime.h"
 #include "skill-runtime-coordinator.h"
-#include "ai-strategy/diy.h"
-#include "ai-strategy/official.h"
 
 #include "engine.h"
 #include "protocol/skill-instance-message.h"
@@ -1089,9 +1085,7 @@ SkillInstanceRef SkillRuntimeCoordinator::resolveSkillInstanceRootRef(
 
 bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
 {
-    use.physicalEquipSource = PhysicalEquipSource(); // Original native entry reset applies to AI proofs too.
-    const int zhaobingProof = AIZhaobingPhysicalUseAccess::validate(m_room,use);
-    if (zhaobingProof >= 0) return zhaobingProof == 1; // No proof: original human/legacy path below is unchanged.
+    use.physicalEquipSource = PhysicalEquipSource();
     if (!use.card || !use.from)
         return false;
     if (!use.card->appliedPhysicalEffectSource().isEmpty()) {
@@ -1104,25 +1098,6 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         use.skillExecutionID = 0;
         use.hasSkillActivationRequest = false;
         return true; // The physical transformation was already accepted and paid.
-    }
-    const auto reason = m_room.roomRuntime()->state().getCurrentCardUseReason();
-    const QString pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
-    if (!use.card->isVirtualCard() && use.hasSkillActivationRequest
-        && isAuditedPhysicalCardSkill(use.activationRef.key.skillName, reason, pattern)) {
-        const auto *skill = dynamic_cast<const ViewAsSkillV2 *>(
-            Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
-        const SkillInstanceRef source = resolveSkillInstanceRootRef(use.activationRef);
-        if (!skill || use.activationRef.ownerObjectName != use.from->objectName()
-            || !source.isValid() || source != use.sourceRef
-            || use.from->isSkillInvalid(use.activationRef.key.skillName, use.activationRef.key.instanceID))
-            return false;
-        ActiveSkillRequest request;
-        request.reason = reason; request.pattern = pattern; request.initiator = use.from;
-        request.activationRef = use.activationRef; request.sourceRef = use.sourceRef;
-        request.setCardSelection(use.card);
-        for (const auto *target : use.to) request.selectedTargetNames << target->objectName();
-        const Card *rebuilt = m_room.resolveActiveSkillRequest(use.from, skill, request);
-        return rebuilt && rebuilt == use.card && !rebuilt->isVirtualCard();
     }
     QString activationName = use.card->getActivationSkillName();
     int activationId = use.card->getActivationSkillInstanceId();
@@ -1159,7 +1134,6 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         request.pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
         request.initiator = use.from;
         request.activationRef = source.activationRef;
-        request.sourceRef = source.sourceRef;
         request.setCardSelection(use.card);
         for (ServerPlayer *target : use.to)
             request.selectedTargetNames << target->objectName();
@@ -1169,7 +1143,7 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         use.sourceRef = source.sourceRef;
         use.physicalEquipSource = source.physicalEquipSource;
         use.changeCard(const_cast<Card *>(rebuilt));
-        use.card->clearChangeCards();
+        const_cast<Card *>(use.card)->change_cards.clear();
         // The server-created equipment conversion has no other owner. Keep it
         // alive across use copies, then retire it through CardUseStruct's deleter.
         use.setOwnedCard(const_cast<Card *>(rebuilt));
@@ -1276,22 +1250,18 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         request.pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
         request.initiator = use.from;
         request.activationRef = use.activationRef;
-        request.sourceRef = use.sourceRef;
         request.setCardSelection(use.card);
         if (activeSkill->targetMode() != ViewAsSkillV2::NoTarget) {
             foreach (ServerPlayer *target, use.to)
                 request.selectedTargetNames << target->objectName();
         }
-        if (!AIFateUseAccess::bind(m_room,use,request)) return false;
         const Card *serverCard = m_room.resolveActiveSkillRequest(use.from,
                                                                   activeSkill,
                                                                   request);
         if (!serverCard)
             return false;
-        transferAcceptedAIStrategyCardHints(m_room, use.card, serverCard, use.from,
-            use.activationRef, use.sourceRef);
         use.changeCard(const_cast<Card *>(serverCard));
-        use.card->clearChangeCards();
+        const_cast<Card *>(use.card)->change_cards.clear();
         // The server-created card must retire with the submitted use.
         use.setOwnedCard(const_cast<Card *>(serverCard));
     }

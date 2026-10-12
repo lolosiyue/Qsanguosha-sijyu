@@ -2,10 +2,6 @@
 #define _WRAPPED_CARD_H
 
 #include "card.h"
-#include <atomic>
-#include <typeinfo>
-#include <memory>
-struct CardLifetimeToken;
 
 class QThread;
 
@@ -27,7 +23,6 @@ class QThread;
 class WrappedCard : public Card
 {
     friend class RoomManagedState;
-    friend class RoomState;
     Q_OBJECT
 
 signals:
@@ -37,25 +32,8 @@ public:
     Q_INVOKABLE WrappedCard(Card *card);
     ~WrappedCard();
 
-    // Structural ancestry only: the exact clone born in RoomState::reset was
-    // this wrapper's first adoption. This grants NO scalar/targetFixed effects,
-    // material/change edges, catalogue validity, or private-card eligibility.
-    // Outputs are immutable facts recorded at actual birth, never live fields.
-    bool aiPhysicalCloneBirthOrigin(int *definitionId,
-                                          const std::type_info **innerType) const noexcept;
-    // Complete original factory identity/material lineage, never a comparison
-    // of live card IDs/values. Does not itself grant virtual effects or a scope.
-    bool aiPhysicalCloneIdentityOrigin(int *definitionId) const noexcept;
-    // Independent ID-only factory fact. Face/material mutations do not grant
-    // or retire this fact; any ID write or adoption attempt retires it. This
-    // proves neither coherent field access nor receiver lifetime/execution.
-    bool aiPhysicalCloneIdOrigin(int *definitionId) const noexcept;
-
-
-
     inline void setId(int id)
     {
-        retireAIRecursiveFieldOrigins(16u);
         m_id = id;
         //Q_ASSERT(m_card != nullptr);
         m_card->setId(id);
@@ -63,7 +41,6 @@ public:
 
     inline void setNumber(int number)
     {
-        retireAIRecursiveFieldOrigins(8u);
         m_number = number;
         //Q_ASSERT(m_card != nullptr);
         m_card->setNumber(number);
@@ -71,7 +48,6 @@ public:
 
     inline void setSuit(Suit suit)
     {
-        retireAIRecursiveFieldOrigins(4u);
         m_suit = suit;
         //Q_ASSERT(m_card != nullptr);
         m_card->setSuit(suit);
@@ -180,22 +156,18 @@ public:
     void setFlags(const QString &flag) const;
     inline void addSubcard(int)
     {
-        retireAIRecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcard(const Card *)
     {
-        retireAIRecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcards(const QList<const Card *> &)
     {
-        retireAIRecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcards(const QList<int> &)
     {
-        retireAIRecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     // inline QList<int> getSubcards() const;
@@ -320,23 +292,6 @@ public:
     {
         return m_card ? m_card->getKindOfNames() : Card::getKindOfNames();
     }
-
-private:
-    friend class AIMaxCardsScope;
-    friend class AIXufaMoveBodyScope;
-    friend struct AIXufaBodyAccess;
-    // Borrow the actual first-adoption product identity only under the exact
-    // Room/Game/lifetime query contract. No current face/ID/value comparison.
-    const Card *aiPhysicalCloneOwnedFaceOrigin() const noexcept;
-    struct PhysicalCloneBirth {};
-    WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThread *ownerThread,
-                bool originalDefinitionSource, bool originalDefinitionIdSource);
-    std::atomic<bool> m_aiPhysicalCloneBirth{false};
-    const std::type_info *m_aiBornInnerType = nullptr;
-    int m_aiBornDefinitionId = -1;
-    bool m_aiOriginalCloneIdentity = false;
-    bool m_aiOriginalCloneId = false;
-    std::shared_ptr<const CardLifetimeToken> m_aiBornInnerLifetime;
 
 protected:
     void adoptCard(Card *card, bool requireId);

@@ -342,16 +342,6 @@ static const luaL_Reg stringmetamethods[] = {
 
 #endif		/* } */
 
-/* Native admission only; this predicate is not registered in any Lua table. */
-LUALIB_API int luaL_isstandardstringadd (lua_CFunction function) {
-#if defined(LUA_NOCVTS2N)
-  (void)function;
-  return 0;
-#else
-  return function == arith_add;
-#endif
-}
-
 /* }====================================================== */
 
 /*

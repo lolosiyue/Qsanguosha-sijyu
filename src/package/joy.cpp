@@ -795,20 +795,3 @@ JoyEquipPackage::JoyEquipPackage()
 ADD_PACKAGE(Joy)
 ADD_PACKAGE(Disaster)
 ADD_PACKAGE(JoyEquip)
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_joy_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(ShitEffect)), 2u);
- types.recordActivateSource<ShitEffect>(3049u); AI_NATIVE_REQUIRE_DECLARATION(ShitEffect, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(GrabPeach)), 2u);
- types.recordActivateSource<GrabPeach>(3050u); AI_NATIVE_REQUIRE_DECLARATION(GrabPeach, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(GaleShellSkill)), 2u);
- types.recordActivateSource<GaleShellSkill>(3051u); AI_NATIVE_REQUIRE_DECLARATION(GaleShellSkill, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(FiveLinesVS)), 2u);
- types.recordActivateSource<FiveLinesVS>(3052u); AI_NATIVE_REQUIRE_DECLARATION(FiveLinesVS, getBaseAmount, ViewAsSkillV2);
- types.emplace(std::type_index(typeid(FiveLinesSkill)), 2u);
- types.recordActivateSource<FiveLinesSkill>(3053u); AI_NATIVE_REQUIRE_DECLARATION(FiveLinesSkill, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(YxSwordSkill)), 2u);
- types.recordActivateSource<YxSwordSkill>(3054u); AI_NATIVE_REQUIRE_DECLARATION(YxSwordSkill, getBaseAmount, TriggerSkillV2);
-}

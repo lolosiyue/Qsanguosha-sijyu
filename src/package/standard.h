@@ -278,11 +278,6 @@ public:
     Weapon(Suit suit, int number, int range = 1);
     int getRange(const Player *player = nullptr) const;
     void setRange(int n);
-    // One process-wide writer stamp for this scalar only. Capture before a
-    // multi-read projection and validate afterward; zero permanently refuses
-    // after overflow. Neither this stamp nor the range mutex pins a Card.
-    static quint64 rangeRevision();
-    static bool rangeRevisionCurrent(quint64 revision);
 
     virtual void onUse(Room *room, CardUseStruct &card_use) const;
     virtual QString getSubtype() const;
@@ -291,8 +286,8 @@ public:
     virtual QString getCommonEffectName() const;
     virtual bool isAvailable(const Player *player) const;
 
-private:
-    int m_range; // Published accesses go exclusively through get/setRange.
+protected:
+    int range;
 };
 
 class Armor : public EquipCard

@@ -189,12 +189,6 @@ const Card *SkillDeclarationSession::cloneCard(const QString &value) const
     return card;
 }
 
-Card *SkillDeclarationSession::takeClone(const QString &value)
-{
-    const QPointer<Card> card = m_cards.take(value);
-    return card.data();
-}
-
 bool SkillDeclarationSession::cardCommonlyEnabled(
     const Card *card, const QString &value, SkillDeclarationReason *reason) const
 {

@@ -1,6 +1,4 @@
 #include "player-ui-state-builder.h"
-#include "ai-strategy/native-registry.h"
-#include "room-runtime.h"
 
 #include "engine.h"
 #include "room.h"
@@ -77,13 +75,8 @@ void PlayerUIStateBuilder::buildSkillDescriptions(PlayerUIState &state,
         if (!skill || !instance.visible || !skill->isVisible()) continue;
         const QString key = SkillInstanceUtils::formatName(instance.skillName, instance.instanceID);
         // The public validity cache follows the same visibility rule as instance sync.
-        if (instance.source != SourceHelper) {
-            // Exact lexical query only: ends before usage providers or UI
-            // publication. All registered validity effects are proved first.
-            AISkillValidityScope validitySource(const_cast<Room &>(room),
-                const_cast<ServerPlayer *>(&player), const_cast<Room &>(room).roomRuntime()->lua().rawState());
+        if (instance.source != SourceHelper)
             state.skillValidity.insert(key, !player.isSkillInvalid(skill, instance.instanceID));
-        }
         QVariantMap usage = room.describeSkillUsage(const_cast<ServerPlayer *>(&player), instance);
         if (const auto *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill))
             usage.insert("base_amount", amountSkill->getBaseAmount());

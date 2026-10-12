@@ -1,9 +1,4 @@
-#include "ai-strategy/official.h"
-#include "ai-strategy/shadows.h"
-#include "ai-strategy/context.h"
-#include "ai-strategy/owner.h"
 #include "card-movement-service.h"
-#include "ai-strategy/xufa.h"
 
 #include "engine.h"
 #include "room.h"
@@ -297,11 +292,6 @@ QList<int> &CardMovementService::primaryPile()
 void CardMovementService::setCardMapping(int cardId, ServerPlayer *owner,
                                          Player::Place place)
 {
-    invalidateAIStrategyPublicDisclosure(m_room, cardId);
-    invalidateAIStrategyChoiceAGDisclosure(m_room, cardId);
-    invalidateAIStrategyRetrialPreview(m_room, cardId);
-    invalidateAIShicaiPreview(m_room, cardId);
-    invalidateAIOriginalSDCard(m_room, cardId);
     const quint64 cascade = m_room.getThread() && m_room.getThread()->hasActiveCascade()
         ? m_room.getThread()->cascadeId() : 0;
     if (cascade) {
@@ -1336,7 +1326,6 @@ QVariant CardMovementService::afterMoves(QList<CardsMoveOneTimeStruct> moves)
 QVariant CardMovementService::moveCardsSub(QList<CardsMoveStruct> cardsMoves,
                                            bool visible, bool guanxing)
 {
-    AIXufaMoveEntry xufaEntry(m_room,cardsMoves,visible,guanxing);
     cardsMoves = normalizeMoves(cardsMoves);
     if (cardsMoves.isEmpty()) return QVariantList();
     const QList<CardsMoveOneTimeStruct> requestedMoves = mergeMoves(cardsMoves);
@@ -1472,9 +1461,6 @@ QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMo
 
     if (notify) notifyCanonicalMoves(m_room, false, cardsMoves, visible);
     else if (notifyGain) notifyGain();
-    // Capture exactly the face that the completed public gain notification
-    // disclosed, before install callbacks can transform it or move it again.
-    if (notify || notifyGain) recordAIStrategyPublicMoves(m_room, cardsMoves, visible);
     foreach (CardsMoveStruct move, cardsMoves) {
         foreach (int id, move.card_ids) {
             m_room.clearCardTip(id);
@@ -1669,7 +1655,6 @@ QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMo
         // These messages must be paired: GET alone leaves moveId at -1 and makes client getCards call takeFirst on an empty stash.
         m_room.notifyMoveCards(true, invalidEquipMoves, true);
         m_room.notifyMoveCards(false, invalidEquipMoves, true);
-        recordAIStrategyPublicMoves(m_room, invalidEquipMoves, true);
     }
 
     foreach (CardsMoveStruct move, cardsMoves) {

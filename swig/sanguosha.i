@@ -12,32 +12,9 @@
 #include "lua-wrapper.h"
 #include "card-lifetime-manager.h"
 #include <stdexcept>
-#include <cstring>
-
-#include "ai-strategy/runtime.h"
-#include "lua-runtime.h"
-namespace {
-using NativeFinalizerHook = bool (*)(lua_State*,int,int,bool,bool) noexcept;
-NativeFinalizerHook nativeFinalizerHook = nullptr;
-bool (*registeredUniverseHook)(lua_State*) noexcept = nullptr;
-lua_CFunction registeredCardGc = nullptr;
-bool (*namespaceBirthDescriptorsHook)() noexcept = nullptr;
-}
-bool aiNativeFinalizerNonwriter(lua_State*L,int f,int o,bool fresh,bool variants) noexcept {
- return nativeFinalizerHook&&nativeFinalizerHook(L,f,o,fresh,variants);
-}
-bool aiRegisteredFinalizerUniverse(lua_State*L) noexcept {
- return registeredUniverseHook&&registeredUniverseHook(L);
-}
-
-// Compiled descriptor metadata only. This is NOT a live absence check and
-// supplies no authority without LuaRuntime's ephemeral native birth token.
-bool aiNativeNamespaceBirthDescriptors() noexcept {
- return namespaceBirthDescriptorsHook&&namespaceBirthDescriptorsHook();
-}
 
 namespace QSanEngine {
-extern thread_local Player *Self;
+extern Player *Self;
 }
 
 //#include <QDir>
@@ -96,45 +73,6 @@ extern thread_local Player *Self;
 %}
 
 %init %{
-    namespaceBirthDescriptorsHook = +[]() noexcept -> bool {
-        // A native-created namespace initially has only these descriptors and
-        // fixed .get/.set/.fn infrastructure. Exclude every R56 registry root
-        // from the RAW namespace, declared getter/setter, method, class and
-        // subnamespace routes. Do not read any current Lua cell or userdata.
-        static const char *const absent[] = {
-            "ais", "ai_role", "roleValue", "ai_NeedPeach", "playerRoles",
-            "qlist_cache", "ai_guangxing", "card_lack", "defense",
-            "ai_keep_value", "ai_use_priority", "ai_connect_cache",
-            "ai_pindian_effects", "_deferred_delete_cards",
-            "original_hegemony_ai_loading", "original_hegemony_ai_loaded"
-        };
-        const auto forbidden = [](const char *name) noexcept {
-            if (!name) return false;
-            for (const char *key : absent)
-                if (std::strcmp(name, key) == 0) return true;
-            return false;
-        };
-        const auto &ns = swig_SwigModule;
-        if (!ns.name || std::strcmp(ns.name, "sgs") != 0
-            || !ns.ns_methods || !ns.ns_attributes || !ns.ns_constants
-            || !SWIG_LUACODE || *SWIG_LUACODE != '\0') return false;
-        for (int i = 0; ns.ns_methods[i].name; ++i)
-            if (forbidden(ns.ns_methods[i].name)) return false;
-        for (int i = 0; ns.ns_attributes[i].name; ++i)
-            if (forbidden(ns.ns_attributes[i].name)) return false;
-        for (int i = 0; ns.ns_constants[i].name; ++i)
-            if (forbidden(ns.ns_constants[i].name)) return false;
-        if (ns.ns_classes) for (int i = 0; ns.ns_classes[i]; ++i) {
-            const auto *type = ns.ns_classes[i];
-            if (!type->name || !type->cls_static || !type->cls_static->name
-                || std::strcmp(type->name, type->cls_static->name) != 0
-                || forbidden(type->name)) return false;
-        }
-        if (ns.ns_namespaces) for (int i = 0; ns.ns_namespaces[i]; ++i)
-            if (!ns.ns_namespaces[i]->name
-                || forbidden(ns.ns_namespaces[i]->name)) return false;
-        return true;
-    };
 	lua_CFunction cardGc = [](lua_State *state) -> int {
 		if (!lua_isuserdata(state, 1))
 			return 0;
@@ -159,132 +97,6 @@ extern thread_local Player *Self;
 		userdata->ptr = nullptr;
 		return 0;
 	};
-
-    registeredCardGc = cardGc;
-    nativeFinalizerHook = +[](lua_State*state,int function,int object,bool fresh,bool variants) noexcept -> bool {
-        if(!lua_iscfunction(state,function)||lua_type(state,object)!=LUA_TUSERDATA
-           ||lua_rawlen(state,object)!=sizeof(swig_lua_userdata))return false;
-        // Reject native closures with captures, even if their C entry matches.
-        const TValue*fn=AILuaInspect::value(state,function);
-        if(!ttislcf(fn))return false;
-        auto*u=static_cast<const swig_lua_userdata*>(lua_touserdata(state,object));
-        const swig_lua_class*c=nullptr;
-        for(int i=0;swig_types[i];++i)if(u->type==swig_types[i]){
-            c=static_cast<const swig_lua_class*>(swig_types[i]->clientdata);break;
-        }
-        if(!c)return false;
-        const auto gc=lua_tocfunction(state,function);
-        if(gc==registeredCardGc){
-            // releaseWrapperBinding refuses a foreign/absent runtime context;
-            // its fallback is generic ownership destruction, so the exact
-            // active Binding is part of this native source proof.
-            if(!(qsgsCardExposure(u->type)||qsgsQObjectExposure(u->type))
-               ||!LuaRuntime::current()
-               ||LuaRuntime::current()!=LuaRuntime::fromState(state))return false;
-            // Bound wrappers run releaseWrapperBinding/markAdopted/requestLuaDelete,
-            // never a QObject destructor or event-loop dispatch at this point.
-            // Unbound own=0 follows generic SWIG no-op. Never bless owned QObject.
-            return !u->own || !!globalCardLifetimeManager().wrapperBinding(u);
-        }
-        // Exact native-owned scratch wrappers erase only their value record.
-        // Their all-branches bodies return early or destroy the fixed value
-        // graph; no selected payload field is read to establish authority.
-        if(gc==slotTargetsGc&&c==&_wrap_class_SPlayerList)return true;
-        if(variants&&gc==goutongMoveGc&&c==&_wrap_class_CardsMoveOneTimeStruct)return true;
-        if(variants&&gc==lianzhanUseGc&&c==&_wrap_class_CardUseStruct)return true;
-        if(gc==lianzhanCanonicalUseGc&&c==&_wrap_class_CardUseStruct
-           &&c->destructor==swig_delete_CardUseStruct)
-            return !u->own||!u->ptr||variants;
-        if(gc!=SWIG_Lua_class_destruct)return false;
-        if(!u->own||!u->ptr)return true;
-        if(c==&_wrap_class_SPlayerList&&c->destructor==swig_delete_SPlayerList)return true;
-        if(c==&_wrap_class_PlayerList&&c->destructor==swig_delete_PlayerList)return true;
-        if(c==&_wrap_class_CardList&&c->destructor==swig_delete_CardList)return true;
-        if(c==&_wrap_class_IntList&&c->destructor==swig_delete_IntList)return true;
-        if(c==&_wrap_class_BoolList&&c->destructor==swig_delete_BoolList)return true;
-        if(c==&_wrap_class_SkillList&&c->destructor==swig_delete_SkillList)return true;
-        if(c==&_wrap_class_DelayedTrickList&&c->destructor==swig_delete_DelayedTrickList)return true;
-        if(c==&_wrap_class_PlaceList&&c->destructor==swig_delete_PlaceList)return true;
-        if(c==&_wrap_class_PhaseList&&c->destructor==swig_delete_PhaseList)return true;
-        if(c==&_wrap_class_GeneralList&&c->destructor==swig_delete_GeneralList)return true;
-        if(c==&_wrap_class_EquipCardList&&c->destructor==swig_delete_EquipCardList)return true;
-        if(c==&_wrap_class_SkillInstanceKeyList&&c->destructor==swig_delete_SkillInstanceKeyList)return true;
-        if(c==&_wrap_class_SkillInstanceKey&&c->destructor==swig_delete_SkillInstanceKey)return true;
-        if(c==&_wrap_class_SkillInstanceRef&&c->destructor==swig_delete_SkillInstanceRef)return true;
-        if(c==&_wrap_class_CorrectSkillContext&&c->destructor==swig_delete_CorrectSkillContext)return true;
-        if(c==&_wrap_class_CorrectSkillResult&&c->destructor==swig_delete_CorrectSkillResult)return true;
-        if(c==&_wrap_class_HpLostStruct&&c->destructor==swig_delete_HpLostStruct)return true;
-        if(c==&_wrap_class_DyingStruct&&c->destructor==swig_delete_DyingStruct)return true;
-        if(c==&_wrap_class_DeathStruct&&c->destructor==swig_delete_DeathStruct)return true;
-        if(c==&_wrap_class_MaxHpStruct&&c->destructor==swig_delete_MaxHpStruct)return true;
-        if(c==&_wrap_class_JudgeStruct&&c->destructor==swig_delete_JudgeStruct)return true;
-        if(c==&_wrap_class_PindianStruct&&c->destructor==swig_delete_PindianStruct)return true;
-        if(c==&_wrap_class_PhaseChangeStruct&&c->destructor==swig_delete_PhaseChangeStruct)return true;
-        if(c==&_wrap_class_PlayerNumStruct&&c->destructor==swig_delete_PlayerNumStruct)return true;
-        if(c==&_wrap_class_MarkStruct&&c->destructor==swig_delete_MarkStruct)return true;
-        if(c==&_wrap_class_DrawStruct&&c->destructor==swig_delete_DrawStruct)return true;
-        if(c==&_wrap_class_ShownCardChangedStruct&&c->destructor==swig_delete_ShownCardChangedStruct)return true;
-        if(c==&_wrap_class_BrokenEquipChangedStruct&&c->destructor==swig_delete_BrokenEquipChangedStruct)return true;
-        if(c==&_wrap_class_YishiStruct&&c->destructor==swig_delete_YishiStruct)return true;
-        // This prior source proof includes every payload alternative. Do not
-        // inspect a selected QVariant's metatype or nested private contents.
-        if(variants){
-            if(c==&_wrap_class_DamageStruct&&c->destructor==swig_delete_DamageStruct)return true;
-            if(c==&_wrap_class_CardEffectStruct&&c->destructor==swig_delete_CardEffectStruct)return true;
-            if(c==&_wrap_class_SlashEffectStruct&&c->destructor==swig_delete_SlashEffectStruct)return true;
-            if(c==&_wrap_class_CardUseStruct&&c->destructor==swig_delete_CardUseStruct)return true;
-            if(c==&_wrap_class_CardMoveReason&&c->destructor==swig_delete_CardMoveReason)return true;
-            if(c==&_wrap_class_CardsMoveStruct&&c->destructor==swig_delete_CardsMoveStruct)return true;
-            if(c==&_wrap_class_CardsMoveOneTimeStruct&&c->destructor==swig_delete_CardsMoveOneTimeStruct)return true;
-            if(c==&_wrap_class_RecoverStruct&&c->destructor==swig_delete_RecoverStruct)return true;
-            if(c==&_wrap_class_CardResponseStruct&&c->destructor==swig_delete_CardResponseStruct)return true;
-            if(c==&_wrap_class_SkillContext&&c->destructor==swig_delete_SkillContext)return true;
-            if(c==&_wrap_class_SkillInstance&&c->destructor==swig_delete_SkillInstance)return true;
-            if(c==&_wrap_class_SkillChangeStruct&&c->destructor==swig_delete_SkillChangeStruct)return true;
-            if(c==&_wrap_class_SkillDialogInfo&&c->destructor==swig_delete_SkillDialogInfo)return true;
-            if(c==&_wrap_class_CardsMoveList&&c->destructor==swig_delete_CardsMoveList)return true;
-        }
-        if(c==&_wrap_class_QVariant&&c->destructor==swig_delete_QVariant){
-            if(variants)return true;
-            const int t=static_cast<const QVariant*>(u->ptr)->metaType().id();
-            // No payload values are read; opaque/nested/custom metatypes refuse.
-            return t==QMetaType::UnknownType||t==QMetaType::Bool||t==QMetaType::Int
-                ||t==QMetaType::UInt||t==QMetaType::LongLong||t==QMetaType::ULongLong
-                ||t==QMetaType::Double||t==QMetaType::QString||t==QMetaType::QStringList;
-        }
-        // Only the graph's prior exact fresh constructor/capture-origin proof
-        // may admit LuaAI. An arbitrary owned QObject never inherits this.
-        return fresh&&c==&_wrap_class_LuaAI&&c->destructor==swig_delete_LuaAI;
-    };
-    registeredUniverseHook = +[](lua_State*state) noexcept -> bool {
-        if(!AILuaInspect::capacity(state,6))return false;
-        const int top=lua_gettop(state);
-        const auto done=[&](bool result){lua_settop(state,top);return result;};
-        AILuaInspect::field(state,LUA_REGISTRYINDEX,"SWIG");
-        if(!lua_istable(state,-1))return done(false);
-        for(int i=0;swig_types[i];++i){
-            const auto*c=static_cast<const swig_lua_class*>(swig_types[i]->clientdata);
-            if(!c)continue;
-            if(!c->fqname)return done(false);
-            AILuaInspect::field(state,-1,c->fqname);
-            if(!lua_istable(state,-1))return done(false);
-            AILuaInspect::field(state,-1,"__close");
-            if(!lua_isnil(state,-1))return done(false);
-            lua_pop(state,1);
-            AILuaInspect::field(state,-1,"__gc");
-            const auto*fn=AILuaInspect::value(state,-1);
-            if(!ttislcf(fn))return done(false);
-            const auto gc=lua_tocfunction(state,-1);
-            const bool card=qsgsCardExposure(swig_types[i])||qsgsQObjectExposure(swig_types[i]);
-            const bool exact=card?gc==registeredCardGc:
-                (gc==SWIG_Lua_class_destruct
-                 ||(c==&_wrap_class_CardUseStruct&&gc==lianzhanCanonicalUseGc
-                    &&c->destructor==swig_delete_CardUseStruct));
-            if(!exact)return done(false);
-            lua_pop(state,2);
-        }
-        return done(true);
-    };
 	lua_CFunction equalsFunction = [](lua_State *state) -> int {
 		if (!lua_isuserdata(state, 1) || !lua_isuserdata(state, 2))
 			return 0;
@@ -328,40 +140,6 @@ extern thread_local Player *Self;
 %}
 
 // ----------------------------------------
-
-%exception QObject::setObjectName {
-    if (hasPublishedGlobalCardOwnership(arg1)) {
-        lua_pushliteral(L, "published global card name is read-only"); SWIG_fail;
-    }
-    $action
-}
-%exception QObject::setProperty {
-    if (isPublishedGlobalCard(arg1)
-        || (arg2 && std::strcmp(arg2, "objectName") == 0
-            && hasPublishedGlobalCardOwnership(arg1))) {
-        lua_pushliteral(L, "published global card properties are read-only"); SWIG_fail;
-    }
-    $action
-}
-%exception QObject::setParent {
-    if (!canReparentDefinitionObject(arg1, arg2)) {
-        lua_pushliteral(L, "published global card ownership is read-only"); SWIG_fail;
-    }
-    $action
-}
-%exception QObject::deleteLater {
-    // Even an explicit QObject alias must retain Card's definition-ignore rule.
-    if (Card *card = qobject_cast<Card *>(arg1)) {
-        QByteArray error;
-        if (!globalCardLifetimeManager().requestLuaDelete(card, &error)) {
-            lua_pushlstring(L, error.constData(), error.size()); SWIG_fail;
-        }
-    } else if (!canReparentDefinitionObject(arg1, nullptr)) {
-        lua_pushliteral(L, "published global card owner cannot be deleted"); SWIG_fail;
-    } else {
-        $action
-    }
-}
 
 class QObject {
 public:
@@ -415,13 +193,6 @@ struct SkillDialogInfo {
     QVariantMap parameters;
     bool isValid() const;
 };
-
-%exception General::General {
-    if (!canReparentDefinitionObject(nullptr, arg1)) {
-        lua_pushliteral(L, "construction under published global card owner is forbidden"); SWIG_fail;
-    }
-    $action
-}
 
 class General: public QObject {
 public:

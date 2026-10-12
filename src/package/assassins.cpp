@@ -1127,34 +1127,3 @@ AssassinsPackage::AssassinsPackage() : Package("assassins")
     addMetaObject<MizhaoCard>(); addMetaObject<MixinCard>(); addMetaObject<DuyiCard>();
 }
 ADD_PACKAGE(Assassins)
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_assassins_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(Moukui)), 2u);
- types.recordActivateSource<Moukui>(6u); AI_NATIVE_REQUIRE_DECLARATION(Moukui, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Moukui, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Moukui, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Tianming)), 2u);
- types.recordActivateSource<Tianming>(7u); AI_NATIVE_REQUIRE_DECLARATION(Tianming, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Tianming, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Tianming, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Mizhao)), 2u);
- types.recordActivateSource<Mizhao>(8u); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, getLimitScope, Mizhao); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, targetMode, Mizhao); AI_NATIVE_REQUIRE_DECLARATION(Mizhao, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(Jieyuan)), 2u);
- types.recordActivateSource<Jieyuan>(9u); AI_NATIVE_REQUIRE_DECLARATION(Jieyuan, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Jieyuan, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Jieyuan, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Fenxin)), 2u);
- types.recordActivateSource<Fenxin>(10u); AI_NATIVE_REQUIRE_DECLARATION(Fenxin, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Fenxin, getLimitScope, Fenxin); AI_NATIVE_REQUIRE_DECLARATION(Fenxin, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Mixin)), 2u);
- types.recordActivateSource<Mixin>(11u); AI_NATIVE_REQUIRE_DECLARATION(Mixin, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Mixin, getLimitScope, Mixin); AI_NATIVE_REQUIRE_DECLARATION(Mixin, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(Mixin, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Mixin, targetMode, Mixin); AI_NATIVE_REQUIRE_DECLARATION(Mixin, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(Cangni)), 2u);
- types.recordActivateSource<Cangni>(12u); AI_NATIVE_REQUIRE_DECLARATION(Cangni, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Cangni, getLimitScope, Cangni); AI_NATIVE_REQUIRE_DECLARATION(Cangni, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(DuyiViewAs)), 2u);
- types.recordActivateSource<DuyiViewAs>(13u); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, getLimitScope, DuyiViewAs); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, targetMode, DuyiViewAs); AI_NATIVE_REQUIRE_DECLARATION(DuyiViewAs, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(Duyi)), 2u);
- types.recordActivateSource<Duyi>(14u); AI_NATIVE_REQUIRE_DECLARATION(Duyi, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Duyi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Duyi, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Duanzhi)), 2u);
- types.recordActivateSource<Duanzhi>(15u); AI_NATIVE_REQUIRE_DECLARATION(Duanzhi, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Duanzhi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Duanzhi, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Fengyin)), 2u);
- types.recordActivateSource<Fengyin>(16u); AI_NATIVE_REQUIRE_DECLARATION(Fengyin, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Fengyin, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Fengyin, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(ChizhongMaxCards)), 3u);
- types.recordActivateSource<ChizhongMaxCards>(17u); AI_NATIVE_REQUIRE_DECLARATION(ChizhongMaxCards, getBaseAmount, MaxCardsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(ChizhongMaxCards, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ChizhongMaxCards, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(Chizhong)), 2u);
- types.recordActivateSource<Chizhong>(18u); AI_NATIVE_REQUIRE_DECLARATION(Chizhong, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Chizhong, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Chizhong, getMaxUsageLimit, Skill);
-}

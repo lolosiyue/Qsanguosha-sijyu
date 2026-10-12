@@ -1,5 +1,4 @@
 #include "gamerule.h"
-#include "ai-strategy/owner.h"
 #include "hegemony-mode.h"
 #include <QScopeGuard>
 #include <QSet>
@@ -551,14 +550,6 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                 }
             }
         }
-        // Match the exact completed native clear domain, even if no real mark
-        // existed. This invalidates viewer-local AI observations, not game marks.
-        if (change.to == Player::NotActive || change.from == Player::Play)
-            for (ServerPlayer *p : room->getAllPlayers())
-                recordAIStrategyPlayMarksCleared(*room, p);
-        if (change.to == Player::NotActive)
-            for (ServerPlayer *p : room->getAllPlayers())
-                recordAIStrategyTurnMarksCleared(*room, p);
         break;
     }
     case ChangeSlash: {
@@ -2571,12 +2562,4 @@ bool HegemonyRule::trigger(TriggerEvent event, Room *room, ServerPlayer *player,
         break;
     }
     return GameRule::trigger(event, room, player, data);
-}
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_server_gamerule_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(GameRule)), 2u);
- types.emplace(std::type_index(typeid(HulaoPassMode)), 2u);
- types.emplace(std::type_index(typeid(HegemonyRule)), 2u);
 }

@@ -312,7 +312,7 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
       return;
     }
     t = tm;  /* else try to access 'tm[key]' */
-    if (luaV_readget(L, t, key, slot, luaH_get)) {  /* fast track? */
+    if (luaV_fastget(L, t, key, slot, luaH_get)) {  /* fast track? */
       setobj2s(L, val, slot);  /* done */
       return;
     }
@@ -342,7 +342,6 @@ void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
         sethvalue2s(L, L->top.p, h);  /* anchor 't' */
         L->top.p++;  /* assume EXTRA_STACK */
         luaH_finishset(L, h, key, slot, val);  /* set new value */
-        if (h->nativewatch) luaH_observewrite(L, h, key, val, LUA_TABLE_OBSERVER_WRITE, LUA_TABLE_OBSERVER_VM_SLOW);
         L->top.p--;
         invalidateTMcache(h);
         luaC_barrierback(L, obj2gco(h), val);
@@ -362,7 +361,7 @@ void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
     }
     t = tm;  /* else repeat assignment over 'tm' */
     if (luaV_fastget(L, t, key, slot, luaH_get)) {
-      luaV_finishfastset(L, t, key, slot, val);
+      luaV_finishfastset(L, t, slot, val);
       return;  /* done */
     }
     /* else 'return luaV_finishset(L, t, key, val, slot)' (loop) */
@@ -1256,7 +1255,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *upval = cl->upvals[GETARG_B(i)]->v.p;
         TValue *rc = KC(i);
         TString *key = tsvalue(rc);  /* key must be a short string */
-        if (luaV_readgetstr(L, upval, key, slot, luaH_getshortstr)) {
+        if (luaV_fastget(L, upval, key, slot, luaH_getshortstr)) {
           setobj2s(L, ra, slot);
         }
         else
@@ -1270,8 +1269,8 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rc = vRC(i);
         lua_Unsigned n;
         if (ttisinteger(rc)  /* fast track for integers? */
-            ? (cast_void(n = ivalue(rc)), luaV_readgeti(L, rb, n, slot))
-            : luaV_readget(L, rb, rc, slot, luaH_get)) {
+            ? (cast_void(n = ivalue(rc)), luaV_fastgeti(L, rb, n, slot))
+            : luaV_fastget(L, rb, rc, slot, luaH_get)) {
           setobj2s(L, ra, slot);
         }
         else
@@ -1283,7 +1282,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         const TValue *slot;
         TValue *rb = vRB(i);
         int c = GETARG_C(i);
-        if (luaV_readgeti(L, rb, c, slot)) {
+        if (luaV_fastgeti(L, rb, c, slot)) {
           setobj2s(L, ra, slot);
         }
         else {
@@ -1299,7 +1298,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rb = vRB(i);
         TValue *rc = KC(i);
         TString *key = tsvalue(rc);  /* key must be a short string */
-        if (luaV_readgetstr(L, rb, key, slot, luaH_getshortstr)) {
+        if (luaV_fastget(L, rb, key, slot, luaH_getshortstr)) {
           setobj2s(L, ra, slot);
         }
         else
@@ -1313,7 +1312,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rc = RKC(i);
         TString *key = tsvalue(rb);  /* key must be a short string */
         if (luaV_fastget(L, upval, key, slot, luaH_getshortstr)) {
-          luaV_finishfastsetatpc(L, upval, rb, slot, rc, pc);
+          luaV_finishfastset(L, upval, slot, rc);
         }
         else
           Protect(luaV_finishset(L, upval, rb, rc, slot));
@@ -1328,7 +1327,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         if (ttisinteger(rb)  /* fast track for integers? */
             ? (cast_void(n = ivalue(rb)), luaV_fastgeti(L, s2v(ra), n, slot))
             : luaV_fastget(L, s2v(ra), rb, slot, luaH_get)) {
-          luaV_finishfastsetatpc(L, s2v(ra), rb, slot, rc, pc);
+          luaV_finishfastset(L, s2v(ra), slot, rc);
         }
         else
           Protect(luaV_finishset(L, s2v(ra), rb, rc, slot));
@@ -1340,8 +1339,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         int c = GETARG_B(i);
         TValue *rc = RKC(i);
         if (luaV_fastgeti(L, s2v(ra), c, slot)) {
-          TValue key; setivalue(&key, c);
-          luaV_finishfastsetatpc(L, s2v(ra), &key, slot, rc, pc);
+          luaV_finishfastset(L, s2v(ra), slot, rc);
         }
         else {
           TValue key;
@@ -1357,7 +1355,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rc = RKC(i);
         TString *key = tsvalue(rb);  /* key must be a short string */
         if (luaV_fastget(L, s2v(ra), key, slot, luaH_getshortstr)) {
-          luaV_finishfastsetatpc(L, s2v(ra), rb, slot, rc, pc);
+          luaV_finishfastset(L, s2v(ra), slot, rc);
         }
         else
           Protect(luaV_finishset(L, s2v(ra), rb, rc, slot));
@@ -1375,7 +1373,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           c += GETARG_Ax(*pc) * (MAXARG_C + 1);  /* add it to size */
         pc++;  /* skip extra argument */
         L->top.p = ra + 1;  /* correct top in case of emergency GC */
-        t = luaH_newsource(L, pc - 2);  /* actual NEWTABLE, before EXTRAARG */  /* memory allocation */
+        t = luaH_new(L);  /* memory allocation */
         sethvalue2s(L, ra, t);
         if (b != 0 || c != 0)
           luaH_resize(L, t, c, b);  /* idem */
@@ -1389,7 +1387,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rc = RKC(i);
         TString *key = tsvalue(rc);  /* key must be a string */
         setobj2s(L, ra + 1, rb);
-        if (luaV_readgetstr(L, rb, key, slot, luaH_getstr)) {
+        if (luaV_fastget(L, rb, key, slot, luaH_getstr)) {
           setobj2s(L, ra, slot);
         }
         else
@@ -1848,9 +1846,6 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }}
       vmcase(OP_SETLIST) {
-        /* Preserve the actual SETLIST site before its optional EXTRAARG.
-        ** Native/API setters continue to have no authored writer metadata. */
-        const Instruction *setlist_nextpc = pc;
         StkId ra = RA(i);
         int n = GETARG_B(i);
         unsigned int last = GETARG_C(i);
@@ -1868,10 +1863,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           luaH_resizearray(L, h, last);  /* preallocate it at once */
         for (; n > 0; n--) {
           TValue *val = s2v(ra + n);
-          TValue key; setivalue(&key, last);
           setobj2t(L, &h->array[last - 1], val);
-          if (h->nativewatch)
-            luaH_observefastwrite(L, h, &key, val, setlist_nextpc);
           last--;
           luaC_barrierback(L, obj2gco(h), val);
         }

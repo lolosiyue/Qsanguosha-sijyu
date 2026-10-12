@@ -1,16 +1,4 @@
-#include "ai-strategy/runtime.h"
-#include "ai-strategy/source-slots.h"
-#include "ai-strategy/ol-ai.h"
-#include "ai-strategy/xufa.h"
-#include "ai-strategy/official.h"
-#include "ai-strategy/lua-seal.h"
-#include "ai-strategy/diy.h"
-#include "ai-strategy/shadows.h"
-#include "ai-strategy/anime.h"
 #include "room-runtime.h"
-#include "ai-strategy/tenyear-ai.h"
-#include "ai-strategy/newgenerals.h"
-#include "ai-strategy/inovation-ai.h"
 
 #include "engine.h"
 #include "room.h"
@@ -115,17 +103,8 @@ void RoomRuntime::finalizeWorker()
     // deleters pointing at freed Cards. Close the room's Lua states here so the
     // finalizers hand ownership back while the Cards are still alive.
     m_ai.shutdown();
-    if (m_room) clearAIHTMSWitnesses(*m_room);
     trace("ai_stopped");
-    if (m_room) { clearAIDiouSlots(*m_room); clearAITyfenwuSlots(*m_room); clearAITyqingkouSlots(*m_room); clearAITychendeSlots(*m_room); clearAIZhuningSlots(*m_room); clearAIGengduSlots(*m_room); clearAIMingfaSlots(*m_room); clearAIPingjian(*m_room); clearAILianzhanSlots(*m_room); clearAIUsePriority(*m_room); clearAIXufaChoiceRegistry(*m_room); clearAIShebian(*m_room); clearAIJijiang(*m_room); clearAIOlClanPlanSlots(*m_room); clearAINewgeneralsPlanningSlots(*m_room); clearAIHeqiaSlots(*m_room); clearAILeiluanSlots(*m_room); clearAIJianmanSlots(*m_room); clearAIFaqiSlots(*m_room); clearAIFaqiPlans(*m_room); clearAIXufaSlots(*m_room); clearAIXuanzhuSlots(*m_room); clearAIContinuityCertificate(*m_room); clearAINativeBindings(*m_room); clearAIGoutong(*m_room); clearAIInovationState(*m_room); clearAIPinnedSources(*m_room); }
-    if (m_room) clearAIBootstrapSourceBoundary(*m_room);
-    if (m_room) clearAIProjectionLineage(*m_room);
-    if (m_room) clearAIPriorityBootstrap(*m_room);
-    if (m_room) clearAIModeEvaluationLineage(*m_room);
-    if (m_room) clearAIConnectionCache(*m_room);
-    if (m_room) clearAICloneInputLineage(*m_room);
     m_lua.shutdown();
-    clearAILianzhanBindings(m_lua); clearAIGoutongBindings(m_lua); clearAISlotBindings(m_lua); // normal after-close native list custody cleanup
     trace("lua_stopped");
     releaseShutdownRoots();
     trace("roots_released");
@@ -181,16 +160,7 @@ void RoomRuntime::shutdownFinal()
     }
 
     m_ai.shutdown();
-    if (m_room) clearAIHTMSWitnesses(*m_room);
-    if (m_room) { clearAIDiouSlots(*m_room); clearAITyfenwuSlots(*m_room); clearAITyqingkouSlots(*m_room); clearAITychendeSlots(*m_room); clearAIZhuningSlots(*m_room); clearAIGengduSlots(*m_room); clearAIMingfaSlots(*m_room); clearAIPingjian(*m_room); clearAILianzhanSlots(*m_room); clearAIUsePriority(*m_room); clearAIXufaChoiceRegistry(*m_room); clearAIShebian(*m_room); clearAIJijiang(*m_room); clearAIOlClanPlanSlots(*m_room); clearAINewgeneralsPlanningSlots(*m_room); clearAIHeqiaSlots(*m_room); clearAILeiluanSlots(*m_room); clearAIJianmanSlots(*m_room); clearAIFaqiSlots(*m_room); clearAIFaqiPlans(*m_room); clearAIXufaSlots(*m_room); clearAIXuanzhuSlots(*m_room); clearAIContinuityCertificate(*m_room); clearAINativeBindings(*m_room); clearAIGoutong(*m_room); clearAIInovationState(*m_room); clearAIPinnedSources(*m_room); }
-    if (m_room) clearAIBootstrapSourceBoundary(*m_room);
-    if (m_room) clearAIProjectionLineage(*m_room);
-    if (m_room) clearAIPriorityBootstrap(*m_room);
-    if (m_room) clearAIModeEvaluationLineage(*m_room);
-    if (m_room) clearAIConnectionCache(*m_room);
-    if (m_room) clearAICloneInputLineage(*m_room);
     m_lua.shutdown();
-    clearAILianzhanBindings(m_lua); clearAIGoutongBindings(m_lua); clearAISlotBindings(m_lua); // normal after-close native list custody cleanup
     globalCardLifetimeManager().releaseWrapperBindings(this);
     drainShutdownStage("lua-close");
 
@@ -203,20 +173,6 @@ void RoomRuntime::shutdownFinal()
                                                   previousContext.generation,
                                                   previousContext.state);
     releaseShutdownRoots();
-    // A Room used synchronously may never enter finalizeWorker(). Its Lua
-    // callbacks can still create non-owning SWIG cloneCard results that omit
-    // deleteLater(). Reclaim these same-domain, unretained native transients
-    // with the existing worker finalizer before invalidating their tokens.
-    // Token invalidation alone cannot destroy a still-live QObject.
-    quint64 canonicalRetired = 0;
-    if (!globalCardLifetimeManager().finalizeWorkerDomain(this, &canonicalRetired)) {
-        globalCardLifetimeManager().dumpDomain(this);
-        failShutdown("canonical-final", globalCardLifetimeManager().gauge());
-        return;
-    }
-    std::fprintf(stdout, "CARD_LIFETIME_CANONICAL_FINAL retired=%llu\n",
-                 static_cast<unsigned long long>(canonicalRetired));
-    std::fflush(stdout);
     invalidateOrphanedRuntimeEntries();
     drainShutdownStage("postclose");
     const CardLifetimeGauge gauge = globalCardLifetimeManager().gauge();
@@ -239,16 +195,7 @@ void RoomRuntime::shutdownForInitFailure()
         return;
 
     m_ai.shutdown();
-    if (m_room) clearAIHTMSWitnesses(*m_room);
-    if (m_room) { clearAIDiouSlots(*m_room); clearAITyfenwuSlots(*m_room); clearAITyqingkouSlots(*m_room); clearAITychendeSlots(*m_room); clearAIZhuningSlots(*m_room); clearAIGengduSlots(*m_room); clearAIMingfaSlots(*m_room); clearAIPingjian(*m_room); clearAILianzhanSlots(*m_room); clearAIUsePriority(*m_room); clearAIXufaChoiceRegistry(*m_room); clearAIShebian(*m_room); clearAIJijiang(*m_room); clearAIOlClanPlanSlots(*m_room); clearAINewgeneralsPlanningSlots(*m_room); clearAIHeqiaSlots(*m_room); clearAILeiluanSlots(*m_room); clearAIJianmanSlots(*m_room); clearAIFaqiSlots(*m_room); clearAIFaqiPlans(*m_room); clearAIXufaSlots(*m_room); clearAIXuanzhuSlots(*m_room); clearAIContinuityCertificate(*m_room); clearAINativeBindings(*m_room); clearAIGoutong(*m_room); clearAIInovationState(*m_room); clearAIPinnedSources(*m_room); }
-    if (m_room) clearAIBootstrapSourceBoundary(*m_room);
-    if (m_room) clearAIProjectionLineage(*m_room);
-    if (m_room) clearAIPriorityBootstrap(*m_room);
-    if (m_room) clearAIModeEvaluationLineage(*m_room);
-    if (m_room) clearAIConnectionCache(*m_room);
-    if (m_room) clearAICloneInputLineage(*m_room);
     m_lua.shutdown();
-    clearAILianzhanBindings(m_lua); clearAIGoutongBindings(m_lua); clearAISlotBindings(m_lua); // normal after-close native list custody cleanup
     const CardLifetimeRuntimeContext previousContext =
         CardLifetimeManager::setCurrentRuntimeContext(this, nullptr, 0, nullptr);
     m_roomState.clear();
@@ -318,7 +265,6 @@ void RoomRuntime::releaseShutdownRoots()
     manager.releaseVariantTags(&m_ai);
     if (m_room) {
         manager.releaseVariantTags(m_room);
-        observeAIXinyangTagRestore(*m_room);
         m_room->tag.clear();
         for (ServerPlayer *player : m_room->getPlayers())
             player->clearTags();
@@ -585,51 +531,26 @@ bool RoomRuntime::initialize(QString *error)
         phaseTimer.start();
     };
     const auto failPhase = [&]() {
-        if (m_room) retireAIBootstrapSourceBoundary(*m_room);
         logInitializationPhase(phase, "failed", phaseTimer.elapsed());
         return false;
     };
     beginPhase("rules");
-    // Optional source provenance begins at the original native namespace birth.
-    // Failure does not change ordinary rules/AI bootstrap behavior.
-    m_definitions.beginFactorySourceOrigin(*m_room);
-    installAIBootstrapSourceBoundary(*m_room);
     if (!m_lua.initialize(error))
         return failPhase();
     m_gameRuntimeIdentity = &m_lua;
     m_gameRuntimeGeneration = m_lua.generation();
     m_gameRuntimeState = m_lua.rawState();
     LuaRuntime::Binding luaBinding(m_lua);
-    EngineRuntimeContextScope contextScope(*Sanguosha, this);
-    captureAINativeBindings(*m_room, m_lua.state());
-    prepareAIBootstrapSourceBoundary(*m_room, m_lua.state());
     if (!m_lua.addPackagePath(QStringLiteral("./lua/?.lua"), error)
         || !m_lua.addPackagePath(QStringLiteral("./lua/?/init.lua"), error))
         return failPhase();
+    EngineRuntimeContextScope contextScope(*Sanguosha, this);
     m_loadingDefinitions = true;
     const bool loaded = m_lua.loadScript(QStringLiteral("lua/config.lua"), error)
         && m_lua.loadScript(QStringLiteral("lua/sanguosha.lua"), error);
     m_loadingDefinitions = false;
     if (!loaded)
         return failPhase();
-    registerAIYuriSource(*m_room,m_lua.state());
-    registerAIRangyiSource(*m_room,m_lua.state());
-    // Fixed source pin is optional capability; mismatches remain unsupported.
-    registerAIHTMSSource(*m_room, m_lua.state());
-    // Yuxin full-Proto producer proof is independent of optional AI continuity.
-    registerAISgs10thSources(*m_room, m_lua.state());
-    registerAILianzhanSources(*m_room,m_lua.state());
-    registerAICardChoiceSource(*m_room,m_lua.state());
-    registerAIMingfaSources(*m_room, m_lua.state());
-    registerAIGengduSources(*m_room, m_lua.state());
-    registerAIZhuningSources(*m_room, m_lua.state());
-    registerAIDiouSources(*m_room, m_lua.state());
-    registerAITyfenwuSources(*m_room, m_lua.state());
-    registerAITyqingkouSources(*m_room, m_lua.state());
-    registerAITychendeSources(*m_room, m_lua.state());
-    registerAIXuanzhuSlotSources(*m_room, m_lua.state());
-    // Xufa saved-slot source pins are independent of optional continuity certificates.
-    registerAIXufaSlotSources(*m_room, m_lua.state());
     logInitializationPhase(phase, "end", phaseTimer.elapsed());
     beginPhase("mode_ai");
     if (!m_lua.loadScript(QStringLiteral("lua/ai/mode-ai.lua"), error))
@@ -646,8 +567,7 @@ bool RoomRuntime::initialize(QString *error)
         lua_pushstring(state, m_room->getMode().toUtf8().constData());
         lua_pushboolean(state, isNormalGameMode(m_room->getMode(), Config.EnableHegemony));
         lua_pushboolean(state, Config.EnableHegemony);
-        lua_pushboolean(state, m_room->getScenario() != nullptr);
-        if (LuaRuntime::protectedCall(state, 4, 0, 0) != LUA_OK) {
+        if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
             lua_pop(state, 1);
             return failPhase();
@@ -664,7 +584,6 @@ bool RoomRuntime::initialize(QString *error)
         beginPhase("smart_ai");
         if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
             return failPhase();
-        clearAITargetHistory(*m_room);
         for (const QString &path : Sanguosha->rulesDeclaredList(QStringLiteral("package_ai"))) {
             lua_State *state = m_lua.state();
             lua_getglobal(state, "sgs");
@@ -677,13 +596,6 @@ bool RoomRuntime::initialize(QString *error)
                 return failPhase();
             }
         }
-        installAIFocusCallbacks(*m_room);
-        initializeAIContinuityCertificate(*m_room);
-        captureAIOverseasPriorities(*m_room);
-        captureAITargetCache(*m_room);
-        initializeAITargetRevises(*m_room);
-        // Fixed-source catalog capture is independent of optional R37 continuity.
-        initializeAIPingjian(*m_room, m_lua.state());
         logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
 
@@ -718,13 +630,6 @@ bool RoomRuntime::initialize(QString *error)
         lua_pop(state, 1);
         logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
-    // Source registration is not async authority. The complete bootstrap
-    // source-union owner must issue and consume its one-use native token here
-    // before any private selection; a post-bootstrap heap scan cannot seed it.
-    if (Config.EnableAI && lua_checkstack(m_lua.state(),16)) {
-        registerAICloneSources(*m_room,m_lua.state());
-    }
-    completeAIBootstrapSourceBoundary(*m_room,m_lua.state());
     return true;
 }
 

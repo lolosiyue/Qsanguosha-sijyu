@@ -2,8 +2,6 @@
 #define QSAN_SERVER_CORE_H
 
 #include <QtCore>
-#include <atomic>
-#include <typeinfo>
 #include <QtNetwork>
 
 #include "game-session-config.h"
@@ -88,13 +86,7 @@ public:
 signals:
     void workFinished(const ScenarioWork::StageRunResult &result);
 
-public:
-    bool logConnectionsReviewed() const noexcept { return typeid(*this)==typeid(Server) && m_logConnectionsReviewed.load(); }
-protected:
-    void connectNotify(const QMetaMethod &signal) override;
-    void disconnectNotify(const QMetaMethod &signal) override;
 private:
-    std::atomic<bool> m_logConnectionsReviewed {true};
     GameSessionConfig takeNextGameSessionConfig();
     Room *publishRoom(Room *room);
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;

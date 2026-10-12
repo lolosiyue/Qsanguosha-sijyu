@@ -8,9 +8,6 @@
 #include "h-rule-cards.h"
 #include "lua-wrapper.h"
 #include "package.h"
-#include "room.h"
-#include "room-runtime.h"
-#include "ai-strategy/runtime.h"
 
 #include <QDebug>
 #include <QThread>
@@ -65,12 +62,8 @@ bool RoomDefinitionRegistry::moveOwnedObjectsToThread(QThread *targetThread, QSt
 
 void RoomDefinitionRegistry::clear()
 {
-    observeFactoryMapWriter();
     const QObjectList children = m_definitionRoot.children();
     CardLifetimeManager &manager = globalCardLifetimeManager();
-    // Keep externally borrowed identity distinct from the additional direct
-    // child entries used only for shutdown accounting below.
-    const QSet<const void *> originalBaselineAddresses = m_baselineAddresses;
     QSet<const void *> baselineAddresses = m_baselineAddresses;
     for (const Card *card : std::as_const(m_engine.cards))
         if (card)
@@ -93,32 +86,22 @@ void RoomDefinitionRegistry::clear()
             || m_engine.cards.contains(const_cast<Card *>(card)));
     };
     for (QObject *child : children) {
-        bool borrowedRoot = false;
         QList<Card *> cards = child->findChildren<Card *>();
         if (Card *card = qobject_cast<Card *>(child))
             cards.prepend(card);
         for (Card *card : cards) {
-            // Published globals cannot enter this ownership tree through an
-            // admitted API. Do not silently delete or unseal one after a native
-            // caller bypasses the contract with an explicit QObject base call.
-            if (isPublishedGlobalCard(card))
-                qFatal("Published global card illegally owned by Room definition tree");
             if (borrowedCard(card)) {
-                borrowedRoot = borrowedRoot || (card == child
-                    && originalBaselineAddresses.contains(card));
                 card->setParent(m_engine.cards.contains(const_cast<Card *>(card)) ? &m_engine : nullptr);
                 continue;
             }
             manager.observeCard(card);
         }
-        if (!borrowedRoot) delete child;
+        delete child;
     }
     if (!m_definitionRoot.children().isEmpty())
         qFatal("Room definition root retained children after shutdown");
     m_packages.clear();
     m_generals.clear();
-    m_printedSkillNames.clear();
-    ++m_printedSkillGeneration;
     m_cards.clear();
     m_cardSpan = 0;
     m_cardIds.clear();
@@ -132,11 +115,6 @@ void RoomDefinitionRegistry::clear()
 
 void RoomDefinitionRegistry::addPackage(Package *package)
 {
-    observeFactoryMapWriter();
-    if (!canReparentDefinitionObject(package, nullptr)) {
-        qWarning("Room registration of published global card owner rejected");
-        return;
-    }
     if (!package || m_packages.contains(package->objectName()))
         return;
     if (!package->parent())
@@ -147,11 +125,6 @@ void RoomDefinitionRegistry::addPackage(Package *package)
 
 void RoomDefinitionRegistry::setPackage(Package *package)
 {
-    observeFactoryMapWriter();
-    if (!canReparentDefinitionObject(package, nullptr)) {
-        qWarning("Room registration of published global card owner rejected");
-        return;
-    }
     if (!package)
         return;
     if (!m_packages.contains(package->objectName())) {
@@ -163,13 +136,12 @@ void RoomDefinitionRegistry::setPackage(Package *package)
 
 void RoomDefinitionRegistry::indexPackage(Package *package)
 {
-    observeFactoryMapWriter();
     const QList<int> bootstrapIds = m_engine.m_packageCardIds.value(package->objectName());
     const QList<Card *> packageCards = package->findChildren<Card *>();
     for (int index = 0; index < packageCards.size(); ++index) {
         Card *card = packageCards.at(index);
         if (m_cardIds.contains(card)) {
-            card->aiReassertPhysicalDefinitionId(m_cardIds.value(card));
+            card->setId(m_cardIds.value(card));
             continue;
         }
         int id = index < bootstrapIds.size() ? bootstrapIds.at(index) : m_nextCardId++;
@@ -181,7 +153,6 @@ void RoomDefinitionRegistry::indexPackage(Package *package)
             id = m_nextCardId++;
         }
         card->setId(id);
-        card->aiRecordPhysicalDefinitionIndexSource(id);
         m_cards.insert(id, card);
         m_cardSpan = qMax(m_cardSpan, id + 1);
         m_cardIds.insert(card, id);
@@ -301,53 +272,6 @@ bool RoomDefinitionRegistry::isEngineCard(const Card *card) const
     return card && m_engine.cards.contains(const_cast<Card *>(card));
 }
 
-bool RoomDefinitionRegistry::printedSkillName(const Card *card, QString *value) const
-{
-    const auto it = m_printedSkillNames.constFind(card);
-    if (it == m_printedSkillNames.cend()) return false;
-    if (value) *value = it.value();
-    return true;
-}
-
-bool RoomDefinitionRegistry::setPrintedSkillName(const Card *card, const QString &value)
-{
-    // This is not an arbitrary-card mutation API: it only stores the existing
-    // compiled BasicCard field. Owned definitions/clones keep ordinary storage.
-    if (!card || !isEngineCard(card) || card->getTypeId() != Card::TypeBasic) return false;
-    const auto it = m_printedSkillNames.constFind(card);
-    if (it == m_printedSkillNames.cend() || it.value() != value) {
-        m_printedSkillNames.insert(card, value);
-        ++m_printedSkillGeneration;
-    }
-    return true;
-}
-
-QMap<int, QString> RoomDefinitionRegistry::printedSkillSnapshot() const
-{
-    QMap<int, QString> result;
-    for (auto it = m_printedSkillNames.cbegin(); it != m_printedSkillNames.cend(); ++it)
-        result.insert(it.key()->getId(), it.value());
-    return result;
-}
-
-bool RoomDefinitionRegistry::restorePrintedSkillSnapshot(const QMap<int, QString> &snapshot, QString *error)
-{
-    QHash<const Card *, QString> prepared;
-    for (auto it = snapshot.cbegin(); it != snapshot.cend(); ++it) {
-        const Card *card = m_engine.cards.value(it.key(), nullptr);
-        if (!card || card->getId() != it.key() || card->getTypeId() != Card::TypeBasic) {
-            if (error) *error = QStringLiteral("invalid compiled BasicCard attribution identity");
-            return false;
-        }
-        prepared.insert(card, it.value());
-    }
-    // Full validation precedes mutation; underscore and explicit empty strings
-    // are raw field values, not normalized getSkillName() results.
-    m_printedSkillNames.swap(prepared);
-    ++m_printedSkillGeneration;
-    return true;
-}
-
 const Card *RoomDefinitionRegistry::cardTemplate(const QString &name) const
 {
     return m_cardTemplates.value(name, nullptr);
@@ -422,10 +346,6 @@ QList<const ProhibitPindianSkill *> RoomDefinitionRegistry::prohibitPindianSkill
 
 void RoomDefinitionRegistry::registerLuaSkillCard(const QString &name, const LuaSkillCard *card)
 {
-    if (isPublishedGlobalCard(card)) {
-        qWarning("Room registration of published global card template rejected");
-        return;
-    }
     LuaSkillCard *ownedCard = const_cast<LuaSkillCard *>(card);
     if (ownedCard && !ownedCard->parent())
         ownedCard->setParent(&m_definitionRoot);
@@ -436,37 +356,4 @@ void RoomDefinitionRegistry::registerLuaSkillCard(const QString &name, const Lua
 const LuaSkillCard *RoomDefinitionRegistry::luaSkillCard(const QString &name) const
 {
     return m_luaSkillCards.value(name, nullptr);
-}
-
-// Issued only from the original RoomRuntime::initialize, before namespace birth.
-// The member starts Pristine at native construction; no map inspection seeds it.
-void RoomDefinitionRegistry::beginFactorySourceOrigin(Room &room) noexcept
-{
-    if (m_factorySourcePhase != FactorySourcePhase::Pristine) {
-        m_factorySourcePhase = FactorySourcePhase::Retired;
-        return;
-    }
-    m_factorySourceRoom = &room;
-    m_factorySourcePhase = FactorySourcePhase::Collecting;
-}
-
-void RoomDefinitionRegistry::observeFactoryMapWriter() noexcept
-{
-    // Even null, duplicate and equal/no-op public attempts retire after seal.
-    // During bootstrap, only the original synchronous definition-loading graph
-    // can collect writers; the complete source token closes that graph later.
-    if (m_factorySourcePhase != FactorySourcePhase::Collecting
-        || !m_factorySourceRoom
-        || !isAIOriginalDefinitionProducer(*m_factorySourceRoom, this))
-        m_factorySourcePhase = FactorySourcePhase::Retired;
-}
-
-bool RoomDefinitionRegistry::hasFactorySourceOrigin(const Room &room, lua_State *L) const noexcept
-{
-    auto *runtime = const_cast<Room &>(room).roomRuntime();
-    return m_factorySourcePhase == FactorySourcePhase::Sealed
-        && m_factorySourceRoom == &room && runtime && &runtime->definitions() == this
-        && !runtime->isClosing() && runtime->lua().isCurrentThreadOwner()
-        && runtime->lua().rawState() == L
-        && runtime->lua().generation() == m_factorySourceGeneration;
 }

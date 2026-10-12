@@ -417,7 +417,7 @@ public:
     void setJudgeArea(bool flag);
     bool canPindian(const Player *target = nullptr, bool except_self = true) const;
 
-    QHash<QString, int> getHistory() const;
+    QHash<QString, int> getHistory() const { return history; }
     //bool canPindian(bool except_self = true) const;
     bool canBePindianed(bool except_self = true) const;
     bool isYourFriend(const Player *fri) const;
@@ -591,9 +591,6 @@ protected:
     QList<int> broken_equips;
 
 private:
-    friend class Room;
-    bool beginAIPublicGeneralSkills(quint64 &serial) noexcept;
-    void finishAIPublicGeneralSkills(quint64 serial, quint64 expected) noexcept;
     friend class PlayerStateService;
     friend class RoomManagedState;
     // Commit receipts before mark_changed can re-enter game rules.

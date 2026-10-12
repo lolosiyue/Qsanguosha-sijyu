@@ -13,15 +13,10 @@
 #include "wrapped-card.h"
 #include "card-lifetime-manager.h"
 #include "roomthread.h"
-#include "room-runtime.h"
-#include "room-definition-registry.h"
-#include "ai-strategy/inovation-ai.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QEvent>
 #include <QRegularExpression>
-#include <atomic>
 #include <cstring>
-#include <memory>
 
 const int Card::S_UNKNOWN_CARD_ID = -1;
 
@@ -32,10 +27,7 @@ const Card::Suit Card::AllSuits[4] = {
 	Card::Diamond
 };
 
-// Allocate in one process-wide modification order. This counter publishes no
-// Card fields or lifetime state, so relaxed ordering is sufficient. Keep the
-// original unsigned decrement/wrap and subsequent conversion to the int ID.
-static std::atomic<unsigned int> cardId{0};
+static unsigned int cardId = 0;
 
 static const Card *roomOrEngineCard(int id)
 {
@@ -62,7 +54,7 @@ static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
 
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
-	m_suit(suit), m_number(number), m_id(cardId.fetch_sub(1u, std::memory_order_relaxed) - 1u), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
+	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
 	single_target(single_target),handling_method(MethodUse), m_skillInstanceId(0),
 	m_sourceSkillInstanceId(0), m_activationSkillInstanceId(0)
 {
@@ -70,124 +62,14 @@ Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_g
 
 Card::~Card()
 {
-    retireAIRecursiveFieldOrigins(31u);
     globalCardLifetimeManager().removeChangeEdges(this);
 	globalCardLifetimeManager().releaseTags(this);
 	CardLifetimeManager::invalidateObservedCard(this);
 	change_cards.clear();
 }
 
-unsigned Card::aiOriginalRecursiveFieldOrigins() const noexcept
-{
-    return m_aiRecursiveFieldOrigins.load(std::memory_order_acquire);
-}
-
-void Card::retireAIRecursiveFieldOrigins(unsigned fields) const noexcept
-{
-    m_aiRecursiveFieldOrigins.fetch_and(~fields, std::memory_order_acq_rel);
-    if (fields & 12u) {
-        quint64 epoch = m_aiScalarWriteEpoch.load(std::memory_order_relaxed);
-        const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiScalarWriteEpoch.compare_exchange_weak(
-                   epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
-    }
-    if (fields & 1u) {
-        quint64 epoch = m_aiMaterialWriteEpoch.load(std::memory_order_relaxed);
-        const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiMaterialWriteEpoch.compare_exchange_weak(
-                   epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
-    }
-    if (fields & 16u) {
-        quint64 epoch = m_aiIdWriteEpoch.load(std::memory_order_relaxed);
-        const quint64 exhausted = ~quint64(0);
-        while (epoch != exhausted && !m_aiIdWriteEpoch.compare_exchange_weak(
-                   epoch, epoch + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {}
-    }
-}
-
-quint64 Card::aiIdWriteEpoch() const noexcept
-{
-    return m_aiIdWriteEpoch.load(std::memory_order_acquire);
-}
-
-quint64 Card::aiMaterialWriteEpoch() const noexcept
-{
-    return m_aiMaterialWriteEpoch.load(std::memory_order_acquire);
-}
-
-quint64 Card::aiScalarWriteEpoch() const noexcept
-{
-    return m_aiScalarWriteEpoch.load(std::memory_order_acquire);
-}
-
-bool Card::aiOriginalPhysicalDefinitionMaterialsOrigin() const noexcept
-{
-    // Source setId cleared then appended the source index exactly once. This
-    // is a single-index source receipt, NOT constructor-empty/current-empty.
-    return aiOriginalPhysicalDefinitionIndex(nullptr)
-        && aiMaterialWriteEpoch() == 1;
-}
-
-void Card::aiRecordPhysicalDefinitionIndexSource(int index) noexcept
-{
-    // Only actual definition registration can call this. The first registration
-    // must be the first identity writer; no earlier unknown attempt can heal.
-    int neverAttempted = -2;
-    if (!m_aiPhysicalDefinitionIndex.compare_exchange_strong(
-            neverAttempted, -1, std::memory_order_acq_rel)) return;
-    if (index >= 0 && aiIdWriteEpoch() == 1) {
-        m_aiPhysicalDefinitionIndex.store(index, std::memory_order_release);
-        m_aiDefinitionIdSourceEpoch.store(1, std::memory_order_release);
-    }
-}
-
-bool Card::aiOriginalPhysicalDefinitionIndex(int *index) const noexcept
-{
-    const int source = m_aiPhysicalDefinitionIndex.load(std::memory_order_acquire);
-    if (source < 0 || aiIdWriteEpoch() != 1) return false;
-    if (index) *index = source;
-    return true;
-}
-
-bool Card::aiPhysicalDefinitionIdIndex(int *index) const noexcept
-{
-    const int source = m_aiPhysicalDefinitionIndex.load(std::memory_order_acquire);
-    const quint64 epoch = m_aiDefinitionIdSourceEpoch.load(std::memory_order_acquire);
-    if (source < 0 || !epoch || epoch == ~quint64(0) || aiIdWriteEpoch() != epoch)
-        return false;
-    if (index) *index = source;
-    return true;
-}
-
-void Card::aiReassertPhysicalDefinitionId(int index)
-{
-    int recorded = -1;
-    const bool continuous = aiPhysicalDefinitionIdIndex(&recorded) && recorded == index;
-    const quint64 before = m_aiDefinitionIdSourceEpoch.exchange(0, std::memory_order_acq_rel);
-    // The actual registry writer still executes on all paths. Its source index,
-    // not a current ID comparison, can continue an already-valid lineage only.
-    // Retire before dispatch so failure/reentry/unknown ID writes never heal it.
-    setId(index);
-    if (continuous && before && before < ~quint64(0) - 1 && aiIdWriteEpoch() == before + 1)
-        m_aiDefinitionIdSourceEpoch.store(before + 1, std::memory_order_release);
-}
-
-void Card::appendChangeCardForEvent(const Card *card)
-{
-    retireAIRecursiveFieldOrigins(2u);
-    change_cards << card;
-}
-
-void Card::clearChangeCards() const
-{
-    retireAIRecursiveFieldOrigins(2u);
-    // Preserve the old direct clear's lifetime-manager behavior exactly.
-    change_cards.clear();
-}
-
 void Card::deleteLater()
 {
-    if (isPublishedGlobalCard(this)) return;
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const auto token = manager.observeCard(this);
     if (manager.mode() == CardLifetimeMode::ObserveOnly) {
@@ -261,7 +143,6 @@ bool Card::lifetimeIsLive() const
 
 void Card::setId(int id)
 {
-    retireAIRecursiveFieldOrigins(17u);
 	this->m_id = id;
 	if (id>=0){
 		subcards.clear();
@@ -343,7 +224,6 @@ int Card::getNumber() const
 
 void Card::setNumber(int number)
 {
-    retireAIRecursiveFieldOrigins(8u);
 	this->m_number = number;
 }
 
@@ -395,7 +275,6 @@ Card::Suit Card::getSuit() const
 
 void Card::setSuit(Suit suit)
 {
-    retireAIRecursiveFieldOrigins(4u);
 	this->m_suit = suit;
 }
 
@@ -591,19 +470,9 @@ int Card::nameLength() const
 	return getName().length();
 }
 
-QString Card::rawSkillName() const
-{
-    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
-    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
-    QString value;
-    if (runtime && runtime->definitions().printedSkillName(this, &value)) return value;
-    // Bootstrap and no-Room callers retain the actual compiled definition field.
-    return m_skillName;
-}
-
 QString Card::getSkillName(bool removePrefix) const
 {
-	QString skillName = rawSkillName();
+	QString skillName = m_skillName;
 	if (skillName.isEmpty() && getTypeId() == TypeSkill) {
 		const QString className = QString::fromLatin1(metaObject()->className());
 		if (isHegemonyCardClassName(className) && className.endsWith("Card")) {
@@ -620,9 +489,6 @@ QString Card::getSkillName(bool removePrefix) const
 
 void Card::setSkillName(const QString &name)
 {
-    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
-    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
-    if (runtime && runtime->definitions().setPrintedSkillName(this, name)) return;
     this->m_skillName = name;
 }
 
@@ -769,7 +635,7 @@ QString Card::toString(bool hidden) const
 {
 	Q_UNUSED(hidden);
 	if (isVirtualCard())
-		return QString("%1:%2[%3:%4]=%5").arg(objectName()).arg(rawSkillName())
+		return QString("%1:%2[%3:%4]=%5").arg(objectName()).arg(m_skillName)
 		.arg(getSuitString()).arg(getNumberString()).arg(subcardString());
 	return QString::number(m_id);
 }
@@ -788,14 +654,12 @@ QString Card::subcardString() const
 
 void Card::addSubcards(const QList<const Card*> &cards)
 {
-    retireAIRecursiveFieldOrigins(1u);
 	foreach(const Card*card, cards)
 		subcards << card->getEffectiveId();
 }
 
 void Card::addSubcards(const QList<int> &subcards_list)
 {
-    retireAIRecursiveFieldOrigins(1u);
 	subcards << subcards_list;
 }
 
@@ -926,51 +790,6 @@ Card*Card::Clone(const Card*card)
 		card_obj->setSkillInstanceId(card->getSkillInstanceId());
 	}
 	return card_obj;
-}
-
-// Native-only policy copy. No Lua/SWIG binding and no gameplay/payment receipt.
-// A WrappedCard has separate mutable wrapper and inner state; preserve both.
-Card *Card::CloneReadonlyPhysicalPolicy(const Card *source)
-{
-    if (!source || source->isVirtualCard()) return nullptr;
-    const Card *real = source->getRealCard();
-    if (!real || real->getTypeId() == TypeSkill) return nullptr;
-    std::unique_ptr<Card> inner(Clone(real));
-    if (!inner) return nullptr;
-    const auto copyState = [](Card &to, const Card &from) {
-        to.retireAIRecursiveFieldOrigins(31u);
-        to.setObjectName(from.objectName());
-        to.subcards=from.subcards; to.target_fixed=from.target_fixed;
-        to.mute=from.mute; to.will_throw=from.will_throw; to.has_preact=from.has_preact;
-        to.can_recast=from.can_recast; to.m_suit=from.m_suit; to.m_number=from.m_number; to.m_id=from.m_id;
-        to.Card::setSkillName(from.rawSkillName()); to.m_skillInstanceId=from.m_skillInstanceId;
-        to.m_sourceSkillName=from.m_sourceSkillName; to.m_sourceSkillInstanceId=from.m_sourceSkillInstanceId;
-        to.m_activationSkillName=from.m_activationSkillName; to.m_activationSkillInstanceId=from.m_activationSkillInstanceId;
-        to.show_skill=from.show_skill; to.is_gift=from.is_gift; to.is_transferable=from.is_transferable;
-        to.damage_card=from.damage_card; to.single_target=from.single_target; to.handling_method=from.handling_method;
-        invalidateAIXiedouFlags(&to);
-        to.flags=from.flags;
-        // Card tags/change links may hold Card lifetimes. Use existing tracked
-        // APIs, not raw QVariantMap/QList pointer ownership copies.
-        const auto oldTagKeys=to.tag.keys();
-        for (const QString &key:oldTagKeys) to.Card::removeTag(key);
-        for (auto i=from.tag.cbegin();i!=from.tag.cend();++i) to.Card::setTag(i.key(),i.value());
-        globalCardLifetimeManager().removeChangeEdges(&to);to.change_cards.clear();
-        for (const Card *changed:from.change_cards) to.addChange(changed);
-        const auto oldProperties=to.dynamicPropertyNames();
-        for (const QByteArray &name:oldProperties) to.QObject::setProperty(name.constData(),QVariant());
-        for (const QByteArray &name:from.dynamicPropertyNames())
-            to.QObject::setProperty(name.constData(),from.property(name.constData()));
-        // Deliberately omit m_appliedPhysicalEffectSource: native authority is
-        // not policy metadata and is never transferred to this readonly copy.
-    };
-    copyState(*inner,*real);
-    if (qobject_cast<const WrappedCard *>(source)) {
-        auto *wrapped=new WrappedCard(inner.release());
-        copyState(*wrapped,*source);wrapped->setModified(source->isModified());
-        return wrapped;
-    }
-    return inner.release();
 }
 
 bool Card::targetFixed() const
@@ -1293,7 +1112,6 @@ bool Card::isCancelable(const CardEffectStruct &) const
 
 void Card::addSubcard(int card_id)
 {
-    retireAIRecursiveFieldOrigins(1u);
 	if (card_id < 0)
 		qWarning("%s", qPrintable(tr("Subcard must not be virtual card!")));
 	else
@@ -1302,7 +1120,6 @@ void Card::addSubcard(int card_id)
 
 void Card::addSubcard(const Card*card)
 {
-    retireAIRecursiveFieldOrigins(1u);
 	if (card->isVirtualCard())
 		addSubcards(card->getSubcards());
 	else
@@ -1316,7 +1133,6 @@ QList<int> Card::getSubcards() const
 
 void Card::clearSubcards()
 {
-    retireAIRecursiveFieldOrigins(1u);
 	subcards.clear();
 }
 
@@ -1420,7 +1236,6 @@ QStringList Card::getMarkNames() const
 
 void Card::addChange(const Card*card)
 {
-    retireAIRecursiveFieldOrigins(2u);
 	if (!card)
 		return;
 	if (globalCardLifetimeManager().addChangeEdge(this, card))
@@ -1438,8 +1253,6 @@ QStringList Card::getSkillNames(bool removePrefix) const
 
 void Card::setFlags(const QString &flag) const
 {
-    if (flag == QStringLiteral(".") || flag == QStringLiteral("nosjiefan-slash")
-        || flag == QStringLiteral("-nosjiefan-slash")) invalidateAIXiedouFlags(this);
 	if(flag == ".") flags.clear();
 	else{
 		if(flag.startsWith("-")){
@@ -1456,7 +1269,6 @@ bool Card::hasFlag(const QString &flag) const
 
 void Card::clearFlags() const
 {
-    invalidateAIXiedouFlags(this);
 	flags.clear();
 }
 
@@ -1523,29 +1335,7 @@ bool Card::sameNameWith(const QString &card_name, bool different_slash) const
 	return objectName() == card_name;
 }
 
-void Card::setObjectName(const QString &name)
-{
-    if (isPublishedGlobalCard(this)) {
-        qWarning("Published global card name mutation rejected");
-        return;
-    }
-    QObject::setObjectName(name);
-}
-
-void Card::setParent(QObject *parent)
-{
-    if (!canReparentDefinitionObject(this, parent)) {
-        qWarning("Published global card ownership mutation rejected");
-        return;
-    }
-    QObject::setParent(parent);
-}
-
 bool Card::setProperty(const char* name, const QVariant& value) {
-    if (isPublishedGlobalCard(this)) {
-        qWarning("Published global card property mutation rejected");
-        return false;
-    }
 	return ThreadSafeHelper::setProperty(this, name, value);
 }
 
@@ -1717,7 +1507,6 @@ DummyCard::DummyCard(const QList<int> &subcards)
 {
 	target_fixed = true;
 	handling_method = MethodNone;
-    retireAIRecursiveFieldOrigins(1u);
 	this->subcards = subcards;
 	setObjectName("dummy");
 }

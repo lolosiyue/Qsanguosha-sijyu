@@ -127,11 +127,8 @@ fi
 for relative in mode-ai.lua isolated-bootstrap.lua isolated-facades.lua \
         isolated/ask-for-use-card.lua isolated/ask-for-choice.lua \
         isolated/decision-core.lua isolated/retrial.lua \
-        isolated/strategy-hooks.lua isolated/speech.lua isolated/event-intention.lua \
-        isolated/smart-ai-functions.lua isolated/imagine-ai.lua isolated/pindian-ai.lua isolated/guanxing.lua \
-        isolated/standard_cards-ai.lua isolated/maneuvering-ai.lua isolated/standard-ai.lua \
-        isolated/basara-ai.lua isolated/hegemony-ai.lua isolated/hulaoguan-ai.lua \
-        isolated/jiange-defense-ai.lua isolated/boss-ai.lua; do
+        isolated/strategy-hooks.lua isolated/event-intention.lua \
+        isolated/smart-ai-functions.lua; do
     if [[ ! -f "$ai_target/$relative" ]]; then
         echo "lua/ai is incomplete: $relative is missing after fetch" >&2
         exit 1

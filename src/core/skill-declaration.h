@@ -88,8 +88,6 @@ public:
     QList<SkillDeclarationCandidate> candidates() const { return m_candidates; }
 
     const Card *cloneCard(const QString &value) const;
-    // Transfer an already-created private clone; never creates or validates a declaration.
-    Card *takeClone(const QString &value);
     SkillDeclarationValidation validate(const QString &value) const;
     // Clears the current declaration, including a previously selected string.
     void clearChoice();

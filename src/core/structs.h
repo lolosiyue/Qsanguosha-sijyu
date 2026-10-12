@@ -3,16 +3,11 @@
 
 class Card;
 struct CardUseStruct;
-class AIZhaobingPhysicalUseProof;
-class AIZhaobingPhysicalUseAccess;
-class AIFateUseProof;
-class AIFateUseAccess;
 
 #include "skill-instance-types.h"
 #include "serverplayer.h"
 
 #include <functional>
-#include <memory>
 #include <QSharedPointer>
 
 // Selection result; the caller decides how to move the selected and remaining cards.
@@ -232,11 +227,6 @@ struct CardUseStruct {
 
 private:
     friend class Room;
-    friend class AIZhaobingPhysicalUseAccess;
-    friend class AIFateUseAccess;
-    std::shared_ptr<const AIFateUseProof> m_aiFateUse;
-    // AI-only immutable proof: never parsed, serialized, or exposed by SWIG.
-    std::shared_ptr<const AIZhaobingPhysicalUseProof> m_aiZhaobingPhysicalUse;
     // Server continuation identity is copied internally but never parsed from a request.
     bool m_acceptedSkillEffectCard = false;
     void replaceCard(const Card *newCard, Card *ownedCard = nullptr);

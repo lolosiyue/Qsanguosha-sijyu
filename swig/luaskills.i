@@ -857,8 +857,6 @@ public:
 %{
 
 #include "lua-wrapper.h"
-#include "ai-strategy/official.h"
-#include "ai-strategy/anime.h"
 #include "clientplayer.h"
 #include "gamerule.h"
 #include "room.h"
@@ -1084,9 +1082,6 @@ int LuaTriggerSkillV2::getMaxUsageLimit(const SkillContext &) const
 
 bool LuaTriggerSkillV2::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
-    AIGoddessScope goddess(*room,this,player,int(triggerEvent),ctx,true);
-    AIYuxinScope yuxin(*room,this,player,int(triggerEvent),ctx,false);
-    AIHTMSFrame htmsEvents(*room,this,player,int(triggerEvent),ctx,true);
 	if (on_cost == 0)
 		return TriggerSkillV2::cost(triggerEvent, room, player, ctx);
 	try {
@@ -1169,9 +1164,6 @@ bool LuaTriggerSkillV2::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 bool LuaTriggerSkillV2::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
-    AIGoddessScope goddess(*room,this,player,int(triggerEvent),ctx,false);
-    AIYuxinScope yuxin(*room,this,player,int(triggerEvent),ctx,true);
-    AIHTMSFrame htmsEvents(*room,this,player,int(triggerEvent),ctx,false);
 	if (on_effect == 0)
 		return TriggerSkillV2::effect(triggerEvent, room, player, ctx);
 
@@ -2597,7 +2589,6 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	lua_State*L = LuaRuntime::currentState();
 
 	on_use.push(L);
-	AIRangyiCallback rangyiCallback(*room,L,-1,this,source,targets);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, source, SWIGTYPE_p_ServerPlayer, 0);
@@ -3490,13 +3481,12 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 
 int LuaHorse::getCorrect(const Player *player) const
 {
-	const LuaFunction callback = correct_func;
-	if (callback == 0)
+	if (correct_func == 0)
 		return Horse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	callback.push(L);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3622,13 +3612,12 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 
 int LuaOffensiveHorse::getCorrect(const Player *player) const
 {
-	const LuaFunction callback = correct_func;
-	if (callback == 0)
+	if (correct_func == 0)
 		return OffensiveHorse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	callback.push(L);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3755,13 +3744,12 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 
 int LuaDefensiveHorse::getCorrect(const Player *player) const
 {
-	const LuaFunction callback = correct_func;
-	if (callback == 0)
+	if (correct_func == 0)
 		return DefensiveHorse::getCorrect(player);
 
 	lua_State*L = LuaRuntime::currentState();
 
-	callback.push(L);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 

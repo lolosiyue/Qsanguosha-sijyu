@@ -22,9 +22,6 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-#include "lstate.h"
-#include "ltable.h"
-#include "lqsgsasync.h"
 
 
 /*
@@ -633,19 +630,9 @@ static void findloader (lua_State *L, const char *name) {
       luaL_error(L, "module '%s' not found:%s", name, lua_tostring(L, -1));
     }
     lua_pushstring(L, name);
-    /* The audited bootstrap graph requires standard searchers. Deny its
-       provenance before either C-searcher can dlopen a library (whose native
-       initializers can execute even before a luaopen function is returned). */
-    if (i >= 3 && G(L)->protectedbridge)
-      G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 6);
     lua_call(L, 1, 2);  /* call it */
-    if (lua_isfunction(L, -2)) {  /* did it find a loader? */
-      /* A C module has no parsed Proto and would bypass lua_load's source
-         witness. Notify before invoking it; never suppress or replace it. */
-      if (lua_iscfunction(L, -2) && G(L)->protectedbridge)
-        G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 6);
+    if (lua_isfunction(L, -2))  /* did it find a loader? */
       return;  /* module loader found */
-    }
     else if (lua_isstring(L, -2)) {  /* searcher returned error message? */
       lua_pop(L, 1);  /* remove extra return */
       luaL_addvalue(&msg);  /* concatenate error message */
@@ -691,77 +678,6 @@ static int ll_require (lua_State *L) {
 
 
 
-
-/* No stack growth, string interning, metamethods, callbacks, or value export. */
-static const TValue *qsgs_modulefield(lua_State *L, Table *t, const char *key) {
-  unsigned int i; size_t len = strlen(key);
-  if (!t) return &G(L)->nilvalue;
-  for (i = 0; i < allocsizenode(t); ++i) {
-    const Node *n = gnode(t, i);
-    if (!isempty(gval(n)) && keyiscollectable(n)
-        && (keytt(n) == ctb(LUA_VSHRSTR) || keytt(n) == ctb(LUA_VLNGSTR))) {
-      const TString *s = gco2ts(keyval(n).gc);
-      if (tsslen(s) == len && !memcmp(getstr(s), key, len)) return gval(n);
-    }
-  }
-  return &G(L)->nilvalue;
-}
-static Table *qsgs_plaintable(const TValue *v) {
-  return ttistable(v) && !hvalue(v)->metatable ? hvalue(v) : NULL;
-}
-static int qsgs_standardrequiregraph(lua_State *L, int index, const char *module) {
-  const TValue *v, *globalsValue; Table *globals, *package, *searchers, *loaded, *preload;
-  CClosure *require; int i;
-  static const lua_CFunction expected[] = {searcher_preload, searcher_Lua, searcher_C, searcher_Croot};
-  if (!L || index <= LUA_REGISTRYINDEX) return 0;
-  if (index > 0) {
-    if (L->ci->func.p + index >= L->top.p) return 0;
-    v = s2v(L->ci->func.p + index);
-  } else {
-    if (index == 0 || L->top.p + index <= L->ci->func.p) return 0;
-    v = s2v(L->top.p + index);
-  }
-  if (!ttisCclosure(v)) return 0;
-  require = clCvalue(v);
-  if (require->f != ll_require || require->nupvalues != 1) return 0;
-  package = qsgs_plaintable(&require->upvalue[0]);
-  if (!package || !ttistable(&G(L)->l_registry)) return 0;
-  globalsValue = luaH_getint(hvalue(&G(L)->l_registry), LUA_RIDX_GLOBALS);
-  globals = qsgs_plaintable(globalsValue);
-  if (!globals || qsgs_plaintable(qsgs_modulefield(L, globals, "package")) != package) return 0;
-  searchers = qsgs_plaintable(qsgs_modulefield(L, package, "searchers"));
-  if (!searchers) return 0;
-  for (i = 0; i < 4; ++i) {
-    CClosure *searcher;
-    v = luaH_getint(searchers, i + 1);
-    if (!ttisCclosure(v)) return 0;
-    searcher = clCvalue(v);
-    if (searcher->f != expected[i] || searcher->nupvalues != 1
-        || !ttistable(&searcher->upvalue[0]) || hvalue(&searcher->upvalue[0]) != package) return 0;
-  }
-  if (!ttisnil(luaH_getint(searchers, 5)) && !isempty(luaH_getint(searchers, 5))) return 0;
-  loaded = qsgs_plaintable(qsgs_modulefield(L, hvalue(&G(L)->l_registry), LUA_LOADED_TABLE));
-  preload = qsgs_plaintable(qsgs_modulefield(L, hvalue(&G(L)->l_registry), LUA_PRELOAD_TABLE));
-  if (!loaded || !preload
-      || qsgs_plaintable(qsgs_modulefield(L, package, "loaded")) != loaded
-      || qsgs_plaintable(qsgs_modulefield(L, package, "preload")) != preload) return 0;
-  if (module && (!ttisnil(qsgs_modulefield(L, loaded, module))
-      || !ttisnil(qsgs_modulefield(L, preload, module)))) return 0;
-  /* Both paths are inputs to standard source lookup. A changed/unknown loaded
-     Lua Proto is denied by mode 5; a native module is denied by mode 6 before
-     dispatch. This checker never treats the current filename as a code seal. */
-  return ttisstring(qsgs_modulefield(L, package, "path"))
-      && ttisstring(qsgs_modulefield(L, package, "cpath"));
-}
-
-/* Binding metadata only. Loaded/preload VALUES are intentionally not read:
-   their source-origin induction is a separate caller obligation. */
-LUA_API int luaQsgsStandardRequireBindings(lua_State *L, int index) {
-  return qsgs_standardrequiregraph(L, index, NULL);
-}
-LUA_API int luaQsgsStandardRequireGraph(lua_State *L, int index, const char *module) {
-  return module && *module && qsgs_standardrequiregraph(L, index, module);
-}
 
 static const luaL_Reg pk_funcs[] = {
   {"loadlib", ll_loadlib},
@@ -840,14 +756,3 @@ LUAMOD_API int luaopen_package (lua_State *L) {
   return 1;  /* return 'package' table */
 }
 
-
-/* An empty CLIBS table cannot call dlclose. Require the exact no-__len
-   metatable too: gctm calls luaL_len, not rawlen. An admitted graph may never
-   load a C library or mutate this table/metatable/registry root. */
-int luaQsgsStandardLoadlibFinalizer(lua_State*L,int function,int object) {
- const TValue*v=qsgs_async_value(L,object);Table*t;const TValue*len;
- if(!qsgs_async_cfunction(qsgs_async_value(L,function),gctm)||!ttistable(v))return 0;
- t=hvalue(v);if(!t->metatable||luaH_getn(t)!=0)return 0;
- len=qsgs_async_field(t->metatable,"__len");
- return !len||ttisnil(len);
-}

@@ -10,20 +10,9 @@
 #include "settings.h"
 #include <QFile>
 
-namespace {
-Package *definitionConstructionParent(Package *package)
-{
-    if (!canReparentDefinitionObject(nullptr, package)) {
-        qWarning("Construction under published global card owner rejected");
-        return nullptr;
-    }
-    return package;
-}
-}
-
 General::General(Package *package, const QString &name, const QString &kingdom,
     int max_hp, bool male, bool hidden, bool never_shown, int start_hp, int start_hujia)
-    : QObject(definitionConstructionParent(package)), kingdom(kingdom), max_hp(max_hp), gender(male ? Male : Female),
+    : QObject(package), kingdom(kingdom), max_hp(max_hp), gender(male ? Male : Female),
     hidden(hidden), never_shown(never_shown), start_hp(start_hp), start_hujia(start_hujia)
 {
 	QString copy = name;
@@ -199,10 +188,6 @@ int General::getStartHujia() const
 void General::addSkill(Skill *skill)
 {
     if (skill) {
-        if (!canReparentDefinitionObject(skill, this)) {
-            qWarning("Published global card ownership adoption rejected");
-            return;
-        }
 		if(skillname_list.contains(skill->objectName())) return;
 		skillname_list << skill->objectName();
 		skill->setParent(this);

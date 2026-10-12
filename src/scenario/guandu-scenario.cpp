@@ -336,22 +336,3 @@ void GuanduScenario::onTagSet(Room *room, const QString &) const
         }
     }
 }
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_scenario_guandu_scenario_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(GreatYiji)), 2u);
- types.recordActivateSource<GreatYiji>(2921u); AI_NATIVE_REQUIRE_DECLARATION(GreatYiji, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(GreatYiji, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GreatYiji, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(DamageBeforePlay)), 2u);
- types.recordActivateSource<DamageBeforePlay>(2922u); AI_NATIVE_REQUIRE_DECLARATION(DamageBeforePlay, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(DamageBeforePlay, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(ZhanShuangxiongViewAsSkill)), 2u);
- types.recordActivateSource<ZhanShuangxiongViewAsSkill>(2923u); AI_NATIVE_REQUIRE_DECLARATION(ZhanShuangxiongViewAsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZhanShuangxiongViewAsSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZhanShuangxiongViewAsSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(ZhanShuangxiong)), 2u);
- types.recordActivateSource<ZhanShuangxiong>(2924u); AI_NATIVE_REQUIRE_DECLARATION(ZhanShuangxiong, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(ZhanShuangxiong, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(SmallTuxiViewAsSkill)), 2u);
- types.recordActivateSource<SmallTuxiViewAsSkill>(2925u); AI_NATIVE_REQUIRE_DECLARATION(SmallTuxiViewAsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(SmallTuxiViewAsSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(SmallTuxiViewAsSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(SmallTuxi)), 2u);
- types.recordActivateSource<SmallTuxi>(2926u); AI_NATIVE_REQUIRE_DECLARATION(SmallTuxi, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(SmallTuxi, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(GuanduRule)), 2u);
- types.recordActivateSource<GuanduRule>(2927u); AI_NATIVE_REQUIRE_DECLARATION(GuanduRule, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(GuanduRule, getMaxUsageLimit, Skill);
-}

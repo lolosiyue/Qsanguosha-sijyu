@@ -11,10 +11,8 @@
 
 #include <atomic>
 #include <cstddef>
-#include <functional>
 
 struct lua_State;
-struct lua_Debug;
 
 class LuaRuntime
 {
@@ -29,31 +27,6 @@ public:
     LuaRuntime &operator=(const LuaRuntime &) = delete;
 
     bool initialize(QString *error = nullptr);
-    // Native source-origin event, offered once before this runtime's FIRST
-    // initialize. Reused states and later initializations cannot replay it.
-    // This authenticates the fixed CreateLuaState -> native SGS construction
-    // boundary only. A consumer must independently prove every subsequent
-    // rules/helper/native/async effect before using any retained absence.
-    class NativeNamespaceBirth final {
-    public:
-        NativeNamespaceBirth(const NativeNamespaceBirth &) = delete;
-        NativeNamespaceBirth &operator=(const NativeNamespaceBirth &) = delete;
-        bool isCurrent() const noexcept;
-        lua_State *state() const noexcept { return m_state; }
-        quint64 generation() const noexcept { return m_generation; }
-        const void *globalsIdentity() const noexcept { return m_globals; }
-        const void *namespaceIdentity() const noexcept { return m_space; }
-    private:
-        friend class LuaRuntime;
-        NativeNamespaceBirth(LuaRuntime &, const void *, const void *) noexcept;
-        LuaRuntime *m_runtime;
-        lua_State *m_state;
-        quint64 m_generation;
-        const void *m_globals;
-        const void *m_space;
-    };
-    bool installNativeNamespaceBirthObserver(const void *owner,
-        std::function<void(const NativeNamespaceBirth &)> observer);
     void setSeed(quint64 seed);
     void setMemoryLimits(size_t softLimit, size_t hardLimit);
     bool addPackagePath(const QString &pattern, QString *error = nullptr);
@@ -70,48 +43,6 @@ public:
     lua_State *state() const;
     lua_State *rawState() const { return m_state; }
     quint64 generation() const { return m_generation; }
-    // Observation-only epoch: a swallowed author error is not a completed effect.
-    quint64 protectedCallFailureGeneration() const { return m_protectedCallFailures; }
-    int protectedCallDepth() const { return m_protectedCallDepth; }
-    quint64 protectedCallFailureGenerationAtDepth(int depth) const { return m_protectedCallFailuresByDepth.value(depth); }
-    // Native VM bridge only. Finalizers/debug hooks have no certified
-    // current request; the sole observer receives negative argumentCount.
-    // Observer callbacks are a noexcept metadata/invalidator contract.
-    void notifyUnclassifiedLuaEntry(lua_State *state, int asyncKind) noexcept;
-    bool hasProtectedEntryObserver() const noexcept { return bool(m_protectedEntryObserver); }
-    // Native provenance only: called after successful parsing, before a loaded
-    // chunk can execute. It never modifies the chunk, return value or bindings.
-    // The observer must not execute Lua, grow the Lua stack, or throw.
-    bool installLoadedChunkObserver(const void *owner,
-        std::function<void(lua_State *, int)> observer);
-    void removeLoadedChunkObserver(const void *owner) noexcept;
-    void notifyLoadedChunk(lua_State *state, int kind = 5) noexcept;
-    // Bootstrap's independent monotonic witness is installed before SmartAI
-    // creates any registry. The later ordinary observer keeps its sole owner.
-    // Receives VM kinds 3/4/7, or -(argumentCount+1) before native protectedCall.
-    // Negative entries identify the actual function at -(argumentCount+1);
-    // observers are noexcept metadata-only and must not mutate/grow the stack.
-    // Invalid argument counts use unknown sentinel 0 (no signed overflow).
-    // Covers this native transport only, not Lua pcall/metamethods/lua_call;
-    // those descendants require the complete fixed synchronous source proof.
-    bool installBootstrapAsyncObserver(const void *owner,
-        std::function<void(lua_State *, int)> observer);
-    void removeBootstrapAsyncObserver(const void *owner) noexcept;
-    // Native-only lexical proof for the compiled AI instruction-budget hook.
-    // The caller must use the fixed budget-only implementation, never a Lua
-    // callback trampoline. Unknown/replaced hooks continue to invalidate.
-    class InstructionBudgetScope {
-    public:
-        InstructionBudgetScope(lua_State *, void (*)(lua_State *,lua_Debug *)) noexcept;
-        ~InstructionBudgetScope();
-        InstructionBudgetScope(const InstructionBudgetScope &)=delete;
-        InstructionBudgetScope &operator=(const InstructionBudgetScope &)=delete;
-        static bool matches(lua_State *) noexcept;
-    private:
-        lua_State *m_state; void (*m_hook)(lua_State *,lua_Debug *);
-        InstructionBudgetScope *m_previous;
-        static thread_local InstructionBudgetScope *s_current;
-    };
     Kind kind() const { return m_kind; }
     size_t memoryBytes() const { return m_memory.current; }
     size_t peakMemoryBytes() const { return m_memory.peak; }
@@ -128,11 +59,6 @@ public:
     static LuaRuntime *fromState(lua_State *state);
     static LuaRuntime *current();
     static lua_State *currentState();
-    // One native owner; invoked before every protected entry, including coroutine
-    // states bound to this runtime. No Lua-visible setter or policy authority.
-    bool installProtectedEntryObserver(const void *owner,
-        std::function<void(lua_State *, int)> observer);
-
     static int protectedCall(lua_State *state, int argumentCount,
                              int resultCount, int errorFunction);
     static void setCurrentForThread(LuaRuntime *runtime);
@@ -191,23 +117,9 @@ private:
     bool beginInvocation();
     void endInvocation();
 
-    void notifyNativeNamespaceBirth() noexcept;
-    bool m_nativeBirthOffered = false;
-    const void *m_nativeBirthOwner = nullptr;
-    std::function<void(const NativeNamespaceBirth &)> m_nativeBirthObserver;
-    const NativeNamespaceBirth *m_activeNativeBirth = nullptr;
     Kind m_kind;
     lua_State *m_state;
     quint64 m_generation;
-    const void *m_protectedEntryOwner = nullptr;
-    std::function<void(lua_State *, int)> m_protectedEntryObserver;
-    const void *m_loadedChunkOwner = nullptr;
-    std::function<void(lua_State *, int)> m_loadedChunkObserver;
-    const void *m_bootstrapAsyncOwner = nullptr;
-    std::function<void(lua_State *, int)> m_bootstrapAsyncObserver;
-    quint64 m_protectedCallFailures = 0;
-    int m_protectedCallDepth = 0;
-    QHash<int, quint64> m_protectedCallFailuresByDepth;
     quint64 m_seed;
     bool m_hasSeed;
     QThread *m_owner;
@@ -225,8 +137,6 @@ class LuaCallbackRef
 public:
     LuaCallbackRef();
     LuaCallbackRef(int nullValue);
-    LuaCallbackRef(const LuaCallbackRef &other);
-    LuaCallbackRef &operator=(const LuaCallbackRef &other);
     LuaCallbackRef(lua_State *state, int registryRef);
 
     LuaCallbackRef &operator=(int nullValue);
@@ -238,17 +148,10 @@ public:
 
     bool push(lua_State *target) const;
     lua_State *state() const;
-    int registryRef() const;
-    quint64 generation() const;
-    // Birth-only absence fact. Every assignment, including equal/null/self and
-    // copied handles, retires it. It never inspects a current reference value.
-    bool hasOriginalNullSource() const;
+    int registryRef() const { return m_registryRef; }
+    quint64 generation() const { return m_generation; }
 
 private:
-    // Protect this scalar tuple only. No lock across Lua/registry access,
-    // callback execution, QObject operations or logging.
-    mutable QMutex m_tupleMutex;
-    bool m_originalNull = true;
     lua_State *m_state;
     quint64 m_generation;
     int m_registryRef;

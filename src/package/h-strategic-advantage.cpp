@@ -1272,38 +1272,3 @@ HStrategicAdvantagePackage::HStrategicAdvantagePackage()
 }
 
 ADD_PACKAGE(HStrategicAdvantage)
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_h_strategic_advantage_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(HBladeSkill)), 2u);
- types.recordActivateSource<HBladeSkill>(670u); AI_NATIVE_REQUIRE_DECLARATION(HBladeSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HBladeSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HBladeSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HHalberdSkill)), 2u);
- types.recordActivateSource<HHalberdSkill>(671u); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, targetMode, HHalberdSkill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HHalberdTrigger)), 2u);
- types.recordActivateSource<HHalberdTrigger>(672u); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTrigger, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTrigger, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTrigger, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HHalberdTargetMod)), 3u);
- types.recordActivateSource<HHalberdTargetMod>(673u); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTargetMod, getBaseAmount, TargetModSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTargetMod, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdTargetMod, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HHalberdProhibit)), 3u);
- types.recordActivateSource<HHalberdProhibit>(674u); AI_NATIVE_REQUIRE_DECLARATION(HHalberdProhibit, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalberdProhibit, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HBreastplateViewAsSkill)), 2u);
- types.recordActivateSource<HBreastplateViewAsSkill>(675u); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateViewAsSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HBreastplateSkill)), 2u);
- types.recordActivateSource<HBreastplateSkill>(676u); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HBreastplateSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HIronArmorSkill)), 2u);
- types.recordActivateSource<HIronArmorSkill>(677u); AI_NATIVE_REQUIRE_DECLARATION(HIronArmorSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HIronArmorSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HIronArmorSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HJadeSealViewAsSkill)), 2u);
- types.recordActivateSource<HJadeSealViewAsSkill>(678u); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealViewAsSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HJadeSealSkill)), 2u);
- types.recordActivateSource<HJadeSealSkill>(679u); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJadeSealSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HLureTigerProhibit)), 3u);
- types.recordActivateSource<HLureTigerProhibit>(680u); AI_NATIVE_REQUIRE_DECLARATION(HLureTigerProhibit, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLureTigerProhibit, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HLureTigerDistance)), 3u);
- types.recordActivateSource<HLureTigerDistance>(681u); AI_NATIVE_REQUIRE_DECLARATION(HLureTigerDistance, getBaseAmount, DistanceSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HLureTigerDistance, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HLureTigerDistance, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HJingFanViewAsSkill)), 2u);
- types.recordActivateSource<HJingFanViewAsSkill>(682u); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJingFanViewAsSkill, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HJingFanSkill)), 2u);
- types.recordActivateSource<HJingFanSkill>(683u); AI_NATIVE_REQUIRE_DECLARATION(HJingFanSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJingFanSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJingFanSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HJingFanDistance)), 3u);
- types.recordActivateSource<HJingFanDistance>(684u); AI_NATIVE_REQUIRE_DECLARATION(HJingFanDistance, getBaseAmount, DistanceSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HJingFanDistance, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HJingFanDistance, getMaxUsageLimit, Skill);
-}

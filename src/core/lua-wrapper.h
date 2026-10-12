@@ -689,7 +689,6 @@ public:
 
     // member functions that do not expose to Lua interpreter
     static LuaSkillCard *Parse(const QString &str);
-    static QList<const Card *> globalDefinitionTemplates();
 
     QString toString(bool hidden = false) const;
 
@@ -901,7 +900,7 @@ public:
     }
     inline int getRange() const
     {
-        return Weapon::getRange();
+        return range;
     }
     inline bool isKindOf(const char *cardType) const
     {

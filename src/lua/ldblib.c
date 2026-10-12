@@ -18,7 +18,6 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-#include "lstate.h"
 
 
 /*
@@ -364,10 +363,6 @@ static char *unmakemask (int mask, char *smask) {
 
 
 static int db_sethook (lua_State *L) {
-  /* Retire provenance before any hook-table mutation/allocation. This is an
-     observation only: the requested hook still runs with unchanged semantics. */
-  if (G(L)->protectedbridge)
-    G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 7);
   int arg, mask, count;
   lua_Hook func;
   lua_State *L1 = getthread(L, &arg);

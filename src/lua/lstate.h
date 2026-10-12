@@ -251,12 +251,6 @@ struct CallInfo {
 /*
 ** 'global state', shared by all threads of this state
 */
-#define LUA_TABLE_BIRTH_SLOTS 32
-typedef struct TableBirthWatch {
-  lua_TableBirthObserver callback;
-  void *host;
-  unsigned int serial;
-} TableBirthWatch;
 typedef struct global_State {
   lua_Alloc frealloc;  /* function to reallocate memory */
   void *ud;         /* auxiliary data to 'frealloc' */
@@ -306,9 +300,6 @@ typedef struct global_State {
   TString *tmname[TM_N];  /* array with tag-method names */
   struct Table *mt[LUA_NUMTYPES];  /* metatables for basic types */
   TString *strcache[STRCACHE_N][STRCACHE_M];  /* cache for strings in API */
-  TableBirthWatch tablebirthwatch[LUA_TABLE_BIRTH_SLOTS];
-  unsigned int tablebirthserial;
-  unsigned int tablebirthcount;
   lua_WarnFunction warnf;  /* warning function */
   void *ud_warn;         /* auxiliary data to 'warnf' */
 } global_State;

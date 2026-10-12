@@ -742,7 +742,6 @@ typedef struct Table {
   TValue *array;  /* array part */
   Node *node;
   Node *lastfree;  /* any free position is before this position */
-  struct lua_TableWatch *nativewatch;  /* null unless explicitly observed */
   struct Table *metatable;
   GCObject *gclist;
 } Table;

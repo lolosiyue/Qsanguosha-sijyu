@@ -1,7 +1,5 @@
 #ifndef _SKILL_H
 #define _SKILL_H
-#include <functional>
-class AiDecisionCoordinator;
 
 class Room;
 class Skill;
@@ -95,19 +93,6 @@ struct ActiveSkillRequest {
 
     // Preserve proxy declarations; ordinary conversions carry their canonical card name.
     void setCardSelection(const Card *card);
-    // Native-only generated-payment contract. No Lua setters or serialized authority.
-    bool generatedCardSelectionValid() const;
-    bool generatedCardProductMatches(const Card *card) const;
-private:
-    friend class AIFateUseAccess;
-    std::shared_ptr<const AIFateUseProof> m_aiFateUse;
-    bool generatedHandPayment = false;
-    bool generatedHandFaceValid = false;
-    QList<int> generatedHandCosts;
-    int generatedHandSuit = -1;
-    int generatedHandNumber = -1;
-public:
-
 
     CardUseStruct::CardUseReason getReason() const { return reason; }
     QString getPattern() const { return pattern; }
@@ -338,13 +323,6 @@ public:
         return response_pattern;
     }
     QList<int> getExpandPileCardIds(const Player *player) const;
-
-private:
-    friend class AiDecisionCoordinator;
-    // The conversion projector may scope only the original ownership query.
-    // The callback returns before either virtual availability provider runs.
-    bool aiAvailableForConversion(const Player *invoker, CardUseStruct::CardUseReason reason,
-        const QString &pattern, const std::function<bool()> &ownershipQuery) const;
 
 protected:
     QString response_pattern;

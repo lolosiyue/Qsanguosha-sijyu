@@ -1,5 +1,4 @@
 #include "clientplayer.h"
-#include "player-initial-source-origin.h"
 #include "client.h"
 #include "engine.h"
 #include "clientstruct.h"
@@ -66,8 +65,6 @@ void ClientPlayer::addKnownHandCard(const Card *card)
 
 void ClientPlayer::addCard(int id, Place place)
 {
-    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
-        retireAIPlayerPublicCardsOrigin(this);
 	if (place == PlaceHand) {
 		addHandIds(QList<int>() << id);
 		return;
@@ -78,8 +75,6 @@ void ClientPlayer::addCard(int id, Place place)
 
 void ClientPlayer::removeCard(int id, Place place)
 {
-    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
-        retireAIPlayerPublicCardsOrigin(this);
 	if (place == PlaceHand) {
 		removeHandIds(QList<int>() << id);
 		return;
@@ -316,7 +311,6 @@ QTextDocument *ClientPlayer::getMarkDoc() const
 
 void ClientPlayer::changePile(const QString &name, bool add, QList<int> card_ids)
 {
-    retireAIPlayerPublicCardsOrigin(this);
 	if (add)
 		piles[name].append(card_ids);
 	else {
@@ -339,7 +333,6 @@ void ClientPlayer::changePile(const QString &name, bool add, QList<int> card_ids
 
 void ClientPlayer::syncPileCards(const QString &pile_name, QList<int> card_ids)
 {
-    retireAIPlayerPublicCardsOrigin(this);
 	piles[pile_name] = card_ids;
 	emit pile_changed(pile_name);
 }
@@ -451,7 +444,6 @@ void ClientPlayer::setMark(const QString &mark, int value)
 
 void ClientPlayer::resetForManagedSync()
 {
-    retireAIPlayerPublicCardsOrigin(this);
 	// Replace card zones without letting ClientPlayer interpret the old hand as
 	// incremental card losses while the authoritative snapshot is replayed.
 	QSet<int> oldHand;

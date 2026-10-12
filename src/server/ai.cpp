@@ -1,10 +1,4 @@
-#include "ai-strategy/xufa.h"
-#include "ai-strategy/runtime.h"
-#include "ai-strategy/official.h"
-#include "ai-strategy/shadows.h"
-#include "ai-strategy/source-slots.h"
 #include "ai.h"
-#include "ai-strategy/context.h"
 //#include "serverplayer.h"
 #include "engine.h"
 //#include "standard.h"
@@ -614,19 +608,7 @@ int LuaAI::askForAG(const QList<int> &card_ids, bool refusable, const QString &r
 
 void LuaAI::pushCallback(lua_State*L, const char *function_name)
 {
-    // The sole protected-entry observer checks the fully prepared callback.
-    // Before it is installed, preserve the unconditional startup invalidation.
-    if(room && (!room->roomRuntime() || !room->roomRuntime()->lua().hasProtectedEntryObserver())) {
-        invalidateAIChoiceContinuity(*room);
-        clearAIFaqiPlans(*room);
-    }
     Q_ASSERT(callback);
-    if (room) {
-        invalidateAIOverseasPriorities(*room,!prepareAIXufaFilterCallback(*room,function_name));
-        invalidateAITargetCache(*room);
-        invalidateAITargetRevises(*room);
-        invalidateAIRangeDecision(*room);
-    }
 
     callback.push(L);
     lua_pushstring(L, function_name);

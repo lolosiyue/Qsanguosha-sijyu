@@ -194,14 +194,3 @@ void HStandardCardPackage::addEquipSkills(){
     // Shared equipment skills are registered once by their native packages.
     skills << new HTribladeSkill << new HSixSwordsSkill;
 }
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_h_standard_equips_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(HSixSwordsSkill)), 3u);
- types.recordActivateSource<HSixSwordsSkill>(622u); AI_NATIVE_REQUIRE_DECLARATION(HSixSwordsSkill, getBaseAmount, AttackRangeSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HSixSwordsSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HSixSwordsSkill, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HTribladeSkillVS)), 2u);
- types.recordActivateSource<HTribladeSkillVS>(623u); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkillVS, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HTribladeSkill)), 2u);
- types.recordActivateSource<HTribladeSkill>(624u); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkill, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkill, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HTribladeSkill, getMaxUsageLimit, Skill);
-}

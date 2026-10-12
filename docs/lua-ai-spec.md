@@ -1083,6 +1083,11 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 | `AIPlayerView` | `equip_slots`（槽號→牌 ID，空槽不出現） | `getEquip(slot)`、`hasEquip([slot])`；缺投影回 nil，有投影但空槽回 nil／false |
 | `AICardView` | `type_id`、`handling_method`、`virtual_card`、`target_fixed`、`damage_card`、`subcards` | 同名 getter 與 `getSubcards()`／`subcardsLength()` |
 | `AISkillView` | `skill_classes`（原生類別鏈）、`frequency`、`lord_skill`、`attached_lord_skill`、`lord_skill_effective` | `getSkillClass()`、`inherits(name)`、`getFrequency()`、`isLordSkill()`、`isLordSkillEffective()` |
+| `AIWorldView` | `turn_count`（公開輪數 `TurnLengthCount`）、`enable_hegemony`、`ai_humanized`、`ai_chat_enabled` | `RoomView:getTurnCount()`；其餘讀 `world` 同名欄位 |
+| `AIWorldView` | `role_counts`：模式身份組成扣掉 viewer 看得到身份的死者；自訂身份或有身份未公開的死者時不出現 | `getRoleCounts()` |
+| `AIPlayerView` | `state`（`robot`／`online`／`trust`…）、`skills_complete`（國戰隱藏了部分技能時為 false）、`marks_complete`（viewer 本人為 true，未列出的 mark 即 0） | `getState()`、`areSkillsComplete()`、`getMark(name)` |
+| `AICardView` | `legacy_string_key`／`legacy_sort_key`（只有實體牌）、`name_length`、`can_recast`、`will_throw`、`single_target`；`source_skill` 只在自己的牌或發動技能即其來源時出現 | `getLegacyStringKey()`、`nameLength()`、`canRecast()`、`willThrow()`、`isSingleTargetCard()`、`getSourceSkillName()` |
+| `AICardView`（viewer 自己的手牌、裝備、開放牌堆） | `skill_names`（`skill_names_complete` 為 true）、`engine_class_name`、`locked`、`jilei`、`using` | `PlayerView:isLocked(card)`、`isJilei(card)`、`hasFlag("using")` |
 
 `inherits` 只比對快照裡的類別鏈，所以 `LuaTriggerSkill` 也答得出 `TriggerSkill`；沒有類別
 投影回 nil，不會退回「不是」。主公技是否生效由權威端算好（`hasLordSkill`），不是由 AI 自己
@@ -1090,7 +1095,10 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 
 沙箱 `sgs` 反射的枚舉增加 `Card::CardType`、`Skill::Frequency`、`General::Gender`
 （加上前面批次的 `Player::Phase`／`Place`、`Card::Suit`／`HandlingMethod`），仍是
-`QMetaEnum` 反射，不手抄清單。
+`QMetaEnum` 反射，不手抄清單。沒有 `Q_ENUM` 的常數逐項匯出原生值：`DamageStruct_*`、
+`CardUseStruct_CARD_USE_REASON_*`、`Room_Guanxing*`、`CardMoveReason_S_REASON_*`，以及
+`world.events[].trigger_event` 會出現的 TriggerEvent（`GameStart`、`PreCardUsed`、`CardFinished`、
+`CardsMoveOneTime` 等）。
 
 `string.split`／`contains`／`startsWith`／`endsWith` 以純 Lua 補進沙箱，與 gameplay VM 同名
 同語意，只做字串處理；若環境已有實作則不覆寫。

@@ -478,24 +478,3 @@ void HStandardPackage::addWuGenerals()
     dingfeng->addSkill("duanbing");
     dingfeng->addSkill("fenxun");
 }
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_h_standard_wu_generals_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(HMouduan)), 2u);
- types.recordActivateSource<HMouduan>(3041u); AI_NATIVE_REQUIRE_DECLARATION(HMouduan, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(HZhiheng)), 2u);
- types.recordActivateSource<HZhiheng>(3042u); AI_NATIVE_REQUIRE_DECLARATION(HZhiheng, getBaseAmount, ViewAsSkillV2);
- types.emplace(std::type_index(typeid(HZhihengCount)), 2u);
- types.recordActivateSource<HZhihengCount>(3043u); AI_NATIVE_REQUIRE_DECLARATION(HZhihengCount, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(HDuoshi)), 2u);
- types.recordActivateSource<HDuoshi>(3044u); AI_NATIVE_REQUIRE_DECLARATION(HDuoshi, getBaseAmount, ViewAsSkillV2);
- types.emplace(std::type_index(typeid(HKurou)), 2u);
- types.recordActivateSource<HKurou>(3045u); AI_NATIVE_REQUIRE_DECLARATION(HKurou, getBaseAmount, ViewAsSkillV2);
- types.emplace(std::type_index(typeid(HKurouTarget)), 3u);
- types.recordActivateSource<HKurouTarget>(3046u); AI_NATIVE_REQUIRE_DECLARATION(HKurouTarget, getBaseAmount, TargetModSkillV2);
- types.emplace(std::type_index(typeid(HKurouClear)), 2u);
- types.recordActivateSource<HKurouClear>(3047u); AI_NATIVE_REQUIRE_DECLARATION(HKurouClear, getBaseAmount, TriggerSkillV2);
- types.emplace(std::type_index(typeid(HQianxun)), 2u);
- types.recordActivateSource<HQianxun>(3048u); AI_NATIVE_REQUIRE_DECLARATION(HQianxun, getBaseAmount, TriggerSkillV2);
-}

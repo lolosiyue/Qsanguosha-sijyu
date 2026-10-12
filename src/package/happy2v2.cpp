@@ -523,14 +523,3 @@ Happy2v2Package::Happy2v2Package()
 }
 
 ADD_PACKAGE(Happy2v2)
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_happy2v2_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(KuijiVS)), 2u);
- types.recordActivateSource<KuijiVS>(727u); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, getLimitScope, KuijiVS); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, targetMode, KuijiVS); AI_NATIVE_REQUIRE_DECLARATION(KuijiVS, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(Kuiji)), 2u);
- types.recordActivateSource<Kuiji>(728u); AI_NATIVE_REQUIRE_DECLARATION(Kuiji, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(Kuiji, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(Kuiji, getMaxUsageLimit, Skill);
- types.emplace(std::type_index(typeid(HappyCuorui)), 2u);
- types.recordActivateSource<HappyCuorui>(729u); AI_NATIVE_REQUIRE_DECLARATION(HappyCuorui, getBaseAmount, TriggerSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HappyCuorui, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HappyCuorui, getMaxUsageLimit, Skill);
-}

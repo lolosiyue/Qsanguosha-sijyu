@@ -894,7 +894,6 @@ public:
 
     void setReadyCommand(ServerPlayer *player, const QVariant &payload);
     void speakCommand(ServerPlayer*player, const QVariant&arg);
-    void publishAIStrategySpeech(ServerPlayer *player, const QString &text);
     void trustCommand(ServerPlayer*player, const QVariant&arg);
     void pauseCommand(ServerPlayer*player, const QVariant&arg);
     void addRobotCommand(ServerPlayer*player, const QVariant&arg);
@@ -997,15 +996,6 @@ public:
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
 
-public:
-    bool logConnectionsReviewed() const noexcept;
-protected:
-    void connectNotify(const QMetaMethod &signal) override;
-    void disconnectNotify(const QMetaMethod &signal) override;
-private:
-    std::atomic<bool> m_logConnectionsReviewed {true};
-    QPointer<Server> m_logServer;
-    bool m_logServerAttached = false;
 protected:
     virtual void run();
     int _m_Id;
@@ -1070,7 +1060,7 @@ private:
                               const QString &reason, int &cardId) const;
     bool decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                             const QString &reason, Card::HandlingMethod method,
-                            int &cardId, bool handcardVisible = false) const;
+                            int &cardId) const;
     bool decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
                       const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
                       int &cardId) const;

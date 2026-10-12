@@ -480,29 +480,6 @@ add_library(qsanguosha_engine STATIC
     src/server/ai.cpp
     src/server/ai-decision-coordinator.cpp
     src/server/ai-decision-coordinator.h
-    src/server/ai-strategy/context.cpp
-    src/server/ai-strategy/official.cpp
-    src/server/ai-strategy/prototypes.cpp
-    src/server/ai-strategy/owner.cpp
-    src/server/ai-strategy/anime.cpp
-    src/server/ai-strategy/ol-ai.cpp
-    src/core/notified-pile-query-scope.cpp
-    src/core/ai-owner-range-query-scope.cpp
-    src/server/ai-strategy/original-hegemony.cpp
-    src/server/ai-strategy/diy.cpp
-    src/server/ai-strategy/lua-seal.cpp
-    src/server/ai-strategy/tenyear-ai.cpp
-    src/server/ai-strategy/shadows.cpp
-    src/server/ai-strategy/source-slots.cpp
-    src/server/ai-strategy/runtime.cpp
-    src/server/ai-strategy/native-registry.cpp
-    src/server/ai-strategy/xufa.cpp
-    src/server/ai-strategy/overseas.cpp
-    src/server/ai-strategy/newgenerals.cpp
-    src/server/ai-strategy/inovation-ai.cpp
-    src/server/ai-strategy/context.h
-    src/core/ai-card-query-scope.cpp
-    src/server/ai-strategy/owner.h
     src/server/ai-runtime.cpp
     src/server/ai-runtime.h
     src/server/basicai.cpp
@@ -1241,16 +1218,8 @@ if(UNIX AND NOT ANDROID)
         lua/ai/isolated/decision-core.lua
         lua/ai/isolated/retrial.lua
         lua/ai/isolated/strategy-hooks.lua
-        lua/ai/isolated/speech.lua
         lua/ai/isolated/event-intention.lua
         lua/ai/isolated/smart-ai-functions.lua
-        lua/ai/isolated/imagine-ai.lua
-        lua/ai/isolated/pindian-ai.lua
-        lua/ai/isolated/guanxing.lua
-        lua/ai/isolated/basara-ai.lua
-        lua/ai/isolated/hulaoguan-ai.lua
-        lua/ai/isolated/jiange-defense-ai.lua
-        lua/ai/isolated/boss-ai.lua
         lua/ai/mode-ai.lua
         extensions
     )

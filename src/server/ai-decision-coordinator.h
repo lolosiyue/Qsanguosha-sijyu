@@ -6,7 +6,6 @@
 #include <QHash>
 #include <QMap>
 #include <QSet>
-#include <QPointer>
 
 #include <functional>
 
@@ -36,9 +35,7 @@ public:
     AIRequest makeRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                           CardUseStruct::CardUseReason reason, const QString &pattern,
                           const QString &prompt, Card::HandlingMethod method) const;
-    QJsonObject resolveConversionProposal(const AIRequest &request, const QJsonObject &proposal) const;
-    bool buildCardConversions(ServerPlayer *player, AIRequest &request, int &projectionBudget,
-                              bool scopesOnly = false) const;
+    bool buildCardConversions(ServerPlayer *player, AIRequest &request, int &projectionBudget) const;
     bool buildSkillActionContext(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  AiSkillActionContext &actionContext) const;
@@ -76,7 +73,7 @@ public:
                             const QString &reason, int &cardId) const;
     bool decideCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                           const QString &reason, Card::HandlingMethod method,
-                          int &cardId, bool handcardVisible = false) const;
+                          int &cardId) const;
     bool decideYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
                     const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
                     int &cardId) const;
@@ -114,7 +111,6 @@ public:
 
 private:
     friend struct RoomTestAccess;
-    void projectReadonlyOlClanPlanning(ServerPlayer *player, AIRequest &request) const;
     // The legacy answer runs live on this Room, so it is produced on demand and only
     // for the routes that need it.
     typedef std::function<AIResult(const AIRequest &)> LegacyAnswer;
@@ -193,30 +189,18 @@ private:
     QHash<QString, QSet<QString>> m_markViewers;
     QList<AIEventView> m_events;
     quint64 m_eventSequence = 0;
-    int m_turnCount = 0;
-    bool m_effectKnown = false;
-    QJsonObject m_lastEffect;
-    QJsonObject m_lastFilterCardEffect;
-    QJsonObject m_lastTargetUse;
-    // Internal identity guards only; no pointer or card identity enters the DTO.
-    QPointer<Card> m_previousUseCard;
-    QPointer<ServerPlayer> m_previousUseFrom;
     // Extend the recordEvent memo across events and requests at the same revision.
     // Never memoize projections: visibility flags, private state and policy are live.
     mutable bool m_publicBoardValid = false;
     mutable PublicBoard m_publicBoard;
     mutable quint64 m_publicBoardGeneration = 0;
     mutable quint64 m_publicBoardDefinitions = 0;
-    mutable quint64 m_publicBoardWeaponRangeRevision = 0;
     mutable QList<ServerPlayer *> m_publicBoardPlayers;
     mutable QList<ServerPlayer *> m_publicBoardAlivePlayers;
     // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
     mutable bool m_distanceCacheValid = false;
-    // Issued only by the original distance-table writer under complete source.
-    mutable bool m_distanceCorrectionSource = false;
     mutable quint64 m_distanceRevision = 0;
     mutable quint64 m_distanceSkillGeneration = 0;
-    mutable quint64 m_distanceWeaponRangeRevision = 0;
     mutable QList<ServerPlayer *> m_distancePlayers;
     mutable QList<const DistanceSkill *> m_distanceSkills;
     mutable QMap<QString, QMap<QString, int>> m_worldDistances;

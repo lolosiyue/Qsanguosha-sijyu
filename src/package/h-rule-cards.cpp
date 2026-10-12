@@ -333,18 +333,3 @@ QList<const Skill *> createHegemonyRuleSkills(QObject *owner)
     }
     return skills;
 }
-
-// R56 exact source-owned native type registrations. No callback executes.
-#include "ai-strategy/native-registry.h"
-void registerAINativeTypes_src_package_h_rule_cards_cpp(AINativeTypes&types){
- types.emplace(std::type_index(typeid(HRuleReward)), 2u);
- types.recordActivateSource<HRuleReward>(617u); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, targetMode, HRuleReward); AI_NATIVE_REQUIRE_DECLARATION(HRuleReward, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HFirstShow)), 2u);
- types.recordActivateSource<HFirstShow>(618u); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, targetMode, HFirstShow); AI_NATIVE_REQUIRE_DECLARATION(HFirstShow, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HHalfMaxHp)), 2u);
- types.recordActivateSource<HHalfMaxHp>(619u); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, targetMode, HRuleReward); AI_NATIVE_REQUIRE_DECLARATION(HHalfMaxHp, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HCompanion)), 2u);
- types.recordActivateSource<HCompanion>(620u); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, targetMode, HRuleReward); AI_NATIVE_REQUIRE_DECLARATION(HCompanion, isResponseOrUse, ViewAsSkill);
- types.emplace(std::type_index(typeid(HCommandSelect)), 2u);
- types.recordActivateSource<HCommandSelect>(621u); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, getBaseAmount, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, getLimitScope, Skill); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, getMaxUsageLimit, Skill); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, hasIndependentAIConversion, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, targetMode, ViewAsSkillV2); AI_NATIVE_REQUIRE_DECLARATION(HCommandSelect, isResponseOrUse, ViewAsSkill);
-}

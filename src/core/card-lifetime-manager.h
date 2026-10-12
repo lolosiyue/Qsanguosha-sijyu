@@ -179,8 +179,6 @@ public:
                           QByteArray *error = nullptr);
     void releaseVariantTag(const void *container, const QByteArray &key);
     void releaseVariantTags(const void *container);
-    // Snapshot only already retained canonical sidecar tokens; no payload scan.
-    QList<std::shared_ptr<const CardLifetimeToken>> variantTagTokens(const void *container) const;
     bool bindWrapper(const void *wrapper,
                      const std::shared_ptr<const CardLifetimeToken> &token,
                      bool originalOwner = false);

@@ -1,6 +1,5 @@
 #ifndef _CARD_H
 #define _CARD_H
-#include <atomic>
 
 class Room;
 class Player;
@@ -81,8 +80,6 @@ public:
     Card(Suit suit = SuitToBeDecided, int number = -1, bool target_fixed = false, bool damage_card = false, bool is_gift = false, bool single_target = false);
 
     QString objectName(bool different_slash = true) const;
-    void setObjectName(const QString &name);
-    void setParent(QObject *parent);
 
     // property getters/setters
     QString getSuitString() const;
@@ -112,9 +109,6 @@ public:
     QString getName() const;
     int nameLength() const;
     QString getSkillName(bool removePrefix = true) const;
-    // Native raw field view, without SkillCard fallback or prefix stripping.
-    // Not exported by SWIG. Same-pointer compiled BasicCards use Room storage.
-    QString rawSkillName() const;
     virtual void setSkillName(const QString &skill_name);
     void setSkillInstanceId(int id) { m_skillInstanceId = id; }
     int getSkillInstanceId() const { return m_skillInstanceId; }
@@ -247,8 +241,6 @@ public:
     static bool CompareBySuit(const Card *a, const Card *b);
     static bool CompareByType(const Card *a, const Card *b);
     static Card *Clone(const Card *card);
-    // Native readonly evaluator only. Does not copy payment authority.
-    static Card *CloneReadonlyPhysicalPolicy(const Card *source);
     static QString Suit2String(Suit suit);
     static const int S_UNKNOWN_CARD_ID;
 
@@ -256,23 +248,7 @@ public:
     virtual QString toString(bool hidden = false) const;
 
     mutable QVariantMap tag;
-    // Source-history facts only. Not metadata effects, branch permission, or a
-    // claim about QObject::objectName, virtual dispatch, lookup or live values.
-    // 1: constructor-empty subcards; 2: constructor-empty change-card edges;
-    // 4: constructor-original m_suit; 8: m_number; 16: m_id. Only clear bits.
-    unsigned aiOriginalRecursiveFieldOrigins() const noexcept;
-    quint64 aiIdWriteEpoch() const noexcept;
-    quint64 aiMaterialWriteEpoch() const noexcept;
-    quint64 aiScalarWriteEpoch() const noexcept;
-    bool aiOriginalPhysicalDefinitionMaterialsOrigin() const noexcept;
-    bool aiOriginalPhysicalDefinitionIndex(int *index) const noexcept;
-    // ID-only continuity through the registry's own repeated assignment. The
-    // older first-write/material receipt above remains strictly unchanged.
-    bool aiPhysicalDefinitionIdIndex(int *index) const noexcept;
-    void retireAIRecursiveFieldOrigins(unsigned fields) const noexcept;
-    const QList<const Card *> &getChangeCards() const noexcept { return change_cards; }
-    void clearChangeCards() const;
-
+    mutable QList<const Card *> change_cards;
 
 protected:
     // Shared completion keeps custom onUse paths safe when a hook interrupts.
@@ -304,28 +280,8 @@ protected:
     mutable QStringList flags;
 
 private:
-    // No mutable list/iterator/reference is exported. Event append preserves
-    // its old direct-list/lifetime semantics; addChange retains its own manager
-    // semantics. Both retire source ancestry before attempting the write.
-    friend struct CardUseStruct;
-    friend struct CardResponseStruct;
-    void appendChangeCardForEvent(const Card *card);
-    mutable QList<const Card *> change_cards;
-    mutable std::atomic<unsigned> m_aiRecursiveFieldOrigins{31u};
-    mutable std::atomic<quint64> m_aiIdWriteEpoch{0};
-    mutable std::atomic<quint64> m_aiMaterialWriteEpoch{0};
-    mutable std::atomic<quint64> m_aiScalarWriteEpoch{0};
-    std::atomic<int> m_aiPhysicalDefinitionIndex{-2};
-    std::atomic<quint64> m_aiDefinitionIdSourceEpoch{0};
-    friend class Engine;
-    friend class RoomDefinitionRegistry;
-    void aiRecordPhysicalDefinitionIndexSource(int index) noexcept;
-    void aiReassertPhysicalDefinitionId(int index);
     friend class Room;
     friend class RoomManagedState;
-    friend class AIXiedouObservation;
-    // Native-only observation epoch, never copied as gameplay card state.
-    mutable quint64 m_aiXiedouNosJiefanEpoch = 0;
     friend class WrappedCard;
     // Native authority only: neither card strings nor ordinary tags can mint this receipt.
     QVariantMap m_appliedPhysicalEffectSource;
