@@ -775,6 +775,9 @@ void ServerDialog::updateModeGroupSelection(int index)
 	button->setObjectName(combo->itemData(index).toString());
 	button->setChecked(true);
 	updateButtonEnablility(button);
+	// Changing a grouped mode does not emit QButtonGroup::buttonClicked.
+	jev_hybrid_50p_checkbox->setEnabled(ai_enable_checkbox->isChecked()
+		&& button->objectName() == QStringLiteral("50p"));
 }
 
 void BanlistDialog::switchTo(int item)
