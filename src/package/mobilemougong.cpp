@@ -1774,10 +1774,10 @@ public:
 };
 
 // 谋张郃 料势：每回合限一次，因巧变获得的牌当【杀】或【闪】使用或打出。
-class Gu07dLiaoshiVS : public OneCardViewAsSkill
+class GuLiaoshiVS : public OneCardViewAsSkill
 {
 public:
-    Gu07dLiaoshiVS() : OneCardViewAsSkill("gu_liaoshi") { response_or_use = true; }
+    GuLiaoshiVS() : OneCardViewAsSkill("gu_liaoshi") { response_or_use = true; }
     bool viewFilter(const Card *to_select) const override
     {
         if (!Self || !to_select->hasTip("mobilemouqiaobian") || !Self->handCards().contains(to_select->getEffectiveId()))
@@ -1811,13 +1811,13 @@ public:
     }
 };
 
-class Gu07dLiaoshi : public TriggerSkill
+class GuLiaoshi : public TriggerSkill
 {
 public:
-    Gu07dLiaoshi() : TriggerSkill("gu_liaoshi")
+    GuLiaoshi() : TriggerSkill("gu_liaoshi")
     {
         events << PreCardUsed << PreCardResponded;
-        view_as_skill = new Gu07dLiaoshiVS;
+        view_as_skill = new GuLiaoshiVS;
     }
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -2074,7 +2074,7 @@ MobileMouShiPackage::MobileMouShiPackage()
 
 	General *mobilemou_zhanghe = new General(this, "mobilemou_zhanghe", "wei", 4);
 	mobilemou_zhanghe->addSkill(new MobileMouQiaobian);
-	mobilemou_zhanghe->addSkill(new Gu07dLiaoshi);
+	mobilemou_zhanghe->addSkill(new GuLiaoshi);
 
 	General *mobilemou_handang = new General(this, "mobilemou_handang", "wu", 4);
 	mobilemou_handang->addSkill(new MobileMouGongqi);

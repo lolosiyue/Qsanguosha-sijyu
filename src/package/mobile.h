@@ -1116,11 +1116,11 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
 };
 
-class GuS2DaozhuanCard : public SkillCard
+class GuDaozhuanCard : public SkillCard
 {
     Q_OBJECT
 public:
-    Q_INVOKABLE GuS2DaozhuanCard();
+    Q_INVOKABLE GuDaozhuanCard();
     bool targetFixed() const override;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;

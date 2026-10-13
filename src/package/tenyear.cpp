@@ -5150,19 +5150,19 @@ public:
 // SOURCE-2 follow-up: overwrite warehouse test / alternate versions per Tom 2026-10-13 08:41 JST.
 // Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
 
-static bool s2Alive(const ServerPlayer *p) { return p && p->isAlive(); }
+static bool guAlive(const ServerPlayer *p) { return p && p->isAlive(); }
 
-static void s2UseVirtual(Room *room, const QString &name, const QString &skill, ServerPlayer *from,
+static void guUseVirtual(Room *room, const QString &name, const QString &skill, ServerPlayer *from,
 	QList<ServerPlayer *> tos, bool distanceFree, bool addHistory)
 {
-	if (!s2Alive(from)) return;
+	if (!guAlive(from)) return;
 	Card *card = Sanguosha->cloneCard(name);
 	if (!card) return;
 	card->setSkillName("_" + skill);
 	card->deleteLater();
 	QList<ServerPlayer *> valid;
 	foreach (ServerPlayer *to, tos) {
-		if (!s2Alive(to) || from->isProhibited(to, card)) continue;
+		if (!guAlive(to) || from->isProhibited(to, card)) continue;
 		if (card->isKindOf("Slash") && !from->canSlash(to, card, !distanceFree)) continue;
 		valid << to;
 	}
@@ -5170,7 +5170,7 @@ static void s2UseVirtual(Room *room, const QString &name, const QString &skill, 
 	room->useCard(CardUseStruct(card, from, valid), addHistory);
 }
 
-static int s2MinNumber(const QList<int> &ids)
+static int guMinNumber(const QList<int> &ids)
 {
 	int mn = 99;
 	foreach (int id, ids) mn = qMin(mn, Sanguosha->getCard(id)->getNumber());
@@ -5178,10 +5178,10 @@ static int s2MinNumber(const QList<int> &ids)
 }
 
 // ---------- 武皇甫嵩：朝镇 / 连捷 / 将贤 ----------
-class GuS2Chaozhen : public TriggerSkill
+class GuChaozhen : public TriggerSkill
 {
 public:
-	GuS2Chaozhen() : TriggerSkill("chaozhen")
+	GuChaozhen() : TriggerSkill("chaozhen")
 	{
 		events << EventPhaseStart << EnterDying;
 	}
@@ -5202,7 +5202,7 @@ public:
 			pool = room->getDrawPile();
 		}
 		if (pool.isEmpty()) return false;
-		int mn = s2MinNumber(pool);
+		int mn = guMinNumber(pool);
 		QList<int> cands;
 		foreach (int id, pool) if (Sanguosha->getCard(id)->getNumber() == mn) cands << id;
 		int id = cands.at(qsanRandomBounded(cands.length()));
@@ -5215,10 +5215,10 @@ public:
 	}
 };
 
-class GuS2Lianjie : public TriggerSkill
+class GuLianjie : public TriggerSkill
 {
 public:
-	GuS2Lianjie() : TriggerSkill("lianjie")
+	GuLianjie() : TriggerSkill("lianjie")
 	{
 		events << TargetSpecified << PreCardUsed;
 	}
@@ -5279,10 +5279,10 @@ public:
 		return false;
 	}
 };
-class GuS2LianjieMod : public TargetModSkill
+class GuLianjieMod : public TargetModSkill
 {
 public:
-	GuS2LianjieMod() : TargetModSkill("#lianjie-mod") { pattern = "."; }
+	GuLianjieMod() : TargetModSkill("#lianjie-mod") { pattern = "."; }
 	int getResidueNum(const Player *from, const Card *card, const Player *) const override
 	{
 		if (!from || !card) return 0;
@@ -5320,10 +5320,10 @@ public:
 	const Card *viewAs() const override { return new GuJiangxianCard; }
 };
 
-class GuS2Jiangxian : public TriggerSkill
+class GuJiangxian : public TriggerSkill
 {
 public:
-	GuS2Jiangxian() : TriggerSkill("jiangxian")
+	GuJiangxian() : TriggerSkill("jiangxian")
 	{
 		events << ConfirmDamage << Damage << EventPhaseChanging;
 		frequency = Limited;
@@ -5501,11 +5501,11 @@ TenyearXdPackage::TenyearXdPackage()
 	skills << new ZhizheFilter;
 
 	General *wumiao_huangfusong = new General(this, "wumiao_huangfusong", "qun");
-	wumiao_huangfusong->addSkill(new GuS2Chaozhen);
-	wumiao_huangfusong->addSkill(new GuS2Lianjie);
-	wumiao_huangfusong->addSkill(new GuS2LianjieMod);
+	wumiao_huangfusong->addSkill(new GuChaozhen);
+	wumiao_huangfusong->addSkill(new GuLianjie);
+	wumiao_huangfusong->addSkill(new GuLianjieMod);
 	insertRelatedSkills("lianjie", "#lianjie-mod");
-	wumiao_huangfusong->addSkill(new GuS2Jiangxian);
+	wumiao_huangfusong->addSkill(new GuJiangxian);
 	addMetaObject<GuJiangxianCard>();
 
 	General *wumiao_lukang = new General(this, "wumiao_lukang", "wu");
@@ -12705,10 +12705,10 @@ public:
 	}
 };
 
-class GuS2Chuanyu : public TriggerSkill
+class GuChuanyu : public TriggerSkill
 {
 public:
-	GuS2Chuanyu() : TriggerSkill("chuanyu")
+	GuChuanyu() : TriggerSkill("chuanyu")
 	{
 		events << RoundStart << CardsMoveOneTime << RoundEnd;
 		view_as_skill = new GuChuanyuVS;
@@ -12758,16 +12758,16 @@ public:
 		room->broadcastSkillInvoke(objectName());
 		foreach (ServerPlayer *p, got) {
 			if (p->isDead() || victim->isDead()) continue;
-			s2UseVirtual(room, "slash", objectName(), p, QList<ServerPlayer *>() << victim, true, false);
+			guUseVirtual(room, "slash", objectName(), p, QList<ServerPlayer *>() << victim, true, false);
 		}
 		return false;
 	}
 };
 
-class GuS2Yitou : public TriggerSkill
+class GuYitou : public TriggerSkill
 {
 public:
-	GuS2Yitou() : TriggerSkill("yitou")
+	GuYitou() : TriggerSkill("yitou")
 	{
 		events << EventPhaseStart << Damage;
 	}
@@ -12779,7 +12779,7 @@ public:
 			if (!damage.from) return false;
 			QString giver = damage.from->property("yitou_giver").toString();
 			ServerPlayer *g = room->findPlayerByObjectName(giver);
-			if (s2Alive(g)) g->drawCards(1, objectName());
+			if (guAlive(g)) g->drawCards(1, objectName());
 			return false;
 		}
 		if (player->getPhase() != Player::Play) return false;
@@ -12800,10 +12800,10 @@ public:
 	}
 };
 // clear yitou_giver at turn end via mark -Clear companion
-class GuS2YitouClear : public TriggerSkill
+class GuYitouClear : public TriggerSkill
 {
 public:
-	GuS2YitouClear() : TriggerSkill("#yitou-clear")
+	GuYitouClear() : TriggerSkill("#yitou-clear")
 	{
 		events << EventPhaseChanging;
 		global = true;
@@ -12849,10 +12849,10 @@ TenyearMouPackage::TenyearMouPackage()
 	addMetaObject<ZhanpanCard>();
 
 	General *hulie = new General(this, "hulie", "wei", 4);
-	hulie->addSkill(new GuS2Chuanyu);
+	hulie->addSkill(new GuChuanyu);
 	addMetaObject<GuChuanyuCard>();
-	hulie->addSkill(new GuS2Yitou);
-	hulie->addSkill(new GuS2YitouClear);
+	hulie->addSkill(new GuYitou);
+	hulie->addSkill(new GuYitouClear);
 	insertRelatedSkills("yitou", "#yitou-clear");
 	addMetaObject<ChuanyuCard>();
 

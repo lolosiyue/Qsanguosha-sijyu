@@ -2216,10 +2216,10 @@ public:
 // Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
 
 // ----- 界王异：贞烈 / 秘计（SOURCE-2） -----
-class GuS2OLZhenlie : public TriggerSkill
+class GuOLZhenlie : public TriggerSkill
 {
 public:
-	GuS2OLZhenlie() : TriggerSkill("olzhenlie")
+	GuOLZhenlie() : TriggerSkill("olzhenlie")
 	{
 		events << TargetConfirmed << EventPhaseStart;
 	}
@@ -2262,10 +2262,10 @@ public:
 	}
 };
 
-class GuS2OLMiji : public TriggerSkill
+class GuOLMiji : public TriggerSkill
 {
 public:
-	GuS2OLMiji() : TriggerSkill("olmiji") { events << EventPhaseStart; }
+	GuOLMiji() : TriggerSkill("olmiji") { events << EventPhaseStart; }
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
 		if (player->getPhase() != Player::Finish || player->getLostHp() <= 0) return false;
@@ -2341,8 +2341,8 @@ YJCM2012Package::YJCM2012Package()
     wangyi->addSkill(new Miji);
 
     General *ol_wangyi = new General(this, "ol_wangyi", "wei", 3, false);
-    ol_wangyi->addSkill(new GuS2OLZhenlie);
-    ol_wangyi->addSkill(new GuS2OLMiji);
+    ol_wangyi->addSkill(new GuOLZhenlie);
+    ol_wangyi->addSkill(new GuOLMiji);
 
     General *xunyou = new General(this, "xunyou", "wei", 3); // YJ 111
     xunyou->addSkill(new Qice);

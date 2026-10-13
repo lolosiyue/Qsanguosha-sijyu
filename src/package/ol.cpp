@@ -8385,27 +8385,17 @@ static void guAudit2025OLSp(Package *pkg)
 // SOURCE-2 follow-up: overwrite warehouse test / alternate versions per Tom 2026-10-13 08:41 JST.
 // Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
 
-static bool s2Alive(const ServerPlayer *p) { return p && p->isAlive(); }
-
-static QList<int> s2RandomIds(QList<int> ids, int n)
-{
-	QList<int> out;
-	while (n-- > 0 && !ids.isEmpty())
-		out << ids.takeAt(qsanRandomBounded(ids.length()));
-	return out;
-}
-
-static void s2UseVirtual(Room *room, const QString &name, const QString &skill, ServerPlayer *from,
+static void guUseVirtual(Room *room, const QString &name, const QString &skill, ServerPlayer *from,
 	QList<ServerPlayer *> tos, bool distanceFree, bool addHistory)
 {
-	if (!s2Alive(from)) return;
+	if (!guAlive(from)) return;
 	Card *card = Sanguosha->cloneCard(name);
 	if (!card) return;
 	card->setSkillName("_" + skill);
 	card->deleteLater();
 	QList<ServerPlayer *> valid;
 	foreach (ServerPlayer *to, tos) {
-		if (!s2Alive(to) || from->isProhibited(to, card)) continue;
+		if (!guAlive(to) || from->isProhibited(to, card)) continue;
 		if (card->isKindOf("Slash") && !from->canSlash(to, card, !distanceFree)) continue;
 		valid << to;
 	}
@@ -37084,10 +37074,10 @@ private:
 
 
 // ----- 袁姬：节言 / 镜花 / 水月 -----
-class GuS2Jieyan : public TriggerSkill
+class GuJieyan : public TriggerSkill
 {
 public:
-	GuS2Jieyan() : TriggerSkill("jieyan") { events << CardsMoveOneTime; }
+	GuJieyan() : TriggerSkill("jieyan") { events << CardsMoveOneTime; }
 	bool triggerable(const ServerPlayer *t) const override { return t != nullptr; }
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -37129,10 +37119,10 @@ public:
 	}
 };
 
-class GuS2Jinghua : public TriggerSkill
+class GuJinghua : public TriggerSkill
 {
 public:
-	GuS2Jinghua() : TriggerSkill("jinghua")
+	GuJinghua() : TriggerSkill("jinghua")
 	{
 		events << RoundStart << EventPhaseStart;
 		frequency = Compulsory;
@@ -37165,10 +37155,10 @@ public:
 	}
 };
 
-class GuS2Shuiyue : public TriggerSkill
+class GuShuiyue : public TriggerSkill
 {
 public:
-	GuS2Shuiyue() : TriggerSkill("shuiyue")
+	GuShuiyue() : TriggerSkill("shuiyue")
 	{
 		events << EventPhaseChanging << RoundEnd;
 		frequency = Compulsory;
@@ -37204,13 +37194,13 @@ public:
 };
 
 // ----- 武安国 olliyong overwrite via new skill keeping name olliyong -----
-GuS2LiyongCard::GuS2LiyongCard() {}
-bool GuS2LiyongCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+GuLiyongCard::GuLiyongCard() {}
+bool GuLiyongCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
 	return targets.isEmpty() && to_select != Self;
 }
-bool GuS2LiyongCard::targetsFeasible(const QList<const Player *> &targets, const Player *) const { return targets.length() == 1; }
-void GuS2LiyongCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+bool GuLiyongCard::targetsFeasible(const QList<const Player *> &targets, const Player *) const { return targets.length() == 1; }
+void GuLiyongCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
 	// yin: get suit-used card from pile, target uses duel on source
 	QList<int> cands;
@@ -37221,17 +37211,17 @@ void GuS2LiyongCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *>
 	}
 	if (!cands.isEmpty())
 		room->obtainCard(source, cands.at(qsanRandomBounded(cands.length())), "olliyong", false);
-	s2UseVirtual(room, "duel", "olliyong", targets.first(), QList<ServerPlayer *>() << source, true, false);
+	guUseVirtual(room, "duel", "olliyong", targets.first(), QList<ServerPlayer *>() << source, true, false);
 	if (source->getChangeSkillState("olliyong") == 2)
 		room->setChangeSkillState(source, "olliyong", 1);
 	else
 		room->setChangeSkillState(source, "olliyong", 2);
 }
 
-class GuS2OLLiyongVS : public ViewAsSkill
+class GuOLLiyongVS : public ViewAsSkill
 {
 public:
-	GuS2OLLiyongVS() : ViewAsSkill("olliyong") { change_skill = true; }
+	GuOLLiyongVS() : ViewAsSkill("olliyong") { change_skill = true; }
 	bool isEnabledAtPlay(const Player *) const override { return true; }
 	bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const override
 	{
@@ -37250,17 +37240,17 @@ public:
 			return duel;
 		}
 		if (!cards.isEmpty()) return nullptr;
-		return new GuS2LiyongCard;
+		return new GuLiyongCard;
 	}
 };
 
-class GuS2OLLiyong : public TriggerSkill
+class GuOLLiyong : public TriggerSkill
 {
 public:
-	GuS2OLLiyong() : TriggerSkill("olliyong")
+	GuOLLiyong() : TriggerSkill("olliyong")
 	{
 		events << CardUsed << PreCardUsed;
-		view_as_skill = new GuS2OLLiyongVS;
+		view_as_skill = new GuOLLiyongVS;
 		change_skill = true;
 	}
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -37285,10 +37275,10 @@ public:
 };
 
 // ----- 郭照：椒遇 / 内训 -----
-class GuS2Jiaoyu : public TriggerSkill
+class GuJiaoyu : public TriggerSkill
 {
 public:
-	GuS2Jiaoyu() : TriggerSkill("jiaoyu")
+	GuJiaoyu() : TriggerSkill("jiaoyu")
 	{
 		events << RoundStart << EventPhaseStart << EventPhaseChanging << CardUsed << Damage;
 		frequency = Compulsory;
@@ -37358,10 +37348,10 @@ public:
 	}
 };
 
-class GuS2JiaoyuProhibit : public ProhibitSkill
+class GuJiaoyuProhibit : public ProhibitSkill
 {
 public:
-	GuS2JiaoyuProhibit() : ProhibitSkill("#jiaoyu-prohibit") {}
+	GuJiaoyuProhibit() : ProhibitSkill("#jiaoyu-prohibit") {}
 	bool isProhibited(const Player *from, const Player *, const Card *card, const QList<const Player *> &) const override
 	{
 		if (!from || !card || card->getTypeId() == Card::TypeSkill) return false;
@@ -37372,10 +37362,10 @@ public:
 	}
 };
 
-class GuS2Neixun : public TriggerSkill
+class GuNeixun : public TriggerSkill
 {
 public:
-	GuS2Neixun() : TriggerSkill("neixun")
+	GuNeixun() : TriggerSkill("neixun")
 	{
 		events << CardUsed;
 		frequency = Compulsory;
@@ -37414,10 +37404,10 @@ public:
 		return false;
 	}
 };
-class GuS2NeixunMax : public MaxCardsSkill
+class GuNeixunMax : public MaxCardsSkill
 {
 public:
-	GuS2NeixunMax() : MaxCardsSkill("#neixun-max") {}
+	GuNeixunMax() : MaxCardsSkill("#neixun-max") {}
 	int getExtra(const Player *target) const override
 	{
 		// cards obtained via neixun don't count until owner's turn ends - approximate via mark
@@ -37467,18 +37457,18 @@ void GuLeiluanPlayCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer
 	}
 }
 
-class GuS2Leiluan : public ZeroCardViewAsSkill
+class GuLeiluan : public ZeroCardViewAsSkill
 {
 public:
-	GuS2Leiluan() : ZeroCardViewAsSkill("leiluan") {}
+	GuLeiluan() : ZeroCardViewAsSkill("leiluan") {}
 	bool isEnabledAtPlay(const Player *player) const override { return player->getMark("leiluan_off") == 0; }
 	const Card *viewAs() const override { return new GuLeiluanPlayCard; }
 };
 
-class GuS2LeiluanWake : public TriggerSkill
+class GuLeiluanWake : public TriggerSkill
 {
 public:
-	GuS2LeiluanWake() : TriggerSkill("#leiluan-wake")
+	GuLeiluanWake() : TriggerSkill("#leiluan-wake")
 	{
 		events << Damaged;
 		global = true;
@@ -37491,10 +37481,10 @@ public:
 	}
 };
 
-class GuS2Fuchao : public TriggerSkill
+class GuFuchao : public TriggerSkill
 {
 public:
-	GuS2Fuchao() : TriggerSkill("fuchao")
+	GuFuchao() : TriggerSkill("fuchao")
 	{
 		events << RoundEnd << CardFinished;
 		frequency = Compulsory;
@@ -38206,20 +38196,20 @@ OLCcxhPackage::OLCcxhPackage()
 	addMetaObject<TunanCard>();
 
 	General*ol_yuanji = new General(this, "ol_yuanji", "wei", 3,false);
-	ol_yuanji->addSkill(new GuS2Jieyan);
-	ol_yuanji->addSkill(new GuS2Jinghua);
-	ol_yuanji->addSkill(new GuS2Shuiyue);
+	ol_yuanji->addSkill(new GuJieyan);
+	ol_yuanji->addSkill(new GuJinghua);
+	ol_yuanji->addSkill(new GuShuiyue);
 
 	General*ol_kebineng = new General(this, "ol_kebineng", "qun", 4);
 	ol_kebineng->addSkill(new Pingduan);
 	addMetaObject<PingduanCard>();
 
 	General*kongshu = new General(this, "kongshu", "qun", 3,false);
-	kongshu->addSkill(new GuS2Leiluan);
-	kongshu->addSkill(new GuS2LeiluanWake);
+	kongshu->addSkill(new GuLeiluan);
+	kongshu->addSkill(new GuLeiluanWake);
 	insertRelatedSkills("leiluan", "#leiluan-wake");
 	addMetaObject<GuLeiluanPlayCard>();
-	kongshu->addSkill(new GuS2Fuchao);
+	kongshu->addSkill(new GuFuchao);
 
 	General*wangkuang = new General(this, "wangkuang", "qun", 4);
 	wangkuang->addSkill(new Renxian);
@@ -38248,8 +38238,8 @@ OLCcxhPackage::OLCcxhPackage()
 	addMetaObject<XianyingCard>();
 
 	General*ol_wuanguo = new General(this, "ol_wuanguo", "qun", 4);
-	ol_wuanguo->addSkill(new GuS2OLLiyong);
-	addMetaObject<GuS2LiyongCard>();
+	ol_wuanguo->addSkill(new GuOLLiyong);
+	addMetaObject<GuLiyongCard>();
 
 	General*ol_taoqian = new General(this, "ol_taoqian", "qun", 3);
 	ol_taoqian->addSkill(new OLZhaohuo);
@@ -38261,11 +38251,11 @@ OLCcxhPackage::OLCcxhPackage()
 	ol_xingdaorong->addSkill(new OLXuhe);
 
 	General*ol_guozhao = new General(this, "ol_guozhao", "wei", 3, false);
-	ol_guozhao->addSkill(new GuS2Jiaoyu);
-	ol_guozhao->addSkill(new GuS2JiaoyuProhibit);
+	ol_guozhao->addSkill(new GuJiaoyu);
+	ol_guozhao->addSkill(new GuJiaoyuProhibit);
 	insertRelatedSkills("jiaoyu", "#jiaoyu-prohibit");
-	ol_guozhao->addSkill(new GuS2Neixun);
-	ol_guozhao->addSkill(new GuS2NeixunMax);
+	ol_guozhao->addSkill(new GuNeixun);
+	ol_guozhao->addSkill(new GuNeixunMax);
 	insertRelatedSkills("neixun", "#neixun-max");
 
 	General*ol_xuelingyun = new General(this, "ol_xuelingyun", "wei", 3, false);
@@ -38389,10 +38379,10 @@ OLDemonPackage::OLDemonPackage()
 ADD_PACKAGE(OLDemon)
 
 // ----- 谋袁术：矜名 / 枭噬（厌粱已吻合） -----
-class GuS2Jinming : public TriggerSkill
+class GuJinming : public TriggerSkill
 {
 public:
-	GuS2Jinming() : TriggerSkill("jinming")
+	GuJinming() : TriggerSkill("jinming")
 	{
 		events << EventPhaseStart << EventPhaseChanging << HpRecover << CardsMoveOneTime << CardUsed << Damage;
 	}
@@ -38448,10 +38438,10 @@ public:
 	}
 };
 
-class GuS2Xiaoshi : public TriggerSkill
+class GuXiaoshi : public TriggerSkill
 {
 public:
-	GuS2Xiaoshi() : TriggerSkill("xiaoshi") { events << CardUsed << Damage << EventPhaseChanging; }
+	GuXiaoshi() : TriggerSkill("xiaoshi") { events << CardUsed << Damage << EventPhaseChanging; }
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event == Damage) {
@@ -38484,10 +38474,10 @@ public:
 	}
 };
 
-class GuS2XiaoshiAfter : public TriggerSkill
+class GuXiaoshiAfter : public TriggerSkill
 {
 public:
-	GuS2XiaoshiAfter() : TriggerSkill("#xiaoshi-after")
+	GuXiaoshiAfter() : TriggerSkill("#xiaoshi-after")
 	{
 		events << CardFinished;
 		global = true;
@@ -38512,10 +38502,10 @@ public:
 };
 
 // ----- 谋邓艾：积谷 / 解腕（SOURCE-2：替换；解腕距离 X） -----
-class GuS2Jigu : public TriggerSkill
+class GuJigu : public TriggerSkill
 {
 public:
-	GuS2Jigu() : TriggerSkill("jigu")
+	GuJigu() : TriggerSkill("jigu")
 	{
 		events << CardsMoveOneTime << EventPhaseStart;
 		frequency = Compulsory;
@@ -38566,10 +38556,10 @@ public:
 	}
 };
 
-class GuS2JiewanVS : public OneCardViewAsSkill
+class GuJiewanVS : public OneCardViewAsSkill
 {
 public:
-	GuS2JiewanVS() : OneCardViewAsSkill("jiewan")
+	GuJiewanVS() : OneCardViewAsSkill("jiewan")
 	{
 		filter_pattern = ".|.|.|hand";
 		response_pattern = "@@jiewan";
@@ -38587,13 +38577,13 @@ public:
 	}
 };
 
-class GuS2Jiewan : public TriggerSkill
+class GuJiewan : public TriggerSkill
 {
 public:
-	GuS2Jiewan() : TriggerSkill("jiewan")
+	GuJiewan() : TriggerSkill("jiewan")
 	{
 		events << EventPhaseStart;
-		view_as_skill = new GuS2JiewanVS;
+		view_as_skill = new GuJiewanVS;
 	}
 	bool triggerable(const ServerPlayer *t) const override { return t != nullptr; }
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
@@ -38612,7 +38602,7 @@ public:
 				if (ch == "loseMax") room->loseMaxHp(owner, 1, objectName());
 				else {
 					QList<int> pile = owner->getPile("gu");
-					QList<int> rm = s2RandomIds(pile, 2);
+					QList<int> rm = guRandomIds(pile, 2);
 					CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, owner->objectName(), objectName(), QString());
 					room->throwCard(rm, reason, nullptr);
 				}
@@ -38633,10 +38623,10 @@ public:
 		return false;
 	}
 };
-class GuS2JiewanDist : public TargetModSkill
+class GuJiewanDist : public TargetModSkill
 {
 public:
-	GuS2JiewanDist() : TargetModSkill("#jiewan-dist") { pattern = "Snatch"; }
+	GuJiewanDist() : TargetModSkill("#jiewan-dist") { pattern = "Snatch"; }
 	int getDistanceLimit(const Player *from, const Card *card, const Player *) const override
 	{
 		if (card && card->getSkillName() == "jiewan")
@@ -38646,10 +38636,10 @@ public:
 };
 
 // ----- 谋黄月英：理贤 / 并才（整组重做） -----
-class GuS2Lixian : public TriggerSkill
+class GuLixian : public TriggerSkill
 {
 public:
-	GuS2Lixian() : TriggerSkill("lixian")
+	GuLixian() : TriggerSkill("lixian")
 	{
 		events << Damaged << EventPhaseStart;
 	}
@@ -38700,10 +38690,10 @@ public:
 	}
 };
 
-class GuS2Bingcai : public TriggerSkill
+class GuBingcai : public TriggerSkill
 {
 public:
-	GuS2Bingcai() : TriggerSkill("bingcai") { events << CardUsed << ConfirmDamage; /* TargetSpecified for re-settle */ }
+	GuBingcai() : TriggerSkill("bingcai") { events << CardUsed << ConfirmDamage; /* TargetSpecified for re-settle */ }
 	bool triggerable(const ServerPlayer *t) const override { return t != nullptr; }
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -38777,9 +38767,9 @@ OLMouPackage::OLMouPackage()
 	olmou_kongrong->addSkill(new Zhengyi);
 
 	General*olmou_yuanshu = new General(this, "olmou_yuanshu$", "qun", 4);
-	olmou_yuanshu->addSkill(new GuS2Jinming);
-	olmou_yuanshu->addSkill(new GuS2Xiaoshi);
-	olmou_yuanshu->addSkill(new GuS2XiaoshiAfter);
+	olmou_yuanshu->addSkill(new GuJinming);
+	olmou_yuanshu->addSkill(new GuXiaoshi);
+	olmou_yuanshu->addSkill(new GuXiaoshiAfter);
 	insertRelatedSkills("xiaoshi", "#xiaoshi-after");
 	olmou_yuanshu->addSkill(new Yanliang);
 	addMetaObject<YanliangCard>();
@@ -38802,9 +38792,9 @@ OLMouPackage::OLMouPackage()
 	addMetaObject<FengshangCard>();
 
 	General*olmou_dengai = new General(this, "olmou_dengai", "wei", 4);
-	olmou_dengai->addSkill(new GuS2Jigu);
-	olmou_dengai->addSkill(new GuS2Jiewan);
-	olmou_dengai->addSkill(new GuS2JiewanDist);
+	olmou_dengai->addSkill(new GuJigu);
+	olmou_dengai->addSkill(new GuJiewan);
+	olmou_dengai->addSkill(new GuJiewanDist);
 	insertRelatedSkills("jiewan", "#jiewan-dist");
 
 	General*olmou_jvshou = new General(this, "olmou_jvshou", "qun", 3);
@@ -38826,8 +38816,8 @@ OLMouPackage::OLMouPackage()
 	related_skills.insert("jueya", "#jueya-record");
 
 	General*olmou_huangyueying = new General(this, "olmou_huangyueying", "shu", 3, false);
-	olmou_huangyueying->addSkill(new GuS2Bingcai);
-	olmou_huangyueying->addSkill(new GuS2Lixian);
+	olmou_huangyueying->addSkill(new GuBingcai);
+	olmou_huangyueying->addSkill(new GuLixian);
 
 	General*olmou_zhangxiu = new General(this, "olmou_zhangxiu", "qun", 4);
 	olmou_zhangxiu->addSkill(new Choulie);

@@ -39415,10 +39415,10 @@ static void guAudit2025Tenyear(Package *pkg)
 // Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
 
 // ---------- 乐诸葛果：羲笛 / 乘烟 ----------
-class GuS2Xidi : public TriggerSkill
+class GuXidi : public TriggerSkill
 {
 public:
-	GuS2Xidi() : TriggerSkill("xidi")
+	GuXidi() : TriggerSkill("xidi")
 	{
 		events << GameStart << EventPhaseStart;
 		frequency = Compulsory;
@@ -39440,10 +39440,10 @@ public:
 		return false;
 	}
 };
-class GuS2XidiMax : public MaxCardsSkill
+class GuXidiMax : public MaxCardsSkill
 {
 public:
-	GuS2XidiMax() : MaxCardsSkill("#xidi-max") {}
+	GuXidiMax() : MaxCardsSkill("#xidi-max") {}
 	int getExtra(const Player *target) const override
 	{
 		int n = 0;
@@ -39452,10 +39452,10 @@ public:
 	}
 };
 
-class GuS2Chengyan : public TriggerSkill
+class GuChengyan : public TriggerSkill
 {
 public:
-	GuS2Chengyan() : TriggerSkill("chengyan") { events << TargetSpecified; }
+	GuChengyan() : TriggerSkill("chengyan") { events << TargetSpecified; }
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		CardUseStruct use = data.value<CardUseStruct>();
@@ -40652,10 +40652,10 @@ General*caobao = new General(this,"caobao","qun",4);
 	yue_caiyong->addSkill(new Feibai);
 
 	General*yue_zhugeguo = new General(this,"yue_zhugeguo","shu",3,false);
-	yue_zhugeguo->addSkill(new GuS2Xidi);
-	yue_zhugeguo->addSkill(new GuS2XidiMax);
+	yue_zhugeguo->addSkill(new GuXidi);
+	yue_zhugeguo->addSkill(new GuXidiMax);
 	insertRelatedSkills("xidi", "#xidi-max");
-	yue_zhugeguo->addSkill(new GuS2Chengyan);
+	yue_zhugeguo->addSkill(new GuChengyan);
 }
 {// Battle-Hardened Elite
 	General*tenyear_wutugu = new General(this,"tenyear_wutugu","qun",15);
