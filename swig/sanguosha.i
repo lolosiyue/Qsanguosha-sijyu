@@ -2719,6 +2719,9 @@ public:
 	const Card*isCanceled(const CardEffectStruct&effect);
 	int askForCardChosen(ServerPlayer*player, ServerPlayer*who, const char*flags, const char*reason,
 						bool handcard_visible = false, Card::HandlingMethod method = Card::MethodNone, const QList<int>&disabled_ids = QList<int>(), bool can_cancel = false);
+	QList<int> askForCardsChosen(ServerPlayer*player, ServerPlayer*target, const char*flags, const char*reason,
+						int minimum, int maximum, bool handcardVisible = false, Card::HandlingMethod method = Card::MethodNone,
+						const QList<int>&disabledIds = QList<int>(), bool optional = true);
 	const Card*askForCard(ServerPlayer*player, const char*pattern, const char*prompt, const QVariant&data, const char*skill_name);
 	const Card*askForCard(ServerPlayer*player, const char*pattern, const char*prompt, const QVariant&data = QVariant(),
 		Card::HandlingMethod method = Card::MethodDiscard, ServerPlayer*to = nullptr, bool isRetrial = false,
