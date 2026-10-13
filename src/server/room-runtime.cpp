@@ -62,6 +62,7 @@ RoomRuntime::RoomRuntime(Room *room)
 
 RoomRuntime::~RoomRuntime()
 {
+    m_correctionTraces->close();
     shutdownFinal();
 }
 
@@ -84,6 +85,7 @@ void RoomRuntime::reclaimTurnCards()
 
 void RoomRuntime::finalizeWorker()
 {
+    m_correctionTraces->close();
     const auto trace = [this](const char *phase) {
         if (qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE")) {
             // Distinguish an invocation still on the stack from stale pin accounting.
@@ -120,6 +122,7 @@ void RoomRuntime::finalizeWorker()
 
 void RoomRuntime::shutdownFinal()
 {
+    m_correctionTraces->close();
     ShutdownState expected = ShutdownState::Running;
     if (!m_shutdownState.compare_exchange_strong(expected, ShutdownState::Closing))
         return;

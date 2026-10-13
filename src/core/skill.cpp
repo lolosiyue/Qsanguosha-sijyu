@@ -16,12 +16,14 @@
 #include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <algorithm>
+#include <atomic>
 #include <QDebug>
 #include <QFile>
 #include <QSet>
 
 namespace {
 thread_local const Skill *g_skillTriggerScope = nullptr;
+std::atomic<quint64> g_definitionMutationSerial{0};
 }
 
 SkillTriggerScope::SkillTriggerScope(const Skill *skill)
@@ -59,8 +61,22 @@ Skill::Skill(const QString &name, Frequency frequency)
     if (lord_skill||attached_lord_skill)
         copy.chop(1);
     setObjectName(copy);
+    // The first connection, so it runs before any observer added after construction.
+    connect(this, &QObject::objectNameChanged, this, [] { ++g_definitionMutationSerial; },
+            Qt::DirectConnection);
 	if(!name.startsWith("#"))
 		initMediaSource();
+}
+
+// Runs before ~QObject clears QPointers and emits destroyed().
+Skill::~Skill()
+{
+    ++g_definitionMutationSerial;
+}
+
+quint64 Skill::definitionMutationSerial()
+{
+    return g_definitionMutationSerial.load();
 }
 
 bool Skill::isLordSkill() const
@@ -1413,6 +1429,17 @@ ProhibitSkill::ProhibitSkill(const QString &name)
 {
 }
 
+ProhibitSkillV2::ProhibitSkillV2(const QString &name)
+    : ProhibitSkill(name), m_holderSelector(CorrectSkill_Secondary)
+{
+}
+
+bool ProhibitSkillV2::isProhibited(const Player *, const Player *, const Card *,
+                                 const QList<const Player *> &) const
+{
+    return false;
+}
+
 ProhibitPindianSkill::ProhibitPindianSkill(const QString &name)
     : Skill(name, Skill::Compulsory)
 {
@@ -1431,6 +1458,46 @@ int DistanceSkill::getCorrect(const Player *, const Player *) const
 int DistanceSkill::getFixed(const Player *, const Player *) const
 {
     return 0;
+}
+
+bool CorrectSkillGate::setAtoms(const QStringList &atoms)
+{
+    static const QHash<QString, Kind> kinds = {
+        {"mark", Mark}, {"flag", Flag}, {"pile", Pile}, {"skill", OwnsSkill},
+        {"card_skill", CardSkill}, {"card_flag", CardFlag}};
+    QList<Atom> parsed;
+    for (const QString &text : atoms) {
+        const int colon = text.indexOf(':');
+        QString head = text.left(colon);
+        Atom atom;
+        atom.secondary = head.startsWith("secondary.");
+        if (atom.secondary) head = head.mid(10);
+        atom.name = text.mid(colon + 1);
+        if (colon <= 0 || atom.name.isEmpty() || !kinds.contains(head)) return false;
+        atom.kind = kinds.value(head);
+        if (atom.secondary && (atom.kind == CardSkill || atom.kind == CardFlag)) return false;
+        parsed << atom;
+    }
+    m_atoms = parsed;
+    return true;
+}
+
+bool CorrectSkillGate::mayApply(const Player *primary, const Player *secondary, const Card *card) const
+{
+    if (m_atoms.isEmpty()) return true;
+    for (const Atom &atom : m_atoms) {
+        const Player *player = atom.secondary ? secondary : primary;
+        switch (atom.kind) {
+        case Mark: if (player && player->getMark(atom.name) != 0) return true; break;
+        case Flag: if (player && player->hasFlag(atom.name)) return true; break;
+        case Pile: if (player && !player->getPile(atom.name).isEmpty()) return true; break;
+        // Ownership without validity: hasSkill() implies it and stays out of InvaliditySkill callbacks.
+        case OwnsSkill: if (player && player->ownsSkill(atom.name)) return true; break;
+        case CardSkill: if (card && card->getSkillNames().contains(atom.name)) return true; break;
+        case CardFlag: if (card && card->hasFlag(atom.name)) return true; break;
+        }
+    }
+    return false;
 }
 
 DistanceSkillV2::DistanceSkillV2(const QString &name)
@@ -2085,6 +2152,13 @@ QVariant CorrectSkillContext::getStateValue(const QString &key, const QVariant &
                                                                instanceRef.key.instanceID);
     if (!instance) return defaultValue;
     return instance->correctState.value(key, defaultValue);
+}
+
+QVariant ProhibitSkillContext::getStateValue(const QString &key, const QVariant &defaultValue) const
+{
+    if (!holder || !instanceRef.isValid()) return defaultValue;
+    return holder->getSkillInstanceCorrectStateValue(instanceRef.key.skillName,
+                                                    instanceRef.key.instanceID, key, defaultValue);
 }
 
 BattleArraySkill::BattleArraySkill(const QString &name, const QString &type)

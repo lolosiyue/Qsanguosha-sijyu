@@ -9,6 +9,7 @@ struct lua_State;
 #include "lua-runtime.h"
 #include "structs.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 
 struct AICardView {
@@ -46,6 +47,24 @@ struct AICardView {
     bool locked = false;
     bool jilei = false;
     bool usingCard = false;
+    // Owner-only rules: isCardLimited per handling method (outside and inside the
+    // hand) and Room::isProhibited per alive target.
+    QMap<int, bool> limits;
+    QMap<int, bool> limitsHand;
+    QMap<QString, bool> prohibited;
+    // Card flags are broadcast by Room::setCardFlag.
+    QStringList flags;
+    // Owner-only: the engine card is a gift and still shows its printed face.
+    bool gift = false;
+    // Owner-only: Card::isAvailable for the owner, and its TargetModSkill
+    // corrections with no specific target.
+    bool available = false;
+    int targetModResidue = 0;
+    int targetModDistance = 0;
+    int targetModExtra = 0;
+    // TargetModSkill::Residue per alive target, for the owner's own damage cards and
+    // self-targeting basic cards (the cards whose use count is limited).
+    QMap<QString, int> targetResidue;
 
     AICardView()
         : cardId(-1), effectiveId(-1), suit(int(Card::NoSuit)), number(0),
@@ -106,6 +125,12 @@ struct AICardCandidateView {
     // True only after every ordered selection has been explored within the projection
     // budget (or for target-fixed cards). Missing combinations are unsupported.
     bool completeCoverage;
+    // TargetModSkill::ExtraTarget corrections, overall and per alive target, and
+    // Card::targetFilter with an empty prefix per alive target.
+    bool extraTargetKnown = false;
+    int extraTargetCount = 0;
+    QMap<QString, int> extraTargetByPlayer;
+    QMap<QString, bool> targetFilterEmpty;
 
     AICardCandidateView()
         : candidateId(-1), cardId(-1), available(false), limited(false), jilei(false),
@@ -143,6 +168,10 @@ struct AICardConversionView {
     // The same target description a physical candidate carries, so that one planning
     // algorithm serves both instead of a second one growing for converted cards.
     bool available;
+    // A response or use question: the produced card matches the question's pattern.
+    bool matchesResponsePattern = false;
+    QString legacyStringKey; // The produced card's Card::toString().
+    bool locked = false; // Player::isLocked of the produced card.
     bool targetFixed;
     bool feasibleWithNoTarget;
     bool completeCoverage;
@@ -152,6 +181,11 @@ struct AICardConversionView {
     // Ordered feasible sequences; incomplete projections are never a truncated answer.
     QList<QStringList> targetCombinations;
     QMap<QString, int> maxVotes;
+    // The same target corrections and empty-prefix filters as a candidate.
+    bool extraTargetKnown = false;
+    int extraTargetCount = 0;
+    QMap<QString, int> extraTargetByPlayer;
+    QMap<QString, bool> targetFilterEmpty;
 
     AICardConversionView()
         : conversionId(-1), suit(int(Card::SuitToBeDecided)), number(0),
@@ -171,6 +205,20 @@ struct AISkillView {
     int amount;
     bool hasPrivateState;
     bool hasViewAsSkill = false;
+    // Public definition text, the limit mark of a limited skill and the trigger
+    // events of a trigger skill.
+    QString description;
+    QString limitMark;
+    QList<int> triggerEvents;
+    // Owner-only: whether the view-as part is a V2 skill, ViewAsSkill::isEnabledAtPlay,
+    // and isEnabledAtResponse for the basic response patterns SmartAI asks about.
+    bool viewAsKnown = false;
+    bool viewAsV2 = false;
+    bool enabledAtPlay = false;
+    QMap<QString, bool> enabledAtResponse;
+    // ViewAsEquipSkill::viewAsEquip for the holder: the equipment names it grants.
+    bool viewAsEquipKnown = false;
+    QStringList viewAsEquipNames;
     // Skill classification: the native class chain from the leaf up, so a legacy
     // inherits("FilterSkill") check becomes a value comparison.
     QStringList skillClasses;
@@ -198,6 +246,15 @@ struct AIPlayerView {
     bool alive;
     bool dead;
     bool removed;
+    bool inYinniState = false;
+    int attackRangeWithoutWeapon = 1;
+    // Basic card prototypes (Slash, Jink, Peach, Analeptic, Nullification) for this
+    // player: isCardLimited for use and response, and isAvailable.
+    QJsonObject prototypeRules;
+    // Public zone capabilities and change-skill states (shown in every client's UI).
+    bool hasJudgeArea = true;
+    QList<int> equipAreas;
+    QMap<QString, int> changeSkillStates;
     bool kongcheng;
     bool wounded;
     bool faceUp;
@@ -223,12 +280,16 @@ struct AIPlayerView {
     // knownCards is known absent rather than unknown.
     QList<AICardView> knownCards;
     bool handVisible;
-    // Only the viewer receives private flags and future phase-skip decisions.
+    // Flags are broadcast to every client, and so is every phase skip.
     QStringList privateFlags;
     bool privateFlagsVisible = false;
     QMap<int, bool> skippedPhases;
     QString activeArmorName;
     bool armorEffectKnown = false;
+    // With a view-as equipment source: each armor name (physical or granted) for
+    // which hasArmorEffect holds.
+    QStringList armorEffectNames;
+    bool armorEffectNamesKnown = false;
     QList<AICardPileView> piles;
     QList<int> displayCards;
     // Derived player values the shared entries ask for.
@@ -239,6 +300,17 @@ struct AIPlayerView {
     bool lord;
     // Equip slot index -> occupying card id; a free slot is simply absent.
     QMap<int, int> equipSlots;
+    // The viewer's own usage history (usedTimes per history key); others are unknown.
+    QMap<QString, int> usedHistory;
+    bool usedHistoryVisible = false;
+    // The viewer's own tags and dynamic properties as JSON-safe values; a value that
+    // cannot be represented is left out. Other players' are unknown.
+    QJsonObject tags;
+    QJsonObject properties;
+    bool ownStateVisible = false;
+    bool canSlashWithoutCrossbow = false;
+    // Player::canDiscard(to, flags) of the viewer, per player and zone string.
+    QMap<QString, QMap<QString, bool>> canDiscard;
 
     AIPlayerView()
         : seat(0), hp(0), maxHp(0), handcardCount(0), phase(int(Player::NotActive)),
@@ -289,6 +361,10 @@ struct AIWorldView {
     bool customRoles = false;
     QJsonObject modePolicy;
     int turnCount = 0; // The public round counter (TurnLengthCount).
+    int drawPileCount = 0;
+    QString currentDying; // Empty when nobody is dying.
+    // Card uses still in flight: Room tag "UseHistory" + card string, keyed by that string.
+    QJsonObject useHistory;
     bool enableHegemony = false;
     bool aiHumanized = false;
     bool aiChatEnabled = false;
@@ -336,6 +412,13 @@ struct AiSkillActionContext {
     bool isSourceQuotaAvailable() const { return sourceQuotaAvailable; }
 };
 
+// A card evaluated as the viewer would hold and use it: owner rules on the card and
+// its play candidate. Evaluation only; the candidate is never a ticket.
+struct AIChoiceCardEvaluation {
+    AICardView card;
+    AICardCandidateView candidate;
+};
+
 // Value-typed candidates and limits for the non-card decisions: string choices,
 // counts, cancelability and the authoritative default. No QVariant, Card * or
 // ServerPlayer * crosses in here.
@@ -350,6 +433,10 @@ struct AIChoiceOptions {
     // hidden hand merely because its count is known.
     QList<AICardView> cards;
     bool candidatesComplete = false;
+    // AmazingGrace: each offered card as the viewer would take it (in-hand limits),
+    // and the printed card of each offered name, for choices that name a card to use.
+    QList<AIChoiceCardEvaluation> acquiredCards;
+    QList<AIChoiceCardEvaluation> printedCards;
     QJsonObject context;
     QStringList playerNames;
     QString defaultChoice;
@@ -397,6 +484,17 @@ struct AIRequest {
     // Stronger than conversionsEnumerated: every available skill action belongs
     // to an explicitly supported staged conversion family (no omitted proxies).
     bool stagedActionsComplete = false;
+    // Response and use questions only: the classes of the viewer's own cards that
+    // match the pattern, in SmartAI's askForCard (or askForUseCard fallback)
+    // discovery order, before any limit filter. False completeness means a card in
+    // that scan could not be resolved, or a use question that never reaches the scan.
+    QStringList physicalClassOrder;
+    bool physicalClassOrderComplete = false;
+    // SmartAI's following catalogue pass: each engine card class whose printed
+    // prototype matches the pattern, as {class_name, card_name}. Built only when the
+    // request issued a conversion, the only kind of answer it can add.
+    QJsonArray catalogClassOrder;
+    bool catalogClassOrderComplete = false;
 
     AIRequest()
         : kind(UseCard), decisionId(0), stateRevision(0),

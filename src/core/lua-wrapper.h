@@ -309,6 +309,17 @@ private:
     bool m_equipSkill = false;
 };
 
+class LuaProhibitSkillV2 : public ProhibitSkillV2
+{
+public:
+    LuaProhibitSkillV2(const QString &name, Frequency frequency);
+
+    using ProhibitSkillV2::isProhibited;
+    bool isProhibited(const ProhibitSkillContext &context) const override;
+
+    LuaFunction is_prohibited;
+};
+
 class LuaProhibitPindianSkill : public ProhibitPindianSkill
 {
     Q_OBJECT

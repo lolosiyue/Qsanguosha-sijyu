@@ -1,4 +1,5 @@
 #include "player.h"
+#include "correction-trace.h"
 #include "hegemony-mode.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
@@ -295,14 +296,21 @@ bool playerMayHaveVirtualEquip(const Player *player)
 
 int Player::getAttackRange(bool include_weapon) const
 {
+    CorrectionTrace trace("Attack range", this);
+    if (trace) {
+        trace.context(CorrectionTrace::tr("includeWeapon=%1").arg(include_weapon));
+        trace.note(QStringLiteral("default base"), 1);
+    }
     if (hasFlag("InfinityAttackRange"))
-        return 999;
+        return trace.finish(999, (trace ? CorrectionTrace::tr("InfinityAttackRange flag") : QString()));
 
     int range = Sanguosha->correctAttackRange(this, include_weapon, true);
+    if (trace) trace.note(QStringLiteral("fixed correction"), range);
     if (range<0) range = 1;
 
     if (include_weapon&&hasSkill("benshi"))
         include_weapon = false;
+    if (trace && !include_weapon) trace.note(QStringLiteral("weapon scan disabled"), 0);
 
     if (include_weapon){
         // Physical weapons first. Only scan the full Weapon catalog (and thus
@@ -312,21 +320,27 @@ int Player::getAttackRange(bool include_weapon) const
         foreach (const EquipCard *eq, getWeapons()) {
             const Weapon *w = qobject_cast<const Weapon *>(eq);
             if (!w) continue;
-            if (range == 1) range = w->getRange(this);
-            else range = qMax(range, w->getRange(this));
+            const int weaponRange = w->getRange(this);
+            if (trace) trace.note(QStringLiteral("weapon range"), weaponRange, w->objectName());
+            if (range == 1) range = weaponRange;
+            else range = qMax(range, weaponRange);
         }
         if (playerMayHaveVirtualEquip(this)) {
             static QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
             foreach (const Weapon *w, weapons) {
                 if (hasWeapon(w->objectName())) {
-                    if (range == 1) range = w->getRange(this);
-                    else range = qMax(range, w->getRange(this));
+                    const int weaponRange = w->getRange(this);
+                    if (trace) trace.note(QStringLiteral("virtual weapon range"), weaponRange, w->objectName());
+                    if (range == 1) range = weaponRange;
+                    else range = qMax(range, weaponRange);
                 }
             }
         }
     }
-    range += Sanguosha->correctAttackRange(this, include_weapon, false);
-    return qMax(range, 0);
+    const int extra = Sanguosha->correctAttackRange(this, include_weapon, false);
+    if (trace) trace.note(QStringLiteral("add correction"), extra);
+    range += extra;
+    return trace.finish(qMax(range, 0), (trace ? CorrectionTrace::tr("clamped >= 0") : QString()));
 }
 
 bool Player::inMyAttackRange(const Player *other, int distance_fix, bool chengwu) const
@@ -393,11 +407,13 @@ void Player::removeAttackRangePair(const Player *player)
 
 int Player::distanceTo(const Player *other, int distance_fix) const
 {
+    CorrectionTrace trace("Distance", this, other);
+    if (trace) trace.context(CorrectionTrace::tr("distance_fix=%1").arg(distance_fix));
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_distanceTo);
 	if (!other || this == other)
-		return 0;
+		return trace.finish(0, (trace ? CorrectionTrace::tr("null or self target") : QString()));
 	if(other->seat<0)
-		return 999;
+		return trace.finish(999, (trace ? CorrectionTrace::tr("target seat < 0") : QString()));
 
     if (inherits("ClientPlayer")) {
         if (fixed_distance.contains(other)) {
@@ -437,23 +453,28 @@ int Player::distanceTo(const Player *other, int distance_fix) const
     }
 
 	int right = Sanguosha->correctDistance(this, other, true);
-	if (right>0) return right;
+	if (trace) trace.note(QStringLiteral("fixed correction"), right);
+	if (right>0) return trace.finish(right, (trace ? CorrectionTrace::tr("fixed skill override") : QString()));
 
 	if (fixed_distance.contains(other)){
 		right = 999;
 		foreach(int d, fixed_distance.values(other)){
 			if (right > d) right = d;
 		}
-		return right;
+		return trace.finish(right, (trace ? CorrectionTrace::tr("fixed distance map minimum") : QString()));
 	}
 
 	right = qAbs(seat - other->seat);
 	right = qMin(aliveCount() - right, right);
 
-	right += Sanguosha->correctDistance(this, other);
+	if (trace) trace.note(QStringLiteral("seat distance base"), right);
+    const int correction = Sanguosha->correctDistance(this, other);
+    if (trace) trace.note(QStringLiteral("add correction"), correction);
+	right += correction;
+	if (trace) trace.note(QStringLiteral("add distance_fix"), distance_fix);
 	right += distance_fix;
 
-	return qMax(right, 1);
+	return trace.finish(qMax(right, 1), (trace ? CorrectionTrace::tr("clamped >= 1") : QString()));
 }
 
 void Player::setGeneral(const General *new_general)
@@ -1659,9 +1680,13 @@ int Player::getMaxCards() const
 
 int Player::getMaxCards(MaxCardsType::MaxCardsCount type) const
 {
+    CorrectionTrace trace("Hand limit", this);
+    if (trace) trace.context(CorrectionTrace::tr("maxCardsType=%1").arg(int(type)));
     int origin = Sanguosha->correctMaxCards(this, true, type);
+    if (trace) trace.note(QStringLiteral("fixed correction"), origin);
     if (origin < 0) {
         origin = qMax(hp, 0);
+        if (trace) trace.note(QStringLiteral("HP base"), origin);
     }
     // Hegemony uses the donor HP plus correction rule, without identity-mode
     // compensation for an odd sum of the two generals' printed HP.
@@ -1669,11 +1694,13 @@ int Player::getMaxCards(MaxCardsType::MaxCardsCount type) const
         int genMaxHp = general->getMaxHp() + general2->getMaxHp();
         if (getMark("AwakenLostMaxHp") < 1 && genMaxHp % 2 != 0) {
             origin++;
+            if (trace) trace.note(QStringLiteral("odd dual-general HP compensation"), 1);
         }
     }
     int extra = Sanguosha->correctMaxCards(this, false, type);
+    if (trace) trace.note(QStringLiteral("add correction"), extra);
     int result = qMax(origin + extra, 0);
-    return result;
+    return trace.finish(result, (trace ? CorrectionTrace::tr("clamped >= 0") : QString()));
 }
 
 QString Player::getKingdom() const
@@ -1925,20 +1952,26 @@ QString Player::getClubName() const{
 bool Player::canSlash(const Player *other, const Card *slash, bool distance_limit,
     int rangefix, const QList<const Player *> &others) const
 {
-	if (!other || !other->isAlive())
-		return false;
+	if (!other || !other->isAlive()) {
+        CorrectionTrace trace("Can Slash", this, other, slash);
+        return trace.finish(false, (trace ? CorrectionTrace::tr("missing/dead target") : QString()));
+    }
 	if (!slash){
 		Slash *newslash = new Slash(Card::NoSuit, 0);
 		newslash->deleteLater();
 		slash = newslash;
 	}
-	if (isCardLimited(slash,Card::MethodUse) || isProhibited(other, slash, others)) return false;
-	if (attack_range_pair.contains(other)) return true;
+    CorrectionTrace trace("Can Slash", this, other, slash);
+    if (trace) trace.context(CorrectionTrace::tr("distance_limit=%1 rangefix=%2 selectedOthers=%3").arg(distance_limit).arg(rangefix).arg(others.size()));
+    if (isCardLimited(slash,Card::MethodUse)) return trace.finish(false, (trace ? CorrectionTrace::tr("isCardLimited(MethodUse)=true; internal reason not traced") : QString()));
+    if (isProhibited(other, slash, others)) return trace.finish(false, (trace ? CorrectionTrace::tr("ProhibitSkill rejected target") : QString()));
+	if (attack_range_pair.contains(other)) return trace.finish(true, (trace ? CorrectionTrace::tr("attack range pair override") : QString()));
 	if (distance_limit){
 		rangefix -= Sanguosha->correctCardTarget(TargetModSkill::DistanceLimit, this, slash, other);
-		if (rangefix>-500) return inMyAttackRange(other, rangefix);
+		if (trace) trace.note(QStringLiteral("rangefix after distance modifier"), rangefix);
+		if (rangefix>-500) return trace.finish(inMyAttackRange(other, rangefix), (trace ? CorrectionTrace::tr("inMyAttackRange result") : QString()));
 	}
-	return this != other;
+	return trace.finish(this != other, (trace ? CorrectionTrace::tr("self-target gate; distance gate bypassed") : QString()));
 }
 
 bool Player::canSlash(const Player *other, bool distance_limit, int rangefix, const QList<const Player *> &others) const

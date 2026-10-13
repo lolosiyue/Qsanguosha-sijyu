@@ -370,6 +370,10 @@ public:
     void clearCardFlag(int card_id, ServerPlayer*who = nullptr);
     void setCardTip(int card_id, const QString&tip);
     void clearCardTip(int card_id);
+    bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                 const QList<int> &materialIds = QList<int>());
+    bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                 const QList<int> &materialIds, bool directly);
     CardUseStruct getUseStruct(const Card*card);
     bool useCard(const CardUseStruct&use, bool add_history = false);
     bool useCard(CardUseStruct&use, bool add_history = false);
@@ -831,7 +835,8 @@ public:
     QStringList getUsedGeneral();
     void handleUsedGeneral(const QString &name);
     bool isAllOnPlace(const Card *card, Player::Place place);
-    YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason);
+    YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants,
+                          const QString &reason, int minimum_participants = 2);
     const Card*askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
     bool useNullified(const Card*use_card);
     const Card*isCanceled(const CardEffectStruct&effect);

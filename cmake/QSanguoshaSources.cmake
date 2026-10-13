@@ -199,6 +199,8 @@ set(QSAN_SOURCES
     src/ui/rolecombobox.cpp
     src/ui/roomscene.cpp
     src/ui/room-debug-dialogs.cpp
+    src/ui/correction-inspector.cpp
+    src/ui/correction-inspector.h
     src/ui/kof-arrange-controller.cpp
     src/ui/room-replay-controller.cpp
     src/ui/room-layout-engine.cpp

@@ -168,6 +168,8 @@ private:
         bool roleRevealed = false;
         bool armorBasis = false;
         QString activeArmorName;
+        bool armorEffectNamesKnown = false;
+        QStringList armorEffectNames;
     };
     struct PublicBoard {
         quint64 revision = 0;
@@ -182,6 +184,10 @@ private:
 
     PublicBoard publicBoard() const;
     PublicBoard buildPublicBoard() const;
+    bool publicBoardCurrent() const;
+    // Basic prototype rules per player object name, paired with the cached board.
+    QHash<QString, QJsonObject> prototypeRules() const;
+    QHash<QString, QJsonObject> buildPrototypeRules() const;
     AIWorldView projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
                                  bool compactPolicy, bool eventOnly) const;
 
@@ -197,6 +203,10 @@ private:
     mutable quint64 m_publicBoardDefinitions = 0;
     mutable QList<ServerPlayer *> m_publicBoardPlayers;
     mutable QList<ServerPlayer *> m_publicBoardAlivePlayers;
+    mutable quint64 m_publicBoardStamp = 0;
+    mutable bool m_prototypeRulesValid = false;
+    mutable quint64 m_prototypeRulesStamp = 0;
+    mutable QHash<QString, QJsonObject> m_prototypeRules;
     // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
     mutable bool m_distanceCacheValid = false;
     mutable quint64 m_distanceRevision = 0;

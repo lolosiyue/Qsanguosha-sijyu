@@ -174,6 +174,24 @@ public:
 	LuaFunction is_prohibited;
 };
 
+class ProhibitSkillV2: public ProhibitSkill {
+public:
+	ProhibitSkillV2(const QString &name);
+	virtual bool isProhibited(const ProhibitSkillContext &context) const = 0;
+	virtual bool isProhibited(const Player *from, const Player *to, const Card *card,
+	                         const QList<const Player *> &others = QList<const Player *>()) const;
+	CorrectSkillHolderSelector getHolderSelector() const;
+	void setHolderSelector(CorrectSkillHolderSelector selector);
+	bool setGate(QStringList atoms);
+};
+
+class LuaProhibitSkillV2: public ProhibitSkillV2 {
+public:
+	LuaProhibitSkillV2(const char *name, Frequency frequency);
+	virtual bool isProhibited(const ProhibitSkillContext &context) const;
+	LuaFunction is_prohibited;
+};
+
 class ProhibitPindianSkill: public Skill {
 public:
 	ProhibitPindianSkill(const QString &name);
@@ -216,6 +234,7 @@ public:
 	CorrectSkillHolderSelector getHolderSelector() const;
 	void setBaseAmount(int amount);
 	void setHolderSelector(CorrectSkillHolderSelector selector);
+	bool setGate(QStringList atoms);
 };
 
 class LuaDistanceSkillV2: public DistanceSkillV2 {
@@ -253,6 +272,7 @@ public:
 	CorrectSkillHolderSelector getHolderSelector() const;
 	void setBaseAmount(int amount);
 	void setHolderSelector(CorrectSkillHolderSelector selector);
+	bool setGate(QStringList atoms);
 };
 
 class LuaMaxCardsSkillV2: public MaxCardsSkillV2 {
@@ -303,6 +323,7 @@ public:
 	CorrectSkillHolderSelector getHolderSelector() const;
 	void setBaseAmount(int amount);
 	void setHolderSelector(CorrectSkillHolderSelector selector);
+	bool setGate(QStringList atoms);
 };
 
 class LuaTargetModSkillV2: public TargetModSkillV2 {
@@ -354,6 +375,7 @@ public:
 	CorrectSkillHolderSelector getHolderSelector() const;
 	void setBaseAmount(int amount);
 	void setHolderSelector(CorrectSkillHolderSelector selector);
+	bool setGate(QStringList atoms);
 };
 
 class LuaAttackRangeSkillV2: public AttackRangeSkillV2 {
@@ -1789,6 +1811,27 @@ bool LuaProhibitSkill::isProhibited(const Player *from, const Player *to, const 
 	}
 
 	bool result = lua_toboolean(L, -1);
+	lua_pop(L, 1);
+	return result;
+}
+
+bool LuaProhibitSkillV2::isProhibited(const ProhibitSkillContext &context) const
+{
+	if (is_prohibited == 0) return false;
+	lua_State *L = LuaRuntime::currentState();
+	is_prohibited.push(L);
+	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaProhibitSkillV2, 0);
+	// Like CorrectSkillContext, this read-only query is borrowed for this callback.
+	SWIG_NewPointerObj(L, const_cast<ProhibitSkillContext *>(&context), SWIGTYPE_p_ProhibitSkillContext, 0);
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) {
+		const char *message = lua_tostring(L, -1);
+		qWarning("LuaProhibitSkillV2::is_prohibited error: %s", message ? message : "unknown Lua error");
+		lua_pop(L, 1);
+		return false;
+	}
+	const bool result = lua_isboolean(L, -1) && lua_toboolean(L, -1);
+	if (!lua_isnil(L, -1) && !lua_isboolean(L, -1))
+		qWarning("LuaProhibitSkillV2::is_prohibited returned an unsupported value; prohibition ignored");
 	lua_pop(L, 1);
 	return result;
 }

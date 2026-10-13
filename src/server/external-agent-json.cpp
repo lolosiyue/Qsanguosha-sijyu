@@ -39,7 +39,7 @@ template<class K, class V> QJsonValue json(const QMap<K,V> &values) {
     return result;
 }
 QJsonValue json(const AICardView &v) {
-    return QJsonObject{
+    QJsonObject o{
         {"cardId", json(v.cardId)},
         {"effectiveId", json(v.effectiveId)},
         {"objectName", json(v.objectName)},
@@ -57,8 +57,25 @@ QJsonValue json(const AICardView &v) {
         {"subcardIds", json(v.subcardIds)},
         {"red", json(v.red)},
         {"black", json(v.black)},
-        {"kindOfNames", json(v.kindOfNames)}
+        {"kindOfNames", json(v.kindOfNames)},
+        {"legacyStringKey", json(v.legacyStringKey)},
+        {"nameLength", json(v.nameLength)},
+        {"canRecast", json(v.canRecast)},
+        {"willThrow", json(v.willThrow)},
+        {"singleTarget", json(v.singleTarget)},
+        {"ownerStateKnown", json(v.ownerStateKnown)}
     };
+    // Same gates as the Lua projection: a borrowed activation's root skill can be private.
+    if (v.ownerStateKnown || v.sourceSkillName == v.skillName)
+        o.insert("sourceSkillName", json(v.sourceSkillName));
+    if (v.ownerStateKnown) {
+        o.insert("skillNames", json(v.skillNames));
+        o.insert("engineClassName", json(v.engineClassName));
+        o.insert("locked", json(v.locked));
+        o.insert("jilei", json(v.jilei));
+        o.insert("usingCard", json(v.usingCard));
+    }
+    return o;
 }
 QJsonValue json(const AICardPileView &v) {
     return QJsonObject{
@@ -104,6 +121,9 @@ QJsonValue json(const AICardConversionView &v) {
         {"subcardIds", json(v.subcardIds)},
         {"selectionStages", json(v.selectionStages)},
         {"available", json(v.available)},
+        {"matchesResponsePattern", json(v.matchesResponsePattern)},
+        {"legacyStringKey", json(v.legacyStringKey)},
+        {"locked", json(v.locked)},
         {"targetFixed", json(v.targetFixed)},
         {"feasibleWithNoTarget", json(v.feasibleWithNoTarget)},
         {"completeCoverage", json(v.completeCoverage)},
@@ -158,7 +178,10 @@ QJsonValue json(const AIPlayerView &v) {
         {"equips", json(v.equips)},
         {"judgingArea", json(v.judgingArea)},
         {"publicMarks", json(v.publicMarks)},
+        {"marksComplete", json(v.marksComplete)},
         {"skills", json(v.skills)},
+        {"skillsComplete", json(v.skillsComplete)},
+        {"playerState", json(v.playerState)},
         {"knownCards", json(v.knownCards)},
         {"handVisible", json(v.handVisible)},
         {"privateFlags", json(v.privateFlags)},
@@ -210,6 +233,13 @@ QJsonValue json(const AIWorldView &v) {
         {"modeId", json(v.modeId)},
         {"customRoles", json(v.customRoles)},
         {"modePolicy", json(v.modePolicy)},
+        {"turnCount", json(v.turnCount)},
+        {"useHistory", json(v.useHistory)},
+        {"enableHegemony", json(v.enableHegemony)},
+        {"aiHumanized", json(v.aiHumanized)},
+        {"aiChatEnabled", json(v.aiChatEnabled)},
+        {"roleCounts", json(v.roleCounts)},
+        {"roleCountsKnown", json(v.roleCountsKnown)},
         {"self", json(v.self)},
         {"players", json(v.players)},
         {"handCards", json(v.handCards)},
@@ -266,7 +296,11 @@ QJsonValue json(const AIRequest &v) {
         {"cardCandidates", json(v.cardCandidates)},
         {"cardConversions", json(v.cardConversions)},
         {"conversionsEnumerated", json(v.conversionsEnumerated)},
-        {"stagedActionsComplete", json(v.stagedActionsComplete)}
+        {"stagedActionsComplete", json(v.stagedActionsComplete)},
+        {"physicalClassOrder", json(v.physicalClassOrder)},
+        {"physicalClassOrderComplete", json(v.physicalClassOrderComplete)},
+        {"catalogClassOrder", v.catalogClassOrder},
+        {"catalogClassOrderComplete", json(v.catalogClassOrderComplete)}
     };
 }
 bool fields(const QJsonObject &o, const QSet<QString> &allowed) {

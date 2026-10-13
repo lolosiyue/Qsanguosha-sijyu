@@ -8,6 +8,7 @@
 #include "room-runtime.h"
 #include "settings.h"
 #include "skill.h"
+#include "standard.h"
 
 #include <QDebug>
 #include <QDir>
@@ -67,6 +68,64 @@ bool isPlainTable(lua_State *state, int index)
         return true;
     lua_pop(state, 1);
     return false;
+}
+
+// A pure policy value: booleans, finite numbers, bounded strings and plain tables
+// (a dense array or a string-keyed object). Anything else is left out.
+bool readLuaPolicyValue(lua_State *state, int index, QJsonValue &value, int depth, int &budget)
+{
+    index = lua_absindex(state, index);
+    if (depth > 6 || --budget < 0)
+        return false;
+    switch (lua_type(state, index)) {
+    case LUA_TBOOLEAN:
+        value = bool(lua_toboolean(state, index));
+        return true;
+    case LUA_TNUMBER: {
+        const double number = lua_tonumber(state, index);
+        if (!std::isfinite(number)) return false;
+        value = number;
+        return true;
+    }
+    case LUA_TSTRING: {
+        QString text;
+        if (!readBoundedString(state, index, text)) return false;
+        value = text;
+        return true;
+    }
+    case LUA_TTABLE: {
+        if (!isPlainTable(state, index)) return false;
+        const size_t length = lua_rawlen(state, index);
+        if (length > 0) {
+            QJsonArray array;
+            for (size_t i = 1; i <= length; ++i) {
+                lua_rawgeti(state, index, lua_Integer(i));
+                QJsonValue item;
+                const bool ok = readLuaPolicyValue(state, -1, item, depth + 1, budget);
+                lua_pop(state, 1);
+                if (!ok) return false;
+                array.append(item);
+            }
+            value = array;
+            return true;
+        }
+        QJsonObject object;
+        lua_pushnil(state);
+        while (lua_next(state, index) != 0) {
+            QString key;
+            QJsonValue item;
+            if (lua_type(state, -2) == LUA_TSTRING && readBoundedString(state, -2, key)
+                && readLuaPolicyValue(state, -1, item, depth + 1, budget))
+                object.insert(key, item);
+            lua_pop(state, 1);
+            if (budget < 0) { lua_pop(state, 1); return false; }
+        }
+        value = object;
+        return true;
+    }
+    default:
+        return false;
+    }
 }
 
 bool parseIntentionDeltas(lua_State *state, const AIWorldView &world,
@@ -214,7 +273,48 @@ void pushAICardView(lua_State *state, const AICardView &card)
         lua_setfield(state, -2, "jilei");
         lua_pushboolean(state, card.usingCard);
         lua_setfield(state, -2, "using");
+        lua_pushboolean(state, card.gift);
+        lua_setfield(state, -2, "gift");
+        lua_pushboolean(state, card.available);
+        lua_setfield(state, -2, "available");
+        lua_pushinteger(state, card.targetModResidue);
+        lua_setfield(state, -2, "target_mod_residue");
+        lua_pushinteger(state, card.targetModDistance);
+        lua_setfield(state, -2, "target_mod_distance");
+        lua_pushinteger(state, card.targetModExtra);
+        lua_setfield(state, -2, "target_mod_extra");
+        const auto pushMethods = [state](const QMap<int, bool> &values, const char *field) {
+            if (values.isEmpty()) return;
+            lua_createtable(state, 0, int(values.size()));
+            for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+                lua_pushboolean(state, it.value());
+                lua_setfield(state, -2, QByteArray::number(it.key()).constData());
+            }
+            lua_setfield(state, -2, field);
+        };
+        pushMethods(card.limits, "limits");
+        pushMethods(card.limitsHand, "limits_hand");
+        lua_createtable(state, 0, int(card.prohibited.size()));
+        for (auto it = card.prohibited.constBegin(); it != card.prohibited.constEnd(); ++it) {
+            lua_pushboolean(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "prohibited");
+        if (!card.targetResidue.isEmpty()) {
+            lua_createtable(state, 0, int(card.targetResidue.size()));
+            for (auto it = card.targetResidue.constBegin(); it != card.targetResidue.constEnd(); ++it) {
+                lua_pushinteger(state, it.value());
+                lua_setfield(state, -2, it.key().toUtf8().constData());
+            }
+            lua_setfield(state, -2, "target_residue");
+        }
     }
+    lua_createtable(state, int(card.flags.size()), 0);
+    for (int index = 0; index < card.flags.size(); ++index) {
+        pushQString(state, card.flags.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "flags");
     lua_pushinteger(state, card.suit);
     lua_setfield(state, -2, "suit");
     lua_pushinteger(state, card.number);
@@ -331,6 +431,34 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     lua_setfield(state, -2, "frequency");
     lua_pushboolean(state, skill.hasViewAsSkill);
     lua_setfield(state, -2, "has_view_as_skill");
+    setStringField(state, "description", skill.description);
+    setStringField(state, "limit_mark", skill.limitMark);
+    lua_createtable(state, int(skill.triggerEvents.size()), 0);
+    for (int index = 0; index < skill.triggerEvents.size(); ++index) {
+        lua_pushinteger(state, skill.triggerEvents.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "trigger_events");
+    if (skill.viewAsEquipKnown) {
+        lua_createtable(state, int(skill.viewAsEquipNames.size()), 0);
+        for (int index = 0; index < skill.viewAsEquipNames.size(); ++index) {
+            pushQString(state, skill.viewAsEquipNames.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "view_as_equip_names");
+    }
+    if (skill.viewAsKnown) {
+        lua_pushboolean(state, skill.viewAsV2);
+        lua_setfield(state, -2, "view_as_v2");
+        lua_pushboolean(state, skill.enabledAtPlay);
+        lua_setfield(state, -2, "enabled_at_play");
+        lua_createtable(state, 0, int(skill.enabledAtResponse.size()));
+        for (auto it = skill.enabledAtResponse.constBegin(); it != skill.enabledAtResponse.constEnd(); ++it) {
+            lua_pushboolean(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "enabled_at_response");
+    }
     lua_pushboolean(state, skill.lordSkill);
     lua_setfield(state, -2, "lord_skill");
     lua_pushboolean(state, skill.attachedLordSkill);
@@ -374,6 +502,26 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "dead");
     lua_pushboolean(state, player.removed);
     lua_setfield(state, -2, "removed");
+    lua_pushboolean(state, player.inYinniState);
+    lua_setfield(state, -2, "in_yinni_state");
+    lua_pushinteger(state, player.attackRangeWithoutWeapon);
+    lua_setfield(state, -2, "attack_range_without_weapon");
+    pushAIJsonValue(state, player.prototypeRules);
+    lua_setfield(state, -2, "prototype_rules");
+    lua_pushboolean(state, player.hasJudgeArea);
+    lua_setfield(state, -2, "has_judge_area");
+    lua_createtable(state, int(player.equipAreas.size()), 0);
+    for (int index = 0; index < player.equipAreas.size(); ++index) {
+        lua_pushinteger(state, player.equipAreas.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "equip_areas");
+    lua_createtable(state, 0, int(player.changeSkillStates.size()));
+    for (auto entry = player.changeSkillStates.cbegin(); entry != player.changeSkillStates.cend(); ++entry) {
+        lua_pushinteger(state, entry.value());
+        lua_setfield(state, -2, entry.key().toUtf8().constData());
+    }
+    lua_setfield(state, -2, "change_skill_states");
     lua_pushboolean(state, player.kongcheng);
     lua_setfield(state, -2, "kongcheng");
     lua_pushboolean(state, player.wounded);
@@ -431,6 +579,14 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "hand_visible");
     if (player.armorEffectKnown)
         setStringField(state, "active_armor_name", player.activeArmorName);
+    if (player.armorEffectNamesKnown) {
+        lua_createtable(state, int(player.armorEffectNames.size()), 0);
+        for (int index = 0; index < player.armorEffectNames.size(); ++index) {
+            pushQString(state, player.armorEffectNames.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "armor_effect_names");
+    }
     if (player.privateFlagsVisible) {
         lua_createtable(state, int(player.privateFlags.size()), 0);
         for (int index = 0; index < player.privateFlags.size(); ++index) {
@@ -438,12 +594,41 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
             lua_rawseti(state, -2, index + 1);
         }
         lua_setfield(state, -2, "flags");
+    }
+    // Future phase skips are known to their owner only.
+    if (!player.skippedPhases.isEmpty()) {
         lua_createtable(state, 0, int(player.skippedPhases.size()));
         for (auto phase = player.skippedPhases.constBegin(); phase != player.skippedPhases.constEnd(); ++phase) {
             lua_pushboolean(state, phase.value());
             lua_rawseti(state, -2, phase.key());
         }
         lua_setfield(state, -2, "skipped_phases");
+    }
+    if (player.ownStateVisible) {
+        lua_pushboolean(state, player.canSlashWithoutCrossbow);
+        lua_setfield(state, -2, "can_slash_without_crossbow");
+        lua_createtable(state, 0, int(player.canDiscard.size()));
+        for (auto who = player.canDiscard.cbegin(); who != player.canDiscard.cend(); ++who) {
+            lua_createtable(state, 0, int(who.value().size()));
+            for (auto zone = who.value().cbegin(); zone != who.value().cend(); ++zone) {
+                lua_pushboolean(state, zone.value());
+                lua_setfield(state, -2, zone.key().toUtf8().constData());
+            }
+            lua_setfield(state, -2, who.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "can_discard");
+        pushAIJsonValue(state, player.tags);
+        lua_setfield(state, -2, "tags");
+        pushAIJsonValue(state, player.properties);
+        lua_setfield(state, -2, "properties");
+    }
+    if (player.usedHistoryVisible) {
+        lua_createtable(state, 0, int(player.usedHistory.size()));
+        for (auto entry = player.usedHistory.cbegin(); entry != player.usedHistory.cend(); ++entry) {
+            lua_pushinteger(state, entry.value());
+            lua_setfield(state, -2, entry.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "used_history");
     }
     lua_createtable(state, int(player.piles.size()), 0);
     for (int index = 0; index < player.piles.size(); ++index) {
@@ -585,6 +770,11 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "current_phase");
     lua_pushinteger(state, world.turnCount);
     lua_setfield(state, -2, "turn_count");
+    lua_pushinteger(state, world.drawPileCount);
+    lua_setfield(state, -2, "draw_pile_count");
+    setStringField(state, "current_dying", world.currentDying);
+    pushAIJsonValue(state, world.useHistory);
+    lua_setfield(state, -2, "use_history");
     lua_pushboolean(state, world.enableHegemony);
     lua_setfield(state, -2, "enable_hegemony");
     lua_pushboolean(state, world.aiHumanized);
@@ -714,6 +904,18 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, b
     QString label;
     if (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, label))
         world.modePolicy.insert("process_label", label);
+    lua_pop(state, 1);
+    // The rest of the mode mind this viewer's policy reports, as plain values.
+    int budget = 4096;
+    for (const char *key : {"standard_identity", "legacy_managed", "legacy_base_update",
+             "explicit_renegade", "estimated_branches", "role_estimates", "role_values",
+             "strategy_flags", "strategy_marks", "strategy_flags_cleared"}) {
+        lua_getfield(state, result, key);
+        QJsonValue value;
+        if (!lua_isnil(state, -1) && readLuaPolicyValue(state, -1, value, 0, budget))
+            world.modePolicy.insert(QString::fromLatin1(key), value);
+        lua_pop(state, 1);
+    }
     lua_settop(state, top);
 }
 
@@ -774,7 +976,7 @@ bool AiRouteRegistry::hasLegacyRoutes() const
 }
 
 AiLuaRuntime::AiLuaRuntime(Room *room)
-    : m_room(room), m_lua(LuaRuntime::Auxiliary), m_instructionBudget(2000000),
+    : m_room(room), m_lua(LuaRuntime::Auxiliary), m_instructionBudget(8000000),
       m_initializationInstructionBudget(500000), m_instructionsRemaining(0),
       m_instructionLimitExceeded(false)
 {
@@ -792,7 +994,7 @@ bool AiLuaRuntime::initialize(QString *error)
     const int hardMiB = qMax(softMiB, Config.value(QStringLiteral("AiLuaHardMemoryMiB"),
                                                    int(AiHardMemoryLimit / 1024u / 1024u)).toInt());
     m_instructionBudget = qMax<qint64>(10000,
-        Config.value(QStringLiteral("AiLuaInstructionBudget"), 2000000).toLongLong());
+        Config.value(QStringLiteral("AiLuaInstructionBudget"), 8000000).toLongLong());
     m_initializationInstructionBudget = qMax<qint64>(10000,
         Config.value(QStringLiteral("AiLuaInitializationInstructionBudget"), 500000).toLongLong());
     m_lua.setMemoryLimits(size_t(softMiB) * 1024u * 1024u,
@@ -1115,6 +1317,7 @@ int AiLuaRuntime::luaAiDataWrite(lua_State *state)
     return 2;
 }
 
+
 void AiLuaRuntime::luaInstructionHook(lua_State *state, lua_Debug *debug)
 {
     Q_UNUSED(debug);
@@ -1273,6 +1476,63 @@ bool AiLuaRuntime::installSandbox(QString *error)
                         reason.second);
     setIntegerField(state, "CardMoveReason_S_MASK_BASIC_REASON", CardMoveReason::S_MASK_BASIC_REASON);
     lua_setglobal(state, "sgs");
+
+    // Engine card kinds in engine order, one row per card name: static definitions
+    // that let a policy classify a pattern. Suit, number and ids belong to single
+    // cards, so they are not here.
+    const QStringList banned = Sanguosha ? Sanguosha->getBanPackages() : QStringList();
+    QHash<QString, int> copies;
+    for (int id = 0; Sanguosha && id < Sanguosha->getCardCount(); ++id)
+        if (const Card *card = Sanguosha->getEngineCard(id))
+            ++copies[card->objectName()];
+    QSet<QString> seen;
+    lua_newtable(state);
+    int row = 0;
+    for (int id = 0; Sanguosha && id < Sanguosha->getCardCount(); ++id) {
+        const Card *card = Sanguosha->getEngineCard(id);
+        if (!card || seen.contains(card->objectName()))
+            continue;
+        seen.insert(card->objectName());
+        lua_createtable(state, 0, 15);
+        setStringField(state, "name", card->objectName());
+        setIntegerField(state, "count", copies.value(card->objectName()));
+        setStringField(state, "class_name", card->getClassName());
+        setStringField(state, "subtype", card->getSubtype());
+        setStringField(state, "package", card->getPackage());
+        lua_pushboolean(state, banned.contains(card->getPackage()));
+        lua_setfield(state, -2, "banned");
+        setIntegerField(state, "type_id", int(card->getTypeId()));
+        lua_createtable(state, int(card->getKindOfNames().size()), 0);
+        for (int index = 0; index < card->getKindOfNames().size(); ++index) {
+            pushQString(state, card->getKindOfNames().at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "kind_of");
+        lua_pushboolean(state, card->targetFixed());
+        lua_setfield(state, -2, "target_fixed");
+        lua_pushboolean(state, card->isDamageCard());
+        lua_setfield(state, -2, "damage_card");
+        lua_pushboolean(state, card->isNDTrick());
+        lua_setfield(state, -2, "nd_trick");
+        lua_pushboolean(state, card->canRecast());
+        lua_setfield(state, -2, "can_recast");
+        lua_pushboolean(state, card->isSingleTargetCard());
+        lua_setfield(state, -2, "single_target");
+        if (const auto *equip = dynamic_cast<const EquipCard *>(card)) {
+            setIntegerField(state, "equip_slot", int(equip->location()));
+            const QList<int> occupied = equip->getOccupyLocations();
+            lua_createtable(state, int(occupied.size()), 0);
+            for (int index = 0; index < occupied.size(); ++index) {
+                lua_pushinteger(state, occupied.at(index));
+                lua_rawseti(state, -2, index + 1);
+            }
+            lua_setfield(state, -2, "occupy_locations");
+        }
+        if (const auto *weapon = dynamic_cast<const Weapon *>(card))
+            setIntegerField(state, "weapon_range", weapon->getRange());
+        lua_rawseti(state, -2, ++row);
+    }
+    lua_setglobal(state, "ai_card_catalog");
     return true;
 }
 
@@ -1516,6 +1776,129 @@ static void pushAiSkillAction(lua_State *state, const AiSkillActionContext &acti
     lua_pushboolean(state, action.isSourceQuotaAvailable());
     lua_setfield(state, -2, "source_quota_available");
 }
+static void pushAICardCandidate(lua_State *state, const AICardCandidateView &candidate)
+{
+    lua_createtable(state, 0, 8);
+    lua_pushinteger(state, candidate.candidateId);
+    lua_setfield(state, -2, "candidate_id");
+    lua_pushinteger(state, candidate.cardId);
+    lua_setfield(state, -2, "card_id");
+    lua_pushboolean(state, candidate.available);
+    lua_setfield(state, -2, "available");
+    lua_pushboolean(state, candidate.limited);
+    lua_setfield(state, -2, "limited");
+    lua_pushboolean(state, candidate.jilei);
+    lua_setfield(state, -2, "jilei");
+    lua_pushboolean(state, candidate.targetFixed);
+    lua_setfield(state, -2, "target_fixed");
+    lua_pushboolean(state, candidate.feasibleWithNoTarget);
+    lua_setfield(state, -2, "feasible_with_no_target");
+    lua_pushboolean(state, candidate.completeCoverage);
+    lua_setfield(state, -2, "complete_coverage");
+    if (candidate.affectedTargetsKnown) {
+        lua_createtable(state, int(candidate.affectedTargets.size()), 0);
+        for (int i = 0; i < candidate.affectedTargets.size(); ++i) {
+            pushQString(state, candidate.affectedTargets.at(i));
+            lua_rawseti(state, -2, i + 1);
+        }
+        lua_setfield(state, -2, "affected_targets");
+    }
+    lua_createtable(state, int(candidate.targetCombinations.size()), 0);
+    for (int i = 0; i < candidate.targetCombinations.size(); ++i) {
+        const QStringList &targets = candidate.targetCombinations.at(i);
+        lua_createtable(state, int(targets.size()), 0);
+        for (int j = 0; j < targets.size(); ++j) {
+            pushQString(state, targets.at(j));
+            lua_rawseti(state, -2, j + 1);
+        }
+        lua_rawseti(state, -2, i + 1);
+    }
+    lua_setfield(state, -2, "target_combinations");
+    // Only targets that may be picked more than once appear here, so an absent
+    // name means one vote rather than an unknown one.
+    if (!candidate.maxVotes.isEmpty()) {
+        lua_createtable(state, 0, int(candidate.maxVotes.size()));
+        for (auto it = candidate.maxVotes.constBegin();
+             it != candidate.maxVotes.constEnd(); ++it) {
+            lua_pushinteger(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "max_votes");
+    }
+    lua_createtable(state, int(candidate.legalTargets.size()), 0);
+    for (int targetIndex = 0; targetIndex < candidate.legalTargets.size(); ++targetIndex) {
+        pushQString(state, candidate.legalTargets.at(targetIndex));
+        lua_rawseti(state, -2, targetIndex + 1);
+    }
+    lua_setfield(state, -2, "legal_targets");
+    if (candidate.extraTargetKnown) {
+        lua_pushinteger(state, candidate.extraTargetCount);
+        lua_setfield(state, -2, "extra_target_count");
+        lua_createtable(state, 0, int(candidate.extraTargetByPlayer.size()));
+        for (auto it = candidate.extraTargetByPlayer.constBegin();
+             it != candidate.extraTargetByPlayer.constEnd(); ++it) {
+            lua_pushinteger(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "extra_target_by_player");
+        lua_createtable(state, 0, int(candidate.targetFilterEmpty.size()));
+        for (auto it = candidate.targetFilterEmpty.constBegin();
+             it != candidate.targetFilterEmpty.constEnd(); ++it) {
+            lua_pushboolean(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "target_filter_empty");
+    }
+}
+// context.acquired_card_evaluations[id] / printed_card_evaluations[name]: the card as
+// the viewer would hold it, those owner rules again as card_rules, and its play
+// candidate. Read-only evaluation.
+static void pushChoiceCardEvaluations(lua_State *state, const QList<AIChoiceCardEvaluation> &rows,
+                                      const QString &viewer, bool byName)
+{
+    lua_createtable(state, 0, int(rows.size()));
+    for (const AIChoiceCardEvaluation &row : rows) {
+        const AICardView &card = row.card;
+        lua_createtable(state, 0, 4);
+        lua_pushboolean(state, true);
+        lua_setfield(state, -2, "evaluation_only");
+        pushAICardView(state, card);
+        lua_pushboolean(state, true);
+        lua_setfield(state, -2, "evaluation_only");
+        setStringField(state, "evaluation_owner", viewer);
+        lua_setfield(state, -2, "card");
+        lua_createtable(state, 0, 8);
+        const auto pushMethods = [state](const QMap<int, bool> &values, const char *field) {
+            lua_createtable(state, 0, int(values.size()));
+            for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+                lua_pushboolean(state, it.value());
+                lua_setfield(state, -2, QByteArray::number(it.key()).constData());
+            }
+            lua_setfield(state, -2, field);
+        };
+        pushMethods(card.limits, "limits");
+        pushMethods(card.limitsHand, "limits_hand");
+        lua_createtable(state, 0, int(card.prohibited.size()));
+        for (auto it = card.prohibited.constBegin(); it != card.prohibited.constEnd(); ++it) {
+            lua_pushboolean(state, it.value());
+            lua_setfield(state, -2, it.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "prohibited");
+        lua_pushboolean(state, card.available);
+        lua_setfield(state, -2, "available");
+        lua_pushinteger(state, card.targetModResidue);
+        lua_setfield(state, -2, "target_mod_residue");
+        lua_pushinteger(state, card.targetModDistance);
+        lua_setfield(state, -2, "target_mod_distance");
+        lua_pushinteger(state, card.targetModExtra);
+        lua_setfield(state, -2, "target_mod_extra");
+        lua_setfield(state, -2, "card_rules");
+        pushAICardCandidate(state, row.candidate);
+        lua_setfield(state, -2, "candidate");
+        lua_setfield(state, -2, byName ? card.objectName.toUtf8().constData()
+                                       : QByteArray::number(card.effectiveId).constData());
+    }
+}
 void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
 {
     lua_createtable(state, 0, 10);
@@ -1539,60 +1922,7 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
         || request.kind == AIRequest::RespondCard) {
         lua_createtable(state, int(request.cardCandidates.size()), 0);
         for (int index = 0; index < request.cardCandidates.size(); ++index) {
-            const AICardCandidateView &candidate = request.cardCandidates.at(index);
-            lua_createtable(state, 0, 8);
-            lua_pushinteger(state, candidate.candidateId);
-            lua_setfield(state, -2, "candidate_id");
-            lua_pushinteger(state, candidate.cardId);
-            lua_setfield(state, -2, "card_id");
-            lua_pushboolean(state, candidate.available);
-            lua_setfield(state, -2, "available");
-            lua_pushboolean(state, candidate.limited);
-            lua_setfield(state, -2, "limited");
-            lua_pushboolean(state, candidate.jilei);
-            lua_setfield(state, -2, "jilei");
-            lua_pushboolean(state, candidate.targetFixed);
-            lua_setfield(state, -2, "target_fixed");
-            lua_pushboolean(state, candidate.feasibleWithNoTarget);
-            lua_setfield(state, -2, "feasible_with_no_target");
-            lua_pushboolean(state, candidate.completeCoverage);
-            lua_setfield(state, -2, "complete_coverage");
-            if (candidate.affectedTargetsKnown) {
-                lua_createtable(state, int(candidate.affectedTargets.size()), 0);
-                for (int i = 0; i < candidate.affectedTargets.size(); ++i) {
-                    pushQString(state, candidate.affectedTargets.at(i));
-                    lua_rawseti(state, -2, i + 1);
-                }
-                lua_setfield(state, -2, "affected_targets");
-            }
-            lua_createtable(state, int(candidate.targetCombinations.size()), 0);
-            for (int i = 0; i < candidate.targetCombinations.size(); ++i) {
-                const QStringList &targets = candidate.targetCombinations.at(i);
-                lua_createtable(state, int(targets.size()), 0);
-                for (int j = 0; j < targets.size(); ++j) {
-                    pushQString(state, targets.at(j));
-                    lua_rawseti(state, -2, j + 1);
-                }
-                lua_rawseti(state, -2, i + 1);
-            }
-            lua_setfield(state, -2, "target_combinations");
-            // Only targets that may be picked more than once appear here, so an absent
-            // name means one vote rather than an unknown one.
-            if (!candidate.maxVotes.isEmpty()) {
-                lua_createtable(state, 0, int(candidate.maxVotes.size()));
-                for (auto it = candidate.maxVotes.constBegin();
-                     it != candidate.maxVotes.constEnd(); ++it) {
-                    lua_pushinteger(state, it.value());
-                    lua_setfield(state, -2, it.key().toUtf8().constData());
-                }
-                lua_setfield(state, -2, "max_votes");
-            }
-            lua_createtable(state, int(candidate.legalTargets.size()), 0);
-            for (int targetIndex = 0; targetIndex < candidate.legalTargets.size(); ++targetIndex) {
-                pushQString(state, candidate.legalTargets.at(targetIndex));
-                lua_rawseti(state, -2, targetIndex + 1);
-            }
-            lua_setfield(state, -2, "legal_targets");
+            pushAICardCandidate(state, request.cardCandidates.at(index));
             lua_rawseti(state, -2, index + 1);
         }
         lua_setfield(state, -2, "card_candidates");
@@ -1632,6 +1962,14 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             lua_setfield(state, -2, "source_quota_available");
             lua_pushboolean(state, conversion.available);
             lua_setfield(state, -2, "available");
+            if (request.kind != AIRequest::Activate) {
+                lua_pushboolean(state, conversion.matchesResponsePattern);
+                lua_setfield(state, -2, "matches_response_pattern");
+            }
+            setStringField(state, "legacy_string_key", conversion.legacyStringKey);
+            setStringField(state, "legacy_sort_key", conversion.legacyStringKey);
+            lua_pushboolean(state, conversion.locked);
+            lua_setfield(state, -2, "locked");
             lua_pushboolean(state, conversion.targetFixed);
             lua_setfield(state, -2, "target_fixed");
             lua_pushboolean(state, conversion.feasibleWithNoTarget);
@@ -1663,6 +2001,24 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
                 lua_rawseti(state, -2, nameIndex + 1);
             }
             lua_setfield(state, -2, "kind_of_names");
+            if (conversion.extraTargetKnown) {
+                lua_pushinteger(state, conversion.extraTargetCount);
+                lua_setfield(state, -2, "extra_target_count");
+                lua_createtable(state, 0, int(conversion.extraTargetByPlayer.size()));
+                for (auto it = conversion.extraTargetByPlayer.constBegin();
+                     it != conversion.extraTargetByPlayer.constEnd(); ++it) {
+                    lua_pushinteger(state, it.value());
+                    lua_setfield(state, -2, it.key().toUtf8().constData());
+                }
+                lua_setfield(state, -2, "extra_target_by_player");
+                lua_createtable(state, 0, int(conversion.targetFilterEmpty.size()));
+                for (auto it = conversion.targetFilterEmpty.constBegin();
+                     it != conversion.targetFilterEmpty.constEnd(); ++it) {
+                    lua_pushboolean(state, it.value());
+                    lua_setfield(state, -2, it.key().toUtf8().constData());
+                }
+                lua_setfield(state, -2, "target_filter_empty");
+            }
             lua_createtable(state, int(conversion.subcardIds.size()), 0);
             for (int cardIndex = 0; cardIndex < conversion.subcardIds.size(); ++cardIndex) {
                 lua_pushinteger(state, conversion.subcardIds.at(cardIndex));
@@ -1692,6 +2048,30 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
         // "nothing is available" from "this side could not work out what is".
         lua_pushboolean(state, request.conversionsEnumerated);
         lua_setfield(state, -2, "conversions_enumerated");
+        if (request.kind == AIRequest::RespondCard || request.kind == AIRequest::UseCard) {
+            // Only the physical class order comes from the authority. Lua derives the
+            // per-class skill policy itself, so the policy is as complete as the
+            // conversion list it chooses from. A use question without the class scan
+            // reports its physical order incomplete.
+            lua_createtable(state, 0, 3);
+            lua_createtable(state, int(request.physicalClassOrder.size()), 0);
+            for (int index = 0; index < request.physicalClassOrder.size(); ++index) {
+                pushQString(state, request.physicalClassOrder.at(index));
+                lua_rawseti(state, -2, index + 1);
+            }
+            lua_setfield(state, -2, "physical_class_order");
+            lua_pushboolean(state, request.physicalClassOrderComplete);
+            lua_setfield(state, -2, "physical_class_order_complete");
+            if (request.catalogClassOrderComplete) {
+                pushAIJsonValue(state, request.catalogClassOrder);
+                lua_setfield(state, -2, "class_order");
+                lua_pushboolean(state, true);
+                lua_setfield(state, -2, "class_order_complete");
+            }
+            lua_pushboolean(state, request.conversionsEnumerated);
+            lua_setfield(state, -2, "complete");
+            lua_setfield(state, -2, "conversion_policy");
+        }
     }
     pushAIWorldView(state, request.worldView);
     lua_setfield(state, -2, "world_view");
@@ -1718,6 +2098,14 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
         lua_pushboolean(state, choiceOptions.candidatesComplete);
         lua_setfield(state, -2, "candidates_complete");
         pushAIJsonValue(state, choiceOptions.context);
+        if (!choiceOptions.acquiredCards.isEmpty()) {
+            pushChoiceCardEvaluations(state, choiceOptions.acquiredCards, request.viewerObjectName, false);
+            lua_setfield(state, -2, "acquired_card_evaluations");
+        }
+        if (!choiceOptions.printedCards.isEmpty()) {
+            pushChoiceCardEvaluations(state, choiceOptions.printedCards, request.viewerObjectName, true);
+            lua_setfield(state, -2, "printed_card_evaluations");
+        }
         lua_setfield(state, -2, "context");
         lua_createtable(state, int(choiceOptions.playerNames.size()), 0);
         for (int index = 0; index < choiceOptions.playerNames.size(); ++index) {

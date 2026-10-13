@@ -147,6 +147,44 @@ struct CorrectSkillContext {
 };
 Q_DECLARE_METATYPE(CorrectSkillContext)
 
+// Opt-in necessary condition for a System-selector correction callback: the engine
+// calls it only while at least one atom holds, otherwise the skill contributes
+// nothing. Atoms read live state on every query. Lua: spec.gate (lua/sgs_ex.lua).
+class CorrectSkillGate
+{
+public:
+    // Atom text: "[secondary.]mark|flag|pile|skill:<name>" or "card_skill|card_flag:<name>".
+    bool setAtoms(const QStringList &atoms);
+    bool isEmpty() const { return m_atoms.isEmpty(); }
+    bool mayApply(const Player *primary, const Player *secondary, const Card *card) const;
+
+private:
+    enum Kind { Mark, Flag, Pile, OwnsSkill, CardSkill, CardFlag };
+    struct Atom {
+        Kind kind;
+        bool secondary;
+        QString name;
+    };
+    QList<Atom> m_atoms;
+};
+
+struct ProhibitSkillContext {
+    SkillInstanceRef instanceRef;
+    const Player *holder = nullptr;
+    const Player *from = nullptr;
+    const Player *to = nullptr;
+    const Card *card = nullptr;
+    QList<const Player *> otherTargets;
+
+    SkillInstanceRef getInstanceRef() const { return instanceRef; }
+    const Player *getHolder() const { return holder; }
+    const Player *getFrom() const { return from; }
+    const Player *getTo() const { return to; }
+    const Card *getCard() const { return card; }
+    QList<const Player *> getOtherTargets() const { return otherTargets; }
+    QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
+};
+
 struct CorrectSkillResult {
     bool applies;
     int value;
@@ -195,6 +233,9 @@ public:
     Q_ENUM(LimitScope)
 
     explicit Skill(const QString &name, Frequency frequent = NotFrequent);
+    ~Skill() override;
+    // Bumped whenever any skill is destroyed or renamed, before other observers run.
+    static quint64 definitionMutationSerial();
     bool isLordSkill() const;
     bool isAttachedLordSkill() const;
     bool isChangeSkill() const;
@@ -668,6 +709,26 @@ public:
     virtual bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &others = QList<const Player *>()) const = 0;
 };
 
+class ProhibitSkillV2 : public ProhibitSkill
+{
+public:
+    explicit ProhibitSkillV2(const QString &name);
+
+    virtual bool isProhibited(const ProhibitSkillContext &context) const = 0;
+    // Unscoped legacy calls must not bypass holder/instance availability checks.
+    bool isProhibited(const Player *, const Player *, const Card *,
+                      const QList<const Player *> & = QList<const Player *>()) const final override;
+    CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
+    void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+    // System only: primary = from, secondary = to.
+    const CorrectSkillGate &getGate() const { return m_gate; }
+    bool setGate(const QStringList &atoms) { return m_gate.setAtoms(atoms); }
+
+private:
+    CorrectSkillHolderSelector m_holderSelector;
+    CorrectSkillGate m_gate;
+};
+
 class ProhibitPindianSkill : public Skill
 {
     Q_OBJECT
@@ -700,10 +761,13 @@ public:
     void setBaseAmount(int amount) { m_baseAmount = amount; }
     CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
     void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+    const CorrectSkillGate &getGate() const { return m_gate; }
+    bool setGate(const QStringList &atoms) { return m_gate.setAtoms(atoms); }
 
 protected:
     int m_baseAmount;
     CorrectSkillHolderSelector m_holderSelector;
+    CorrectSkillGate m_gate;
 };
 
 class MaxCardsSkill : public Skill
@@ -729,10 +793,13 @@ public:
     void setBaseAmount(int amount) { m_baseAmount = amount; }
     CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
     void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+    const CorrectSkillGate &getGate() const { return m_gate; }
+    bool setGate(const QStringList &atoms) { return m_gate.setAtoms(atoms); }
 
 protected:
     int m_baseAmount;
     CorrectSkillHolderSelector m_holderSelector;
+    CorrectSkillGate m_gate;
 };
 
 class TargetModSkill : public Skill
@@ -772,10 +839,13 @@ public:
     void setBaseAmount(int amount) { m_baseAmount = amount; }
     CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
     void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+    const CorrectSkillGate &getGate() const { return m_gate; }
+    bool setGate(const QStringList &atoms) { return m_gate.setAtoms(atoms); }
 
 protected:
     int m_baseAmount;
     CorrectSkillHolderSelector m_holderSelector;
+    CorrectSkillGate m_gate;
 };
 
 class SlashNoDistanceLimitSkill : public TargetModSkill
@@ -835,10 +905,13 @@ public:
     void setBaseAmount(int amount) { m_baseAmount = amount; }
     CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
     void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+    const CorrectSkillGate &getGate() const { return m_gate; }
+    bool setGate(const QStringList &atoms) { return m_gate.setAtoms(atoms); }
 
 protected:
     int m_baseAmount;
     CorrectSkillHolderSelector m_holderSelector;
+    CorrectSkillGate m_gate;
 };
 
 class ViewAsEquipSkill : public Skill

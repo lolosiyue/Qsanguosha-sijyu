@@ -746,12 +746,15 @@ struct YishiStruct {
     QString reason;
     QList<int> card_counts;
     QList<int> card_ids;
+    // Fixed opinions and repeated votes need not match the revealed card count.
+    QList<int> opinion_counts;
     QStringList opinions;
     QString result;
     QString forced_result;
     bool started;
 
     bool containsParticipant(ServerPlayer *player) const;
+    void removeParticipant(ServerPlayer *player);
     int getCardCount(ServerPlayer *player) const;
     void setCardCount(ServerPlayer *player, int count);
     QList<int> getCards(ServerPlayer *player) const;
@@ -768,6 +771,7 @@ struct YishiStruct {
 private:
     int participantIndex(ServerPlayer *player) const;
     int cardOffset(int participant_index) const;
+    int opinionOffset(int participant_index) const;
 };
 
 struct ChoiceData {

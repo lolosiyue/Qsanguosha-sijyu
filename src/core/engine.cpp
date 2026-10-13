@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "correction-trace.h"
 #include "invalidity-gate.h"
 #include "distance-skill-cache.h"
 #include "hegemony-mode.h"
@@ -24,6 +25,7 @@
 #include "banpair.h"
 #include "general-version.h"
 #include <QMutexLocker>
+#include <QVarLengthArray>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
@@ -153,7 +155,9 @@ void markPackageSkillContracts(Package *package)
         Skill *definition = const_cast<Skill *>(skill);
         // Donor prohibitions support source-less Imperial Order. Legacy
         // identity callbacks have a non-null source contract unless opted in.
-        if (donor && skill->inherits("ProhibitSkill"))
+        // V2 definitions explicitly choose their source-less contract.
+        if (donor && skill->inherits("ProhibitSkill")
+            && !dynamic_cast<const ProhibitSkillV2 *>(skill))
             definition->setProperty("supportsSourceLessProhibition", true);
     }
 }
@@ -2786,33 +2790,102 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
     return nullptr;
 }
 
+namespace {
+
+// Inline storage: one or two holders, evaluated once per skill per rule query.
+using CorrectSkillHolderList = QVarLengthArray<const Player *, 2>;
+
+CorrectSkillHolderList correctSkillHolders(const Player *primary, const Player *secondary,
+                                           CorrectSkillHolderSelector selector);
+
+bool evaluateProhibitSkill(const ProhibitSkillV2 *skill, const Player *from, const Player *to,
+                          const Card *card, const QList<const Player *> &others,
+                          CorrectionTrace *trace = nullptr)
+{
+    ProhibitSkillContext context;
+    context.from = from;
+    context.to = to;
+    context.card = card;
+    context.otherTargets = others;
+    const CorrectSkillHolderSelector selector = skill->getHolderSelector();
+    if (selector == CorrectSkill_System) {
+        if (!skill->getGate().mayApply(from, to, card)) {
+            if (trace && *trace) trace->skipped(skill, CorrectionTrace::tr("system gate rejected"));
+            return false;
+        }
+        const bool prohibited = skill->isProhibited(context);
+        if (trace && *trace) trace->v2Prohibit(skill, nullptr, -1, prohibited);
+        return prohibited;
+    }
+
+    // Only effective instances enter Lua; absent holders never run the callback.
+    const CorrectSkillHolderList holders = correctSkillHolders(from, to, selector);
+    if (trace && *trace && holders.isEmpty()) trace->skipped(skill, CorrectionTrace::tr("holder selector produced no living candidates"));
+    for (const Player *holder : holders) {
+        const QList<int> instanceIds = holder->getSkillInstanceIds(skill->objectName());
+        if (trace && *trace && instanceIds.isEmpty()) trace->skipped(skill, CorrectionTrace::tr("no owned instances on selected holder"), holder);
+        for (int instanceId : instanceIds) {
+            if (!holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId)) {
+                if (trace && *trace) trace->skipped(skill, CorrectionTrace::tr("isSkillInstanceEffectAvailable=false"), holder, instanceId);
+                continue;
+            }
+            context.holder = holder;
+            context.instanceRef = SkillInstanceRef(
+                holder->objectName(), SkillInstanceKey(skill->objectName(), instanceId));
+            const bool prohibited = skill->isProhibited(context);
+            if (trace && *trace) trace->v2Prohibit(skill, holder, instanceId, prohibited);
+            if (prohibited) return true;
+        }
+    }
+    return false;
+}
+
+}
+
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
+    CorrectionTrace trace("Prohibition", from, to, card);
+    if (trace) trace.context(CorrectionTrace::tr("selectedOthers=%1").arg(others.size()));
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
-    if (!card) return nullptr;
+    if (!card) { trace.outcome((trace ? CorrectionTrace::tr("false: null card") : QString())); return nullptr; }
     // Under cardIgnoreLegality the user's non-skill cards ignore every ProhibitSkill
     // (cardIgnoreLegality:adjacent: towards the user's neighbours).
     if (from && to && card->getTypeId() != Card::TypeSkill
         && (from->hasFlag("cardIgnoreLegality")
-            || (from->hasFlag("cardIgnoreLegality:adjacent") && to->isAdjacentTo(from)))) return nullptr;
+            || (from->hasFlag("cardIgnoreLegality:adjacent") && to->isAdjacentTo(from)))) {
+        trace.outcome((trace ? CorrectionTrace::tr("false: cardIgnoreLegality flag") : QString()));
+        return nullptr;
+    }
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (from && from->inherits("ClientPlayer")) return nullptr;
+        if (from && from->inherits("ClientPlayer")) { trace.outcome((trace ? CorrectionTrace::tr("false: Lua mutex busy") : QString())); return nullptr; }
         lua_mutex.lock();
         locked = true;
     }
 
     const ProhibitSkill *ret = nullptr;
     foreach (const ProhibitSkill*skill, getProhibitSkills()) {
-        if (!from && !skill->property("supportsSourceLessProhibition").toBool()) continue;
-        if (skill->isProhibited(from, to, card, others)) {
+        if (!from && !skill->property("supportsSourceLessProhibition").toBool()) {
+            if (trace) trace.skipped(skill, CorrectionTrace::tr("source-less prohibition unsupported"));
+            continue;
+        }
+        const auto *v2 = dynamic_cast<const ProhibitSkillV2 *>(skill);
+        bool prohibited;
+        if (v2) {
+            prohibited = evaluateProhibitSkill(v2, from, to, card, others, &trace);
+        } else {
+            prohibited = skill->isProhibited(from, to, card, others);
+            if (trace) trace.legacy(skill, int(prohibited), QStringLiteral("isProhibited (boolean)"));
+        }
+        if (prohibited) {
             ret = skill;
             break;
         }
     }
 
     if (locked) lua_mutex.unlock();
+    if (trace) trace.outcome(ret ? CorrectionTrace::tr("prohibited by %1; later skills not evaluated").arg(ret->objectName()) : CorrectionTrace::tr("not prohibited by ProhibitSkill"));
     return ret;
 }
 
@@ -2956,10 +3029,10 @@ end_check:
 
 namespace {
 
-QList<const Player *> correctSkillHolders(const Player *primary, const Player *secondary,
-                                          CorrectSkillHolderSelector selector)
+CorrectSkillHolderList correctSkillHolders(const Player *primary, const Player *secondary,
+                                           CorrectSkillHolderSelector selector)
 {
-    QList<const Player *> result;
+    CorrectSkillHolderList result;
     if (selector == CorrectSkill_System) return result;
 
     if (selector == CorrectSkill_Primary) {
@@ -2971,7 +3044,10 @@ QList<const Player *> correctSkillHolders(const Player *primary, const Player *s
         if (secondary && secondary->isAlive() && secondary != primary) result << secondary;
     } else if (selector == CorrectSkill_AllHolders) {
         const Player *anchor = primary ? primary : secondary;
-        if (anchor) result = anchor->getAliveSiblings(true);
+        if (anchor) {
+            const QList<const Player *> siblings = anchor->getAliveSiblings(true);
+            result.append(siblings.constData(), siblings.size());
+        }
     }
     return result;
 }
@@ -2986,12 +3062,17 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
                                                bool includeWeapon,
                                                bool fixed,
                                                bool targetModPreview = false,
-                                               MaxCardsType::MaxCardsCount maxCardsType = MaxCardsType::Max)
+                                               MaxCardsType::MaxCardsCount maxCardsType = MaxCardsType::Max,
+                                               CorrectionTrace *trace = nullptr)
 {
     QList<CorrectSkillResult> results;
     if (!skill) return results;
 
     if (selector == CorrectSkill_System) {
+        if (!skill->getGate().mayApply(primary, secondary, card)) {
+            if (trace && *trace) trace->skipped(skill, CorrectionTrace::tr("system gate rejected"));
+            return results;
+        }
         CorrectSkillContext context;
         context.primary = primary;
         context.secondary = secondary;
@@ -3000,20 +3081,30 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
         context.maxCardsType = maxCardsType;
         context.includeWeapon = includeWeapon;
         context.currentAmount = skill->getBaseAmount();
-        results << (fixed ? skill->getFixedValue(context) : skill->getCorrection(context));
+        const CorrectSkillResult result = fixed ? skill->getFixedValue(context) : skill->getCorrection(context);
+        results << result;
+        if (trace && *trace) trace->v2(skill, nullptr, -1, context.currentAmount, result, fixed);
         return results;
     }
 
-    foreach (const Player *holder, correctSkillHolders(primary, secondary, selector)) {
+    const CorrectSkillHolderList holders = correctSkillHolders(primary, secondary, selector);
+    if (trace && *trace && holders.isEmpty()) trace->skipped(skill, CorrectionTrace::tr("holder selector produced no living candidates"));
+    foreach (const Player *holder, holders) {
         const QList<int> instanceIds = holder->getSkillInstanceIds(skill->objectName());
+        if (trace && *trace && instanceIds.isEmpty()) trace->skipped(skill, CorrectionTrace::tr("no owned instances on selected holder"), holder);
         foreach (int instanceId, instanceIds) {
             const SkillInstance *instance = holder->findSkillInstance(skill->objectName(), instanceId);
-            if (!instance) continue;
+            if (!instance) {
+                if (trace && *trace) trace->skipped(skill, CorrectionTrace::tr("instance lookup missing"), holder, instanceId);
+                continue;
+            }
             const SkillInstanceRef ref(holder->objectName(), instance->key());
             if (!holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId)
                 && !(targetModPreview && TargetModSkillQueryScope::allows(primary, ref)
-                     && holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId, primary)))
+                     && holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId, primary))) {
+                if (trace && *trace) trace->skipped(skill, CorrectionTrace::tr("isSkillInstanceEffectAvailable=false (including preview gate)"), holder, instanceId);
                 continue;
+            }
 
             CorrectSkillContext context;
             context.instanceRef = SkillInstanceRef(
@@ -3029,6 +3120,7 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
                 ? instance->amountOverride : skill->getBaseAmount();
             const CorrectSkillResult result = fixed ? skill->getFixedValue(context) : skill->getCorrection(context);
             results << result;
+            if (trace && *trace) trace->v2(skill, holder, instanceId, context.currentAmount, result, fixed);
             if (targetModPreview) TargetModSkillQueryScope::record(primary, ref, result);
         }
     }
@@ -3074,6 +3166,7 @@ QList<CorrectSkillEvalItem> evaluateCorrectSkillDetailed(const T *skill,
     if (!skill) return items;
 
     if (selector == CorrectSkill_System) {
+        if (!skill->getGate().mayApply(primary, secondary, card)) return items;
         CorrectSkillContext context;
         context.primary = primary;
         context.secondary = secondary;
@@ -3128,6 +3221,8 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
+    CorrectionTrace trace("Distance correction", from, to);
+    if (trace) trace.context(CorrectionTrace::tr("fixed=%1").arg(fixed));
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     // Distance ignores cards; hand refreshes recalculate each Slash against every player.
     TargetModMemoScope *memo = TargetModMemoScope::active();
@@ -3135,16 +3230,17 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
         .arg(quintptr(to)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
-        if (cached != memo->m_values.constEnd()) return cached.value();
+        if (cached != memo->m_values.constEnd()) return trace.finish(cached.value(), (trace ? CorrectionTrace::tr("memo hit; callbacks not run") : QString()));
     }
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (from && from->inherits("ClientPlayer")) return 0;
+        if (from && from->inherits("ClientPlayer")) return trace.finish(0, (trace ? CorrectionTrace::tr("Lua mutex busy; client fallback") : QString()));
         lua_mutex.lock();
         locked = true;
     }
 
     int correct = 0;
+    if (trace) trace.note(QStringLiteral("aggregate base"), 0);
     foreach (const DistanceSkill *skill, getDistanceSkills()) {
         AiProbe::ScopedProbe iterProbe(AiProbe::Slot_distIter);
         const DistanceSkillV2 *v2 = dynamic_cast<const DistanceSkillV2 *>(skill);
@@ -3152,54 +3248,64 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
             AiProbe::ScopedProbe legacyProbe(AiProbe::Slot_distLegacy);
             if (fixed) {
                 const int value = skill->getFixed(from, to);
+                if (trace) trace.legacy(skill, value, QStringLiteral("fixed maximum"));
                 if (value > correct) correct = value;
             } else {
-                correct += skill->getCorrect(from, to);
+                const int value = skill->getCorrect(from, to);
+                if (trace) trace.legacy(skill, value, QStringLiteral("add"));
+                correct += value;
             }
             continue;
         }
 
         AiProbe::ScopedProbe v2Probe(AiProbe::Slot_distV2);
         const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-            v2, v2->getHolderSelector(), from, to, nullptr, -1, true, fixed);
+            v2, v2->getHolderSelector(), from, to, nullptr, -1, true, fixed, false, MaxCardsType::Max, &trace);
         correct = fixed ? maximumApplicableResult(results, correct)
                         : correct + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
     if (memo) memo->m_values.insert(memoKey, correct);
-	return correct;
+	return trace.finish(correct);
 }
 
 int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCardsCount type) const
 {
+    CorrectionTrace trace("Hand limit correction", target);
+    if (trace) trace.context(CorrectionTrace::tr("fixed=%1").arg(fixed));
+    if (trace) trace.context(CorrectionTrace::tr("maxCardsType=%1").arg(int(type)));
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (target && target->inherits("ClientPlayer")) return 0;
+        if (target && target->inherits("ClientPlayer")) return trace.finish(0, (trace ? CorrectionTrace::tr("Lua mutex busy; client fallback") : QString()));
         lua_mutex.lock();
         locked = true;
     }
 
     int ex = fixed ? -1 : 0;
+    if (trace) trace.note(QStringLiteral("aggregate base"), fixed ? -1 : 0);
     foreach (const MaxCardsSkill *skill, getMaxCardsSkills()) {
         const MaxCardsSkillV2 *v2 = dynamic_cast<const MaxCardsSkillV2 *>(skill);
         if (!v2) {
             if (fixed) {
                 const int value = skill->getFixed(target);
+                if (trace) trace.legacy(skill, value, QStringLiteral("fixed maximum"));
                 if (value > ex) ex = value;
             } else {
-                ex += skill->getExtra(target, type);
+                const int value = skill->getExtra(target, type);
+                if (trace) trace.legacy(skill, value, QStringLiteral("add"));
+                ex += value;
             }
             continue;
         }
 
         // Keep Hongfa's live count query distinct from maximum/minimum previews.
         const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1, true, fixed, false, type);
+            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1, true, fixed, false, type, &trace);
         ex = fixed ? maximumApplicableResult(results, ex)
                    : ex + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
-	return ex;
+	return trace.finish(ex);
 }
 
 int Engine::contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed) const
@@ -3291,24 +3397,27 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
 
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
-    if (!from || !card) return 0;
+    CorrectionTrace trace("Target modifier", from, to, card);
+    if (!from || !card) return trace.finish(0, (trace ? CorrectionTrace::tr("missing source/card") : QString()));
+    if (trace) trace.context(CorrectionTrace::tr("modType=%1 (0=residue, 1=distance limit, 2=extra target)").arg(int(type)));
 
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
         .arg(quintptr(from)).arg(quintptr(to)).arg(quintptr(card)).arg(card->toString()) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
-        if (cached != memo->m_values.constEnd()) return cached.value();
+        if (cached != memo->m_values.constEnd()) return trace.finish(cached.value(), (trace ? CorrectionTrace::tr("memo hit; callbacks not run") : QString()));
     }
 
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (from && from->inherits("ClientPlayer")) return 0;
+        if (from && from->inherits("ClientPlayer")) return trace.finish(0, (trace ? CorrectionTrace::tr("Lua mutex busy; client fallback") : QString()));
         lua_mutex.lock();
         locked = true;
     }
 
     int x = 0;
+    if (trace) trace.note(QStringLiteral("aggregate base"), 0);
 	QStringList subcardNames;
 	if (card->isVirtualCard()){
         foreach (const Card*e, from->getEquips()){
@@ -3318,63 +3427,87 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 	}
     if (type == TargetModSkill::Residue) {
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
-			if (subcardNames.contains(skill->objectName())) continue;
+			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
+                if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
+                continue;
+            }
             if (matchExpPattern(skill->getPattern(),from, card)) {
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true, MaxCardsType::Max, &trace);
                     x += sumApplicableResults(results, true);
                 } else {
                     int value = skill->getResidueNum(from, card, to);
+                    if (trace) trace.legacy(skill, value, QStringLiteral("add; V1 -1 maps to 1000"));
                     x += value == -1 ? 1000 : value;
                 }
-                if (x > 500) break;
-            }
+                if (x > 500) {
+                    if (trace) trace.note(QStringLiteral("short circuit"), x, CorrectionTrace::tr("aggregate > 500; later skills not evaluated"));
+                    break;
+                }
+            } else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
         }
     } else if (type == TargetModSkill::DistanceLimit) {
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
-			if (subcardNames.contains(skill->objectName())) continue;
+			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
+                if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
+                continue;
+            }
             if (matchExpPattern(skill->getPattern(),from, card)) {
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true, MaxCardsType::Max, &trace);
                     x += sumApplicableResults(results, false);
                 } else {
-                    x += skill->getDistanceLimit(from, card, to);
+                    const int value = skill->getDistanceLimit(from, card, to);
+                    if (trace) trace.legacy(skill, value, QStringLiteral("add"));
+                    x += value;
                 }
-                if (x > 500) break;
-            }
+                if (x > 500) {
+                    if (trace) trace.note(QStringLiteral("short circuit"), x, CorrectionTrace::tr("aggregate > 500; later skills not evaluated"));
+                    break;
+                }
+            } else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
         }
     } else if (type == TargetModSkill::ExtraTarget) {
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
-			if (subcardNames.contains(skill->objectName())) continue;
+			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
+                if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
+                continue;
+            }
             if (matchExpPattern(skill->getPattern(),from, card)){
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true, MaxCardsType::Max, &trace);
                     x += sumApplicableResults(results, false);
                 } else {
-                    x += skill->getExtraTargetNum(from, card);
+                    const int value = skill->getExtraTargetNum(from, card);
+                    if (trace) trace.legacy(skill, value, QStringLiteral("add"));
+                    x += value;
                 }
-                if (x > 500) break;
-			}
+                if (x > 500) {
+                    if (trace) trace.note(QStringLiteral("short circuit"), x, CorrectionTrace::tr("aggregate > 500; later skills not evaluated"));
+                    break;
+                }
+			} else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
         }
     }
     if (locked) lua_mutex.unlock();
     if (memo) memo->m_values.insert(memoKey, x);
-    return x;
+    return trace.finish(x, (trace ? CorrectionTrace::tr("modifier subtotal; not total allowance") : QString()));
 }
 
 bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Player *to) const
 {
-    if (!from || !card) return false;
+    CorrectionTrace trace("Unlimited residue", from, to, card);
+    if (!from || !card) return trace.finish(false, (trace ? CorrectionTrace::tr("missing source/card") : QString()));
 
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (from && from->inherits("ClientPlayer")) return false;
+        if (from && from->inherits("ClientPlayer")) return trace.finish(false, (trace ? CorrectionTrace::tr("Lua mutex busy") : QString()));
         lua_mutex.lock();
         locked = true;
     }
@@ -3387,29 +3520,34 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
         }
     }
     foreach (const TargetModSkill*skill, getTargetModSkills()) {
-        if (subcardNames.contains(skill->objectName())) continue;
+        if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
+            if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
+            continue;
+        }
         if (matchExpPattern(skill->getPattern(), from, card)) {
             const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
             if (!v2) {
-                if (skill->getResidueNum(from, card, to) == -1) {
+                const int value = skill->getResidueNum(from, card, to);
+                if (trace) trace.legacy(skill, value, QStringLiteral("V1 -1 unlimited check"));
+                if (value == -1) {
                     if (locked) lua_mutex.unlock();
-                    return true;
+                    return trace.finish(true, (trace ? CorrectionTrace::tr("unlimited; later skills not evaluated") : QString()));
                 }
                 continue;
             }
             const QList<CorrectSkillResult> results = evaluateCorrectSkill(
                 v2, v2->getHolderSelector(), from, to, card,
-                TargetModSkill::Residue, true, false);
+                TargetModSkill::Residue, true, false, false, MaxCardsType::Max, &trace);
             foreach (const CorrectSkillResult &result, results) {
                 if (result.applies && result.unlimited) {
                     if (locked) lua_mutex.unlock();
-                    return true;
+                    return trace.finish(true, (trace ? CorrectionTrace::tr("unlimited; later skills not evaluated") : QString()));
                 }
             }
-        }
+        } else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
     }
     if (locked) lua_mutex.unlock();
-    return false;
+    return trace.finish(false);
 }
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
@@ -3439,45 +3577,52 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
+    CorrectionTrace trace("Attack range correction", target);
+    if (trace) trace.context(CorrectionTrace::tr("fixed=%1").arg(fixed));
+    if (trace) trace.context(CorrectionTrace::tr("includeWeapon=%1").arg(include_weapon));
     // Attack range depends only on the source; target selection asks again for each candidate.
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
         .arg(int(include_weapon)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
-        if (cached != memo->m_values.constEnd()) return cached.value();
+        if (cached != memo->m_values.constEnd()) return trace.finish(cached.value(), (trace ? CorrectionTrace::tr("memo hit; callbacks not run") : QString()));
     }
 
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         // No fixed correction is -1; zero would replace the client's base range of 1.
-        if (target && target->inherits("ClientPlayer")) return fixed ? -1 : 0;
+        if (target && target->inherits("ClientPlayer")) return trace.finish(fixed ? -1 : 0, (trace ? CorrectionTrace::tr("Lua mutex busy; client fallback") : QString()));
         lua_mutex.lock();
         locked = true;
     }
 
     int extra = fixed ? -1 : 0;
+    if (trace) trace.note(QStringLiteral("aggregate base"), fixed ? -1 : 0);
     foreach (const AttackRangeSkill *skill, getAttackRangeSkills()) {
         const AttackRangeSkillV2 *v2 = dynamic_cast<const AttackRangeSkillV2 *>(skill);
         if (!v2) {
             if (fixed) {
                 const int value = skill->getFixed(target, include_weapon);
+                if (trace) trace.legacy(skill, value, QStringLiteral("fixed maximum"));
                 if (value > extra) extra = value;
             } else {
-                extra += skill->getExtra(target, include_weapon);
+                const int value = skill->getExtra(target, include_weapon);
+                if (trace) trace.legacy(skill, value, QStringLiteral("add"));
+                extra += value;
             }
             continue;
         }
 
         const QList<CorrectSkillResult> results = evaluateCorrectSkill(
             v2, v2->getHolderSelector(), target, nullptr, nullptr, -1,
-            include_weapon, fixed);
+            include_weapon, fixed, false, MaxCardsType::Max, &trace);
         extra = fixed ? maximumApplicableResult(results, extra)
                       : extra + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
     if (memo) memo->m_values.insert(memoKey, extra);
-	return extra;
+	return trace.finish(extra);
 }
 
 QString Engine::removeNumberInQString(const QString &str) const

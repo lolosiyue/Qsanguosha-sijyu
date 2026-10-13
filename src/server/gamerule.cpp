@@ -27,6 +27,242 @@ static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
 	context.invoker = acceptedInvoker;
 }
 
+namespace {
+
+enum class YingBianStage { Use, Targets, Response };
+
+QString yingBianTag(const char *prefix, const Card *card)
+{
+    return QString::fromLatin1(prefix) + card->toString();
+}
+
+QStringList yingBianEffects(ServerPlayer *player, const Card *card)
+{
+    // Converted cards explicitly inherit material effects; ordinary cards keep
+    // the engine-card identity check, so unrelated view-as skills gain nothing.
+    QStringList effects = player->getTag(yingBianTag("YingBian_Effects_", card))
+        .toString().split(',', Qt::SkipEmptyParts);
+    const Card *original = Sanguosha->getEngineCard(card->getId());
+    if (original && original->objectName() == card->objectName())
+        effects << original->property("YingBianEffects").toString().split(',', Qt::SkipEmptyParts);
+
+    // Retain the legacy composite ordering and execute each inherited entry once.
+    static const QStringList order{"yb_canqu2", "yb_canqu1", "yb_kongchao3",
+        "yb_kongchao2", "yb_kongchao1", "yb_fujia2", "yb_fujia1",
+        "yb_zhuzhan2", "yb_zhuzhan1"};
+    QStringList result;
+    for (const QString &effect : order)
+        if (effects.contains(effect)) result << effect;
+    return result;
+}
+
+bool yingBianDirectlyEffective(ServerPlayer *player, const Card *card)
+{
+    return player->getMark("YingBianDirectlyEffective") > 0
+        || player->getMark("YingBianDirectlyEffective" + card->objectName()) > 0
+        || player->getTag(yingBianTag("YingBian_Direct_", card)).toBool();
+}
+
+bool askYingBianAssist(Room *room, const CardUseStruct &use, const QString &effect)
+{
+    QString pattern = use.card->isKindOf("TrickCard") ? "TrickCard"
+        : use.card->isKindOf("EquipCard") ? "EquipCard" : "BasicCard";
+    if (use.from->getMark("YingBian_Ext_zhuzhan_no_type") > 0) pattern = ".";
+    QList<ServerPlayer *> helpers = room->getOtherPlayers(use.from);
+    if (use.from->getMark("YingBian_Ext_zhuzhan_self") > 0) helpers.prepend(use.from);
+    const QString reason = effect.startsWith("yb_zhuzhan") ? effect : "yb_zhuzhan1";
+    for (ServerPlayer *helper : helpers) {
+        if ((helper != use.from && use.to.contains(helper)) || !helper->canDiscard(helper, "h")) continue;
+        // ChoiceMade is emitted inside askForDiscard. Publish both historical
+        // names on the actual helper before that event, and restore nested asks.
+        const QVariant oldAssist = helper->getTag("yb_zhuzhan_data");
+        const QVariant oldTarget = helper->getTag("yb_zhuzhan2_data");
+        const auto restore = qScopeGuard([helper, oldAssist, oldTarget] {
+            if (oldAssist.isValid()) helper->setTag("yb_zhuzhan_data", oldAssist);
+            else helper->removeTag("yb_zhuzhan_data");
+            if (oldTarget.isValid()) helper->setTag("yb_zhuzhan2_data", oldTarget);
+            else helper->removeTag("yb_zhuzhan2_data");
+        });
+        helper->setTag("yb_zhuzhan_data", QVariant::fromValue(use));
+        helper->setTag("yb_zhuzhan2_data", QVariant::fromValue(use));
+        if (room->askForDiscard(helper, reason, 1, 1, true, false,
+                "yb_zhuzhan-discard:" + use.card->objectName(), pattern)) return true;
+    }
+    return false;
+}
+
+void addYingBianTarget(Room *room, CardUseStruct &use, const QString &effect)
+{
+    if (!use.from->isAlive()) return;
+    QList<ServerPlayer *> candidates = room->getCardTargets(use.from, use.card, use.to);
+    if (candidates.isEmpty()) return;
+    use.from->setTag(effect + "_data", QVariant::fromValue(use));
+    ServerPlayer *target = nullptr;
+    if (use.card->isKindOf("Collateral")) {
+        QStringList targets{use.card->toString()};
+        for (ServerPlayer *existing : use.to) targets << existing->objectName();
+        room->setPlayerProperty(use.from, "extra_collateral", targets.join('+'));
+        room->askForUseCard(use.from, "@@extra_collateral", "@qiaoshui-add:::collateral");
+        target = use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+        use.from->removeTag("ExtraCollateralTarget");
+    } else {
+        target = room->askForPlayerChosen(use.from, candidates, effect,
+            effect + "-add:" + use.card->objectName(), true);
+    }
+    if (!target) return;
+    LogMessage log;
+    log.type = "#QiaoshuiAdd";
+    log.from = use.from;
+    log.to << target;
+    log.card_str = use.card->toString();
+    log.arg = effect;
+    room->sendLog(log);
+    room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, use.from->objectName(), target->objectName());
+    use.to << target;
+    room->sortByActionOrder(use.to);
+}
+
+void applyYingBianEffect(Room *room, CardUseStruct &use, const QString &effect)
+{
+    if (effect == "yb_fujia1") {
+        LogMessage log;
+        log.type = "#FuJia1NoRespond";
+        log.from = use.from;
+        log.card_str = use.card->toString();
+        log.arg = effect;
+        room->sendLog(log);
+        if (!use.no_respond_list.contains("_ALL_TARGETS")) use.no_respond_list << "_ALL_TARGETS";
+    } else if (effect == "yb_fujia2") {
+        if (use.to.size() <= 1) return;
+        use.from->setTag("yb_fujia2_data", QVariant::fromValue(use));
+        ServerPlayer *target = room->askForPlayerChosen(use.from, use.to, effect,
+            effect + "-reduce:" + use.card->objectName(), true);
+        if (!target) return;
+        LogMessage log;
+        log.type = "#QiaoshuiRemove";
+        log.from = use.from;
+        log.to << target;
+        log.card_str = use.card->toString();
+        log.arg = effect;
+        room->sendLog(log);
+        room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, use.from->objectName(), target->objectName());
+        use.to.removeOne(target);
+    } else if (effect == "yb_kongchao1") {
+        use.from->drawCards(1, effect);
+    } else if (effect == "yb_kongchao2") {
+        if (use.whocard && use.whocard->getTypeId() > 0
+            && !use.whocard->isKindOf("DelayedTrick") && room->CardInPlace(use.whocard, Player::PlaceTable))
+            room->obtainCard(use.from, use.whocard);
+    } else if (effect == "yb_canqu1") {
+        room->setCardFlag(use.card, "yb_canqu1_add_damage");
+    } else if (effect == "yb_zhuzhan1") {
+        room->setCardFlag(use.card, "yb_zhuzhan1_buff");
+    } else {
+        addYingBianTarget(room, use, effect);
+    }
+}
+
+void resolveYingBianEffects(Room *room, CardUseStruct &use, YingBianStage stage)
+{
+    if (!use.from || !use.card || use.card->isKindOf("SkillCard")) return;
+    const QStringList effects = yingBianEffects(use.from, use.card);
+    if (effects.isEmpty()) return;
+    const bool directly = yingBianDirectlyEffective(use.from, use.card);
+    const bool allAssist = use.from->getMark("YingBian_Ext_all_as_zhuzhan") > 0;
+    // Conditions belong to this resolution point; an earlier inherited draw
+    // must not change whether a later effect met the same card's condition.
+    const bool kongchao = use.from->isKongcheng();
+    const bool canqu = use.from->getHp() == 1;
+    bool fujia = false;
+    if (!directly && !allAssist && stage == YingBianStage::Use
+        && (effects.contains("yb_fujia1") || effects.contains("yb_fujia2"))) {
+        fujia = true;
+        for (ServerPlayer *other : room->getAlivePlayers())
+            if (other->getHandcardNum() > use.from->getHandcardNum()) { fujia = false; break; }
+    }
+    bool assistAsked = false;
+    bool assisted = false;
+    for (const QString &effect : effects) {
+        const bool needsAssist = allAssist || effect.startsWith("yb_zhuzhan");
+        if (stage == YingBianStage::Response) {
+            // Pure response-use has no mutable target list; retain its existing
+            // draw/obtain effects, including explicitly inherited material data.
+            if (effect != "yb_kongchao1" && effect != "yb_kongchao2") continue;
+        } else if (needsAssist != (stage == YingBianStage::Targets)) {
+            continue;
+        }
+        if (!use.from->isAlive()) break;
+        bool eligible = directly;
+        if (!eligible && needsAssist) {
+            // A composite card is assisted once; replacing its conditions must
+            // preserve every original effect rather than turn them into one buff.
+            if (!assistAsked) {
+                assistAsked = true;
+                assisted = askYingBianAssist(room, use, effect);
+            }
+            eligible = assisted;
+        } else if (!eligible && effect.startsWith("yb_fujia")) {
+            eligible = fujia;
+        } else if (!eligible && effect.startsWith("yb_kongchao")) {
+            eligible = kongchao;
+        } else if (!eligible && effect.startsWith("yb_canqu")) {
+            eligible = canqu;
+        }
+        if (eligible) applyYingBianEffect(room, use, effect);
+    }
+}
+
+void clearYingBianEffects(Room *room, ServerPlayer *player, const Card *card)
+{
+    if (!player || !card) return;
+    const QString effectsTag = yingBianTag("YingBian_Effects_", card);
+    if (player->getTag(effectsTag).isValid()
+        && player->getMark("YingBianDirectlyEffective" + card->objectName()) > 0)
+        room->removePlayerMark(player, "YingBianDirectlyEffective" + card->objectName());
+    player->removeTag(effectsTag);
+    player->removeTag(yingBianTag("YingBian_Direct_", card));
+}
+
+} // namespace
+
+bool GameRule::setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                       const QList<int> &materialIds, bool directly)
+{
+    if (!player || !card) return false;
+    QList<int> ids;
+    QSet<int> seenIds;
+    const auto appendId = [&ids, &seenIds](int id) {
+        if (id < 0 || seenIds.contains(id)) return;
+        seenIds.insert(id);
+        ids << id;
+    };
+    for (int id : materialIds) appendId(id);
+    if (ids.isEmpty())
+        for (int id : card->getSubcards()) appendId(id);
+    if (ids.isEmpty()) appendId(card->getEffectiveId());
+
+    // Material lookup, composition and per-use state are rules, not Lua glue.
+    // Preserve metadata order here; the shared resolver owns effect support
+    // and execution order, so callers do not maintain a second effect table.
+    QStringList effects;
+    QSet<QString> seenEffects;
+    for (int id : ids) {
+        const Card *material = Sanguosha->getEngineCard(id);
+        if (!material) continue;
+        const QStringList inherited = material->property("YingBianEffects")
+            .toString().split(',', Qt::SkipEmptyParts);
+        for (const QString &effect : inherited) {
+            if (seenEffects.contains(effect)) continue;
+            seenEffects.insert(effect);
+            effects << effect;
+        }
+    }
+    if (effects.isEmpty()) return false;
+    player->setTag(yingBianTag("YingBian_Effects_", card), effects.join(','));
+    player->setTag(yingBianTag("YingBian_Direct_", card), directly);
+    return true;
+}
+
 bool GameRule::beginsNormalRound(Room *room, ServerPlayer *player)
 {
     return room && player && !room->getAlivePlayers().isEmpty()
@@ -47,7 +283,7 @@ GameRule::GameRule(QObject *)
 		<< TurnStart << EventPhaseStart << EventPhaseProceeding << EventPhaseChanging
         << ChangeSlash
         << PreCardUsed << CardUsed << TargetSpecifying << CardFinished << CardEffected
-        << PreCardResponded << CardResponded
+        << PreCardResponded << CardResponded << PostCardResponded
         << TrickCardCanceling
         << HpChanged
         << EventLoseSkill << EventAcquireSkill
@@ -639,120 +875,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				player->setTag("ComboMovesCard", QVariant::fromValue(CardTagOwner{Sanguosha->cloneCard(card_use.card)}));
 		}
 
-		const Card *ec = Sanguosha->getEngineCard(card_use.card->getId());
-		if(ec&&card_use.card->objectName()==ec->objectName()){
-			QString yingbian = ec->property("YingBianEffects").toString();
-			bool directly = player->getMark("YingBianDirectlyEffective")>0;
-			if(yingbian.contains("yb_fujia")) {
-				bool fujia = true;
-				foreach (ServerPlayer *p,room->getAlivePlayers()) {
-					if(p->getHandcardNum()>player->getHandcardNum()) {
-						fujia = false;
-						break;
-					}
-				}
-				if(fujia||directly) {
-					if(yingbian=="yb_fujia1") {
-						LogMessage log;
-						log.type = "#FuJia1NoRespond";
-						log.from = player;
-						log.card_str = card_use.card->toString();
-						log.arg = "yb_fujia1";
-						room->sendLog(log);
-						card_use.no_respond_list << "_ALL_TARGETS";
-					} else if(yingbian=="yb_fujia2") {
-						if(card_use.to.length()>1) {
-							player->setTag("yb_fujia2_data", data);
-							ServerPlayer *reduce = room->askForPlayerChosen(player,card_use.to,"yb_fujia2","yb_fujia2-reduce:" + card_use.card->objectName(),true);
-							if(reduce) {
-								LogMessage log;
-								log.type = "#QiaoshuiRemove";
-								log.from = player;
-								log.to << reduce;
-								log.card_str = card_use.card->toString();
-								log.arg = "yb_fujia2";
-								room->sendLog(log);
-								room->doAnimate(1,player->objectName(),reduce->objectName());
-								card_use.to.removeOne(reduce);
-							}
-						}
-					}
-				}
-			} else if(yingbian.contains("yb_kongchao")&&(directly||player->isKongcheng())){
-				if(yingbian=="yb_kongchao1")
-					player->drawCards(1,"yb_kongchao1");
-				else if(yingbian=="yb_kongchao2") {
-					if(card_use.whocard&&card_use.whocard->getTypeId()>0) {
-						if(room->CardInPlace(card_use.whocard,Player::PlaceTable)) {
-							if(!card_use.whocard->isKindOf("DelayedTrick"))
-								room->obtainCard(player,card_use.whocard);
-						}
-					}
-				} else if(yingbian=="yb_kongchao3") {
-					ServerPlayer *add = nullptr;
-					player->setTag("yb_kongchao3_data", data);
-					QList<ServerPlayer *> adds = room->getCardTargets(card_use.from,card_use.card,card_use.to);
-					if(adds.length()>0){
-						if(card_use.card->isKindOf("Collateral")){
-							QStringList tos;
-							tos.append(card_use.card->toString());
-							foreach(ServerPlayer *t,card_use.to)
-								tos.append(t->objectName());
-							room->setPlayerProperty(card_use.from,"extra_collateral",tos.join("+"));
-							room->askForUseCard(card_use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-							add = card_use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
-							card_use.from->removeTag("ExtraCollateralTarget");
-						}else
-							add = room->askForPlayerChosen(player,adds,"yb_kongchao3","yb_kongchao3-add:" + card_use.card->objectName(),true);
-					}
-					if(add) {
-						LogMessage log;
-						log.type = "#QiaoshuiAdd";
-						log.from = player;
-						log.to << add;
-						log.card_str = card_use.card->toString();
-						log.arg = "yb_kongchao3";
-						room->sendLog(log);
-						room->doAnimate(1,player->objectName(),add->objectName());
-						card_use.to.append(add);
-						room->sortByActionOrder(card_use.to);
-					}
-				}
-			} else if(yingbian.contains("yb_canqu")&&(directly||player->getHp()==1)) {
-				if(yingbian=="yb_canqu1")
-					room->setCardFlag(card_use.card,"yb_canqu1_add_damage");
-				else if(yingbian=="yb_canqu2") {
-					ServerPlayer *add = nullptr;
-					player->setTag("yb_canqu2_data", data);
-					QList<ServerPlayer *> adds = room->getCardTargets(card_use.from,card_use.card,card_use.to);
-					if(adds.length()>0){
-						if(card_use.card->isKindOf("Collateral")) {
-							QStringList tos;
-							tos.append(card_use.card->toString());
-							foreach(ServerPlayer *t,card_use.to)
-								tos.append(t->objectName());
-							room->setPlayerProperty(card_use.from,"extra_collateral",tos.join("+"));
-							room->askForUseCard(card_use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-							add = card_use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
-							card_use.from->removeTag("ExtraCollateralTarget");
-						} else
-							add = room->askForPlayerChosen(player,adds,"yb_canqu2","yb_canqu2-add:" + card_use.card->objectName(),true);
-					}
-					if(add) {
-						LogMessage log;
-						log.type = "#QiaoshuiAdd";
-						log.from = player;
-						log.to << add;
-						log.card_str = card_use.card->toString();
-						log.arg = "yb_canqu2";
-						room->sendLog(log);
-						room->doAnimate(1,player->objectName(),add->objectName());
-						card_use.to.append(add);
-						room->sortByActionOrder(card_use.to);
-					}
-				}
-			}
-		}
+        resolveYingBianEffects(room, card_use, YingBianStage::Use);
 		data.setValue(card_use);
 		if(card_use.to.length()>0) {
 			room->getThread()->trigger(TargetSpecifying,room,card_use.from,data);
@@ -794,61 +917,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case TargetSpecifying: {
         CardUseStruct use = data.value<CardUseStruct>();
-		const Card *ec = Sanguosha->getEngineCard(use.card->getId());
-		if(ec&&ec->objectName()==use.card->objectName()) {
-			QString yingbian = ec->property("YingBianEffects").toString();
-			if(yingbian.contains("yb_zhuzhan")) {
-				bool buff = use.from->getMark("YingBianDirectlyEffective")>0;
-				if(!buff) {
-					QString pattern = "BasicCard";
-					if(use.card->isKindOf("TrickCard")) pattern = "TrickCard";
-					else if(use.card->isKindOf("EquipCard")) pattern = "EquipCard";
-					foreach (ServerPlayer *p,room->getOtherPlayers(use.from)) {
-						if(use.to.contains(p)||!p->canDiscard(p,"h")) continue;
-						p->setTag("yb_zhuzhan_data", data);
-						if(room->askForDiscard(p,yingbian,1,1,true,false,"yb_zhuzhan-discard:" + use.card->objectName(),pattern)) {
-							buff = true;
-							break;
-						}
-					}
-				}
-				if(buff) {
-					if(yingbian=="yb_zhuzhan1")
-						room->setCardFlag(use.card,"yb_zhuzhan1_buff");
-					else if(yingbian=="yb_zhuzhan2"&&use.from->isAlive()) {
-						QList<ServerPlayer *> adds = room->getCardTargets(use.from,use.card,use.to);
-						if(adds.length()>0) {
-							ServerPlayer *add = nullptr;
-							player->setTag("yb_zhuzhan2_data", data);
-							if(use.card->isKindOf("Collateral")) {
-								QStringList tos;
-								tos.append(use.card->toString());
-								foreach(ServerPlayer *t,use.to)
-									tos.append(t->objectName());
-								room->setPlayerProperty(use.from,"extra_collateral",tos.join("+"));
-								room->askForUseCard(use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-								add = use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
-								use.from->removeTag("ExtraCollateralTarget");
-							} else
-								add = room->askForPlayerChosen(player,adds,"yb_zhuzhan2","yb_zhuzhan2-add:" + use.card->objectName(),true);
-							if(add) {
-								LogMessage log;
-								log.type = "#QiaoshuiAdd";
-								log.from = player;
-								log.to << add;
-								log.card_str = use.card->toString();
-								log.arg = "yb_zhuzhan2";
-								room->sendLog(log);
-								room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE,player->objectName(),add->objectName());
-								use.to.append(add);
-								room->sortByActionOrder(use.to);
-								data.setValue(use);
-							}
-						}
-					}
-                }
-            }
-        }
+        resolveYingBianEffects(room, use, YingBianStage::Targets);
+        data.setValue(use);
         if(use.card->isKindOf("Slash")) {
             if(use.card->hasFlag("SlashIgnoreArmor")) {
                 foreach (ServerPlayer *p,use.to)
@@ -867,6 +937,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case CardFinished: {
         CardUseStruct use = data.value<CardUseStruct>();
+        clearYingBianEffects(room, use.from, use.card);
         // Pending offsets belong to this card use, regardless of the content package.
         room->removeTag(use.card->toString() + QStringLiteral("PendingNullification"));
         room->clearCardFlag(use.card);
@@ -921,23 +992,9 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case CardResponded: {
         CardResponseStruct resp = data.value<CardResponseStruct>();
-        if(resp.m_isUse){
-			const Card *ec = Sanguosha->getEngineCard(resp.m_card->getId());
-			if(ec&&ec->objectName()==resp.m_card->objectName()){
-				QString yingbian = ec->property("YingBianEffects").toString();
-				if(yingbian.contains("yb_kongchao")&&(player->isKongcheng()||player->getMark("YingBianDirectlyEffective")>0)){
-					if(yingbian=="yb_kongchao1")
-						player->drawCards(1,"yb_kongchao1");
-					else if(yingbian=="yb_kongchao2"){
-						if(resp.m_toCard&&resp.m_toCard->getTypeId()>0){
-							if(room->CardInPlace(resp.m_toCard,Player::PlaceTable)){
-								if(!resp.m_toCard->isKindOf("DelayedTrick"))
-									room->obtainCard(player,resp.m_toCard);
-							}
-						}
-                    }
-                }
-            }
+        if (resp.m_isUse) {
+            CardUseStruct use(resp.m_card, player, QList<ServerPlayer *>(), true, resp.m_toCard);
+            resolveYingBianEffects(room, use, YingBianStage::Response);
         }
         foreach (ServerPlayer *p,room->getAlivePlayers()) {
             foreach (QString flag,p->getFlagList()) {
@@ -945,6 +1002,11 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                     room->setPlayerFlag(p,"-" + flag);
             }
         }
+        break;
+    }
+    case PostCardResponded: {
+        const CardResponseStruct response = data.value<CardResponseStruct>();
+        clearYingBianEffects(room, player, response.m_card);
         break;
     }
     case TrickCardCanceling: {

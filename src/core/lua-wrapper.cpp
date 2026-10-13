@@ -159,6 +159,12 @@ LuaProhibitSkill::LuaProhibitSkill(const QString &name, Frequency frequency)
     this->frequency = frequency;
 }
 
+LuaProhibitSkillV2::LuaProhibitSkillV2(const QString &name, Frequency frequency)
+    : ProhibitSkillV2(name), is_prohibited(0)
+{
+    this->frequency = frequency;
+}
+
 LuaProhibitPindianSkill::LuaProhibitPindianSkill(const QString &name, Frequency frequency)
     : ProhibitPindianSkill(name), is_pindianprohibited(0)
 {

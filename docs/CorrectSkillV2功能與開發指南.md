@@ -63,6 +63,21 @@
 
 `System` 沒有技能實例，因此不能使用逐實例 amount override 或 `correctState`。
 
+### 4.1 System 門檻（gate）
+
+`System` 技能每次查詢都會呼叫 Lua callback。`gate` 宣告 callback 產生效果的必要條件：至少一項成立時引擎才呼叫 callback，全部不成立時本技能不貢獻。只列必要條件：全部不成立時 callback 必然回傳 `nil`、`false`、0 或 fixed 的不生效值。
+
+| 條件 | 成立於 |
+|---|---|
+| `mark:<名稱>` | primary 的該標記不為 0 |
+| `flag:<名稱>` | primary 有該旗標 |
+| `pile:<名稱>` | primary 的該牌堆不為空 |
+| `skill:<名稱>` | primary 擁有該技能實例（不檢查失效，`hasSkill()` 為真時必成立） |
+| `card_skill:<名稱>` | 查詢卡牌的 `getSkillNames()` 含該名稱（僅 TargetMod 有卡牌） |
+| `card_flag:<名稱>` | 查詢卡牌有該旗標 |
+
+前四種加 `secondary.` 前綴改查 secondary，例：`gate = { "mark:&Godying", "secondary.mark:@jinjie" }`。只有 `holder_selector = sgs.CorrectSkill_System` 可宣告 `gate`；條件格式錯誤時建立技能即報錯。實作見 `CorrectSkillGate`（[`src/core/skill.h`](../src/core/skill.h)）。
+
 ## 5. CorrectSkillContext
 
 | Getter | 型別 | 說明 |

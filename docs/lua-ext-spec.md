@@ -484,6 +484,8 @@ skill_name = sgs.CreateTargetModSkill {
 
 ### 5.10 ProhibitSkill（禁止指定目標）
 
+新增禁止技優先使用 `sgs.CreateProhibitSkillV2`：由引擎按持有者與有效實例呼叫，預設只檢查目標，不再對無持有者執行 Lua callback。持有者選擇、逐實例 context、無來源查詢與舊版遷移契約見 [ProhibitSkillV2 功能與開發指南](ProhibitSkillV2.md)。以下為保留的舊版介面。
+
 ```lua
 skill_name = sgs.CreateProhibitSkill {
     name = "skill_name",
@@ -1234,6 +1236,43 @@ room:sendLog(log)
 | `getPos` | `(table, value)` → `int` | 陣列索引查找 |
 | `generateAllCardObjectNameTablePatterns` | `()` → `string[]` | 所有卡牌名稱列表 |
 | `UniversalCardDisplayMove` | `(ids, movein, player, pile_name?)` | 通用明置牌機制 |
+| `setYingBianExtension` | `(player, name, enabled)` | 設定原生應變條件擴展開關 |
+| `getYingBianExtension` | `(player, name)` → `boolean` | 查詢應變擴展開關 |
+| `setYingBianEffectsForCard` | `(player, room, card, materialIds, directly?)` → `boolean` | 舊介面相容轉呼叫；材料效果收集與結算均在 C++ |
+
+### 應變效果的原生擴展契約
+
+既有富甲、空巢、殘軀、助戰及九個 `yb_*` 效果項目共用 `GameRule` 的原生結算。
+擴展可設定使用者的以下標記，或呼叫 `setYingBianExtension`：
+
+| 開關名稱 | 對應玩家標記 | 行為 |
+|---|---|---|
+| `zhuzhan_self` | `YingBian_Ext_zhuzhan_self` | 使用者也能助戰自己的牌，包括自己是該牌目標的情況 |
+| `zhuzhan_no_type` | `YingBian_Ext_zhuzhan_no_type` | 助戰可棄置任意類別的手牌 |
+| `all_as_zhuzhan` | `YingBian_Ext_all_as_zhuzhan` | 將各既有效果的條件改為助戰，保留原效果；複合牌只要求一次助戰 |
+
+轉化技在 `on_validate`／`on_validate_in_response` 建立實際牌後，直接呼叫原生 Room API：
+
+```lua
+room:setYingBianEffectsForCard(player, card, card:getSubcards())
+room:setYingBianEffectsForCard(player, card, card:getSubcards(), false) -- 明確要求遵守條件
+```
+
+第三個參數為 `sgs.IntList`，可省略；C++ 會過濾負 ID、去重材料，空列表回退至子卡，
+再回退至實體牌 ID。材料效果讀取、效果組合／去重及 Tag 設定均由 C++ 統一處理。
+轉化牌預設直接生效，實體牌預設遵守條件；四參數重載可明確覆寫。
+舊的全域 Lua helper 只保留 table → IntList 轉接與 Room 轉呼叫，不持有應變規則。
+既有通用 `YingBianDirectlyEffective` 及牌名後綴標記仍由原生於結算時讀取。
+
+原生入口寫入使用者的 `YingBian_Effects_<card:toString()>`（逗號分隔效果）及
+`YingBian_Direct_<card:toString()>`（boolean）Tag；Lua 不再另跑應變模擬技能。
+非助戰效果在 `CardUsed`、助戰在 `TargetSpecifying` 結算；response-use 沿用原生支援的
+空巢摸牌／取得被響應牌效果。使用結束及 `PostCardResponded` 會清理本次資料。
+此契約擴展既有效果的條件與繼承方式，不提供新增任意效果處理器的註冊表。
+
+助戰的 `ChoiceMade` 仍為 `cardDiscard:yb_zhuzhan1|yb_zhuzhan2:<card-string>`。
+詢問棄牌期間，實際助戰者同時持有 `yb_zhuzhan_data` 與相容的 `yb_zhuzhan2_data`
+CardUseStruct Tag；巢狀詢問結束後恢復原值。技能可在此事件記錄棄牌與強化牌的配對。
 
 ---
 
@@ -1380,6 +1419,7 @@ local reason = sgs.CardMoveReason(
 | `sgs.CreateTargetModSkill` | 目標修正 | `lua/sgs_ex.lua:344` |
 | `sgs.CreateTargetModSkillV2` | 目標修正（V2） | `lua/sgs_ex.lua:360` |
 | `sgs.CreateProhibitSkill` | 禁止指定目標 | `lua/sgs_ex.lua:255` |
+| `sgs.CreateProhibitSkillV2` | 禁止指定目標（逐持有者／有效實例） | [ProhibitSkillV2](ProhibitSkillV2.md) |
 | `sgs.CreateProhibitPindianSkill` | 禁止拼點 | `lua/sgs_ex.lua:264` |
 | `sgs.CreateFilterSkill` | 卡牌過濾/轉化 | `lua/sgs_ex.lua:273` |
 | `sgs.CreateInvaliditySkill` | 技能無效化 | `lua/sgs_ex.lua:368` |

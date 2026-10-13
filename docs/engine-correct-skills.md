@@ -32,7 +32,7 @@
 | `CorrectSkill_Secondary` | Distance／TargetMod 的 `to`；沒有 secondary 時不貢獻 |
 | `CorrectSkill_Participants` | primary、secondary 去重後逐一檢查 |
 | `CorrectSkill_AllHolders` | 全場所有存活玩家的有效實例 |
-| `CorrectSkill_System` | 無持有者與 instance ref，只計算一次共享 base |
+| `CorrectSkill_System` | 無持有者與 instance ref，只計算一次共享 base；宣告 `gate` 時先檢查門檻，見 [CorrectSkillV2 指南 §4.1](CorrectSkillV2功能與開發指南.md#41-system-門檻gate) |
 
 非 System 模式只遍歷存活玩家，並由 `Player::isSkillInstanceEffectAvailable()` 排除精確失效及國戰暗置來源；不同玩家即使技能名與 instanceID 相同，仍以 owner objectName 隔離。
 

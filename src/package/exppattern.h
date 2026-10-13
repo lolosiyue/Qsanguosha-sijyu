@@ -14,6 +14,9 @@ private:
         QString text;
         QByteArray className;
         bool negated = false;
+        // Every Card::toString() contains a digit, '[' or '$'; other names skip building it.
+        bool cardStringPossible = false;
+        bool percentName = false;
     };
     struct NumberTerm {
         QString text;

@@ -7,6 +7,7 @@ static QVariant _dummy_variant;
 
 class Room;
 class ServerPlayer;
+class Card;
 
 bool tryLuaGameModeReward(Room *room, ServerPlayer *killer, ServerPlayer *victim);
 bool tryLuaGameModeGetWinner(Room *room, ServerPlayer *victim, QString *winner);
@@ -30,6 +31,8 @@ public:
     // Shared with the outer-turn checkpoint executor. This is exactly the
     // predicate used by TurnStart before it opens a real round scope.
     static bool beginsNormalRound(Room *room, ServerPlayer *player);
+    static bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                        const QList<int> &materialIds, bool directly);
     virtual bool triggerable(const ServerPlayer *target) const;
     virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data = _dummy_variant) const;

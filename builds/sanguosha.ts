@@ -7048,6 +7048,26 @@ Waiting for %1 to respond</source>
         <source>Use the project release page to download a compatible build, then exit and install it using your platform tools. Online material installation is currently available on desktop only.</source>
         <translation>请前往项目发布页面下载兼容的构建，再退出游戏并使用平台工具安装。目前仅桌面版支持在线素材安装。</translation>
     </message>
+    <message>
+        <source>Skill correction inspector (read-only)</source>
+        <translation>技能修正检查器（只读）</translation>
+    </message>
+    <message>
+        <source>Corrections</source>
+        <translation>技能修正检查器</translation>
+    </message>
+    <message>
+        <source>Local host with cheat mode required. Start a local test room first.</source>
+        <translation>仅限已启用作弊模式的本机房主。请先创建本机测试房间。</translation>
+    </message>
+    <message>
+        <source>No local room yet.</source>
+        <translation>尚无本机房间。</translation>
+    </message>
+    <message>
+        <source>Local room</source>
+        <translation>本机房间</translation>
+    </message>
 </context>
 <context>
     <name>MainWindowServerList</name>
@@ -13153,6 +13173,462 @@ Changes:
         <location filename="../src/dialog/general-authoring-dialog.cpp" line="280"/>
         <source>Disabled export saved to %1. No package was installed or enabled. Review and test manually in a disposable runtime before explicitly installing the child package directory.</source>
         <translation>未启用的导出文件已保存至 %1，未安装或启用任何扩展包。请先审阅并在可丢弃的独立运行环境中手动测试，再明确安装子目录中的包。</translation>
+    </message>
+</context>
+<context>
+    <name>CorrectionInspector</name>
+    <message>
+        <source>All</source>
+        <translation>全部</translation>
+    </message>
+    <message>
+        <source>Skill correction inspector (read-only) — Room %1</source>
+        <translation>技能修正检查器（只读）— 房间 %1</translation>
+    </message>
+    <message>
+        <source>Local host with cheat mode required. Enable capture and reproduce an action; this window only reads completed server calculations and never re-runs skills.
+Pause capture to inspect. Filters select recorded contexts, not hypothetical calculations.
+Use-count and extra-target values are modifier subtotals. Ordinary targetFilter, card limits, and reasons for unevaluated skills are outside this view.</source>
+        <translation>仅限已启用作弊模式的本机房主。勾选记录后重现操作；此窗口只读取已发生的服务器计算，不重新执行技能。
+暂停记录后查看。筛选器用于选择已记录的上下文，不进行假设计算。
+使用次数和额外目标显示修正小计；普通 targetFilter、卡牌限制和未执行技能的原因不在此范围内。</translation>
+    </message>
+    <message>
+        <source>Capture real calculations</source>
+        <translation>记录实际计算</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>Clear traces</source>
+        <translation>清除记录</translation>
+    </message>
+    <message>
+        <source>Card, skill name or context</source>
+        <translation>卡牌、技能名或上下文</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation>来源</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation>目标</translation>
+    </message>
+    <message>
+        <source>Calculation</source>
+        <translation>计算</translation>
+    </message>
+    <message>
+        <source>Card / skill</source>
+        <translation>卡牌／技能</translation>
+    </message>
+    <message>
+        <source>Recent real calculations</source>
+        <translation>最近的实际计算</translation>
+    </message>
+    <message>
+        <source>ID</source>
+        <translation>序号</translation>
+    </message>
+    <message>
+        <source>Parent</source>
+        <translation>父计算</translation>
+    </message>
+    <message>
+        <source>Revision</source>
+        <translation>修订号</translation>
+    </message>
+    <message>
+        <source>Card</source>
+        <translation>卡牌</translation>
+    </message>
+    <message>
+        <source>Result</source>
+        <translation>结果</translation>
+    </message>
+    <message>
+        <source>Observed skill returns and calculation steps</source>
+        <translation>已观察到的技能返回值与计算步骤</translation>
+    </message>
+    <message>
+        <source>Skill</source>
+        <translation>技能</translation>
+    </message>
+    <message>
+        <source>Owner</source>
+        <translation>持有者</translation>
+    </message>
+    <message>
+        <source>API version</source>
+        <translation>接口版本</translation>
+    </message>
+    <message>
+        <source>Instance</source>
+        <translation>实例</translation>
+    </message>
+    <message>
+        <source>Operation / return</source>
+        <translation>运算／返回</translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation>数值</translation>
+    </message>
+    <message>
+        <source>Observation</source>
+        <translation>观察结果</translation>
+    </message>
+    <message>
+        <source>%1 / %2 recent records; max %3 rows each. Parent IDs may expire; omitted rows are counted. %4</source>
+        <translation>显示最近记录 %1／%2 条；每条最多 %3 行。父计算记录可能已过期；已省略的行数会计入统计。%4</translation>
+    </message>
+    <message>
+        <source>Capture unavailable (room ended or cheat disabled).</source>
+        <translation>无法记录（房间已结束或作弊模式已关闭）。</translation>
+    </message>
+    <message>
+        <source>Capturing — pause before reading.</source>
+        <translation>正在记录；请暂停后查看。</translation>
+    </message>
+    <message>
+        <source>Paused. Enable capture and reproduce an action for new evidence.</source>
+        <translation>已暂停。开启记录并重现操作以获取新记录。</translation>
+    </message>
+    <message>
+        <source>Context: %1 | Result: %2 | Omitted rows: %3
+V1 owner is unknown; zero/noEffect is an observed return, not an inferred reason. Memo hits do not re-run callbacks.</source>
+        <translation>上下文：%1 | 结果：%2 | 已省略行数：%3
+V1 持有者未知；零值或无效果是实际观察到的返回结果，不能据此推断原因。缓存命中不会重新执行回调。</translation>
+    </message>
+    <message>
+        <source>Result: %1; omitted: %2</source>
+        <translation>结果：%1；已省略：%2</translation>
+    </message>
+    <message>
+        <source>Distance</source>
+        <translation>距离</translation>
+    </message>
+    <message>
+        <source>Distance correction</source>
+        <translation>距离修正</translation>
+    </message>
+    <message>
+        <source>Attack range</source>
+        <translation>攻击范围</translation>
+    </message>
+    <message>
+        <source>Attack range correction</source>
+        <translation>攻击范围修正</translation>
+    </message>
+    <message>
+        <source>Hand limit</source>
+        <translation>手牌上限</translation>
+    </message>
+    <message>
+        <source>Hand limit correction</source>
+        <translation>手牌上限修正</translation>
+    </message>
+    <message>
+        <source>Prohibition</source>
+        <translation>禁止指定</translation>
+    </message>
+    <message>
+        <source>Target modifier</source>
+        <translation>使用次数、距离上限与额外目标修正</translation>
+    </message>
+    <message>
+        <source>Unlimited residue</source>
+        <translation>使用次数是否不限</translation>
+    </message>
+    <message>
+        <source>Can Slash</source>
+        <translation>能否对目标使用杀</translation>
+    </message>
+    <message>
+        <source>isProhibited (boolean)</source>
+        <translation>是否禁止指定（布尔值）</translation>
+    </message>
+    <message>
+        <source>fixed maximum</source>
+        <translation>固定值取最大值</translation>
+    </message>
+    <message>
+        <source>add</source>
+        <translation>累加</translation>
+    </message>
+    <message>
+        <source>add; V1 -1 maps to 1000</source>
+        <translation>累加；V1 的 -1 转换为 1000</translation>
+    </message>
+    <message>
+        <source>V1 -1 unlimited check</source>
+        <translation>检查 V1 的 -1 是否表示不限次数</translation>
+    </message>
+    <message>
+        <source>aggregate base</source>
+        <translation>小计初始值</translation>
+    </message>
+    <message>
+        <source>short circuit</source>
+        <translation>提前结束计算</translation>
+    </message>
+    <message>
+        <source>default base</source>
+        <translation>默认基础值</translation>
+    </message>
+    <message>
+        <source>fixed correction</source>
+        <translation>固定修正值</translation>
+    </message>
+    <message>
+        <source>weapon scan disabled</source>
+        <translation>未扫描武器</translation>
+    </message>
+    <message>
+        <source>weapon range</source>
+        <translation>武器攻击范围</translation>
+    </message>
+    <message>
+        <source>virtual weapon range</source>
+        <translation>虚拟武器攻击范围</translation>
+    </message>
+    <message>
+        <source>add correction</source>
+        <translation>加上修正值</translation>
+    </message>
+    <message>
+        <source>seat distance base</source>
+        <translation>座次距离基础值</translation>
+    </message>
+    <message>
+        <source>add distance_fix</source>
+        <translation>加上距离调整值</translation>
+    </message>
+    <message>
+        <source>HP base</source>
+        <translation>体力基础值</translation>
+    </message>
+    <message>
+        <source>odd dual-general HP compensation</source>
+        <translation>双武将体力和为奇数时的补偿</translation>
+    </message>
+    <message>
+        <source>rangefix after distance modifier</source>
+        <translation>距离修正后的范围调整值</translation>
+    </message>
+    <message>
+        <source>noEffect</source>
+        <translation>无效果</translation>
+    </message>
+    <message>
+        <source>unlimitedResidue</source>
+        <translation>不限使用次数</translation>
+    </message>
+    <message>
+        <source>signedAmount</source>
+        <translation>显式带符号数值</translation>
+    </message>
+    <message>
+        <source>useAmount / applicable</source>
+        <translation>普通数值／已适用</translation>
+    </message>
+    <message>
+        <source>skipped</source>
+        <translation>已跳过</translation>
+    </message>
+</context>
+<context>
+    <name>CorrectionTrace</name>
+    <message>
+        <source>selectedOthers=%1</source>
+        <translation>已选其他目标数=%1</translation>
+    </message>
+    <message>
+        <source>fixed=%1</source>
+        <translation>固定值模式=%1</translation>
+    </message>
+    <message>
+        <source>maxCardsType=%1</source>
+        <translation>手牌上限类型=%1</translation>
+    </message>
+    <message>
+        <source>modType=%1 (0=residue, 1=distance limit, 2=extra target)</source>
+        <translation>修正类型=%1（0=使用次数，1=距离上限，2=额外目标）</translation>
+    </message>
+    <message>
+        <source>includeWeapon=%1</source>
+        <translation>计入武器=%1</translation>
+    </message>
+    <message>
+        <source>distance_fix=%1</source>
+        <translation>距离调整值=%1</translation>
+    </message>
+    <message>
+        <source>distance_limit=%1 rangefix=%2 selectedOthers=%3</source>
+        <translation>检查距离限制=%1 范围调整值=%2 已选其他目标数=%3</translation>
+    </message>
+    <message>
+        <source>false: null card</source>
+        <translation>否：卡牌为空</translation>
+    </message>
+    <message>
+        <source>false: cardIgnoreLegality flag</source>
+        <translation>否：使用者带有 cardIgnoreLegality 标记</translation>
+    </message>
+    <message>
+        <source>false: Lua mutex busy</source>
+        <translation>否：Lua 互斥锁正被占用</translation>
+    </message>
+    <message>
+        <source>source-less prohibition unsupported</source>
+        <translation>不支持无来源的禁止指定检查</translation>
+    </message>
+    <message>
+        <source>prohibited by %1; later skills not evaluated</source>
+        <translation>被 %1 禁止指定；后续技能未求值</translation>
+    </message>
+    <message>
+        <source>not prohibited by ProhibitSkill</source>
+        <translation>未被 ProhibitSkill 禁止指定</translation>
+    </message>
+    <message>
+        <source>system gate rejected</source>
+        <translation>系统技能的前置条件未通过</translation>
+    </message>
+    <message>
+        <source>holder selector produced no living candidates</source>
+        <translation>持有者选择器未找到存活候选人</translation>
+    </message>
+    <message>
+        <source>no owned instances on selected holder</source>
+        <translation>选定持有者没有此技能的实例</translation>
+    </message>
+    <message>
+        <source>instance lookup missing</source>
+        <translation>未找到技能实例</translation>
+    </message>
+    <message>
+        <source>isSkillInstanceEffectAvailable=false</source>
+        <translation>技能实例效果不可用</translation>
+    </message>
+    <message>
+        <source>isSkillInstanceEffectAvailable=false (including preview gate)</source>
+        <translation>技能实例效果不可用（含预览检查）</translation>
+    </message>
+    <message>
+        <source>memo hit; callbacks not run</source>
+        <translation>缓存命中；未执行回调</translation>
+    </message>
+    <message>
+        <source>Lua mutex busy; client fallback</source>
+        <translation>Lua 互斥锁正被占用；采用客户端回退值</translation>
+    </message>
+    <message>
+        <source>missing source/card</source>
+        <translation>缺少来源或卡牌</translation>
+    </message>
+    <message>
+        <source>equipment consumed as subcard</source>
+        <translation>装备已作为子卡消耗</translation>
+    </message>
+    <message>
+        <source>card pattern mismatch</source>
+        <translation>卡牌模式不匹配</translation>
+    </message>
+    <message>
+        <source>aggregate &gt; 500; later skills not evaluated</source>
+        <translation>小计 &gt; 500；后续技能未求值</translation>
+    </message>
+    <message>
+        <source>modifier subtotal; not total allowance</source>
+        <translation>修正小计；并非总可用额度</translation>
+    </message>
+    <message>
+        <source>Lua mutex busy</source>
+        <translation>Lua 互斥锁正被占用</translation>
+    </message>
+    <message>
+        <source>unlimited; later skills not evaluated</source>
+        <translation>不限次数；后续技能未求值</translation>
+    </message>
+    <message>
+        <source>InfinityAttackRange flag</source>
+        <translation>InfinityAttackRange 标记</translation>
+    </message>
+    <message>
+        <source>clamped &gt;= 0</source>
+        <translation>最低为 0</translation>
+    </message>
+    <message>
+        <source>null or self target</source>
+        <translation>目标为空或为自己</translation>
+    </message>
+    <message>
+        <source>target seat &lt; 0</source>
+        <translation>目标座次 &lt; 0</translation>
+    </message>
+    <message>
+        <source>fixed skill override</source>
+        <translation>技能固定值覆盖</translation>
+    </message>
+    <message>
+        <source>fixed distance map minimum</source>
+        <translation>固定距离映射的最小值</translation>
+    </message>
+    <message>
+        <source>clamped &gt;= 1</source>
+        <translation>最低为 1</translation>
+    </message>
+    <message>
+        <source>missing/dead target</source>
+        <translation>目标不存在或已死亡</translation>
+    </message>
+    <message>
+        <source>isCardLimited(MethodUse)=true; internal reason not traced</source>
+        <translation>卡牌受使用限制（MethodUse）；内部原因未记录</translation>
+    </message>
+    <message>
+        <source>ProhibitSkill rejected target</source>
+        <translation>ProhibitSkill 拒绝此目标</translation>
+    </message>
+    <message>
+        <source>attack range pair override</source>
+        <translation>匹配攻击范围配对条件；直接通过</translation>
+    </message>
+    <message>
+        <source>inMyAttackRange result</source>
+        <translation>目标是否在攻击范围内的结果</translation>
+    </message>
+    <message>
+        <source>self-target gate; distance gate bypassed</source>
+        <translation>检查是否以自己为目标；已绕过距离检查</translation>
+    </message>
+    <message>
+        <source>incomplete / unwound</source>
+        <translation>计算未完成／调用栈已回退</translation>
+    </message>
+    <message>
+        <source>unknown (callback has no holder)</source>
+        <translation>未知（回调没有持有者参数）</translation>
+    </message>
+    <message>
+        <source>system</source>
+        <translation>系统</translation>
+    </message>
+    <message>
+        <source>%1; currentAmount=%2; applies=%3; unlimited=%4; explicitSigned=%5</source>
+        <translation>%1；当前数值=%2；适用=%3；不限次数=%4；显式带符号=%5</translation>
+    </message>
+    <message>
+        <source>fixed maximum</source>
+        <translation>固定值取最大值</translation>
+    </message>
+    <message>
+        <source>add</source>
+        <translation>累加</translation>
     </message>
 </context>
 </TS>

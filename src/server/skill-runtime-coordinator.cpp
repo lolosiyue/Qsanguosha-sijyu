@@ -117,12 +117,13 @@ private:
     QString m_key;
 };
 
-bool isCorrectSkillV2Definition(const Skill *skill)
+bool supportsSkillInstanceCorrectState(const Skill *skill)
 {
     return dynamic_cast<const DistanceSkillV2 *>(skill)
         || dynamic_cast<const MaxCardsSkillV2 *>(skill)
         || dynamic_cast<const TargetModSkillV2 *>(skill)
-        || dynamic_cast<const AttackRangeSkillV2 *>(skill);
+        || dynamic_cast<const AttackRangeSkillV2 *>(skill)
+        || dynamic_cast<const ProhibitSkillV2 *>(skill);
 }
 
 void recordAmountDescription(ServerPlayer *owner, ServerPlayer *source,
@@ -904,7 +905,7 @@ bool SkillRuntimeCoordinator::setSkillInstanceCorrectState(
         return false;
     ServerPlayer *owner = m_room.findPlayerByObjectName(ref.ownerObjectName, true);
     const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
+    if (!owner || !supportsSkillInstanceCorrectState(skill)
         || !owner->setSkillInstanceCorrectStateValue(ref.key.skillName,
                                                       ref.key.instanceID,
                                                       key, value)) {
@@ -931,7 +932,7 @@ bool SkillRuntimeCoordinator::removeSkillInstanceCorrectState(
         return false;
     ServerPlayer *owner = m_room.findPlayerByObjectName(ref.ownerObjectName, true);
     const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
+    if (!owner || !supportsSkillInstanceCorrectState(skill)
         || !owner->removeSkillInstanceCorrectStateValue(ref.key.skillName,
                                                          ref.key.instanceID,
                                                          key)) {
@@ -956,7 +957,7 @@ bool SkillRuntimeCoordinator::clearSkillInstanceCorrectState(
         return false;
     ServerPlayer *owner = m_room.findPlayerByObjectName(ref.ownerObjectName, true);
     const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
+    if (!owner || !supportsSkillInstanceCorrectState(skill)
         || !owner->clearSkillInstanceCorrectState(ref.key.skillName,
                                                    ref.key.instanceID)) {
         return false;

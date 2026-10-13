@@ -338,6 +338,27 @@ function sgs.CreateProhibitSkill(spec)
 	return skill
 end
 
+function sgs.CreateProhibitSkillV2(spec)
+	assert(type(spec.name) == "string")
+	assert(type(spec.is_prohibited) == "function")
+	local selector = spec.holder_selector or sgs.CorrectSkill_Secondary
+	assert(selector == sgs.CorrectSkill_Primary or selector == sgs.CorrectSkill_Secondary
+		or selector == sgs.CorrectSkill_Participants or selector == sgs.CorrectSkill_AllHolders
+		or selector == sgs.CorrectSkill_System, "invalid ProhibitSkillV2 holder_selector")
+	assert(spec.supports_source_less == nil or type(spec.supports_source_less) == "boolean")
+	local skill = sgs.LuaProhibitSkillV2(spec.name, spec.frequency or sgs.Skill_Compulsory)
+	configureTargetTip(skill, spec)
+	skill:setHolderSelector(selector)
+	if spec.gate ~= nil then
+		-- Same atoms as CorrectSkillV2 (CorrectSkillGate): primary = from, secondary = to.
+		assert(selector == sgs.CorrectSkill_System, "gate requires holder_selector = sgs.CorrectSkill_System")
+		assert(type(spec.gate) == "table" and skill:setGate(spec.gate), "invalid gate atom")
+	end
+	skill:setProperty("supportsSourceLessProhibition", sgs.QVariant(spec.supports_source_less == true))
+	skill.is_prohibited = spec.is_prohibited
+	return skill
+end
+
 function sgs.CreateProhibitPindianSkill(spec)
 	assert(type(spec.name)=="string")
 	local skill = sgs.LuaProhibitPindianSkill(spec.name,spec.frequency or sgs.Skill_Compulsory)
@@ -378,6 +399,11 @@ local function configureCorrectSkillV2(skill, spec)
 	configureTargetTip(skill, spec)
 	skill:setBaseAmount(spec.base_amount or 1)
 	skill:setHolderSelector(spec.holder_selector or sgs.CorrectSkill_Primary)
+	if spec.gate ~= nil then
+		-- Optional prerequisite (CorrectSkillGate in src/core/skill.h): the callbacks run only while one atom holds.
+		assert(spec.holder_selector == sgs.CorrectSkill_System, "gate requires holder_selector = sgs.CorrectSkill_System")
+		assert(type(spec.gate) == "table" and skill:setGate(spec.gate), "invalid gate atom")
+	end
 	if type(spec.correct_func) == "function" then
 		skill.correct_func = spec.correct_func
 	end

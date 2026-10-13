@@ -2,6 +2,8 @@
 #include "startscene.h"
 #include "roomscene.h"
 #include "server.h"
+#include "room.h"
+#include "correction-inspector.h"
 #include "generaloverview.h"
 #include "cardoverview.h"
 #include "ui_mainwindow.h"
@@ -28,7 +30,6 @@
 #include "client.h"
 #ifdef Q_OS_ANDROID
 #include "client-live-session.h"
-#include "room.h"
 #include "protocol/session/session-payloads.h"
 #endif
 #include "clientplayer.h"
@@ -268,6 +269,39 @@ MainWindow::MainWindow(QWidget *parent)
 {
 	ui->setupUi(this);
     installAndroidDialogFit(qApp); // Shared fitting also serves desktop portrait preview.
+
+    QAction *correctionAction = ui->menuOptions->addAction(tr("Skill correction inspector (read-only)"));
+    correctionAction->setObjectName(QStringLiteral("actionCorrectionInspector"));
+    correctionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J));
+    connect(correctionAction, &QAction::triggered, this, [this] {
+        if (!server || !Config.EnableCheat) {
+            QMessageBox::information(this, tr("Corrections"),
+                tr("Local host with cheat mode required. Start a local test room first."));
+            return;
+        }
+        const QList<Room *> rooms = server->findChildren<Room *>();
+        QStringList choices;
+        QList<std::shared_ptr<CorrectionTraceStore>> available;
+        for (Room *room : rooms) if (room->roomRuntime() && !room->roomRuntime()->correctionTraces()->closed()) {
+            available << room->roomRuntime()->correctionTraces(); choices << QString::number(room->getId());
+        }
+        if (available.isEmpty()) {
+            QMessageBox::information(this, tr("Corrections"), tr("No local room yet."));
+            return;
+        }
+        int index = 0;
+        if (available.size() > 1) {
+            bool ok = false;
+            const QString choice = QInputDialog::getItem(this, tr("Corrections"), tr("Local room"), choices, 0, false, &ok);
+            if (!ok) return;
+            index = choices.indexOf(choice);
+        }
+        const QString name = QStringLiteral("correctionInspector_%1").arg(choices.at(index));
+        if (auto *existing = findChild<QDialog *>(name)) { existing->show(); existing->raise(); existing->activateWindow(); return; }
+        auto *dialog = new CorrectionInspector(available.at(index), choices.at(index).toInt(), this);
+        dialog->setObjectName(name);
+        dialog->show();
+    });
 
 	// Keep the state shortcut independent of the table's legacy hotkey setting.
 	ui->menuOptions->addSeparator();
@@ -1042,6 +1076,8 @@ void MainWindow::setupAndroidUi()
 		m_androidMenuButton->addPanelAction(action);
 	m_androidMenuButton->addPanelAction(ui->actionSurrender);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameStateSnapshot")))
+		m_androidMenuButton->addPanelAction(action);
+	if (auto *action = findChild<QAction *>(QStringLiteral("actionCorrectionInspector")))
 		m_androidMenuButton->addPanelAction(action);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameControlPanel")))
 		m_androidMenuButton->addPanelAction(action);

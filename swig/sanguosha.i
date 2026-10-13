@@ -159,6 +159,7 @@ public:
 %feature("new", "0") LuaTriggerSkillV2;
 %feature("new", "0") LuaScenarioRule;
 %feature("new", "0") LuaProhibitSkill;
+%feature("new", "0") LuaProhibitSkillV2;
 %feature("new", "0") LuaProhibitPindianSkill;
 %feature("new", "0") LuaDistanceSkill;
 %feature("new", "0") LuaDistanceSkillV2;
@@ -1206,18 +1207,21 @@ struct YishiStruct {
 	QString reason;
 	QList<int> card_counts;
 	QList<int> card_ids;
+	QList<int> opinion_counts;
 	QStringList opinions;
 	QString result;
 	QString forced_result;
 	bool started;
 	bool containsParticipant(ServerPlayer *player) const;
+	void removeParticipant(ServerPlayer *player);
 	int getCardCount(ServerPlayer *player) const;
 	void setCardCount(ServerPlayer *player, int count);
 	QList<int> getCards(ServerPlayer *player) const;
 	void setCards(ServerPlayer *player, const QList<int> &ids);
 	QStringList getOpinions(ServerPlayer *player) const;
 	QString getOpinionString(ServerPlayer *player) const;
-	void setOpinions(ServerPlayer *player, const QStringList &values);
+	// Use the existing Lua-table typemap for QStringList input.
+	void setOpinions(ServerPlayer *player, QStringList values);
 	void setOpinion(ServerPlayer *player, const char *opinion);
 	bool hasOpinion(ServerPlayer *player, const char *opinion) const;
 	bool sharesOpinion(ServerPlayer *first, ServerPlayer *second) const;
@@ -2227,6 +2231,17 @@ struct CorrectSkillContext {
 	QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
 };
 
+struct ProhibitSkillContext {
+	ProhibitSkillContext();
+	SkillInstanceRef getInstanceRef() const;
+	const Player *getHolder() const;
+	const Player *getFrom() const;
+	const Player *getTo() const;
+	const Card *getCard() const;
+	QList<const Player *> getOtherTargets() const;
+	QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
+};
+
 struct CorrectSkillResult {
 	CorrectSkillResult(bool isApplicable = false, int amount = 0, bool isUnlimited = false);
 	static CorrectSkillResult noEffect();
@@ -2463,6 +2478,10 @@ public:
 	void clearCardFlag(int card_id, ServerPlayer*who = nullptr);
 	void setCardTip(int card_id, const char*tip);
 	void clearCardTip(int card_id);
+	bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+	                             const QList<int> &materialIds = QList<int>());
+	bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+	                             const QList<int> &materialIds, bool directly);
 	CardUseStruct getUseStruct(const Card*card);
 	bool useCard(CardUseStruct&use, bool add_history = false);
 	void damage(DamageStruct damage);
@@ -2693,7 +2712,8 @@ public:
 					bool optional = false, bool include_equip = false, const char*prompt = nullptr, const char*pattern = ".", const char*skill_name = nullptr);
 	Card*askForExchange(ServerPlayer*player, const char*reason, int exchange_num, int min_num,
 							bool include_equip = false, const char*prompt = nullptr, bool optional = false, const char*pattern = ".");
-	YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const char *reason);
+	YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants,
+		const char *reason, int minimum_participants = 2);
 	bool askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
 	bool useNullified(const Card*use_card);
 	const Card*isCanceled(const CardEffectStruct&effect);

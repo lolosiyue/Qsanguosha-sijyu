@@ -172,7 +172,9 @@ bool Card::isKindOf(const char *cardType) const
         return false;
     if (inherits(cardType))
         return true;
-    if (getTypeId() == TypeSkill || !isHegemonyCardClassName(QString::fromLatin1(metaObject()->className())))
+    // isHegemonyCardClassName() on the raw class name; every pattern miss lands here.
+    const char *className = metaObject()->className();
+    if (getTypeId() == TypeSkill || className[0] != 'H' || className[1] < 'A' || className[1] > 'Z')
         return false;
     return inherits((QByteArray("H") + cardType).constData());
 }

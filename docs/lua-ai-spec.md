@@ -1029,8 +1029,8 @@ C++ 端再做一次授權檢查：答案裡的牌必須在 `card_ids` 內、玩�
 隔離路由接受 `{cards = {id}}`，且該 ID 必須屬於本題授權的實體候選；也接受
 `{kind="answer", card_spec=...}`，由 native 核對本題 conversion ticket、activation/source
 instance、成本、pattern／method 與 revision 後重建。show／pindian 仍限定 offered 實體牌，
-不能用 card_spec；V1 view-as 與未投影成本並未因此全部完成。非法結果仍可能回退舊 AI，
-但 fallback 不算 isolated 驗收通過。
+不能用 card_spec；V1 view-as 依 §15.2.7 由 SmartAI 回答，未投影成本並未因此全部完成。
+非法結果仍可能回退舊 AI，但 fallback 不算 isolated 驗收通過。
 
 隔離側 registry 依 `options.question` 再分表：`ai_skill_cardask`、`ai_nullification`、
 `ai_cardshow`、`ai_skill_pindian`、`ai_skill_singlepeach`，每張表的鍵一樣是 reason。
@@ -1041,8 +1041,8 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 正規化與隨機退路；它的 `skills` 映射與 `data` 仍留在 legacy 呼叫裡，沒有跨界。
 
 至此二十個 AI 公開入口都走同一條通路：`activate`／`askForUseCard` 用出牌結果，其餘用值型
-答案。部分 V2 轉化與型別化事件上下文已有純值投影；未覆蓋的 V1 view-as、成本／合法性或
-任意 `QVariant data` 操作仍是缺口。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
+答案。部分 V2 轉化與型別化事件上下文已有純值投影；V1 view-as 依 §15.2.7 由 SmartAI 回答，
+未投影的成本／合法性與任意 `QVariant data` 操作仍是缺口。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
 
 #### 15.2.6 牌區投影：可見牌、牌堆與位置索引
 
@@ -1088,6 +1088,18 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 | `AIPlayerView` | `state`（`robot`／`online`／`trust`…）、`skills_complete`（國戰隱藏了部分技能時為 false）、`marks_complete`（viewer 本人為 true，未列出的 mark 即 0） | `getState()`、`areSkillsComplete()`、`getMark(name)` |
 | `AICardView` | `legacy_string_key`／`legacy_sort_key`（只有實體牌）、`name_length`、`can_recast`、`will_throw`、`single_target`；`source_skill` 只在自己的牌或發動技能即其來源時出現 | `getLegacyStringKey()`、`nameLength()`、`canRecast()`、`willThrow()`、`isSingleTargetCard()`、`getSourceSkillName()` |
 | `AICardView`（viewer 自己的手牌、裝備、開放牌堆） | `skill_names`（`skill_names_complete` 為 true）、`engine_class_name`、`locked`、`jilei`、`using` | `PlayerView:isLocked(card)`、`isJilei(card)`、`hasFlag("using")` |
+| `AICardView`（viewer 自己的牌） | `limits`／`limits_hand`（各 HandlingMethod 的 `isCardLimited`）、`prohibited`（每名存活者的 `isProhibited`）、`target_residue`（傷害牌與自用基本牌的 Residue 修正）、`available`（`isAvailable`）、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`（不指定目標的 TargetMod 修正） | `PlayerView:isCardLimited(card, method, is_handcard)`、`isProhibited(other, card)`、`CardView:getTargetResidue(target)`、`CardView:isAvailable(player)`、`getTargetModResidue/Distance/Extra(player)` |
+| `AICardView` | `flags`（`setCardFlag` 會廣播） | `CardView:hasFlag(name)` |
+| `AIWorldView` | `draw_pile_count`、`current_dying`（無人瀕死為空字串） | `world.draw_pile_count`、`RoomView:getCurrentDyingPlayer()` |
+| `AIWorldView`（只在決策請求投影） | `use_history`：進行中的用牌，Room tag `UseHistory`＋牌字串，以牌字串為鍵；值是 `{from, to, card, nullified_list}`，指標已失效的用牌不列 | `SmartAIView:getUseHistory(key)`（沒有該用牌時回 nil） |
+| `AIPlayerView` | `flags`（`setPlayerFlag` 會廣播，所有玩家都有）、`in_yinni_state`、`has_judge_area`、`equip_areas`、`change_skill_states` | `hasFlag(name)`、`inYinniState()`、`hasJudgeArea()`、`hasEquipArea([i])`、`getChangeSkillState(skill)` |
+| `AIPlayerView`（只有 viewer） | `used_history`（每個 history key 的 `usedTimes`）、`tags`／`properties`（自己的 tag 與動態 property，轉成純值；gameplay struct 變成帶玩家名稱與公開牌面的表）、`can_slash_without_crossbow`、`can_discard`（對每名玩家 `h/e/j/he/hj/ej/hej` 的 `canDiscard`） | `hasUsed(key)`、`usedTimes(key)`、`getTag(name)`、`getPropertyValue(name)`、`canSlashWithoutCrossbow()`、`canDiscard(who, zones)` |
+| `AISkillView` | `description`、`limit_mark`、`trigger_events`；viewer 自己的 view-as 技能另有 `view_as_v2`、`enabled_at_play`；ViewAsEquipSkill 有 `view_as_equip_names`（`viewAsEquip(持有者)`） | `getDescription()`、`getLimitMark()`、`hasTriggerEvent(event)`、`SmartAIView:getFillSkillContext(name)`、`getViewAsEquipNames()` |
+| `AIPlayerView` | `armor_effect_names`：有視為裝備來源時，實體或被視為的防具中 `hasArmorEffect` 成立的名稱（沒有此來源時改用 `active_armor_name`） | `hasArmorEffect([name])` |
+| `CandidateView`／`ConversionView` | `extra_target_count`、`extra_target_by_player`（ExtraTarget 修正）、`target_filter_empty`（空前綴的 `targetFilter`，每名存活者） | `getExtraTargetCount([target])`、`canTargetWithEmptyPrefix(target)` |
+| `AIPlayerView` | `attack_range_without_weapon`、`skipped_phases`、`prototype_rules`（只在決策請求投影，事件與 TriggerOrder 不帶）：Slash／Jink／Peach／Analeptic／Nullification 原型的 `use_limited`、`response_limited`、`available`、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`，viewer 自己的 Slash 另有 `target_filter_empty`、`extra_target` | `getAttackRange(false)`、`isSkipped(phase)`、`sgs.Slash_IsAvailable`；Lua 端組出的轉化牌評估沿用其原型規則 |
+| `AISkillView`（viewer 自己的 view-as 技能） | `enabled_at_response`：對 `slash`、`jink`、`peach`、`analeptic`、`nullification`、`peach+analeptic` 的 `isEnabledAtResponse` | `getConversionPolicy(class)` 的 V1 列 |
+| `AIChoiceOptions`（AmazingGrace） | `context.acquired_card_evaluations[id]`：每張可拿的牌以 viewer 為持有者的 `card`（owner 欄位，`limits_hand` 照手牌算）、同一組規則的 `card_rules`、出牌 `candidate`（目標組合同手牌 candidate，`candidate_id` 為 -1，不是票）；`context.printed_card_evaluations[name]`：每個展示牌名的印刷牌（無花色、無子卡）同樣三欄 | `SmartAIView:getAcquiredCardEvaluation(card)`、`evaluateAcquiredCard(card)`；這些牌的 `isAvailable`／`isCardLimited` 也讀 `card_rules`。`getEvaluationCard(name)` 與無材料的 `evaluateOwnerViewAsCard` 帶上印刷列的規則與 candidate；沒有印刷列的 owner view-as 評估 `complete_coverage` 為 false |
 
 `inherits` 只比對快照裡的類別鏈，所以 `LuaTriggerSkill` 也答得出 `TriggerSkill`；沒有類別
 投影回 nil，不會退回「不是」。主公技是否生效由權威端算好（`hasLordSkill`），不是由 AI 自己
@@ -1103,10 +1115,47 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 `string.split`／`contains`／`startsWith`／`endsWith` 以純 Lua 補進沙箱，與 gameplay VM 同名
 同語意，只做字串處理；若環境已有實作則不覆寫。
 
+靜態卡牌目錄在 VM 初始化時以全域 `ai_card_catalog` 推入一次：依引擎順序每個牌名一列，含
+`name`、`class_name`、`kind_of`、`type_id`、`subtype`、`package`、`banned`、`count`（引擎內同名張數）、
+`target_fixed`、`damage_card`、`nd_trick`、`can_recast`、`single_target`、`equip_slot`、
+`occupy_locations`、`weapon_range`。`AICardCatalog.get(name)`、`patternNames()`（SmartAI 的
+`patterns()`）、`patternClassNames()` 與 `SmartAIView:getEvaluationCard(name)`（無合法性的印刷原型）
+都讀這份目錄。
+
+CardEffect 的決策上下文與 `card_effect` 事件另帶 `offset_num`、`no_respond`、`no_offset`；
+`askForCard` 的上下文另帶 `effect_present`：該題 data 是否為 CardEffect（SmartAI 的 `data:toCardEffect()`）。
+QStringList 的 data 投影為 `context.string_list`（`data:toStringList()`）。決策上下文裡的牌列與世界視圖的
+牌一樣帶 `flags`。
+`SmartAIView:getLastCardEffect()` 從事件紀錄取最近一次 CardEffect（SmartAI 的 `sgs.cardEffect`）。
+`askForGeneral` 的上下文帶 `general_catalog`（候選武將的勢力、體力上限、技能描述）與
+`lord_general_kingdom`。
+
+由公開資料推得、不另投影的值：旗標與 `-Clear`／`-PlayClear` mark 的清除週期由
+`AIWorldLifecycle.epochs(world, kind)` 依 `Global_TurnCount`、當前回合與存活狀態算出；國戰的公開
+亮將與勢力由 `AIHegemony.facts(world)` 從玩家視圖整理；SmartAI 存在自身物件上的跨決策欄位改存
+`ai_memory`（目標欄位只存玩家名稱）。本題揭示的牌（AG、觀星等 `options.cards`）在
+`getKnownCardById` 與 `RoomView:isCardKnown` 裡也算已知。
+
+技能卡由 `bindSkillCard` 產生收據：V2 技能以本題 `skill_actions` 中的實例回答
+`{skill_action, cards, user_string}`。權威端重建牌並重驗 canActivate、次數與目標，收據本身不宣稱
+目標合法性。規劃期間的技能卡與轉化牌（`evaluateTurnSkillCard`、`evaluateOwnerViewAsCard`）是依
+牌目錄與材料牌面在 Lua 端組出的評估牌，選中後才換成收據。
+
+V1 技能依設計由 SmartAI 回答，isolated 不送 legacy 牌字串。V1 技能卡、出牌階段的 V1 轉化
+（`bindTurnConversion`）與回應政策裡 V1 技能的 `ai_view_as`／`ai_cardsview` 產物
+（`name:skill[suit:number]=ids`）只登記為評估收據（`legacy_v1`），可參與估值；`toCardSpec`
+送出這種收據時回報 unsupported，整題退回 SmartAI。出牌階段（`activate`）只要 viewer 有
+`enabled_at_play` 的 V1 view-as 技能且有 `ai_fill_skill`，`fillSkillCards` 在規劃前就回報 unsupported。
+回應政策結果裡的牌 ID 仍指自己的牌。
+
+`getSkillViewCard`、`cardsView`、`getGuhuoCard` 的 V1 列在 legacy 先問
+`isEnabledAtResponse(player, patterns(class))`。`enabled_at_response` 只投影基本牌名；其他類別照樣
+執行 callback，沒提出該類別的產物時結果與是否啟用無關而直接略過，提出了才回報未知。
+
 #### 15.2.8 合法候選契約：可用牌、可選目標與距離
 
 出牌類請求（`Activate`／`UseCard`／`RespondCard`）多帶一份 `request.card_candidates`，
-每張自己的牌一筆，由權威端在建立 request 時算好：
+手牌、裝備與看得到的 hand pile 牌每張一筆，由權威端在建立 request 時算好：
 
 | 欄位 | 內容 |
 |---|---|
@@ -1128,6 +1177,36 @@ B 是否仍合法」這種逐步收斂的查詢，屬於值型推演批次，本
 `CandidateView` 是新的代理種類（`AIValue.kind` 回 `candidate`），查詢
 `SmartAIView:getCardCandidates()`／`getCardCandidate(id)`；沒有候選投影的請求回 nil，
 表示「這次沒問到」，不是「沒有可用的牌」。
+
+`RespondCard` 另帶 `request.conversion_policy`。`physical_class_order` 是 SmartAI `askForCard` 的
+實體牌類別發現順序：pattern 第四欄只有 `hand` 或 `equipped` 時掃 h 或 e，否則掃 he，之後接 hand
+pile；每張牌以 `Slash`（殺的子類）或 `getClassName()` 去重，牌名出現在 pattern 內或 `matchPattern`
+成立就收錄，不先過濾限制與可用性。掃描中有牌無法解析時 `physical_class_order_complete` 為 false。
+本題發了轉化票時另帶 `class_order`（`class_order_complete` 為 true）：SmartAI 第二輪 `patterns(true)` 的
+結果，即引擎每個牌類別取最後登記的牌名，牌名在 pattern 內或其印刷原型 `matchPattern` 成立者，依引擎順序列為
+`{class_name, card_name, matches_response_pattern}`。沒有轉化票時這一輪不會多出答案，故不投影。
+`complete` 等於 `conversions_enumerated`；逐類的技能政策由 Lua 端自行推得。
+
+`UseCard` 也帶 `request.conversion_policy`，對應 SmartAI `askForUseCard` 在掛鉤都沒作答後的後備掃描：
+只在處理方式為使用、pattern 不以 `@` 開頭時計算，固定掃 he 接 hand pile，兩輪的比對都改用
+`matchExpPattern`。其他使用題的 `physical_class_order` 為空，`physical_class_order_complete` 為 false。
+
+V2 轉化票的材料與 Room 驗證人類操作時相同：自己的 he，`isResponseOrUse` 的技能另加 hand pile，再加
+`getExpandPileCardIds`（含 `#牌堆` 的 `<牌堆>ForAI` 已告知牌）。viewer 看不到的材料（他人未公開的牌堆或
+手牌）不發票。可變成本（`hasIndependentAIConversion`）只對手牌發票。hand pile 中看得到的牌也是實體候選，
+回應題（亮牌、拼點除外）可直接以它作答，與 Room 接受人類回應的規則一致。
+
+`conversions_enumerated` 為 false 的來源：看不到的 hand pile 牌或轉化材料、可變成本技能另有 hand pile
+或 expand pile 材料、`View_As_Equips_List`、不是以技能實例持有的裝備 view-as 技能、ViewAsEquipSkill、
+無法詢問、成本超出契約或造牌失敗的 V2 技能動作、探測預算或 64 張票的上限用盡，以及這題引擎會提供的
+V1 view-as 技能。「會提供」對 V2 是本題 `skill_actions` 有它的實例；對 V1 是出牌時 `isEnabledAtPlay`、
+回應與無懈時 `isEnabledAtResponse(pattern)`。
+
+轉化票的 `available`：出牌看 `isAvailable`，回應看 `matchPattern(pattern)`；`@@技能` 詢問要的是該技能的產物，
+`canActivate` 與 `createCard` 接受後不再比對 pattern，只看 `isCardLimited`。回應與使用詢問的轉化票另帶
+`matches_response_pattern`，即同一個 pattern 判定。每張票也帶權威端造出那張牌的 `legacy_string_key`
+（`Card::toString`）與 `locked`（`Player::isLocked`）。回應政策（`ai_view_as`、`ai_cardsview`、`ai_guhuo_card`）
+提出的產物，若與本題某張固定成本票的技能、牌名與材料都相同，就以該票作答；其餘產物只作評估（§15.2.7）。
 
 轉牌與過濾後的候選（view-as／`CardFilter` 結果）仍不在這裡：它們要先有值型造牌介面，
 屬於下一批。
@@ -1329,7 +1408,7 @@ Shadow 雙跑比對已移除；完成標準採獨立新版。一般未設定的 
 
 驗收門檻（需另獲建置與執行授權）：
 
-1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。現有 coordinator 尚缺逐題路由、native 接受／拒絕及 fallback 的觀測，只有完局或無 error log 時此項仍是 BLOCKED。
+1. 驗收範圍內的決策（不含 §15.2.7 交給 SmartAI 的 V1 技能）全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。現有 coordinator 尚缺逐題路由、native 接受／拒絕及 fallback 的觀測，只有完局或無 error log 時此項仍是 BLOCKED。
 2. 隔離性（VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）與 VM 重建（指令／記憶體上限觸發後 `ai_memory` 歸零而決策繼續）目前沒有自動化覆蓋（測試套件已於 2026-09-25 移除）。
 3. 效能：`QSAN_AI_PROBE=1` 在 request 建立後才計時且可含 SmartAI fallback，量測須另有來源與階段證據，O(n) 掃描與 O(n log n) 排序分別列明。
 

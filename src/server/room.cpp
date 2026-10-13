@@ -3299,6 +3299,19 @@ void Room::clearCardTip(int card_id)
 	m_cardState->clearCardTip(card_id);
 }
 
+bool Room::setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                   const QList<int> &materialIds)
+{
+    return setYingBianEffectsForCard(player, card, materialIds, card && card->isVirtualCard());
+}
+
+bool Room::setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
+                                   const QList<int> &materialIds, bool directly)
+{
+    return player && player->getRoom() == this
+        && GameRule::setYingBianEffectsForCard(player, card, materialIds, directly);
+}
+
 void Room::addPlayerToRoster(ServerPlayer *player)
 {
 	m_roster->add(player);
@@ -8042,29 +8055,23 @@ bool Room::isAllOnPlace(const Card *card, Player::Place place)
 }
 
 
-YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason)
+YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants,
+                            const QString &reason, int minimum_participants)
 {
 	QList<ServerPlayer *> valid_participants;
 	foreach (ServerPlayer *participant, participants) {
-		if (participant && participant->isAlive() && !participant->isKongcheng()
+		if (participant && participant->isAlive()
 			&& !valid_participants.contains(participant))
 			valid_participants << participant;
 	}
+	sortByActionOrder(valid_participants);
 
 	YishiStruct yishi(initiator, valid_participants, reason);
-	if (!initiator || !initiator->isAlive() || valid_participants.length() < 2)
+	minimum_participants = qMax(1, minimum_participants);
+	if (!initiator || !initiator->isAlive() || valid_participants.length() < minimum_participants)
 		return yishi;
 
 	yishi.started = true;
-	LogMessage log;
-	log.type = "$askYishi";
-	log.from = initiator;
-	log.to = valid_participants;
-	log.arg = reason;
-	sendLog(log);
-	foreach (ServerPlayer *participant, valid_participants)
-		doAnimate(1, initiator->objectName(), participant->objectName());
-
 	auto trigger_yishi_event = [this, &yishi](TriggerEvent event) {
 		QList<ServerPlayer *> targets = yishi.participants;
 		if (yishi.initiator && !targets.contains(yishi.initiator))
@@ -8078,32 +8085,69 @@ YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer 
 	};
 
 	trigger_yishi_event(YishiStart);
+	// Start hooks can supply a fixed opinion without requiring a hand card.
 	foreach (ServerPlayer *participant, valid_participants) {
-		const int count = qBound(1, yishi.getCardCount(participant), participant->getHandcardNum());
+		if (!participant->isAlive()
+			|| (participant->isKongcheng() && yishi.getCardCount(participant) > 0))
+			yishi.removeParticipant(participant);
+	}
+	valid_participants = yishi.participants;
+	if (!initiator->isAlive() || valid_participants.length() < minimum_participants) {
+		yishi.started = false;
+		return yishi;
+	}
+
+	LogMessage log;
+	log.type = "$askYishi";
+	log.from = initiator;
+	log.to = valid_participants;
+	log.arg = reason;
+	sendLog(log);
+	foreach (ServerPlayer *participant, valid_participants)
+		doAnimate(1, initiator->objectName(), participant->objectName());
+
+	foreach (ServerPlayer *participant, valid_participants) {
+		const int count = qBound(0, yishi.getCardCount(participant), participant->getHandcardNum());
 		if (count != yishi.getCardCount(participant))
 			yishi.setCardCount(participant, count);
+		if (count == 0)
+			continue;
 
-		QList<int> selected = yishi.getCards(participant);
+		QList<int> selected;
 		QSet<int> unique_ids;
-		bool preset_is_valid = selected.length() == count;
-		foreach (int id, selected) {
-			if (id < 0 || unique_ids.contains(id) || getCardOwner(id) != participant
+		bool preset_is_valid = true;
+		foreach (int id, yishi.getCards(participant)) {
+			if (id < 0)
+				continue;
+			if (unique_ids.contains(id) || getCardOwner(id) != participant
 				|| getCardPlace(id) != Player::PlaceHand) {
 				preset_is_valid = false;
 				break;
 			}
 			unique_ids.insert(id);
+			selected << id;
 		}
 
-		if (!preset_is_valid) {
-			Card *chosen = askForExchange(participant, reason + "_yishi", count, count, false,
-				QString("askyishicard:%1").arg(count));
-			selected = chosen ? chosen->getSubcards() : QList<int>();
+		if (!preset_is_valid)
+			selected.clear();
+		const int missing = count - selected.length();
+		if (missing > 0) {
+			// Keep a fixed revealed card when another skill adds opinion cards.
+			QStringList excluded;
+			foreach (int id, selected)
+				excluded << QString("^%1").arg(id);
+			const QString pattern = excluded.isEmpty() ? "." : excluded.join('+');
+			Card *chosen = askForExchange(participant, reason + "_yishi", missing, missing, false,
+				QString("askyishicard:%1").arg(missing), false, pattern);
+			if (chosen)
+				selected << chosen->getSubcards();
 		}
 		yishi.setCards(participant, selected);
 	}
 
 	foreach (ServerPlayer *participant, valid_participants) {
+		if (yishi.getCardCount(participant) == 0)
+			continue;
 		QStringList opinions;
 		foreach (int id, yishi.getCards(participant)) {
 			const Card *card = Sanguosha->getCard(id);

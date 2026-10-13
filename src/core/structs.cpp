@@ -364,6 +364,7 @@ YishiStruct::YishiStruct(ServerPlayer *initiator, const QList<ServerPlayer *> &p
         Q_UNUSED(participant);
         card_counts << 1;
         card_ids << -1;
+        opinion_counts << 1;
         opinions << "no_opinion";
     }
 }
@@ -386,6 +387,31 @@ bool YishiStruct::containsParticipant(ServerPlayer *player) const
     return participantIndex(player) >= 0;
 }
 
+int YishiStruct::opinionOffset(int participant_index) const
+{
+    int offset = 0;
+    for (int i = 0; i < participant_index && i < opinion_counts.length(); ++i)
+        offset += qMax(0, opinion_counts.at(i));
+    return offset;
+}
+
+void YishiStruct::removeParticipant(ServerPlayer *player)
+{
+    const int index = participantIndex(player);
+    if (index < 0)
+        return;
+
+    const int card_offset = cardOffset(index);
+    for (int i = 0; i < card_counts.at(index); ++i)
+        card_ids.removeAt(card_offset);
+    const int opinion_offset = opinionOffset(index);
+    for (int i = 0; i < opinion_counts.at(index); ++i)
+        opinions.removeAt(opinion_offset);
+    card_counts.removeAt(index);
+    opinion_counts.removeAt(index);
+    participants.removeAt(index);
+}
+
 int YishiStruct::getCardCount(ServerPlayer *player) const
 {
     const int index = participantIndex(player);
@@ -401,15 +427,16 @@ void YishiStruct::setCardCount(ServerPlayer *player, int count)
     count = qMax(0, count);
     const int old_count = qMax(0, card_counts.at(index));
     const int offset = cardOffset(index);
+    const QList<int> selected = getCards(player);
     for (int i = 0; i < old_count && offset < card_ids.length(); ++i)
         card_ids.removeAt(offset);
-    for (int i = 0; i < old_count && offset < opinions.length(); ++i)
-        opinions.removeAt(offset);
-    for (int i = 0; i < count; ++i) {
-        card_ids.insert(offset + i, -1);
-        opinions.insert(offset + i, "no_opinion");
-    }
+    for (int i = 0; i < count; ++i)
+        card_ids.insert(offset + i, i < selected.length() ? selected.at(i) : -1);
     card_counts[index] = count;
+    QStringList values;
+    for (int i = 0; i < count; ++i)
+        values << "no_opinion";
+    setOpinions(player, values);
 }
 
 QList<int> YishiStruct::getCards(ServerPlayer *player) const
@@ -434,9 +461,9 @@ void YishiStruct::setCards(ServerPlayer *player, const QList<int> &ids)
 QStringList YishiStruct::getOpinions(ServerPlayer *player) const
 {
     const int index = participantIndex(player);
-    if (index < 0 || index >= card_counts.length())
+    if (index < 0 || index >= opinion_counts.length())
         return QStringList();
-    return opinions.mid(cardOffset(index), qMax(0, card_counts.at(index)));
+    return opinions.mid(opinionOffset(index), qMax(0, opinion_counts.at(index)));
 }
 
 QString YishiStruct::getOpinionString(ServerPlayer *player) const
@@ -447,21 +474,27 @@ QString YishiStruct::getOpinionString(ServerPlayer *player) const
 void YishiStruct::setOpinions(ServerPlayer *player, const QStringList &values)
 {
     const int index = participantIndex(player);
-    if (index < 0 || index >= card_counts.length())
+    if (index < 0 || index >= opinion_counts.length())
         return;
 
-    const int count = qMax(0, card_counts.at(index));
-    const int offset = cardOffset(index);
-    for (int i = 0; i < count; ++i) {
-        const QString value = values.isEmpty() ? "no_opinion"
-            : values.at(qMin(i, values.length() - 1));
-        opinions[offset + i] = value == "red" || value == "black" ? value : "no_opinion";
+    // An opinion can exist without a revealed card, or count as several votes.
+    const int offset = opinionOffset(index);
+    for (int i = 0; i < opinion_counts.at(index); ++i)
+        opinions.removeAt(offset);
+    opinion_counts[index] = values.length();
+    for (int i = 0; i < values.length(); ++i) {
+        const QString value = values.at(i);
+        opinions.insert(offset + i, value == "red" || value == "black" ? value : "no_opinion");
     }
 }
 
 void YishiStruct::setOpinion(ServerPlayer *player, const QString &opinion)
 {
-    setOpinions(player, QStringList() << opinion);
+    QStringList values;
+    const int count = qMax(1, getOpinions(player).length());
+    for (int i = 0; i < count; ++i)
+        values << opinion;
+    setOpinions(player, values);
 }
 
 bool YishiStruct::hasOpinion(ServerPlayer *player, const QString &opinion) const
@@ -483,9 +516,16 @@ bool YishiStruct::sharesOpinion(ServerPlayer *first, ServerPlayer *second) const
 
 bool YishiStruct::allOpinionsSame() const
 {
+    if (participants.isEmpty())
+        return false;
+    foreach (int count, opinion_counts) {
+        if (count <= 0)
+            return false;
+    }
     const int red = opinionCount("red");
     const int black = opinionCount("black");
-    return red + black > 0 && (red == 0 || black == 0);
+    // Every participant must have a valid opinion; an abstention is not assent.
+    return red + black > 0 && red + black == opinions.length() && (red == 0 || black == 0);
 }
 
 int YishiStruct::opinionCount(const QString &opinion) const

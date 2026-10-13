@@ -40,8 +40,14 @@ public:
     {
         QMutexLocker locker(&m_mutex);
         const Stamp before = readStamp();
-        if (m_valid && before == m_stamp && liveListMatches())
+        // liveListMatches() can only turn false after a skill is destroyed or
+        // renamed, and either bumps the serial first; rescan only then.
+        const quint64 serial = Skill::definitionMutationSerial();
+        if (m_valid && before == m_stamp
+            && (serial == m_validatedSerial || liveListMatches())) {
+            m_validatedSerial = serial;
             return m_skills;
+        }
 
         m_valid = false;
         const Snapshot snapshot = build();
@@ -60,6 +66,7 @@ public:
             m_skills = snapshot.skills;
             m_live = live;
             m_valid = liveListMatches();
+            m_validatedSerial = serial;
         }
         return snapshot.skills;
     }
@@ -84,6 +91,7 @@ private:
 
     QMutex m_mutex;
     bool m_valid = false;
+    quint64 m_validatedSerial = 0;
     Stamp m_stamp {0, 0, {}};
     QList<const T *> m_skills;
     QList<Dependency> m_live;

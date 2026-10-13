@@ -9,6 +9,7 @@
 #include "room-state.h"
 #include "skill-execution-registry.h"
 #include "skill-instance-attachment-registry.h"
+#include "correction-trace.h"
 
 #include <QSet>
 #include <QHash>
@@ -76,6 +77,7 @@ public:
     SkillInstanceAttachmentRegistry &attachedSkills() { return m_attachedSkills; }
     quint64 nextDecisionId() { return ++m_nextDecisionId; }
     quint64 stateRevision() const { return m_stateRevision.load(std::memory_order_relaxed); }
+    std::shared_ptr<CorrectionTraceStore> correctionTraces() const { return m_correctionTraces; }
     void advanceStateRevision(StateMutation mutation);
     void seedRandom(quint64 seed);
 
@@ -122,6 +124,7 @@ public:
     RoomRuntime *roomRuntime() override { return this; }
 
 private:
+    const std::shared_ptr<CorrectionTraceStore> m_correctionTraces = std::make_shared<CorrectionTraceStore>();
     bool onCanonicalOwner() const;
     quint64 drainShutdownStage(const char *stage);
     void reportShutdownBlockers(const char *stage, quint64 scopes, quint64 luaPins);

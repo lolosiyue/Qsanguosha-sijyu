@@ -22,6 +22,9 @@ ExpPattern::ExpPattern(const QString &exp)
                     if (term.negated) name = name.mid(1);
                     term.text = name;
                     term.className = name.toLocal8Bit();
+                    term.percentName = name.startsWith('%');
+                    term.cardStringPossible = name.contains('[') || name.contains('$')
+                        || std::any_of(name.cbegin(), name.cend(), [](QChar c) { return c.isDigit(); });
                     group << term;
                 }
                 alternative.names << group;
@@ -96,22 +99,28 @@ bool ExpPattern::match(const Player *player, const Card *card) const
 bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternative &alternative) const
 {
 	if(!alternative.anyName){
-		// Build the card string only when type matching fails, preserving the short-circuit order.
+		// All four name tests are pure, so the cheap ones run first; the card string
+		// and object name are built only for a term that could equal them.
 		const QString type = card->getType();
-		const QString percentName = "%" + card->objectName();
-		QString cardString;
-		bool cardStringReady = false;
+		QString cardName, cardString;
+		bool cardNameReady = false, cardStringReady = false;
 		bool checkpoint = false;
 		foreach (const QList<Term> &group, alternative.names) {
 			foreach (const Term &term, group) {
-				bool hit = type == term.text;
-				if (!hit) {
+				bool hit = type == term.text || card->isKindOf(term.className.constData());
+				if (!hit && term.percentName) {
+					if (!cardNameReady) {
+						cardName = card->objectName();
+						cardNameReady = true;
+					}
+					hit = QStringView(term.text).mid(1) == cardName;
+				}
+				if (!hit && term.cardStringPossible) {
 					if (!cardStringReady) {
 						cardString = card->toString();
 						cardStringReady = true;
 					}
-					hit = cardString == term.text || percentName == term.text
-						|| card->isKindOf(term.className.constData());
+					hit = cardString == term.text;
 				}
 				checkpoint = hit ? !term.negated : term.negated;
 				if (!checkpoint) break;
