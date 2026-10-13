@@ -1313,4 +1313,64 @@ public:
 
 
 
+class GuMuzhenCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuMuzhenCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuZhengbingCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuZhengbingCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuMutaoCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuMutaoCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuS2LiyongCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuS2LiyongCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuLeiluanPlayCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuLeiluanPlayCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuKuangjuanCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuKuangjuanCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
 #endif

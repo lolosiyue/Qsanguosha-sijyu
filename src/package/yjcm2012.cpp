@@ -1,4 +1,3 @@
-#include "gu-audit2025.h"
 #include "yjcm2012.h"
 #include <QJsonDocument>
 //#include "skill.h"
@@ -2212,6 +2211,79 @@ class OlQianxiClear : public QianxiClear
 public:
     OlQianxiClear() : QianxiClear("olqianxi") {}
 };
+
+// SOURCE-2 follow-up: overwrite warehouse test / alternate versions per Tom 2026-10-13 08:41 JST.
+// Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
+
+// ----- 界王异：贞烈 / 秘计（SOURCE-2） -----
+class GuS2OLZhenlie : public TriggerSkill
+{
+public:
+	GuS2OLZhenlie() : TriggerSkill("olzhenlie")
+	{
+		events << TargetConfirmed << EventPhaseStart;
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	{
+		if (event == EventPhaseStart) {
+			if (player->getPhase() != Player::Finish || player->getMark("olzhenlie_miji-Clear") <= 0) return false;
+			room->setPlayerMark(player, "olzhenlie_miji-Clear", 0);
+			doMiji(room, player);
+			return false;
+		}
+		CardUseStruct use = data.value<CardUseStruct>();
+		if (use.from == player || !use.to.contains(player) || !use.card) return false;
+		if (!(use.card->isKindOf("Slash") || use.card->isNDTrick())) return false;
+		if (!player->askForSkillInvoke(this, data)) return false;
+		room->broadcastSkillInvoke(objectName());
+		room->loseHp(player, 1, true, player, objectName());
+		if (player->isDead()) return false;
+		use.nullified_list << player->objectName();
+		data = QVariant::fromValue(use);
+		QString ch = room->askForChoice(player, objectName(), "obtain+miji", data);
+		if (ch == "obtain" && use.from && !use.from->isNude()) {
+			int id = room->askForCardChosen(player, use.from, "he", objectName());
+			if (id >= 0) room->obtainCard(player, id, objectName(), false);
+		} else if (ch == "miji") {
+			room->setPlayerMark(player, "olzhenlie_miji-Clear", 1);
+		}
+		return false;
+	}
+	void doMiji(Room *room, ServerPlayer *player) const
+	{
+		int x = player->getLostHp();
+		if (x <= 0) return;
+		player->drawCards(x, "olmiji");
+		if (player->isKongcheng()) return;
+		const Card *c = room->askForExchange(player, "olmiji", x, 1, false, "@olmiji-give", true);
+		if (!c) return;
+		ServerPlayer *t = room->askForPlayerChosen(player, room->getOtherPlayers(player), "olmiji", "@olmiji-target");
+		if (t) room->giveCard(player, t, c->getSubcards(), "olmiji");
+	}
+};
+
+class GuS2OLMiji : public TriggerSkill
+{
+public:
+	GuS2OLMiji() : TriggerSkill("olmiji") { events << EventPhaseStart; }
+	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+	{
+		if (player->getPhase() != Player::Finish || player->getLostHp() <= 0) return false;
+		if (!player->askForSkillInvoke(this)) return false;
+		room->broadcastSkillInvoke(objectName());
+		int x = player->getLostHp();
+		player->drawCards(x, objectName());
+		if (player->isDead() || player->isKongcheng()) return false;
+		// distribute up to x cards to others - simplified one give
+		const Card *c = room->askForExchange(player, objectName(), x, 1, false, "@olmiji-give", true);
+		if (!c) return false;
+		ServerPlayer *t = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@olmiji-target", true);
+		if (t) room->giveCard(player, t, c->getSubcards(), objectName());
+		return false;
+	}
+};
+
+
 YJCM2012Package::YJCM2012Package()
     : Package("YJCM2012")
 {
@@ -2269,8 +2341,8 @@ YJCM2012Package::YJCM2012Package()
     wangyi->addSkill(new Miji);
 
     General *ol_wangyi = new General(this, "ol_wangyi", "wei", 3, false);
-    ol_wangyi->addSkill(guNewOLZhenlie());
-    ol_wangyi->addSkill(guNewOLMiji());
+    ol_wangyi->addSkill(new GuS2OLZhenlie);
+    ol_wangyi->addSkill(new GuS2OLMiji);
 
     General *xunyou = new General(this, "xunyou", "wei", 3); // YJ 111
     xunyou->addSkill(new Qice);

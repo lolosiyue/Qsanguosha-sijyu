@@ -1076,4 +1076,56 @@ public:
 
 
 
+class GuQuanjianCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuQuanjianCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuPingtaoCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuPingtaoCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuJichouCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuJichouCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuJichouGiveCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuJichouGiveCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuS2DaozhuanCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuS2DaozhuanCard();
+    bool targetFixed() const override;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    const Card *validate(CardUseStruct &use) const override;
+    const Card *validateInResponse(ServerPlayer *user) const override;
+};
+
 #endif

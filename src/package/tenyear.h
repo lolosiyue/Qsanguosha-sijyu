@@ -2029,4 +2029,54 @@ public:
 
 
 
+class GuXiaowuCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuXiaowuCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuZhongeCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuZhongeCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuJuekaiCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuJuekaiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuJiangxianCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuJiangxianCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
+class GuChuanyuCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuChuanyuCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
 #endif

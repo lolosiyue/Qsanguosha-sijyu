@@ -70,4 +70,14 @@ public:
 
 
 
+class GuHuoluanCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE GuHuoluanCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+};
+
 #endif
