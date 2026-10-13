@@ -14,6 +14,7 @@
 #include "skill-instance-utils.h"
 #include <QScopeGuard>
 #include <memory>
+#include "game-rng.h"
 
 namespace {
 qint64 ddzCurrentUse(Room *room)
@@ -4290,9 +4291,6 @@ public:
     }
 };
 
-// GU-audit2025 follow-up 2026-10-13: generals from Tom's 2025 audit list.
-// Authoritative skill text: qsanguosha-task-briefs/materials/gu-audit2025-tom-20261013/SOURCE.md
-
 static bool guAlive(const ServerPlayer *p)
 {
 	return p && p->isAlive();
@@ -4332,7 +4330,7 @@ static void guRelate(Package *pkg, General *g, const QString &main, const Skill 
 class GuWeiji : public TriggerSkill
 {
 public:
-	GuWeiji() : TriggerSkill("gu_weiji")
+	GuWeiji() : TriggerSkill("weiji")
 	{
 		events << TargetSpecified;
 	}
@@ -4348,7 +4346,7 @@ public:
 		foreach (ServerPlayer *p, others) {
 			if (player->isDead()) break;
 			if (p->isDead()) continue;
-			QString guess = room->askForChoice(p, "gu_weiji_guess", "1+2+3", QVariant::fromValue(player));
+			QString guess = room->askForChoice(p, "weiji_guess", "1+2+3", QVariant::fromValue(player));
 			LogMessage log;
 			log.type = "#GuWeijiGuess";
 			log.from = p;
@@ -4364,7 +4362,7 @@ public:
 class GuSaima : public TriggerSkill
 {
 public:
-	GuSaima() : TriggerSkill("gu_saima")
+	GuSaima() : TriggerSkill("saima")
 	{
 		events << CardUsed;
 	}
@@ -4374,7 +4372,7 @@ public:
 		if (use.from != player || !use.card || !use.card->isKindOf("Horse")) return false;
 		QList<ServerPlayer *> cands;
 		foreach (ServerPlayer *p, room->getOtherPlayers(player)) if (player->canPindian(p)) cands << p;
-		ServerPlayer *t = room->askForPlayerChosen(player, cands, objectName(), "@gu_saima", true, true);
+		ServerPlayer *t = room->askForPlayerChosen(player, cands, objectName(), "@saima", true, true);
 		if (!t) return false;
 		room->broadcastSkillInvoke(objectName());
 		int wins = 0;
@@ -4393,14 +4391,17 @@ public:
 GuHuoluanCard::GuHuoluanCard()
 {
 }
+
 bool GuHuoluanCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
 	return targets.length() < 2 && to_select != Self && Self->canPindian(to_select);
 }
+
 bool GuHuoluanCard::targetsFeasible(const QList<const Player *> &targets, const Player *) const
 {
 	return !targets.isEmpty() && targets.length() <= 2;
 }
+
 void GuHuoluanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
 	// Joint pindian follows the manual multi-target pindian precedent of GusheCard (ol.cpp).
@@ -4410,21 +4411,21 @@ void GuHuoluanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 	QList<int> shown;
 	foreach (ServerPlayer *p, all) {
 		if (p->isDead() || p->isKongcheng()) continue;
-		const Card *c = room->askForExchange(p, "gu_huoluan", 1, 1, false, "@gu_huoluan-pindian:" + source->objectName());
+		const Card *c = room->askForExchange(p, "huoluan", 1, 1, false, "@huoluan-pindian:" + source->objectName());
 		if (!c || c->subcardsLength() == 0) continue;
 		int id = c->getSubcards().first();
 		int number = Sanguosha->getCard(id)->getNumber();
 		if (p == source) {
 			source->setTag("GuHuoluanRecord", id);
-			room->setPlayerMark(source, "gu_huoluan_record", id + 1);
+			room->setPlayerMark(source, "huoluan_record", id + 1);
 		}
-		CardMoveReason reason(CardMoveReason::S_REASON_PINDIAN, p->objectName(), "gu_huoluan", "");
+		CardMoveReason reason(CardMoveReason::S_REASON_PINDIAN, p->objectName(), "huoluan", "");
 		room->moveCardTo(Sanguosha->getCard(id), p, nullptr, Player::PlaceTable, reason, true);
 		shown << id;
 		if (p == source) {
 			QStringList ch;
 			for (int i = 1; i <= 13; i++) ch << QString::number(i);
-			number = room->askForChoice(source, "gu_huoluan_number", ch.join("+"), QVariant(number)).toInt();
+			number = room->askForChoice(source, "huoluan_number", ch.join("+"), QVariant(number)).toInt();
 		}
 		nums[p] = number;
 		LogMessage log;
@@ -4434,7 +4435,7 @@ void GuHuoluanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 		room->sendLog(log);
 	}
 	if (!shown.isEmpty()) {
-		CardMoveReason reason(CardMoveReason::S_REASON_PINDIAN, source->objectName(), "gu_huoluan", "");
+		CardMoveReason reason(CardMoveReason::S_REASON_PINDIAN, source->objectName(), "huoluan", "");
 		QList<int> left;
 		foreach (int id, shown) if (room->getCardPlace(id) == Player::PlaceTable) left << id;
 		if (!left.isEmpty()) room->throwCard(left, reason, nullptr);
@@ -4448,16 +4449,16 @@ void GuHuoluanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 	if (low) {
 		foreach (ServerPlayer *p, nums.keys())
 			if (p != low && guAlive(p) && guAlive(low))
-				guUseVirtual(room, "slash", "gu_huoluan", p, QList<ServerPlayer *>() << low, true, false);
+				guUseVirtual(room, "slash", "huoluan", p, QList<ServerPlayer *>() << low, true, false);
 	}
-	if (guAlive(high) && high->getHp() > 0) high->drawCards(high->getHp(), "gu_huoluan");
+	if (guAlive(high) && high->getHp() > 0) high->drawCards(high->getHp(), "huoluan");
 	if (low != source && high != source) room->addPlayerHistory(source, "GuHuoluanCard", 0);
 }
 
 class GuHuoluan : public ZeroCardViewAsSkill
 {
 public:
-	GuHuoluan() : ZeroCardViewAsSkill("gu_huoluan")
+	GuHuoluan() : ZeroCardViewAsSkill("huoluan")
 	{
 	}
 	bool isEnabledAtPlay(const Player *player) const override
@@ -4473,11 +4474,11 @@ public:
 class GuGuxing : public TriggerSkill
 {
 public:
-	GuGuxing() : TriggerSkill("gu_guxing")
+	GuGuxing() : TriggerSkill("guxing")
 	{
 		events << EventPhaseStart;
 		frequency = Limited;
-		limit_mark = "@gu_guxing";
+		limit_mark = "@guxing";
 	}
 	static QList<int> pool(Room *room)
 	{
@@ -4487,10 +4488,10 @@ public:
 	}
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
-		if (player->getPhase() != Player::RoundStart || player->getMark("@gu_guxing") <= 0) return false;
-		int rec = player->getMark("gu_huoluan_record") - 1;
+		if (player->getPhase() != Player::RoundStart || player->getMark("@guxing") <= 0) return false;
+		int rec = player->getMark("huoluan_record") - 1;
 		if (rec < 0 || !player->askForSkillInvoke(this)) return false;
-		room->removePlayerMark(player, "@gu_guxing");
+		room->removePlayerMark(player, "@guxing");
 		room->doSuperLightbox(player, objectName());
 		const Card *record = Sanguosha->getCard(rec);
 		int x = qMin(3, guRound(room));
@@ -4521,7 +4522,7 @@ public:
 class GuNeyan : public TriggerSkill
 {
 public:
-	GuNeyan() : TriggerSkill("gu_neyan")
+	GuNeyan() : TriggerSkill("neyan")
 	{
 		events << CardUsed;
 		frequency = Compulsory;
@@ -4533,17 +4534,17 @@ public:
 		if (use.from != player || !use.card || use.card->getTypeId() == Card::TypeSkill
 			|| use.card->getTypeId() == Card::TypeEquip) return false;
 		room->sendCompulsoryTriggerLog(player, this);
-		if (player->getMark("gu_neyan_yin") == 0) {
-			room->setPlayerMark(player, "gu_neyan_yin", 1);
+		if (player->getMark("neyan_yin") == 0) {
+			room->setPlayerMark(player, "neyan_yin", 1);
 			QString pattern = use.card->getTypeId() == Card::TypeBasic ? "BasicCard" : "TrickCard";
-			if (room->askForCard(player, pattern, "@gu_neyan-discard:::" + use.card->getType(), data, objectName())) {
+			if (room->askForCard(player, pattern, "@neyan-discard:::" + use.card->getType(), data, objectName())) {
 				use.extra_use += 1;
 			} else {
 				use.nullified_list << "_ALL_TARGETS";
 			}
 			data = QVariant::fromValue(use);
 		} else {
-			room->setPlayerMark(player, "gu_neyan_yin", 0);
+			room->setPlayerMark(player, "neyan_yin", 0);
 			if (use.m_addHistory) room->addPlayerHistory(player, use.card->getClassName(), -1);
 		}
 		return false;
@@ -4553,51 +4554,51 @@ public:
 class GuNeyanMod : public TargetModSkill
 {
 public:
-	GuNeyanMod() : TargetModSkill("#gu_neyan-mod")
+	GuNeyanMod() : TargetModSkill("#neyan-mod")
 	{
 		pattern = "^EquipCard";
 	}
 	int getResidueNum(const Player *from, const Card *, const Player *) const override
 	{
-		return from->hasSkill("gu_neyan") && from->getMark("gu_neyan_yin") > 0 ? 1000 : 0;
+		return from->hasSkill("neyan") && from->getMark("neyan_yin") > 0 ? 1000 : 0;
 	}
 };
 
 class GuQianyao : public TriggerSkill
 {
 public:
-	GuQianyao() : TriggerSkill("gu_qianyao")
+	GuQianyao() : TriggerSkill("qianyao")
 	{
 		events << EventPhaseStart << ConfirmDamage;
 		frequency = Limited;
-		limit_mark = "@gu_qianyao";
+		limit_mark = "@qianyao";
 	}
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event == ConfirmDamage) {
 			DamageStruct damage = data.value<DamageStruct>();
-			if (damage.card && damage.card->hasFlag("gu_qianyao_dmg")) {
+			if (damage.card && damage.card->hasFlag("qianyao_dmg")) {
 				damage.damage++;
 				data = QVariant::fromValue(damage);
 			}
 			return false;
 		}
-		if (player->getPhase() != Player::RoundStart || player->getMark("@gu_qianyao") <= 0) return false;
+		if (player->getPhase() != Player::RoundStart || player->getMark("@qianyao") <= 0) return false;
 		if (!player->askForSkillInvoke(this)) return false;
-		room->removePlayerMark(player, "@gu_qianyao");
+		room->removePlayerMark(player, "@qianyao");
 		room->doSuperLightbox(player, objectName());
 		int x = qMax(1, qMin(3, guRound(room)));
 		player->drawCards(x, objectName());
 		Slash *slash = new Slash(Card::NoSuit, 0);
-		slash->setSkillName("_gu_qianyao");
+		slash->setSkillName("_qianyao");
 		slash->deleteLater();
 		QList<ServerPlayer *> cands;
 		foreach (ServerPlayer *p, room->getOtherPlayers(player))
 			if (player->canSlash(p, slash, true) && !player->isProhibited(p, slash)) cands << p;
 		if (cands.isEmpty() || player->isDead()) return false;
-		QList<ServerPlayer *> tos = room->askForPlayersChosen(player, cands, objectName(), 1, 2, "@gu_qianyao");
+		QList<ServerPlayer *> tos = room->askForPlayersChosen(player, cands, objectName(), 1, 2, "@qianyao");
 		if (tos.isEmpty()) return false;
-		if (x >= 2) slash->setFlags("gu_qianyao_dmg");
+		if (x >= 2) slash->setFlags("qianyao_dmg");
 		CardUseStruct use(slash, player, tos);
 		if (x >= 3) use.no_respond_list << "_ALL_TARGETS";
 		room->useCard(use, false);
@@ -4605,172 +4606,206 @@ public:
 	}
 };
 
-// ---------------- 魔麴义 ----------------
-class GuTieji : public TriggerSkill
-{
-public:
-	GuTieji() : TriggerSkill("gu_tieji")
-	{
-		events << TargetSpecified << EventPhaseChanging;
-	}
-	bool triggerable(const ServerPlayer *target) const override
-	{
-		return target != nullptr;
-	}
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
-	{
-		if (event == EventPhaseChanging) {
-			if (data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
-			foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-				int n = p->getMark("gu_tieji");
-				if (n <= 0) continue;
-				p->setMark("gu_tieji", 0);
-				room->removePlayerMark(p, "@skill_invalidity", n);
-			}
-			return false;
-		}
-		CardUseStruct use = data.value<CardUseStruct>();
-		if (use.from != player || !player->hasSkill(this) || !use.card || !use.card->isKindOf("Slash")) return false;
-		for (int i = 0; i < use.to.length(); i++) {
-			ServerPlayer *t = use.to.at(i);
-			if (player->isDead()) break;
-			if (t->isDead() || !player->askForSkillInvoke(this, QVariant::fromValue(t))) continue;
-			room->broadcastSkillInvoke(objectName());
-			t->addMark("gu_tieji");
-			room->addPlayerMark(t, "@skill_invalidity");
-			foreach (ServerPlayer *p, room->getAllPlayers()) room->filterCards(p, p->getCards("he"), true);
-			JudgeStruct judge;
-			judge.pattern = ".";
-			judge.good = true;
-			judge.reason = objectName();
-			judge.who = player;
-			room->judge(judge);
-			QString suit = judge.card ? judge.card->getSuitString() : QString();
-			if (t->isAlive() && (!t->canDiscard(t, "he")
-				|| !room->askForCard(t, ".|" + suit, "@gu_tieji-discard:::" + suit, data, Card::MethodDiscard))) {
-				QVariantList jinks = player->getTag("Jink_" + use.card->toString()).toList();
-				if (i < jinks.size()) jinks[i] = 0;
-				player->setTag("Jink_" + use.card->toString(), jinks);
-			}
-		}
-		return false;
-	}
+// Verified against lang translations. getGeneral misses are skipped at runtime.
+// 武关羽 has no packaged general here (wuguanyu / ol_wuguanyu / mobile_wuguanyu / tenyear_wuguanyu).
+// Not in SOURCE-3, so not pooled: 界赵云, 界张飞, 神马超.
+// SP赵云 maps to bgm_zhaoyun (☆SP赵云). jsp_zhaoyun is J.SP赵云 and is not pooled.
+static const char *const GuYingyouGenerals[] = {
+	"guanyu",            // 界关羽
+	"tenyear_guanyu",    // 界关羽（十周年）
+	"shenguanyu",        // 神关羽
+	"ol_shenguanyu",     // 神关羽[OL]
+	"wuguanyu",          // 武关羽 — not in this repo
+	"ol_wuguanyu",       // 武关羽 alternate id — not in this repo
+	"mobile_wuguanyu",   // 武关羽 alternate id — not in this repo
+	"tenyear_wuguanyu",  // 武关羽 alternate id — not in this repo
+	"sp_guanyu",         // SP关羽
+	"shenzhaoyun",       // 神赵云
+	"new_shenzhaoyun",   // 新神赵云
+	"bgm_zhaoyun",       // ☆SP赵云
+	"shenzhangfei",      // 神张飞
+	"machao",            // 界马超
+	"sp_machao",         // 马超[SP]
+	"new_spmachao",      // 新sp马超
+	"ol_new_spmachao",   // 新sp马超[OL]
+	"tenyear_new_spmachao", // 新sp马超[十周年]
+	"thwei_machao",      // 威马超
+	"huangzhong",        // 黄忠
+	"shenhuangzhong",    // 神黄忠
+	nullptr
 };
 
-class GuChongqi : public TriggerSkill
+static QStringList guYingyouPool(const ServerPlayer *player)
 {
-public:
-	GuChongqi() : TriggerSkill("gu_chongqi")
-	{
-		events << TargetSpecified << ConfirmDamage;
-	}
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
-	{
-		if (event == ConfirmDamage) {
-			DamageStruct damage = data.value<DamageStruct>();
-			if (damage.from == player && damage.card && damage.to
-				&& damage.card->hasFlag("gu_chongqi_" + damage.to->objectName())) {
-				damage.damage++;
-				data = QVariant::fromValue(damage);
-			}
-			return false;
+	QStringList skills;
+	for (int i = 0; GuYingyouGenerals[i] != nullptr; i++) {
+		const General *general = Sanguosha->getGeneral(QString::fromLatin1(GuYingyouGenerals[i]));
+		if (!general) continue;
+		foreach (const Skill *skill, general->getVisibleSkillList()) {
+			if (!skill || !skill->isVisible() || skill->isLordSkill()) continue;
+			const QString name = skill->objectName();
+			if (name.isEmpty() || name.startsWith("#") || name.startsWith("_")) continue;
+			if (player->hasSkill(name)) continue;
+			if (!skills.contains(name)) skills << name;
 		}
-		CardUseStruct use = data.value<CardUseStruct>();
-		if (use.from != player || !use.card || !use.card->isKindOf("Slash") || player->getMark("gu_chongqi-Clear") > 0) return false;
-		QList<ServerPlayer *> cands;
-		foreach (ServerPlayer *p, use.to) if (player->canDiscard(p, "he") && !cands.contains(p)) cands << p;
-		ServerPlayer *t = room->askForPlayerChosen(player, cands, objectName(), "@gu_chongqi", true, true);
-		if (!t) return false;
-		room->broadcastSkillInvoke(objectName());
-		room->addPlayerMark(player, "gu_chongqi-Clear");
-		int id = room->askForCardChosen(player, t, "he", objectName(), false, Card::MethodDiscard);
-		if (id >= 0) room->throwCard(id, objectName(), t, player);
-		// 游击: target in your attack range while you are not in its attack range.
-		if (t->isAlive() && player->inMyAttackRange(t) && !t->inMyAttackRange(player)) {
-			LogMessage log;
-			log.type = "#GuYouji";
-			log.from = player;
-			log.to << t;
-			log.arg = objectName();
-			room->sendLog(log);
-			use.card->setFlags("gu_chongqi_" + t->objectName());
-		}
-		return false;
 	}
-};
-
-class GuFanquan : public TriggerSkill
-{
-public:
-	GuFanquan() : TriggerSkill("gu_fanquan")
-	{
-		events << Damaged;
-	}
-	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
-	{
-		DamageStruct damage = data.value<DamageStruct>();
-		ServerPlayer *t = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@gu_fanquan", true, true);
-		if (!t) return false;
-		room->broadcastSkillInvoke(objectName());
-		// 搏击: both players are in each other's attack range.
-		bool boji = player->inMyAttackRange(t) && t->inMyAttackRange(player);
-		int n = 1;
-		if (boji) {
-			n = qMax(1, damage.damage);
-			room->addPlayerMark(player, "gu_fanquan_dist-Clear");
-			LogMessage log;
-			log.type = "#GuBoji";
-			log.from = player;
-			log.to << t;
-			log.arg = objectName();
-			room->sendLog(log);
-		}
-		room->damage(DamageStruct(objectName(), player, t, n));
-		return false;
-	}
-};
-
-class GuFanquanDist : public DistanceSkill
-{
-public:
-	GuFanquanDist() : DistanceSkill("#gu_fanquan-dist")
-	{
-	}
-	int getCorrect(const Player *from, const Player *) const override
-	{
-		return from->getMark("gu_fanquan_dist-Clear");
-	}
-};
-
-static void guAudit2025Doudizhu(Package *pkg)
-{
-	// 田忌 has no kingdom in SOURCE.md; non-Three-Kingdoms 地主 figures use qun here, e.g. ddz_libai.
-	General *tianji = new General(pkg, "gu_tianji", "qun", 3);
-	tianji->addSkill(new GuWeiji);
-	tianji->addSkill(new GuSaima);
-
-	General *renjiangwei = new General(pkg, "gu_renjiangwei", "shu", 4);
-	renjiangwei->addSkill(new GuHuoluan);
-	renjiangwei->addSkill(new GuGuxing);
-	pkg->addMetaObject<GuHuoluanCard>();
-
-	General *rendengai = new General(pkg, "gu_rendengai", "wei", 4);
-	rendengai->addSkill(new GuNeyan);
-	rendengai->addSkill(new GuQianyao);
-	guRelate(pkg, rendengai, "gu_neyan", new GuNeyanMod);
-
-	General *moquyi = new General(pkg, "gu_moquyi", "qun", 4);
-	moquyi->addSkill(new GuTieji);
-	moquyi->addSkill(new GuChongqi);
-	moquyi->addSkill(new GuFanquan);
-	guRelate(pkg, moquyi, "gu_fanquan", new GuFanquanDist);
+	return skills;
 }
+
+// Out of the deck: one leading underscore (two underscores are hidden from getDerivativeCard).
+// Not a Crossbow subclass: hasWeapon("Crossbow") is isKindOf("Crossbow").
+class GuZhenCrossbow : public Weapon
+{
+	Q_OBJECT
+	Q_CLASSINFO("CardName", "_yingyou_zhen_crossbow")
+public:
+	Q_INVOKABLE GuZhenCrossbow(Card::Suit suit = Card::Club, int number = 1)
+		: Weapon(suit, number, 99)
+	{
+		setObjectName("_yingyou_zhen_crossbow");
+	}
+};
+
+class GuZhenCrossbowSkill : public TargetModSkill
+{
+public:
+	GuZhenCrossbowSkill() : TargetModSkill("_yingyou_zhen_crossbow")
+	{
+		pattern = "Slash";
+	}
+	int getResidueNum(const Player *from, const Card *, const Player *) const override
+	{
+		return from && from->hasWeapon("_yingyou_zhen_crossbow") ? -1 : 0;
+	}
+};
+
+// WeaponSkill::triggerable requires a living holder, so death-discard would not destroy the card.
+class GuZhenCrossbowRule : public TriggerSkill
+{
+public:
+	GuZhenCrossbowRule() : TriggerSkill("#_yingyou_zhen_crossbow")
+	{
+		events << TargetSpecified << BeforeCardsMove;
+		frequency = Compulsory;
+		global = true;
+	}
+	int getPriority(TriggerEvent event) const override
+	{
+		return event == BeforeCardsMove ? 9 : 2;
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	{
+		if (event == TargetSpecified) {
+			CardUseStruct use = data.value<CardUseStruct>();
+			if (!use.card || !use.card->isKindOf("Slash") || use.from != player || !player->hasWeapon("_yingyou_zhen_crossbow"))
+				return false;
+			if (use.card->getNumber() >= 7) return false;
+			if (!use.no_respond_list.contains("_ALL_TARGETS"))
+				use.no_respond_list << "_ALL_TARGETS";
+			const QString key = "Jink_" + use.card->toString();
+			QVariantList jinks = player->getTag(key).toList();
+			while (jinks.length() < use.to.length()) jinks << 1;
+			for (int i = 0; i < jinks.length(); i++) jinks[i] = 0;
+			player->setTag(key, jinks);
+			data = QVariant::fromValue(use);
+			return false;
+		}
+		CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+		if (move.reason.m_skillName == "BreakCard" || move.reason.m_eventName == "break_equip") return false;
+		QList<int> ids;
+		for (int i = 0; i < move.card_ids.size(); i++) {
+			if (move.from_places.value(i) != Player::PlaceEquip) continue;
+			const int id = move.card_ids.at(i);
+			if (room->getCardPlace(id) != Player::PlaceEquip) continue;
+			const Card *card = Sanguosha->getEngineCard(id);
+			if (card && card->objectName() == "_yingyou_zhen_crossbow") ids << id;
+		}
+		if (ids.isEmpty()) return false;
+		move.removeCardIds(ids);
+		data = QVariant::fromValue(move);
+		ServerPlayer *owner = move.from ? room->findPlayerByObjectName(move.from->objectName(), true) : nullptr;
+		room->breakCard(ids, owner);
+		return false;
+	}
+};
+
+// ---------------- 有诸葛亮：应有 ----------------
+class GuYingyou : public TriggerSkill
+{
+public:
+	GuYingyou() : TriggerSkill("yingyou")
+	{
+		// 回合开始 = RoundStart. 结束阶段 = Finish. 受到伤害后 = Damaged.
+		events << EventPhaseStart << Damaged << CardUsed;
+		frequency = Frequent;
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	{
+		if (event == CardUsed) {
+			CardUseStruct use = data.value<CardUseStruct>();
+			if (use.from != player || !use.card || !use.m_isHandcard) return false;
+			if (use.card->getTypeId() == Card::TypeSkill || use.card->hasFlag("yingyou_mantou")) return false;
+			const int n = use.card->getNumber();
+			if (n <= 0 || player->getMark("@yingyou_mantou") < n) return false;
+			if (!player->askForSkillInvoke("yingyou_mantou", data)) return false;
+			if (player->getMark("@yingyou_mantou") < n) return false;
+			room->setCardFlag(use.card, "yingyou_mantou");
+			player->loseMark("@yingyou_mantou", n);
+			use.extra_use += 1;
+			data = QVariant::fromValue(use);
+			return false;
+		}
+		if (event == EventPhaseStart
+			&& player->getPhase() != Player::RoundStart
+			&& player->getPhase() != Player::Finish) return false;
+		QStringList choices;
+		if (!guYingyouPool(player).isEmpty()) choices << "wuhu";
+		if (player->hasEquipArea(0)) choices << "crossbow";
+		choices << "mantou";
+		if (!player->askForSkillInvoke(this, data)) return false;
+		room->broadcastSkillInvoke(objectName());
+		const QString choice = room->askForChoice(player, objectName(), choices.join("+"), data);
+		if (choice == "wuhu") {
+			const QStringList pool = guYingyouPool(player);
+			if (!pool.isEmpty())
+				room->acquireSkill(player, pool.at(qsanRandomBounded(pool.length())));
+		} else if (choice == "crossbow") {
+			player->getDerivativeCard("_yingyou_zhen_crossbow");
+		} else if (choice == "mantou") {
+			player->gainMark("@yingyou_mantou", 10);
+		}
+		if (player->isAlive()) player->drawCards(1, objectName());
+		return false;
+	}
+};
 
 
 DoudizhuPackage::DoudizhuPackage()
     : Package("Doudizhu")
 {
-    guAudit2025Doudizhu(this);
+	// 田忌 has no kingdom in SOURCE.md; non-Three-Kingdoms 地主 figures use qun here, e.g. ddz_libai.
+	General *ddz_tianji = new General(this, "ddz_tianji", "qun", 3);
+	ddz_tianji->addSkill(new GuWeiji);
+	ddz_tianji->addSkill(new GuSaima);
+
+	General *ddz_renjiangwei = new General(this, "ddz_renjiangwei", "shu", 4);
+	ddz_renjiangwei->addSkill(new GuHuoluan);
+	ddz_renjiangwei->addSkill(new GuGuxing);
+	addMetaObject<GuHuoluanCard>();
+
+	General *ddz_rendengai = new General(this, "ddz_rendengai", "wei", 4);
+	ddz_rendengai->addSkill(new GuNeyan);
+	ddz_rendengai->addSkill(new GuQianyao);
+	guRelate(this, ddz_rendengai, "neyan", new GuNeyanMod);
+
+	General *ddz_youzhugeliang = new General(this, "ddz_youzhugeliang", "shu", 3);
+	ddz_youzhugeliang->addSkill(new GuYingyou);
+	addSkills(new GuZhenCrossbowSkill);
+	addSkills(new GuZhenCrossbowRule);
+	addMetaObject<GuZhenCrossbow>();
+	// Simultaneous equips need one unowned copy each. breakCard clears the owner, so copies recycle.
+	for (int i = 0; i < 8; i++)
+		(new GuZhenCrossbow(Card::Club, 1))->setParent(this);
     related_skills.insert("bahu", "#bahu-target");
 
     skills << new Feiyang << new Bahu << new BahuTargetMod << new DdzCombatModifier;
@@ -4900,3 +4935,5 @@ DoudizhuPackage::DoudizhuPackage()
 
 }
 ADD_PACKAGE(Doudizhu)
+
+#include "doudizhu.moc"

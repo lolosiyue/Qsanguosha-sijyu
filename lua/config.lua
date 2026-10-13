@@ -67,7 +67,7 @@ config = {
 		c_mobile = "mobile,mobileStar,mobileSp,mobileXh,"..
 			"MobileStStandard,MobileStWind,MobileStThicket,MobileStFire,MobileStMountain,MobileStLei,"..
 			"MobileStYJ2011,MobileStYJ2012,MobileStYJ2013,MobileStYJ2014,MobileStYJ2015,MobileStYC2017,"..
-			"mobileBsQi,mobileBsZheng,mobileBsShi,mobileBsJie,"..
+			"mobileBsQi,mobileBsZheng,mobileBsShi,mobileBsJie,mobileBsOther,"..
 			"MobileZhi,MobileXin,MobileRen,MobileYong,MobileYan,"..
 			"MobileMouZhi,MobileMouShi,MobileMouYu,MobileMouNeng,MobileMouTong",
 		d_ol = "OLStStandard,OLStWind,OLStThicket,OLStFire,OLStMountain,OLStYin,OLStLei,"..

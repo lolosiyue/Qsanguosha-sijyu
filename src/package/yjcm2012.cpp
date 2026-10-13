@@ -2212,9 +2212,6 @@ public:
     OlQianxiClear() : QianxiClear("olqianxi") {}
 };
 
-// SOURCE-2 follow-up: overwrite warehouse test / alternate versions per Tom 2026-10-13 08:41 JST.
-// Authoritative text: materials/gu-audit2025-tom-20261013/SOURCE-2.md
-
 // ----- 界王异：贞烈 / 秘计（SOURCE-2） -----
 class GuOLZhenlie : public TriggerSkill
 {
@@ -2354,6 +2351,7 @@ YJCM2012Package::YJCM2012Package()
     addMetaObject<GongqiCard>();
     addMetaObject<JiefanCard>();
     addMetaObject<AnxuCard>();
+
 }
 
 ADD_PACKAGE(YJCM2012)

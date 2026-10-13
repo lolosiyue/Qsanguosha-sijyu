@@ -763,6 +763,14 @@ public:
     mobileBsJiePackage();
 };
 
+class mobileBsOtherPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    mobileBsOtherPackage();
+};
+
 class BsHanzhanCard : public SkillCard
 {
     Q_OBJECT
@@ -1075,26 +1083,6 @@ public:
 
 
 
-
-class GuQuanjianCard : public SkillCard
-{
-    Q_OBJECT
-public:
-    Q_INVOKABLE GuQuanjianCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
-    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
-};
-
-class GuPingtaoCard : public SkillCard
-{
-    Q_OBJECT
-public:
-    Q_INVOKABLE GuPingtaoCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
-    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
-};
 
 class GuJichouCard : public SkillCard
 {

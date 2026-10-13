@@ -1777,7 +1777,7 @@ public:
 class GuLiaoshiVS : public OneCardViewAsSkill
 {
 public:
-    GuLiaoshiVS() : OneCardViewAsSkill("gu_liaoshi") { response_or_use = true; }
+    GuLiaoshiVS() : OneCardViewAsSkill("liaoshi") { response_or_use = true; }
     bool viewFilter(const Card *to_select) const override
     {
         if (!Self || !to_select->hasTip("mobilemouqiaobian") || !Self->handCards().contains(to_select->getEffectiveId()))
@@ -1802,11 +1802,11 @@ public:
     }
     bool isEnabledAtPlay(const Player *player) const override
     {
-        return player->getMark("gu_liaoshi-Clear") == 0 && Slash::IsAvailable(player);
+        return player->getMark("liaoshi-Clear") == 0 && Slash::IsAvailable(player);
     }
     bool isEnabledAtResponse(const Player *player, const QString &pattern) const override
     {
-        if (player->getMark("gu_liaoshi-Clear") > 0 || pattern.startsWith("@") || pattern.startsWith(".")) return false;
+        if (player->getMark("liaoshi-Clear") > 0 || pattern.startsWith("@") || pattern.startsWith(".")) return false;
         return pattern.contains("slash", Qt::CaseInsensitive) || pattern.contains("jink", Qt::CaseInsensitive);
     }
 };
@@ -1814,7 +1814,7 @@ public:
 class GuLiaoshi : public TriggerSkill
 {
 public:
-    GuLiaoshi() : TriggerSkill("gu_liaoshi")
+    GuLiaoshi() : TriggerSkill("liaoshi")
     {
         events << PreCardUsed << PreCardResponded;
         view_as_skill = new GuLiaoshiVS;
@@ -1822,7 +1822,7 @@ public:
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         const Card *card = event == PreCardUsed ? data.value<CardUseStruct>().card : data.value<CardResponseStruct>().m_card;
-        if (card && card->getSkillName() == objectName()) room->setPlayerMark(player, "gu_liaoshi-Clear", 1);
+        if (card && card->getSkillName() == objectName()) room->setPlayerMark(player, "liaoshi-Clear", 1);
         return false;
     }
 };
