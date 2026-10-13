@@ -80,4 +80,11 @@ return {
 	["illustrator:as_fuwan"] = "LiuHeng",
 	["illustrator:as_lingju"] = "木美人",
 	["illustrator:as_liuxie"] = "LiuHeng",
+	["xiaoxin_mizhao"] = "密诏",
+	[":xiaoxin_mizhao"] = "出牌阶段限一次，你可以将所有手牌交给一名其他角色，然后你选择另一名其他角色与其拼点；若平点，你获得两名角色各一张牌；若点数不同，点数较大的角色视为对点数较小的角色使用一张【杀】（无距离限制）。",
+	["xiaoxin_liuxie"] = "小新刘协",
+	["&xiaoxin_liuxie"] = "刘协",
+	["#xiaoxin_liuxie"] = "受困天子",
+	["xiaoxin_tianming"] = "天命",
+	[":xiaoxin_tianming"] = "当你成为【杀】的目标后，你可以发动“天命”：若你有可弃置的牌，你弃置一张牌，然后摸两张牌；否则你直接摸两张牌。",
 }

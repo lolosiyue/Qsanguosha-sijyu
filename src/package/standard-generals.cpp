@@ -2616,6 +2616,36 @@ bool Guanxing::effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillConte
     return false;
 }
 
+class XiaoxinGuanxing : public Guanxing
+{
+public:
+    XiaoxinGuanxing() : Guanxing("xiaoxin_guanxing") {}
+    void record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
+    {
+        if (player && player->isAlive() && player->hasSkill(objectName())) {
+            const int id = player->getTag("XiaoxinGuanxingAwakening").toInt();
+            if (id > 0) return {{player, {SkillInstanceUtils::formatName(objectName(), id)}}};
+        }
+        return player && player->isAlive() && player->hasSkill(objectName())
+            && (player->getPhase() == Player::Start || player->getPhase() == Player::Finish)
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { return ctx.owner && ctx.owner->askForSkillInvoke(this); }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
+    {
+        const int count = qMax(0, getEffectiveAmount(ctx));
+        if (!ctx.owner || count == 0) return false;
+        const QList<int> cards = room->getNCards(count);
+        LogMessage log; log.type = "$ViewDrawPile"; log.from = ctx.owner; log.card_str = ListI2S(cards).join("+");
+        room->sendLog(log, ctx.owner);
+        room->askForGuanxing(ctx.owner, cards, Room::GuanxingBothSides);
+        return false;
+    }
+};
+
 class Kongcheng : public ProhibitSkill
 {
 public:
@@ -3204,6 +3234,38 @@ public:
     {
         return ctx.holder && ctx.holder->hasSkill("yingzi")
             ? CorrectSkillResult::useAmount(ctx.holder->getMaxHp()) : CorrectSkillResult::noEffect();
+    }
+};
+
+class XiaoxinYingzi : public TriggerSkillV2
+{
+public:
+    XiaoxinYingzi() : TriggerSkillV2("xiaoxin_yingzi") { events << DrawNCards; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    { return player && player->isAlive() && player->hasSkill(objectName()) && data.value<DrawStruct>().reason == "draw_phase"
+        ? TriggerList{{player, {objectName()}}} : TriggerList(); }
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { ctx.targets = {ctx.owner}; return true; }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        room->sendCompulsoryTriggerLog(target, this);
+        DrawStruct draw = ctx.original_data->value<DrawStruct>();
+        draw.num += (target->getLostHp() + 1) * getEffectiveAmount(ctx);
+        *ctx.original_data = QVariant::fromValue(draw); return false;
+    }
+};
+
+class XiaoxinYingziMaxCards : public MaxCardsSkillV2
+{
+public:
+    XiaoxinYingziMaxCards() : MaxCardsSkillV2("#xiaoxin_yingzi") {}
+    CorrectSkillResult getCorrection(const CorrectSkillContext &) const override { return CorrectSkillResult::noEffect(); }
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
+    {
+        if (!ctx.holder || !ctx.holder->hasSkill("xiaoxin_yingzi")) return CorrectSkillResult::noEffect();
+        // Preserve ordinary positive corrections and keep negative ones from crossing this floor.
+        const int extra = Sanguosha->correctMaxCards(ctx.holder, false, ctx.maxCardsType);
+        return CorrectSkillResult::useAmount(qMax(ctx.holder->getHp(), ctx.holder->getMaxHp()) - qMin(0, extra));
     }
 };
 
@@ -4632,10 +4694,18 @@ public:
 
 };
 
+class XiaoxinJijiuPeach : public Peach
+{
+public:
+    XiaoxinJijiuPeach(Suit suit, int number) : Peach(suit, number) {}
+    void onEffect(CardEffectStruct &effect) const override
+    { effect.to->getRoom()->recover(effect.to, RecoverStruct(effect.from, this, 2)); }
+};
+
 class Jijiu : public ViewAsSkillV2
 {
 public:
-    Jijiu() : ViewAsSkillV2("jijiu", 1)
+    Jijiu(const QString &name = "jijiu") : ViewAsSkillV2(name, 1)
     {
         response_or_use = true;
     }
@@ -4669,7 +4739,9 @@ public:
     {
         if (!cardSelectionFeasible(request)) return nullptr;
         const Card *originalCard = Sanguosha->getCard(request.selectedCardIds.first());
-        Peach *peach = new Peach(originalCard->getSuit(), originalCard->getNumber());
+        Peach *peach = objectName() == "xiaoxin_jijiu" && originalCard->getSuit() == Card::Heart && originalCard->isKindOf("BasicCard")
+            ? new XiaoxinJijiuPeach(originalCard->getSuit(), originalCard->getNumber())
+            : new Peach(originalCard->getSuit(), originalCard->getNumber());
         peach->setSkillName(objectName());
         peach->addSubcard(originalCard);
         return peach;
@@ -5954,7 +6026,7 @@ void QingnangCard::onEffect(CardEffectStruct &effect) const
 class Qingnang : public ViewAsSkillV2
 {
 public:
-    Qingnang() : ViewAsSkillV2("qingnang", 1) {}
+    Qingnang(const QString &name = "qingnang") : ViewAsSkillV2(name, 1) {}
 
     LimitScope getLimitScope() const override { return Limit_Phase; }
 
@@ -5962,13 +6034,14 @@ public:
     {
         const Player *player = request.initiator;
         return player && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
-            && player->canDiscard(player, "h");
+            && player->canDiscard(player, objectName() == "xiaoxin_qingnang" ? "he" : "h");
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         const Player *player = request.initiator;
         return player && card && !card->hasFlag("using") && request.selectedCardIds.isEmpty()
-            && player->handCards().contains(card->getEffectiveId()) && !player->isJilei(card);
+            && (player->handCards().contains(card->getEffectiveId()) || (objectName() == "xiaoxin_qingnang" && player->hasEquip(card)))
+            && !player->isJilei(card);
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -5997,6 +6070,8 @@ public:
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
+        if (objectName() == "xiaoxin_qingnang" && ctx.use_card && ctx.use_card->subcardsLength() == 1
+            && Sanguosha->getCard(ctx.use_card->getSubcards().first())->isRed()) resetUsage(ctx);
         if (ctx.targets.isEmpty() && ctx.invoker) {
             ctx.manual_effect = true;
             skillEffect(ctx, ctx.invoker);
@@ -6548,6 +6623,11 @@ StrengthenPackage::StrengthenPackage()
     luxun->addSkill(new Lianying);
 
 
+    General *xiaoxin_huatuo = new General(this, "xiaoxin_huatuo", "qun", 3);
+    xiaoxin_huatuo->setImage("huatuo");
+    xiaoxin_huatuo->addSkill(new Jijiu("xiaoxin_jijiu"));
+    xiaoxin_huatuo->addSkill(new Qingnang("xiaoxin_qingnang"));
+
     General *huatuo = new General(this, "huatuo*standard", "qun", 3); // QUN 001
     huatuo->addSkill(new Chuli);
     huatuo->addSkill(new Jijiu);
@@ -6590,6 +6670,9 @@ StrengthenPackage::StrengthenPackage()
     addMetaObject<ChuliCard>();
     addMetaObject<JianyanCard>();
     addMetaObject<GuoseCard>();
+    skills << new XiaoxinYingzi << new XiaoxinYingziMaxCards;
+    related_skills.insert("xiaoxin_yingzi", "#xiaoxin_yingzi");
+    skills << new XiaoxinGuanxing;
     skills << new Xiaoxi << new NonCompulsoryInvalidity << new Jianyan;
 }
 ADD_PACKAGE(Strengthen)

@@ -297,7 +297,7 @@ public:
 class Tianming : public TriggerSkillV2
 {
 public:
-    Tianming() : TriggerSkillV2("tianming") { events << TargetConfirming; }
+    Tianming(const QString &name = "tianming") : TriggerSkillV2(name) { events << TargetConfirming; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -350,10 +350,31 @@ public:
     }
 };
 
+class XiaoxinTianming : public Tianming
+{
+public:
+    XiaoxinTianming() : Tianming("xiaoxin_tianming") {}
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { ctx.targets = {ctx.owner}; return ctx.owner && ctx.owner->isAlive() && ctx.owner->askForSkillInvoke(this); }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner) return false;
+        if (ctx.owner->canDiscard(ctx.owner, "he")) {
+            const int amount = getEffectiveAmount(ctx);
+            room->askForDiscard(ctx.owner, objectName(), amount, amount, false, true);
+        }
+        return true;
+    }
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { ctx.targets = {ctx.owner}; return false; }
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    { if (target && target->isAlive()) target->drawCards(2 * getEffectiveAmount(ctx), objectName()); return false; }
+};
+
 class Mizhao : public ViewAsSkillV2
 {
 public:
-    Mizhao() : ViewAsSkillV2("mizhao") { setPhaseName("Play"); }
+    Mizhao(const QString &name = "mizhao") : ViewAsSkillV2(name) { setPhaseName("Play"); }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     bool canActivate(const ActiveSkillRequest &request) const override
     { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !request.initiator->isKongcheng(); }
@@ -384,12 +405,22 @@ public:
             });
             target->setFlags("MizhaoPindianTarget");
             const int result = first->pindianInt(target, objectName());
+            if (result == 0 && objectName() == "xiaoxin_mizhao") {
+                for (ServerPlayer *other : QList<ServerPlayer *>{first, target}) {
+                    if (!source->isAlive() || !other->isAlive() || !source->canGet(other, "he")) continue;
+                    const int id = room->askForCardChosen(source, other, "he", objectName(), false, Card::MethodGet);
+                    if (id >= 0 && room->getCardOwner(id) == other && source->canGet(other, id)
+                        && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)
+                        && !Sanguosha->getCard(id)->hasFlag("using")) room->obtainCard(source, id, false);
+                }
+                return ContinueEffects;
+            }
             if (result == 0 || result == -2) return ContinueEffects;
             ServerPlayer *winner = result == 1 ? first : target;
             ServerPlayer *loser = result == 1 ? target : first;
             if (!winner->isAlive() || !loser->isAlive()) return ContinueEffects;
             auto *slash = new Slash(Card::NoSuit, 0);
-            slash->setSkillName("_mizhao");
+            slash->setSkillName("_" + objectName());
             CardUseStruct use(slash, winner, loser);
             use.setOwnedCard(slash);
             if (winner->canSlash(loser, slash, false)) room->useCardFromSkillEffect(use, ctx);
@@ -411,7 +442,7 @@ public:
         room->broadcastSkillInvoke(objectName(), index);
         QList<ServerPlayer *> targets;
         for (ServerPlayer *p : room->getOtherPlayers(target))
-            if (target->canPindian(p)) targets << p;
+            if (target->canPindian(p) && (objectName() != "xiaoxin_mizhao" || p != source)) targets << p;
         if (targets.isEmpty()) return ContinueEffects;
         ServerPlayer *target2 = room->askForPlayerChosen(source, targets, objectName(),
                                                          "@mizhao-pindian:" + target->objectName());
@@ -1123,7 +1154,12 @@ AssassinsPackage::AssassinsPackage() : Package("assassins")
     skills << new Moukui(true);
     related_skills.insert("moukui", "#moukui-effect");
     General *hanxiandi = new General(this, "as_liuxie", "qun", 3); hanxiandi->addSkill(new Tianming); hanxiandi->addSkill(new Mizhao);
+    General *xiaoxin_liuxie = new General(this, "xiaoxin_liuxie", "qun", 3);
+    xiaoxin_liuxie->setImage("as_liuxie");
+    xiaoxin_liuxie->addSkill(new XiaoxinTianming);
+    xiaoxin_liuxie->addSkill("xiaoxin_mizhao");
     General *lingju = new General(this, "as_lingju", "qun", 3, false); lingju->addSkill(new Jieyuan); lingju->addSkill(new Fenxin);
+    skills << new Mizhao("xiaoxin_mizhao");
     addMetaObject<MizhaoCard>(); addMetaObject<MixinCard>(); addMetaObject<DuyiCard>();
 }
 ADD_PACKAGE(Assassins)

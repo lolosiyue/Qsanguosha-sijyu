@@ -56,14 +56,23 @@ public:
 class Hongyuan : public TriggerSkillV2
 {
 public:
-    Hongyuan() : TriggerSkillV2("hongyuan") { events << DrawNCards; view_as_skill = new HongyuanViewAsSkill; }
+    Hongyuan(const QString &name = "hongyuan") : TriggerSkillV2(name)
+    {
+        if (name == "xiaoxin_hongyuan") events << EventPhaseStart;
+        else { events << DrawNCards; view_as_skill = new HongyuanViewAsSkill; }
+    }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        return player && player->isAlive() && player->hasSkill(objectName()) && data.value<DrawStruct>().reason == "draw_phase"
+        return player && player->isAlive() && player->hasSkill(objectName())
+            && (objectName() == "xiaoxin_hongyuan" ? player->getPhase() == Player::Draw : data.value<DrawStruct>().reason == "draw_phase")
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (objectName() == "xiaoxin_hongyuan") {
+            ctx.targets = room->askForPlayersChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), 0, 2, "@hongyuan");
+            return !ctx.targets.isEmpty();
+        }
         if (room->getMode().startsWith("06_")) {
             if (!room->askForSkillInvoke(ctx.owner, objectName())) return false;
             for (ServerPlayer *other : room->getOtherPlayers(ctx.owner))
@@ -78,6 +87,7 @@ public:
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (objectName() == "xiaoxin_hongyuan") return false;
         DrawStruct draw = ctx.original_data->value<DrawStruct>();
         draw.num -= getEffectiveAmount(ctx);
         *ctx.original_data = QVariant::fromValue(draw);
@@ -94,7 +104,7 @@ public:
 class Huanshi : public TriggerSkillV2
 {
 public:
-    Huanshi() : TriggerSkillV2("huanshi") { events << AskForRetrial; }
+    Huanshi(const QString &name = "huanshi") : TriggerSkillV2(name) { events << AskForRetrial; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
     {
         TriggerList result;
@@ -122,7 +132,7 @@ public:
     {
         const Card *card = nullptr;
         Room *room = player->getRoom();
-        if (room->getMode().startsWith("06_") || room->getMode().startsWith("04_")) {
+        if (objectName() != "xiaoxin_huanshi" && (room->getMode().startsWith("06_") || room->getMode().startsWith("04_"))) {
             if (AI::GetRelation3v3(player, judge->who) != AI::Friend) return nullptr;
             QStringList prompt_list;
             prompt_list << "@huanshi-card" << judge->who->objectName()
@@ -148,10 +158,16 @@ public:
                     room->sendLog(log, judge->who);
                 }
                 judge->who->setTag("HuanshiJudge", QVariant::fromValue(judge));
+                const QVariant previousDonor = judge->who->getTag("XiaoxinHuanshiOwner");
+                if (objectName() == "xiaoxin_huanshi") judge->who->setTag("XiaoxinHuanshiOwner", QVariant::fromValue(player));
                 room->fillAG(ids + disabled_ids, judge->who, disabled_ids);
                 const auto clear = qScopeGuard([&] {
                     room->clearAG(judge->who);
                     judge->who->removeTag("HuanshiJudge");
+                    if (objectName() == "xiaoxin_huanshi") {
+                        if (previousDonor.isValid()) judge->who->setTag("XiaoxinHuanshiOwner", previousDonor);
+                        else judge->who->removeTag("XiaoxinHuanshiOwner");
+                    }
                 });
                 int card_id = room->askForAG(judge->who, ids, false, objectName());
 
@@ -168,10 +184,10 @@ public:
 class Mingzhe : public TriggerSkillV2
 {
 public:
-    Mingzhe() : TriggerSkillV2("mingzhe") { events << CardsMoveOneTime << CardUsed << CardResponded; frequency = Frequent; }
+    Mingzhe(const QString &name = "mingzhe") : TriggerSkillV2(name) { events << CardsMoveOneTime << CardUsed << CardResponded; frequency = Frequent; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->hasFlag("CurrentPlayer")) return {};
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || (player->hasFlag("CurrentPlayer") && (objectName() != "xiaoxin_mingzhe" || event != CardsMoveOneTime))) return {};
         int count = 0;
         if (event == CardsMoveOneTime) {
             const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
@@ -760,6 +776,8 @@ Special3v3ExtPackage::Special3v3ExtPackage()
     zhugejin->addSkill(new Hongyuan);
     zhugejin->addSkill(new Huanshi);
     zhugejin->addSkill(new Mingzhe);
+
+    skills << new Hongyuan("xiaoxin_hongyuan") << new Huanshi("xiaoxin_huanshi") << new Mingzhe("xiaoxin_mingzhe");
 
     addMetaObject<ZhenweiCard>();
     addMetaObject<HongyuanCard>();
