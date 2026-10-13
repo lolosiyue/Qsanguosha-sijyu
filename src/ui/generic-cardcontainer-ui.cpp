@@ -2557,7 +2557,8 @@ void PlayerCardContainer::updateAvatarTooltip()
     if (m_player) {
         // One description pass feeds both avatars; the deputy card only changes focus.
         const GeneralInfoCard::AvatarCards cards
-            = GeneralInfoCard::forPlayerAvatars(m_player, m_player->getSkillDescription(Self));
+            = GeneralInfoCard::forPlayerAvatars(m_player, m_player->getSkillDescription(Self),
+                                                skillAutoInvokeStates());
         _m_avatarArea->setToolTip(cards.head);
         if (_m_avatarIcon)
             _m_avatarIcon->setToolTip(cards.head);

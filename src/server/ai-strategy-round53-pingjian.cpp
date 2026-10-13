@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-pingjian.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai-strategy-round45-native-seal.h"
@@ -17,7 +18,7 @@
 namespace {
 struct Stack{lua_State*L;int n;explicit Stack(lua_State*s):L(s),n(lua_gettop(s)){}~Stack(){lua_settop(L,n);}};
 class State;void observe(lua_State*,const lua_TableObservation*,void*)noexcept;
-class State final:public QObject{public:explicit State(Room&r):QObject(&r),room(r){}
+class State final:public AIRoomLedger{public:explicit State(Room&r):AIRoomLedger(r),room(r){}
  ~State()override{for(auto id:{globals,space,fill})if(id)lua_unobservetableidentity(L,id,observe,this);}
  Room&room;lua_State*L=nullptr;quint64 generation=0;const void*globals=nullptr,*space=nullptr,*fill=nullptr,*can=nullptr,*sampler=nullptr;
  bool valid=false;QSet<QString>truthy;

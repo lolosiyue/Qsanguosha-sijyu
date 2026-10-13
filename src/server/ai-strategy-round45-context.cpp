@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round45-context.h"
 #include "ai.h"
@@ -20,7 +21,7 @@
 namespace {
 const char *ledgerName="_ai_round45_newgenerals_frames";
 struct Frame { quint64 serial=0; int event=-1; const QVariant *data=nullptr; QPointer<ServerPlayer> target; QPointer<Card> card; QPointer<ServerPlayer> from; qint64 history=0; };
-class Frames final:public QObject { public: explicit Frames(Room &r):QObject(&r){setObjectName(ledgerName);} quint64 next=0; QList<Frame> stack; };
+class Frames final:public AIRoomLedger { public: explicit Frames(Room &r):AIRoomLedger(r){setObjectName(ledgerName);} quint64 next=0; QList<Frame> stack; };
 Frames *frames(Room &r,bool create=false){for(auto *c:r.children())if(c->objectName()==ledgerName)return dynamic_cast<Frames *>(c);return create?new Frames(r):nullptr;}
 bool roster(Room &r,const ServerPlayer *p){return p&&r.getAllPlayers(true).contains(const_cast<ServerPlayer *>(p));}
 QJsonValue name(Room &r,ServerPlayer *p){return roster(r,p)?QJsonValue(p->objectName()):QJsonValue(false);}

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-playloop-filter.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-patterns.h"
 #include "ai-strategy-round56-bootstrap-source.h"
 #include "ai-strategy-round53-lianzhan.h"
@@ -36,9 +37,9 @@ namespace {
 // Complete source/effect premises are recorded in issuer-activation-v3/AUDIT.md.
 // Runtime checks only preserve/refuse that original lexical proof. They never
 // infer authority from a pending finalizer, account result, mind or cache value.
-struct State final : QObject {
+struct State final : AIRoomLedger {
  QElapsedTimer diagnosticTimer;
- explicit State(Room &r,LuaRuntime &rt,LuaRuntime &a):QObject(&r),room(r),runtime(rt),auxiliary(a),lifetime(&r){diagnosticTimer.start();}
+ explicit State(Room &r,LuaRuntime &rt,LuaRuntime &a):AIRoomLedger(r),room(r),runtime(rt),auxiliary(a),lifetime(&r){diagnosticTimer.start();}
  ~State() override {
   clearAIRound56PlayLoopSource(room);
   clearAIRound56PatternsLineage(room);

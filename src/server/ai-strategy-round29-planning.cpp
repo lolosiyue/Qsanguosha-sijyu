@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-certificate.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round29-planning.h"
 #include "ai-strategy-flag-lifecycle.h"
 #include "ai.h"
@@ -10,9 +11,9 @@
 
 namespace {
 struct Observation { qint64 epoch = 0; bool value = false; };
-class ValuationFlags final : public QObject {
+class ValuationFlags final : public AIRoomLedger {
 public:
-    explicit ValuationFlags(Room &room) : QObject(&room) {}
+    explicit ValuationFlags(Room &room) : AIRoomLedger(room) {}
     QHash<const ServerPlayer *, Observation> owners;
 };
 ValuationFlags *ledger(Room &room)
@@ -52,7 +53,7 @@ Observation &observation(Room &room, const ServerPlayer *owner)
         // Native-only pointer key, removed on player destruction, never exposed.
         QObject::connect(owner, &QObject::destroyed, state, [state, owner]() {
             state->owners.remove(owner);
-        });
+        }, Qt::DirectConnection);
         return state->owners.insert(owner, Observation{epoch,
             owner->hasFlag(QStringLiteral("stack_overflow_UseValue"))}).value();
     }

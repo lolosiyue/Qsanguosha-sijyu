@@ -1,4 +1,5 @@
 #include "ai-strategy-round40-context.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "card.h"
 #include "room.h"
@@ -8,9 +9,9 @@
 #include <QPointer>
 
 namespace {
-class History final : public QObject {
+class History final : public AIRoomLedger {
 public:
-    explicit History(Room &r) : QObject(&r) {}
+    explicit History(Room &r) : AIRoomLedger(r) {}
     bool initialized=false, present=false;
     quint64 serial=0;
     QPointer<ServerPlayer> actor;

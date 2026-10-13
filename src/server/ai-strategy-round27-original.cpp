@@ -1,4 +1,5 @@
 #include "ai-strategy-round27-original.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -15,9 +16,9 @@
 #include <QObject>
 
 namespace {
-class OriginalViews final : public QObject {
+class OriginalViews final : public AIRoomLedger {
 public:
-    explicit OriginalViews(Room &room) : QObject(&room) { setObjectName("isolated_original27_views"); }
+    explicit OriginalViews(Room &room) : AIRoomLedger(room) { setObjectName("isolated_original27_views"); }
     QMutex mutex;
     QHash<QString,QHash<QString,QSet<int>>> observed;
 };

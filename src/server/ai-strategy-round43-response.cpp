@@ -1,4 +1,5 @@
 #include "ai-strategy-round43-response.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-public-disclosure.h"
 #include "ai.h"
 #include "card.h"
@@ -15,7 +16,7 @@
 #include <QJsonArray>
 namespace {
 struct Frame {QString skill;QPointer<ServerPlayer> actor;int event=NonTrigger;bool cost=false;QVariant data;int depth=-1;const void*callback=nullptr;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){}QVector<Frame>frames;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){}QVector<Frame>frames;};
 Ledger*ledger(Room&r){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return new Ledger(r);}
 bool sameData(const QVariant&a,const QVariant&b){
  if(a.userType()!=b.userType())return false;

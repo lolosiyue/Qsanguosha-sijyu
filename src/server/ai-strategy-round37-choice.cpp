@@ -1,4 +1,5 @@
 #include "ai-strategy-round37-choice.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round35-choice.h"
 #include "ai-strategy-card-identity.h"
 #include "ai-runtime.h"
@@ -19,7 +20,7 @@ namespace {
 struct Capture {QString viewer,target,flags,scope,identity;QJsonObject source;quint64 decision=0,revision=0;QList<int> ids;int selected=-1;};
 struct Mark {QString identity,target;bool value=false;};
 struct Owner {bool baseline=false;QHash<QString,QHash<int,Mark>> marks;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){}bool captured=false,entered=false,initial=false;QString active;
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){}bool captured=false,entered=false,initial=false;QString active;
  QHash<QString,Owner> owners;QHash<QString,Capture> scopes,samples,receipts;};
 Ledger &ledger(Room&r){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return*l;return *new Ledger(r);}
 QString nonce(const char*prefix){return QString::fromLatin1(prefix)+QUuid::createUuid().toString(QUuid::WithoutBraces);}

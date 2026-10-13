@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-priority-bootstrap.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-bootstrap-write.h"
 #include "ai-strategy-round56-async.h"
 #include "ai-strategy-round45-lua-inspect.h"
@@ -12,8 +13,8 @@
 #include <cstdio>
 namespace {
 struct State;void observed(lua_State*,const lua_TableObservation*,void*)noexcept;
-struct State final:QObject{
- explicit State(Room&r):QObject(&r),room(r){}
+struct State final:AIRoomLedger{
+ explicit State(Room&r):AIRoomLedger(r),room(r){}
  ~State()override{for(const void*p:{globals,space,priority})if(p)lua_unobservetableidentity(L,p,observed,this);}
  Room&room;lua_State*L=nullptr;quint64 generation=0,epoch=0;
  const void*globals=nullptr,*space=nullptr,*priority=nullptr;

@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-mingfa.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-slot-bindings.h"
 #include "ai-strategy-round45-inovation-providers.h"
 #include "ai-strategy-round45-code-seal.h"
@@ -18,7 +19,7 @@
 #include "ai-strategy-round45-lua-inspect.h"
 namespace {
 struct Row{QPointer<ServerPlayer>owner;AIReadonlyCardLease card;};
-class Ledger final:public QObject{public:explicit Ledger(Room&r):QObject(&r){}quint64 generation=0;QHash<const ServerPlayer*,Row>rows;};
+class Ledger final:public AIRoomLedger{public:explicit Ledger(Room&r):AIRoomLedger(r){}quint64 generation=0;QHash<const ServerPlayer*,Row>rows;};
 Ledger*ledger(Room&r,bool create=false){for(auto*x:r.children())if(auto*l=dynamic_cast<Ledger*>(x))return l;return create?new Ledger(r):nullptr;}
 bool current(const AIRequest&q,ServerPlayer*p){return p&&p->getRoom()&&p->getRoom()->roomRuntime()&&!p->getRoom()->roomRuntime()->isClosing()&&q.decisionId&&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName()&&Sanguosha->currentRoom()==p->getRoom()&&aiRound44RangeRequestCurrent(*p->getRoom(),q,p);}
 bool scope(const AIRequest&q,bool write){return q.choiceOptions.reason=="tenyearmingfa"&&(write?(q.kind==AIRequest::SkillInvoke&&q.choiceOptions.question=="askForSkillInvoke"):(q.kind==AIRequest::PlayerChosen&&q.choiceOptions.question=="askForPlayerChosen"));}

@@ -1,4 +1,5 @@
 #include "ai-strategy-round54-jijiang.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "ai-runtime.h"
 #include "room.h"
@@ -16,8 +17,8 @@ namespace {
 // Strategy memory stays in the isolated observer VM. This operation storage
 // also retains weak constructor origins for one fixed, publicly declared list.
 struct ConstructedSkillNames {std::weak_ptr<const CardLifetimeToken>token;QPointer<const Card>card;};
-struct State final:QObject {
- explicit State(Room&r):QObject(&r),room(r){}
+struct State final:AIRoomLedger {
+ explicit State(Room&r):AIRoomLedger(r),room(r){}
  Room&room;quint64 next=0;QHash<const Card*,ConstructedSkillNames>constructedSkills;
 };
 State*state(Room&r,bool create=false){

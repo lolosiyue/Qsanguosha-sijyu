@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-response.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-projection.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -11,7 +12,7 @@
 #include <QSet>
 namespace {
 struct Observation {QPointer<ServerPlayer>target;QList<int>ids;QJsonObject printed;SkillInstanceRef activation;quint64 revision=0;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){}QHash<ServerPlayer*,Observation>observations;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){}QHash<ServerPlayer*,Observation>observations;};
 Ledger*ledger(Room&r,bool create){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(r):nullptr;}
 SkillInstanceRef current(Room&r,ServerPlayer*p,const QString&skill){
  if(!p)return {};const int id=p->getMark(ViewAsSkillV2::borrowedActivationMarkName(skill));

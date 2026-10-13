@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-playloop-filter.h"
 #include "ai-strategy-round56-patterns.h"
 #include "ai-strategy-round56-async.h"
@@ -112,9 +113,9 @@ struct ChoiceProxyProof {
  bool operator==(const ChoiceProxyProof&o)const{return proxy==o.proxy&&meta==o.meta&&values==o.values&&writer==o.writer;}
 };
 struct Watched { enum Kind { Self, List, Metadata, Registry, Namespace, Globals, Choice, ChosenPlayer, ChosenCard, IsolatedGlobals, IsolatedNamespace, ChoiceProxy, ChosenPlayerProxy, ChosenCardProxy, ChoiceMeta, ChosenPlayerMeta, ChosenCardMeta, IsolatedCatalogue } kind; const ServerPlayer*owner=nullptr; bool isolated=false; };
-class Ledger final:public QObject {
+class Ledger final:public AIRoomLedger {
 public:
- explicit Ledger(Room&r):QObject(&r),room(r){}
+ explicit Ledger(Room&r):AIRoomLedger(r),room(r){}
  ~Ledger()override;
  Room&room;bool initialized=false,interrupted=false,watchRoots=false,constructorEntryPending=false;quint64 generation=0,invalidations=0;
  QVector<const void*> proof;const ServerPlayer*pending=nullptr;
@@ -482,7 +483,7 @@ AIRound37OriginalConstructor::AIRound37OriginalConstructor(Room&r,ServerPlayer*p
    d->prior.insert(it.key(),*it);
  unwatchOwner(l,p);
  auto it=l->rows.find(p);if(it==l->rows.end()){
-  QObject::connect(p,&QObject::destroyed,l,[l,p]{unwatchOwner(l,p);l->rows.remove(p);});it=l->rows.insert(p,Row{QStringLiteral("unknown"),0});
+  QObject::connect(p,&QObject::destroyed,l,[l,p]{unwatchOwner(l,p);l->rows.remove(p);}, Qt::DirectConnection);it=l->rows.insert(p,Row{QStringLiteral("unknown"),0});
  }
  it->state="unknown";it->constructorEmpty=false;it->mirrorEmpty=false;it->shadowDiverged=false;it->selfIdentity=nullptr;it->listIdentity=nullptr;++it->stamp;
  d->oldHook=lua_gethook(L);d->oldMask=lua_gethookmask(L);d->oldCount=lua_gethookcount(L);
@@ -535,7 +536,7 @@ QJsonObject queryAIRound37OriginalTurnUse(Room&r,const AIRequest&q,const ServerP
   ||(write!="empty"&&write!="nil"&&write!="unknown")))return denied("Original toUse source writer scope mismatch");
  auto it=l->rows.find(p);
  if(it==l->rows.end()){
-  QObject::connect(p,&QObject::destroyed,l,[l,p]{unwatchOwner(l,p);l->rows.remove(p);});
+  QObject::connect(p,&QObject::destroyed,l,[l,p]{unwatchOwner(l,p);l->rows.remove(p);}, Qt::DirectConnection);
   it=l->rows.insert(p,Row{l->initialized&&!l->interrupted?QStringLiteral("empty"):QStringLiteral("unknown"),0});
  }
  // A read does not change the native mirror. Every exact isolated assignment

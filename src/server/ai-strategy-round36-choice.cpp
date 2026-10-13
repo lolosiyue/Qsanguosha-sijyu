@@ -1,4 +1,5 @@
 #include "ai-strategy-round36-choice.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round35-choice.h"
 #include "ai-strategy-flag-lifecycle.h"
 #include "ai.h"
@@ -9,7 +10,7 @@
 #include <QObject>
 namespace {
 struct Row{qint64 epoch=0;bool value=false;bool known=true;};
-class Shadow final:public QObject{public:explicit Shadow(Room&r):QObject(&r){}QHash<const ServerPlayer*,Row> owners;bool baselineKnown=true;};
+class Shadow final:public AIRoomLedger{public:explicit Shadow(Room&r):AIRoomLedger(r){}QHash<const ServerPlayer*,Row> owners;bool baselineKnown=true;};
 Shadow* ledger(Room&r,bool create=true){for(auto*c:r.children())if(auto*l=dynamic_cast<Shadow*>(c))return l;return create?new Shadow(r):nullptr;}
 QJsonObject fail(const char*why){return{{"kind","original_guanxing_shadow"},{"known",false},{"reason",QString::fromLatin1(why)}};}
 bool valid(Room&r,const AIRequest&q,const ServerPlayer*p){return p&&p->getRoom()==&r&&r.getAllPlayers(true).contains(const_cast<ServerPlayer*>(p))
@@ -18,7 +19,7 @@ qint64 epoch(Room&r,const ServerPlayer*p){AIWorldView fresh;fresh.self.objectNam
  return qint64(fresh.strategyFacts.value("strategy_flag_clear_epochs").toObject().value(p->objectName()).toDouble());}
 Row& row(Room&r,const AIRequest&q,const ServerPlayer*p){auto*l=ledger(r);auto it=l->owners.find(p);const qint64 e=epoch(r,p);
  if(it==l->owners.end()){
-  QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);});
+  QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);}, Qt::DirectConnection);
   // Initial migration is lawful only while no legacy/external policy entry
   // has interrupted this ledger's baseline, including before the first read.
   if(!l->baselineKnown)return l->owners.insert(p,Row{e,false,false}).value();
@@ -49,7 +50,7 @@ void invalidateAIRound36GuanxingShadow(Room&r){
  // resurrect a stale R35 mode-policy value. A real clear after this entry
  // reestablishes false, even if no read/write existed before the entry.
  for(const auto*p:r.getAllPlayers(true)){
-  if(!l->owners.contains(p))QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);});
+  if(!l->owners.contains(p))QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);}, Qt::DirectConnection);
   l->owners.insert(p,Row{epoch(r,p),false,false});
  }
 }

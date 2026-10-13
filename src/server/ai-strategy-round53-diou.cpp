@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-diou.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-slot-bindings.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round45-inovation-providers.h"
@@ -29,7 +30,7 @@
 namespace {
 struct Stack{lua_State*L;int n;explicit Stack(lua_State*s):L(s),n(lua_gettop(s)){}~Stack(){lua_settop(L,n);}};
 struct Row {QPointer<ServerPlayer>owner;AIReadonlyCardLease lease;int observedWrappedId=-1;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){} quint64 generation=0;QHash<const ServerPlayer*,QHash<QString,Row>>rows;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){} quint64 generation=0;QHash<const ServerPlayer*,QHash<QString,Row>>rows;};
 Ledger*ledger(Room&r,bool create=false){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(r):nullptr;}
 bool current(const AIRequest&q,ServerPlayer*p){return p&&p->getRoom()&&q.decisionId>0
  &&!p->getRoom()->roomRuntime()->isClosing()&&q.viewerObjectName==p->objectName()
@@ -265,7 +266,7 @@ bool aiRound53DiouConstruction(const AIRequest&q,Room&r,const ServerPlayer*p,con
 
 namespace {
 struct DiouReceipt {QWeakPointer<AIConversionLedger>ledger;QPointer<ServerPlayer>owner;QPointer<const Card>source;quint64 decision=0,revision=0;QString wire;QStringList targets;AICardSpec spec;SkillInstanceRef activation,root;};
-class DiouReceipts final:public QObject{public:explicit DiouReceipts(Room&r):QObject(&r){}QList<DiouReceipt>rows;};
+class DiouReceipts final:public AIRoomLedger{public:explicit DiouReceipts(Room&r):AIRoomLedger(r){}QList<DiouReceipt>rows;};
 DiouReceipts*diouReceipts(Room&r,bool create=false){for(auto*c:r.children())if(auto*l=dynamic_cast<DiouReceipts*>(c))return l;return create?new DiouReceipts(r):nullptr;}
 AICardSpec diouSpec(const Card*c,int id){AICardSpec s;s.name=c->objectName();s.suit=c->getSuit();s.number=c->getNumber();s.skillName=c->getSkillName(false);s.subcardIds=c->getSubcards();s.conversionId=id;return s;}
 bool diouSame(const AICardSpec&a,const AICardSpec&b){return a.name==b.name&&a.suit==b.suit&&a.number==b.number&&a.skillName==b.skillName&&a.subcardIds==b.subcardIds&&a.conversionId==b.conversionId;}

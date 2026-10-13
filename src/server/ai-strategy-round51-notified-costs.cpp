@@ -1,4 +1,5 @@
 #include "ai-strategy-round51-notified-costs.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-projection.h"
 #include "ai-strategy-card-identity.h"
 #include "ai.h"
@@ -19,7 +20,7 @@ namespace {
 struct Frame {Room*room;ServerPlayer*viewer;ServerPlayer*other;QList<int>offered;QString prompt;int depth;};
 thread_local QList<Frame> frames;
 struct Receipt {QWeakPointer<AIConversionLedger>ledger;quint64 decision,revision;QString viewer,wire;AICardSpec spec;SkillInstanceRef activation,source;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){}QList<Receipt>rows;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){}QList<Receipt>rows;};
 Ledger*ledger(Room&r,bool make=false){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return make?new Ledger(r):nullptr;}
 bool live(const AIRequest&q,ServerPlayer*p){return p&&p->getRoom()&&p->getRoom()->getPlayers().contains(p)&&p->getRoom()->roomRuntime()&&!p->getRoom()->roomRuntime()->isClosing()&&q.decisionId&&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName()&&q.stateRevision==p->getRoom()->roomRuntime()->stateRevision();}
 AICardSpec specOf(const Card*c,int id){AICardSpec s;s.name=c->objectName();s.suit=c->getSuit();s.number=c->getNumber();s.skillName=c->getSkillName(false);s.subcardIds=c->getSubcards();s.conversionId=id;return s;}

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-bootstrap-source.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round53-lianzhan.h"
 #include "ai-strategy-round45-inovation-providers.h"
 #include "ai-strategy-round45-slot-bindings.h"
@@ -70,7 +71,7 @@ struct BorrowedCard {
 using Borrow=std::shared_ptr<BorrowedCard>;
 struct Row{QPointer<ServerPlayer>owner;Borrow card;QJsonObject observedFace;};
 struct Capture {QPointer<ServerPlayer>owner;QWeakPointer<AIConversionLedger>ledger;quint64 decision=0,revision=0;std::shared_ptr<const CardUseStruct>use;Borrow card;};
-class Ledger final:public QObject{public:explicit Ledger(Room&r):QObject(&r){}quint64 generation=0;QHash<const ServerPlayer*,Row>rows;QHash<quint64,Capture>captures;};
+class Ledger final:public AIRoomLedger{public:explicit Ledger(Room&r):AIRoomLedger(r){}quint64 generation=0;QHash<const ServerPlayer*,Row>rows;QHash<quint64,Capture>captures;};
 Ledger*ledger(Room&r,bool create=false){for(auto*x:r.children())if(auto*l=dynamic_cast<Ledger*>(x))return l;return create?new Ledger(r):nullptr;}
 bool field(lua_State*L,int index,const char*key){QSet<const void*>seen;lua_pushvalue(L,index);for(int depth=0;depth<16;++depth){if(!lua_istable(L,-1)||seen.contains(lua_topointer(L,-1)))return false;seen.insert(lua_topointer(L,-1));const int row=lua_absindex(L,-1);AIRound45Inspect::field(L,row,key);if(!lua_isnil(L,-1))return true;lua_pop(L,1);if(!lua_getmetatable(L,row)){lua_pushnil(L);return true;}AIRound45Inspect::field(L,-1,"__index");if(lua_isnil(L,-1))return true;if(!lua_istable(L,-1))return false;}return false;}
 bool assignment(lua_State*L,int self){AIRound45Inspect::field(L,self,"lianzhanUse");const bool exists=!lua_isnil(L,-1);lua_pop(L,1);if(exists||!lua_getmetatable(L,self))return true;AIRound45Inspect::field(L,-1,"__newindex");const bool absent=lua_isnil(L,-1);lua_pop(L,2);return absent;}

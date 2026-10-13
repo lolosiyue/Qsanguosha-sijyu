@@ -1,4 +1,5 @@
 #include "ai-strategy-round25-planning.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "card.h"
 #include "room.h"
@@ -56,8 +57,8 @@ void projectAIRound25PlanningContext(AIRequest&r,Room&room,const ServerPlayer*p,
 #include "lua.hpp"
 #include <QObject>
 namespace {
-class HayateGlobalSnapshot final:public QObject{
-public:HayateGlobalSnapshot(Room&r,const QJsonObject&v):QObject(&r),value(v){}const QJsonObject value;
+class HayateGlobalSnapshot final:public AIRoomLedger{
+public:HayateGlobalSnapshot(Room&r,const QJsonObject&v):AIRoomLedger(r),value(v){}const QJsonObject value;
 };
 const HayateGlobalSnapshot*hayateCapture(Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<HayateGlobalSnapshot*>(c))return s;return nullptr;}
 }

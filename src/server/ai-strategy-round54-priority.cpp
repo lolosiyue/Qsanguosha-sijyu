@@ -1,4 +1,5 @@
 #include "ai-strategy-round54-priority.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-priority-bootstrap.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai.h"
@@ -18,7 +19,7 @@ namespace {
 struct Stack{lua_State*L;int n;explicit Stack(lua_State*s):L(s),n(lua_gettop(s)){}~Stack(){lua_settop(L,n);}};
 struct Grant{QPointer<ServerPlayer>owner;quint64 decision=0,epoch=0,transport=0,serial=0;QWeakPointer<AIConversionLedger>ledger;};
 class State;void noteWrite(State*,const lua_TableObservation&)noexcept;void observer(lua_State*,const lua_TableObservation*,void*)noexcept;
-class State final:public QObject{public:explicit State(Room&r):QObject(&r),room(r){}
+class State final:public AIRoomLedger{public:explicit State(Room&r):AIRoomLedger(r),room(r){}
  ~State()override{for(auto p:{globals,space,table})if(p)lua_unobservetableidentity(L,p,observer,this);}
  Room&room;lua_State*L=nullptr;quint64 generation=0,serial=1;bool valid=false;
  const void*globals=nullptr,*space=nullptr,*table=nullptr;QHash<QString,Grant>grants;QSet<QString>touched;

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-connection-cache.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round56-playloop-filter.h"
 #include "ai-strategy-round56-clone-lineage.h"
@@ -35,11 +36,11 @@ struct State;struct Call;thread_local Call*active=nullptr;
 void observe(lua_State*,const lua_TableObservation*,void*)noexcept;
 struct Stack{lua_State*L;int top;explicit Stack(lua_State*s):L(s),top(lua_gettop(s)){}~Stack(){lua_settop(L,top);}};
 enum Kind{Namespace,Qlist,Connect,Array};
-struct State final:QObject{
+struct State final:AIRoomLedger{
  Room&r;lua_State*L;quint64 generation;bool live=true,resetPending=false;
  const void*space=nullptr,*qlist=nullptr,*connect=nullptr;
  QHash<const void*,Kind>watches;QHash<QString,const void*>lists,connections;QSet<QString>skillKeys;
- State(Room&room,lua_State*l):QObject(&room),r(room),L(l),generation(room.roomRuntime()->lua().generation()){}
+ State(Room&room,lua_State*l):AIRoomLedger(room),r(room),L(l),generation(room.roomRuntime()->lua().generation()){}
  ~State()override{for(auto i=watches.cbegin();i!=watches.cend();++i)lua_unobservetableidentity(L,i.key(),observe,this);}
  void retire()noexcept{live=false;retireAIRound56Projection(r,L);}
  bool watch(const void*p,Kind kind){

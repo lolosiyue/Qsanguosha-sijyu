@@ -1,4 +1,5 @@
 #include "ai-strategy-round28-common.h"
+#include "ai-strategy-room-ledger.h"
 #include "room.h"
 #include "serverplayer.h"
 #include <QObject>
@@ -12,9 +13,9 @@ struct SlotWitness {
 };
 // Room-child lifetime; no process-global map, cross-room thread data, native
 // card/userdata retention, or gameplay revision mutation.
-class GeneralSlotLedger final : public QObject {
+class GeneralSlotLedger final : public AIRoomLedger {
 public:
-    explicit GeneralSlotLedger(Room &room) : QObject(&room) {
+    explicit GeneralSlotLedger(Room &room) : AIRoomLedger(room) {
         setObjectName(QStringLiteral("isolated-ai-round28-public-general-slots"));
     }
     QHash<QString, SlotWitness> deputy;

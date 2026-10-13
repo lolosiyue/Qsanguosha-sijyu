@@ -1,4 +1,5 @@
 #include "ai-strategy-public-deck.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "engine.h"
 #include "game-rng.h"
@@ -15,8 +16,8 @@ namespace {
 QJsonObject denied(const QString &reason) { return {{"error",reason},{"unsupported",true},{"key","rng.public_deck_order"}}; }
 // This is a reached source-effect ledger, not an action receipt. It retains
 // only weak pointers to issued catalogue objects; Room owns its destruction.
-struct PrintedTraversal : QObject {
-    explicit PrintedTraversal(Room &room):QObject(&room){}
+struct PrintedTraversal : AIRoomLedger {
+    explicit PrintedTraversal(Room &room):AIRoomLedger(room){}
     quint64 serial=0,decision=0,revision=0;
     QString viewer,sequence;
     QWeakPointer<AIConversionLedger> requestLedger;

@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-certificate.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round29-choice.h"
 #include "ai-strategy-round54-priority.h"
 #include "ai-strategy-choice-continuity.h"
@@ -23,8 +24,8 @@
 #include <QScopeGuard>
 #include <cmath>
 namespace {
-class Priorities final:public QObject {
-public:explicit Priorities(Room &r):QObject(&r){}
+class Priorities final:public AIRoomLedger {
+public:explicit Priorities(Room &r):AIRoomLedger(r){}
  bool captured=false,baselineLive=true,entered=false;
  QString viewer;
  QSet<QString> keys;

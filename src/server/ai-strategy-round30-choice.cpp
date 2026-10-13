@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-certificate.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round30-choice.h"
 #include "ai.h"
 #include "room.h"
@@ -50,9 +51,9 @@ void projectAIRound30TargetRecommend(AIWorldView &world, Room &room, const Serve
 }
 
 namespace {
-class TargetCache final : public QObject {
+class TargetCache final : public AIRoomLedger {
 public:
-    explicit TargetCache(Room &room) : QObject(&room) {
+    explicit TargetCache(Room &room) : AIRoomLedger(room) {
         static std::atomic<quint64> next{0};
         scope = QString::number(++next);
     }

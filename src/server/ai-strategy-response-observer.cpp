@@ -1,4 +1,5 @@
 #include "ai-strategy-response-observer.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "ai-strategy-card-identity.h"
 #include "card.h"
@@ -39,9 +40,9 @@ struct CardWitness {
     bool damageFlag = true;
     QSet<QString> audience;
 };
-class Ledger final : public QObject {
+class Ledger final : public AIRoomLedger {
 public:
-    explicit Ledger(Room &room) : QObject(&room) {}
+    explicit Ledger(Room &room) : AIRoomLedger(room) {}
     QList<Frame *> frames;
     QHash<const Card *, CardWitness> cards;
     QSet<const Card *> watched;

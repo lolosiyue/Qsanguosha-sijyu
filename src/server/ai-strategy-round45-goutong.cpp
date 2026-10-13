@@ -1,4 +1,5 @@
 #include "ai-strategy-round45-goutong.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-inovation-providers.h"
 #include "ai-strategy-round45-native-seal.h"
 #include "ai-strategy-round44-certificate.h"
@@ -15,7 +16,7 @@
 namespace {
 constexpr const char*name="AI.R45.GoutongMove";
 struct Input {QPointer<ServerPlayer>owner;quint64 decision=0,revision=0;std::shared_ptr<const CardsMoveOneTimeStruct>move;bool attempted=false,reached=false;};
-class Ledger final:public QObject{public:explicit Ledger(Room&r):QObject(&r){setObjectName(name);}QHash<QString,Input>rows;};
+class Ledger final:public AIRoomLedger{public:explicit Ledger(Room&r):AIRoomLedger(r){setObjectName(name);}QHash<QString,Input>rows;};
 Ledger*ledger(Room&r,bool create=false){for(auto*c:r.children())if(c->objectName()==name)return static_cast<Ledger*>(c);return create?new Ledger(r):nullptr;}
 struct Stack{lua_State*L;int top;~Stack(){lua_settop(L,top);}};
 ServerPlayer*rosterPlayer(Room&r,const Player*p){for(auto*v:r.getAllPlayers(true))if(static_cast<const Player*>(v)==p)return v;return nullptr;}

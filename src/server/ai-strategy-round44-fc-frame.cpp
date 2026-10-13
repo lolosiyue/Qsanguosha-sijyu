@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-fc-frame.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "card.h"
 #include "room.h"
@@ -10,9 +11,9 @@
 namespace {
 const char *ledgerName = "_ai_round44_fc_use_frames";
 struct Frame { quint64 serial = 0; const QVariant *data = nullptr; QPointer<Card> card; QPointer<ServerPlayer> from; qint64 history = 0; };
-class Frames final : public QObject {
+class Frames final : public AIRoomLedger {
 public:
- explicit Frames(Room &room):QObject(&room){setObjectName(ledgerName);}
+ explicit Frames(Room &room):AIRoomLedger(room){setObjectName(ledgerName);}
  quint64 next = 0;
  QList<Frame> stack;
 };

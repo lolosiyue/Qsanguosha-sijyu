@@ -2010,6 +2010,21 @@ void Dashboard::updateAvatar()
     _m_skillDock->update();
 }
 
+QHash<QString, bool> Dashboard::skillAutoInvokeStates()
+{
+    // Toggle-style buttons auto-answer "invoke?" while down (RoomScene::updateStatus).
+    QHash<QString, bool> states;
+    foreach (QSanInvokeSkillDock *dock, QList<QSanInvokeSkillDock *>() << _m_skillDock << m_secondarySkillDock) {
+        if (!dock) continue;
+        foreach (QSanInvokeSkillButton *button, dock->getAllSkillButtons()) {
+            if (button && button->getSkill() && button->getStyle() == QSanButton::S_STYLE_TOGGLE
+                && !button->getSkill()->inherits("BattleArraySkill"))
+                states.insert(button->getSkill()->objectName(), button->isEnabled() && button->isDown());
+        }
+    }
+    return states;
+}
+
 static bool CompareByNumber(const CardItem *a, const CardItem *b)
 {
     return Card::CompareByNumber(a->getCard(), b->getCard());

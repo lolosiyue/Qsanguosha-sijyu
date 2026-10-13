@@ -1,4 +1,5 @@
 #include "ai-strategy-public-action-flags.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round53-xufa-response.h"
 #include "ai-strategy-round54-jijiang.h"
 #include "ai-strategy-events.h"
@@ -13,9 +14,9 @@
 namespace {
 // QObject ownership gives each Room its own ledger and teardown. No static
 // cross-Room state, legacy AI globals or scripting userdata are involved.
-class EventKnowledge final : public QObject {
+class EventKnowledge final : public AIRoomLedger {
 public:
-    explicit EventKnowledge(Room &room) : QObject(&room)
+    explicit EventKnowledge(Room &room) : AIRoomLedger(room)
     { setObjectName(QStringLiteral("isolated_ai_event_knowledge")); }
     QHash<QString, QHash<QString, QSet<int>>> hands;
     QHash<QString, QHash<QString, QSet<int>>> revoked;

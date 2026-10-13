@@ -433,6 +433,12 @@ bool LocalResponseUiController::bootstrap(QString *error)
             if (!setProperty(name, QStringLiteral("flags"), flag.toString()))
                 return false;
         }
+        // Raw replica properties, e.g. ChangeSkill_<skill>_State for switch-skill fixtures.
+        const QJsonObject extra = player.value(QStringLiteral("properties")).toObject();
+        for (auto property = extra.constBegin(); property != extra.constEnd(); ++property) {
+            if (!setProperty(name, property.key(), jsonScalarText(property.value())))
+                return false;
+        }
         return true;
     };
     JsonArray seats;

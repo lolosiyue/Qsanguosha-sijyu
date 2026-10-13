@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-bootstrap-capture-metadata.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -40,9 +41,9 @@ struct Source {
  QHash<quint64,QSet<int>> ancestors;
  QHash<quint64,QVector<int>> instructionLines;
 };
-class Seals final:public QObject {
+class Seals final:public AIRoomLedger {
 public:
- explicit Seals(Room &room):QObject(&room){setObjectName(name);}
+ explicit Seals(Room &room):AIRoomLedger(room){setObjectName(name);}
  lua_State *state=nullptr; quint64 generation=0;
  QHash<QString,Source> sources;
  // C++ owns only bytes, never a Lua pointer/reference. Room destruction and

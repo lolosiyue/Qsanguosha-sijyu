@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-bootstrap-capture-metadata.h"
+#include "ai-strategy-room-ledger.h"
 #include <cstdio>
 #ifdef Q_OS_LINUX
 #include <execinfo.h>
@@ -36,11 +37,11 @@ void barrier(Room&r,lua_State*L)noexcept{
  if(auto*rt=r.roomRuntime()){rt->revokePrioritySource();rt->revokeXufaTransportContinuity();}
  observeAIRound45UnprovedNativeQuery(&r);
 }
-struct State final:QObject {
+struct State final:AIRoomLedger {
  Room&room;lua_State*L;quint64 generation;
  bool alive=true,completed=false,seeding=true,sourceReady=false,prepareAttempted=false;
  QHash<QString,const void*>privateRoots;QSet<const void*>tables;
- State(Room&r,lua_State*l,quint64 g):QObject(&r),room(r),L(l),generation(g){}
+ State(Room&r,lua_State*l,quint64 g):AIRoomLedger(r),room(r),L(l),generation(g){}
  ~State()override{if(L){lua_unobservetablebirth(L,observeBirth,this);for(const void*p:tables)lua_unobservetableidentity(L,p,observeRoot,this);}}
  void retire()noexcept{
   if(alive&&qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")) {std::fprintf(stderr,"R56_MODE_SOURCE_RETIRE seeding=%d ready=%d tracked=%lld\n",int(seeding),int(sourceReady),static_cast<long long>(tables.size()));std::fflush(stderr);}

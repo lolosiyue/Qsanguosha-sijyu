@@ -1,4 +1,5 @@
 #include "ai-strategy-history-context.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "engine.h"
 #include "room.h"
@@ -10,9 +11,9 @@
 #include <QObject>
 
 namespace {
-class HistoryKnowledge final : public QObject {
+class HistoryKnowledge final : public AIRoomLedger {
 public:
-    explicit HistoryKnowledge(Room &room) : QObject(&room) { setObjectName("isolated-strategy-history-knowledge"); }
+    explicit HistoryKnowledge(Room &room) : AIRoomLedger(room) { setObjectName("isolated-strategy-history-knowledge"); }
     QHash<QString, QSet<QString>> skills;
 };
 HistoryKnowledge &knowledge(Room &room) {

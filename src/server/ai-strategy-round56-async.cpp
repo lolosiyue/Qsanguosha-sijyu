@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-async.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-host.h"
 #include "ai-strategy-round45-lua-inspect.h"
 #include "lua-runtime.h"
@@ -10,8 +11,8 @@
 #include <QObject>
 #include <QPointer>
 namespace {
-struct State final : QObject {
- explicit State(Room &r) : QObject(&r), room(&r) {}
+struct State final : AIRoomLedger {
+ explicit State(Room &r) : AIRoomLedger(r), room(&r) {}
  QPointer<Room> room;
  lua_State *lua = nullptr;
  quint64 generation = 0;

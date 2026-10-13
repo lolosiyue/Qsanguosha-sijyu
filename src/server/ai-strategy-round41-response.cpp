@@ -1,4 +1,5 @@
 #include "ai-strategy-round45-faqi-slot.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round41-response.h"
 #include "ai.h"
 #include "card.h"
@@ -29,8 +30,8 @@ struct Receipt {
  QString viewer,token,wire;QStringList targets;AICardSpec spec;
  SkillInstanceRef activation,source;
 };
-class Ledger final:public QObject {
- public:explicit Ledger(Room &room):QObject(&room){} quint64 epoch=1;bool exhausted=false;QHash<QString,Saved> plans;QList<Receipt> receipts;
+class Ledger final:public AIRoomLedger {
+ public:explicit Ledger(Room &room):AIRoomLedger(room){} quint64 epoch=1;bool exhausted=false;QHash<QString,Saved> plans;QList<Receipt> receipts;
 };
 Ledger *ledger(Room *room,bool create=false){
  if(!room)return nullptr;for(QObject *child:room->children())if(auto *found=dynamic_cast<Ledger*>(child))return found;

@@ -1,4 +1,5 @@
 #include "ai-strategy-round50-htms-events.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai-strategy-card-identity.h"
 #include "ai.h"
@@ -19,7 +20,7 @@ const char*path="extensions/htms.lua";
 struct Frame {QString name;QPointer<ServerPlayer>actor;int event=NonTrigger,depth=-1;const QVariant*data=nullptr;const void*callback=nullptr;};
 struct DamageFrame {QVector<QVariant>publicValues;QVariant previous;};
 struct Pending {const QVariant*value=nullptr;bool allowed=false;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){}QVector<Frame>frames;QVector<DamageFrame>damages;QVector<Pending>pending;QVariant currentDamage;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){}QVector<Frame>frames;QVector<DamageFrame>damages;QVector<Pending>pending;QVariant currentDamage;};
 Ledger*find(Room&r){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return nullptr;}
 Ledger*ledger(Room&r){auto*l=find(r);return l?l:new Ledger(r);}
 bool roster(Room&r,const ServerPlayer*p){return !p||r.getAllPlayers(true).contains(const_cast<ServerPlayer*>(p));}

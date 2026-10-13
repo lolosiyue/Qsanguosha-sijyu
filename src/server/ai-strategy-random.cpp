@@ -1,4 +1,5 @@
 #include "ai-strategy-random.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round37-choice.h"
 #include "ai-runtime.h"
 
@@ -16,9 +17,9 @@
 
 namespace {
 
-class RandomStrategyState final : public QObject {
+class RandomStrategyState final : public AIRoomLedger {
 public:
-    explicit RandomStrategyState(Room &room) : QObject(&room)
+    explicit RandomStrategyState(Room &room) : AIRoomLedger(room)
     { setObjectName(QStringLiteral("isolated_ai_random_strategy_state")); }
     quint64 generation = 0;
     QMap<QString, QSet<int>> lastCardChosenDisabled;

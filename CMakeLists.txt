@@ -489,6 +489,7 @@ add_library(qsanguosha_engine STATIC
     src/server/ai-strategy-aliases.cpp
     src/server/ai-strategy-use-dispatch.cpp
     src/server/ai-strategy-card-identity.cpp
+    src/server/ai-strategy-room-ledger.cpp
     src/server/ai-strategy-animecard.cpp
     src/server/ai-strategy-flag-lifecycle.cpp
     src/server/ai-strategy-nested-cardask.cpp
@@ -2161,6 +2162,8 @@ if(QSAN_BUILD_GUI)
                 # The shared snapshot formatter is linked through ClientCore.
                 src/client/core/game-view-state.cpp
                 src/core/engine.cpp
+                # Player::getSkillDescription() feeds the general hover card.
+                src/core/player.cpp
                 src/core/scenario-work.cpp
                 src/scenario/work-scenario.cpp
                 # Android-only; listed so desktop lupdate keeps their strings.

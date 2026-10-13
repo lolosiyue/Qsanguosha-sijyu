@@ -1,3 +1,4 @@
+#include "gu-audit2025.h"
 #include "ai-strategy-round51-notified-costs.h"
 #include "tenyear.h"
 #include <algorithm>
@@ -15674,8 +15675,8 @@ void ThWuyanCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&)const
 	room->setPlayerFlag(use.to.last(),"thwuyanUseT");
 	if(room->askForUseCard(use.to.first(),"$.|.|.|hand","thwuyan1:"+use.to.last()->objectName(),-1,Card::MethodUse,true,nullptr,nullptr,"thwuyanUseC"))
 		source->drawCards(2,"thwuyan");
-	room->setPlayerFlag(use.to.first(),"-tywuyanUseF");
-	room->setPlayerFlag(use.to.last(),"-tywuyanUseT");
+	room->setPlayerFlag(use.to.first(),"-thwuyanUseF");
+	room->setPlayerFlag(use.to.last(),"-thwuyanUseT");
 	if(use.to.first()->hasFlag("DamageDone")){
 		use.to.first()->setFlags("-DamageDone");
 	}else if(source->askForSkillInvoke("thwuyan",use.to.first(),false)){
@@ -15751,8 +15752,8 @@ public:
 		} else if (event == PreCardUsed) {
 			const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 			if (!use.card || !use.card->hasFlag("thwuyanUseC") || use.to.isEmpty()) return false;
-			room->setPlayerFlag(player, "-tywuyanUseF");
-			room->setPlayerFlag(use.to.first(), "-tywuyanUseT");
+			room->setPlayerFlag(player, "-thwuyanUseF");
+			room->setPlayerFlag(use.to.first(), "-thwuyanUseT");
 		} else if (event == CardFinished) {
 			const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 			if (use.card && use.card->hasFlag("thwuyanUseC") && use.card->hasFlag("DamageDone"))
@@ -15775,6 +15776,26 @@ public:
 			return !to->hasFlag("thwuyanUseT");
 		}
 		return false;
+	}
+};
+
+class ThWuyanTargetMod : public TargetModSkill
+{
+public:
+	ThWuyanTargetMod(): TargetModSkill("#thwuyan-target")
+	{
+		frequency = NotFrequent;
+		pattern = ".";
+	}
+
+	int getDistanceLimit(const Player*from,const Card*,const Player*)const
+	{
+		return from->hasFlag("thwuyanUseF") ? 999 : 0;
+	}
+
+	int getResidueNum(const Player*from,const Card*card,const Player*)const
+	{
+		return (from->hasFlag("thwuyanUseF") && card->isKindOf("Slash")) ? 999 : 0;
 	}
 };
 
@@ -27741,8 +27762,25 @@ public:
 		} else
 			return true;
 		if (!card || card->isKindOf("SkillCard") || !card->isRed()) return true;
+		bool fromHand = false;
+		if (event == CardUsed)
+			fromHand = data.value<CardUseStruct>().m_isHandcard;
+		else if (event == CardResponded)
+			fromHand = data.value<CardResponseStruct>().m_isHandcard;
+		if (!fromHand) return true;
+		int redLeft = 0;
 		foreach (const Card *hand, player->getHandcards())
-			if (hand->isRed()) return true;
+			if (hand->isRed()) redLeft++;
+		if (redLeft != 0) return true;
+		QList<int> ids = card->getSubcards();
+		if (ids.isEmpty() && card->getEffectiveId() >= 0)
+			ids << card->getEffectiveId();
+		int redSubs = 0;
+		foreach (int id, ids) {
+			const Card *real = Sanguosha->getCard(id);
+			if (real && real->isRed()) redSubs++;
+		}
+		if (redSubs != 1) return true;
 		room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 		player->drawCards(1, objectName());
 		return true;
@@ -28838,7 +28876,6 @@ public:
 			player->peiyin(this);
 
 			int n = 4 - removes.length();
-			QString num = QString::number(n);
 
 			QStringList all_choices,choices,removes_copy = removes;
 			all_choices << "recover" << "draw" << "fuyuan" << "random1";
@@ -28846,7 +28883,10 @@ public:
 				if(removes.contains("caiyi_" + cho))continue;
 				if(cho=="recover"&& !t->isWounded())continue;
 				if(cho=="random1"&& removes.isEmpty())continue;
-				choices << cho + "=" + num;
+				int show = n;
+				if(cho=="recover") show = n + 1;
+				else if(cho=="draw") show = n + 2;
+				choices << cho + "=" + QString::number(show);
 			}
 			if(choices.isEmpty()){
 				room->setChangeSkillState(player,objectName(),2);
@@ -28866,9 +28906,9 @@ public:
 			}
 
 			if(choice.startsWith("recover"))
-				room->recover(t,RecoverStruct(player,nullptr,qMin(n,t->getMaxHp()- t->getHp()),"caiyi"));
+				room->recover(t,RecoverStruct(player,nullptr,qMin(n + 1,t->getMaxHp()- t->getHp()),"caiyi"));
 			else if(choice.startsWith("draw"))
-				t->drawCards(n,objectName());
+				t->drawCards(n + 2,objectName());
 			else if(choice.startsWith("fuyuan")){
 				room->setPlayerChained(t,false);
 				if(!t->faceUp())
@@ -31236,7 +31276,7 @@ public:
 	{
 		TriggerList result;
 		const DamageStruct damage = data.value<DamageStruct>();
-		if (!player || !player->isAlive() || damage.to != player || !damage.card) return result;
+		if (!player || !player->isAlive() || damage.to != player || !damage.card || damage.card->getNumber() <= 0) return result;
 		foreach (ServerPlayer *owner, room->getAlivePlayers())
 			if (owner != damage.from && owner->hasSkill(this) && (owner == player || owner->inMyAttackRange(player))) result[owner] << objectName();
 		return result;
@@ -31678,7 +31718,17 @@ void WeitiCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&targets)c
 	foreach(ServerPlayer*p,targets){
 		if(p->isWounded()&&room->askForChoice(p,"weiti","weiti1+weiti2")=="weiti2"){
 			room->recover(p,RecoverStruct("weiti",source));
-			if(p->getCardCount()<2)continue;
+			bool enough = false;
+			QList<int> nums;
+			foreach(const Card*c,p->getCards("he")){
+				if(!p->canDiscard(p,c->getId()))continue;
+				if(!nums.isEmpty()&&!nums.contains(c->getNumber()))enough = true;
+				nums << c->getNumber();
+			}
+			if(!enough){
+				if(!nums.isEmpty())room->askForDiscard(p,"weiti",1,1,false,true);
+				continue;
+			}
 			const Card*sc = room->askForUseCard(p,"@@weiti!","weiti0",-1,Card::MethodDiscard);
 			if(!sc){
 				Card*dc = dummyCard();
@@ -31857,7 +31907,7 @@ public:
 	{
 		if(event==CardFinished){
 			CardUseStruct use = data.value<CardUseStruct>();
-			if(use.card->getTypeId()>0&&use.to.length()>0&&use.m_isHandcard){
+			if(use.card->getTypeId()>0&&!use.card->isKindOf("DelayedTrick")&&use.to.length()>0&&use.m_isHandcard){
 				bool has = player->getTag("boxuan_revise").toBool();
 				foreach(ServerPlayer*p,use.to){
 					if(p!=player)has = true;
@@ -35362,6 +35412,7 @@ void HuozhongCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	foreach(ServerPlayer*tp,targets){
 		QList<ServerPlayer*>tps;
 		foreach(ServerPlayer*q,room->getOtherPlayers(tp)){
+			if(q==source) continue;
 			if(q->getCardCount()>0) tps << q;
 		}
 		QStringList choices;
@@ -38349,6 +38400,8 @@ public:
 				if(res.m_isRetrial||!res.m_isHandcard)return false;
 				card = res.m_card;
 			}
+			// 文瀾只累計「非延時」牌
+			if(card&&card->isKindOf("DelayedTrick")) return false;
 			if(card){
 				QStringList ts,cs = player->getTag("wenlanCs").toStringList();
 				foreach (QString f, card->getFlags()) {
@@ -38400,6 +38453,8 @@ public:
 TenyearHcPackage::TenyearHcPackage()
 	: Package("tenyear_hc")
 {
+	guAudit2025Tenyear(this);
+	guAudit2025Source3Tenyear(this);
 General*caobao = new General(this,"caobao","qun",4);
 	caobao->addSkill(new Yanjiu);
 	caobao->addSkill(new Poyin);
@@ -39371,8 +39426,10 @@ General*caobao = new General(this,"caobao","qun",4);
 	yue_caiyong->addSkill(new Feibai);
 
 	General*yue_zhugeguo = new General(this,"yue_zhugeguo","shu",3,false);
-	yue_zhugeguo->addSkill(new Xidi);
-	yue_zhugeguo->addSkill(new Chengyan);
+	yue_zhugeguo->addSkill(guNewXidi());
+	yue_zhugeguo->addSkill(guNewXidiMod());
+	insertRelatedSkills("xidi", "#xidi-max");
+	yue_zhugeguo->addSkill(guNewChengyan());
 }
 {// Battle-Hardened Elite
 	General*tenyear_wutugu = new General(this,"tenyear_wutugu","qun",15);
@@ -39577,6 +39634,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	General*caoyuan = new General(this,"caoyuan","qun",3,false);
 	caoyuan->addSkill(new ThWuyan);
 	caoyuan->addSkill(new ThWuyanBf);
+	caoyuan->addSkill(new ThWuyanTargetMod);
 	caoyuan->addSkill(new Zhanyu);
 	addMetaObject<ThWuyanCard>();
 
@@ -40274,6 +40332,7 @@ void registerAIRound56NativeTypes_src_package_tenyear2_cpp(AIRound56NativeTypes&
  types.emplace(std::type_index(typeid(ThWuyan)), 2u);
  types.recordActivateSource<ThWuyan>(3906u); AI_R56_REQUIRE_DECLARATION(ThWuyan, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(ThWuyanBf)), 3u);
+ types.emplace(std::type_index(typeid(ThWuyanTargetMod)), 3u);
  types.emplace(std::type_index(typeid(Zhanyu)), 2u);
  types.recordActivateSource<Zhanyu>(3907u); AI_R56_REQUIRE_DECLARATION(Zhanyu, getBaseAmount, TriggerSkillV2);
  types.emplace(std::type_index(typeid(Langxi)), 2u);

@@ -1,4 +1,5 @@
 #include "ai-strategy-round26-helpers.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-readonly-card-store.h"
 #include "ai-strategy-public-disclosure.h"
 #include "ai.h"
@@ -76,8 +77,8 @@ bool observed(const AIRequest&r,ServerPlayer*p,const CardUseStruct&u,bool foreig
 QJsonObject useJson(const Card *card,const QString &from,const QStringList &to,const AIRound26UseProfile &profile) {
  return {{"card",profile(card)},{"from",from},{"to",QJsonArray::fromStringList(to)}};
 }
-class DelegateMetadata final : public QObject {
-public: DelegateMetadata(Room &room,bool value):QObject(&room),knownNil(value){}
+class DelegateMetadata final : public AIRoomLedger {
+public: DelegateMetadata(Room &room,bool value):AIRoomLedger(room),knownNil(value){}
  const bool knownNil;
 };
 const DelegateMetadata *metadata(Room &room) {

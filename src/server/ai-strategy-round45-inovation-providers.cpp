@@ -1,4 +1,5 @@
 #include "ai-strategy-round45-inovation-providers.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai.h"
 #include "room.h"
@@ -48,8 +49,8 @@ bool pushCallback(lua_State*L,LuaAI*ai){
  return lua_isfunction(L,-1)&&!lua_iscfunction(L,-1);
 }
 struct Row {QPointer<LuaAI> native;const void*callback=nullptr;const void*self=nullptr;const void*cls=nullptr;const void*dict=nullptr;const void*dictMeta=nullptr;QHash<QString,const void*> providers;};
-class Ledger final:public QObject{
-public: explicit Ledger(Room&r):QObject(&r){setObjectName(ledgerName);}
+class Ledger final:public AIRoomLedger{
+public: explicit Ledger(Room&r):AIRoomLedger(r){setObjectName(ledgerName);}
  lua_State*state=nullptr;quint64 generation=0;bool initialized=false,valid=false;
  const void*cls=nullptr;const void*dict=nullptr;const void*dictMeta=nullptr;
  QHash<QString,const void*> providers;QHash<const ServerPlayer*,Row> rows;
@@ -116,7 +117,7 @@ void captureAIRound45InovationProviders(Room&r,ServerPlayer*p,AI*created){
      &&matchAIRound45PinnedFunction(r,L,-1,source,m.first,m.last)&&environment(L,-1))row.providers.insert(m.name,lua_topointer(L,-1));
   lua_pop(L,1);
  }
- l->rows.insert(p,row);QObject::connect(p,&QObject::destroyed,l,[l,p]{l->rows.remove(p);});
+ l->rows.insert(p,row);QObject::connect(p,&QObject::destroyed,l,[l,p]{l->rows.remove(p);}, Qt::DirectConnection);
 }
 void projectAIRound45InovationProviders(AIWorldView&w,Room&r,const ServerPlayer*p){
  GameBinding binding(r);

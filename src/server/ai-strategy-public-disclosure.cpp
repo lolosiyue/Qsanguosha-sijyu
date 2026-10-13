@@ -1,4 +1,5 @@
 #include "ai-strategy-public-disclosure.h"
+#include "ai-strategy-room-ledger.h"
 
 #include "card.h"
 #include "engine.h"
@@ -19,7 +20,7 @@ QObject *publicLedger(Room &room, bool create)
     auto *ledger = room.findChild<QObject *>(QStringLiteral("isolated-ai-public-move-ledger"),
                                           Qt::FindDirectChildrenOnly);
     if (!ledger && create) {
-        ledger = new QObject(&room);
+        ledger = new AIRoomLedger(room);
         ledger->setObjectName(QStringLiteral("isolated-ai-public-move-ledger"));
     }
     return ledger;

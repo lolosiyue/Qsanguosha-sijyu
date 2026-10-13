@@ -1,4 +1,5 @@
 #include "ai-strategy-round40-choice.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round54-jijiang.h"
 #include "ai.h"
 #include "room.h"
@@ -13,8 +14,8 @@
 #include <QSet>
 #include <QHash>
 namespace {
-class Ledger final:public QObject {
-public:explicit Ledger(Room&r):QObject(&r){}
+class Ledger final:public AIRoomLedger {
+public:explicit Ledger(Room&r):AIRoomLedger(r){}
  bool captured=false,entered=false,sourceKnown=false,targetsKnown=false,sourcePresent=false,targetsPresent=false;
  QString viewer,source,clearedEvent;QStringList targets;
 };

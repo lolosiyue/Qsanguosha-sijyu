@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round26-planning.h"
 #include "ai.h"
@@ -16,7 +17,7 @@
 #include <QPointer>
 namespace {
 struct PublicUseWitness {QPointer<Card> card;QString face;QString from;QStringList targets;qint64 historyId=0;bool publicStage=false;};
-class PublicUses final:public QObject {public:explicit PublicUses(Room&r):QObject(&r){}QList<PublicUseWitness> uses;};
+class PublicUses final:public AIRoomLedger {public:explicit PublicUses(Room&r):AIRoomLedger(r){}QList<PublicUseWitness> uses;};
 PublicUses*ledger(Room&r,bool create){for(auto*c:r.children())if(auto*v=dynamic_cast<PublicUses*>(c))return v;return create?new PublicUses(r):nullptr;}
 QString faceKey(const Card*c){return c->objectName()+"|"+c->getClassName()+"|"+QString::number(int(c->getSuit()))+"|"+QString::number(c->getNumber())+"|"+c->getSkillName(false)+"|"+c->toString();}
 bool owner(const AIRequest&r,Room&room,const ServerPlayer*p){return p&&p->getRoom()==&room&&r.viewerObjectName==p->objectName()&&r.stateRevision==room.roomRuntime()->stateRevision();}

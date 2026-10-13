@@ -1,4 +1,5 @@
 #include "ai-strategy-round31-planning.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -7,9 +8,9 @@
 #include <QObject>
 #include <QJsonObject>
 namespace {
-class MidaoGlobalSnapshot final : public QObject {
+class MidaoGlobalSnapshot final : public AIRoomLedger {
 public:
-    MidaoGlobalSnapshot(Room &room, const QJsonObject &row) : QObject(&room), value(row) {}
+    MidaoGlobalSnapshot(Room &room, const QJsonObject &row) : AIRoomLedger(room), value(row) {}
     const QJsonObject value;
 };
 const MidaoGlobalSnapshot *snapshot(Room &room) {

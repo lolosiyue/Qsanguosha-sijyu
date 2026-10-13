@@ -1,4 +1,5 @@
 #include "ai-strategy-round47-heqia.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round41-response.h"
 #include "ai.h"
 #include "card.h"
@@ -16,7 +17,7 @@ struct Receipt {
  QString viewer,token,wire;bool first=false;QList<int> firstCosts;QStringList baseTargets;QStringList targets;AICardSpec spec;
  SkillInstanceRef activation,source;
 };
-class Ledger final:public QObject{public:explicit Ledger(Room&r):QObject(&r){}QList<Receipt>receipts;};
+class Ledger final:public AIRoomLedger{public:explicit Ledger(Room&r):AIRoomLedger(r){}QList<Receipt>receipts;};
 Ledger*ledger(Room*r,bool create=false){if(!r)return nullptr;for(auto*c:r->children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(*r):nullptr;}
 bool sameSpec(const AICardSpec&a,const AICardSpec&b){return a.name==b.name&&a.suit==b.suit&&a.number==b.number
  &&a.skillName==b.skillName&&a.subcardIds==b.subcardIds&&a.conversionId==b.conversionId;}

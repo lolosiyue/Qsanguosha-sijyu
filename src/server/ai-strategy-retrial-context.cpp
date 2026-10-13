@@ -1,4 +1,5 @@
 #include "ai-strategy-retrial-context.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "ai-strategy-judge-context.h"
 #include <QJsonArray>
@@ -16,7 +17,7 @@ QObject *previewLedger(Room &room, bool create)
 {
     const QString name = QStringLiteral("_isolated_retrial_preview_ledger");
     auto *ledger = room.findChild<QObject *>(name, Qt::FindDirectChildrenOnly);
-    if (!ledger && create) { ledger = new QObject(&room); ledger->setObjectName(name); }
+    if (!ledger && create) { ledger = new AIRoomLedger(room); ledger->setObjectName(name); }
     return ledger;
 }
 void invalidatePreviewCard(QObject *ledger, int id)

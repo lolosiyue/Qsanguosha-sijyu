@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round29-original.h"
 #include "ai.h"
@@ -12,7 +13,7 @@
 #include <QPointer>
 
 namespace {
-class ShicaiLedger final : public QObject {
+class ShicaiLedger final : public AIRoomLedger {
 public:
     struct Row {
         int id = -1;
@@ -22,7 +23,7 @@ public:
         QJsonObject face;
         QMetaObject::Connection changed;
     };
-    explicit ShicaiLedger(Room &room) : QObject(&room) {}
+    explicit ShicaiLedger(Room &room) : AIRoomLedger(room) {}
     QHash<QString, Row> rows;
     quint64 serial = 0;
     void erase(const QString &name) {

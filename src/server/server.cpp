@@ -3204,8 +3204,6 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     room->start();
 }
 
-#endif
-
 void Server::connectNotify(const QMetaMethod &signal)
 {
     if ((signal == QMetaMethod::fromSignal(&Server::server_message)
@@ -3223,3 +3221,5 @@ void Server::disconnectNotify(const QMetaMethod &signal)
         m_round56LogConnectionsReviewed.store(false);
     QObject::disconnectNotify(signal);
 }
+
+#endif

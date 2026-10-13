@@ -251,6 +251,19 @@ void RoomRuntime::shutdownFinal()
     std::fprintf(stdout, "CARD_LIFETIME_CANONICAL_FINAL retired=%llu\n",
                  static_cast<unsigned long long>(canonicalRetired));
     std::fflush(stdout);
+    // Room::run (general selection) is a worker too, but only RoomThread runs
+    // finalizeWorker(). Cards its AI cloned and released stay pending with the
+    // Room's affinity, and no event loop deletes them. stopGameThreads() has
+    // stopped that thread, so reclaim them here the way finalizeWorker() would.
+    // The postclose gauge below stays the authority on what is left over.
+    if (m_room) {
+        quint64 selectionRetired = 0;
+        const bool selectionClean = globalCardLifetimeManager().finalizeWorkerDomain(
+            this, &selectionRetired, m_room);
+        std::fprintf(stdout, "CARD_LIFETIME_SELECTION_FINAL retired=%llu clean=%d\n",
+                     static_cast<unsigned long long>(selectionRetired), int(selectionClean));
+        std::fflush(stdout);
+    }
     invalidateOrphanedRuntimeEntries();
     drainShutdownStage("postclose");
     const CardLifetimeGauge gauge = globalCardLifetimeManager().gauge();

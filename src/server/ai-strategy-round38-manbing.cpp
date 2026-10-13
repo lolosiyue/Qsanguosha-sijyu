@@ -1,4 +1,5 @@
 #include "ai-strategy-round38-manbing.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-flag-lifecycle.h"
 #include "ai.h"
 #include "room.h"
@@ -8,8 +9,8 @@
 #include <QObject>
 namespace {
 struct Owner { qint64 epoch=0; bool diverged=false; bool baselineKnown=true; QHash<QString,bool> values; };
-class Ledger final:public QObject {
-public:explicit Ledger(Room&r):QObject(&r){}
+class Ledger final:public AIRoomLedger {
+public:explicit Ledger(Room&r):AIRoomLedger(r){}
  bool initialized=false;
  QHash<const ServerPlayer*,Owner> owners;
 };
@@ -20,7 +21,7 @@ QJsonObject fail(const char*reason){return{{"kind","manbing_flag"},{"known",fals
 Owner&owner(Room&r,const ServerPlayer*p){
  auto*l=ledger(r);const auto e=epoch(r,p);auto it=l->owners.find(p);
  if(it==l->owners.end()){
-  QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);});
+  QObject::connect(p,&QObject::destroyed,l,[l,p]{l->owners.remove(p);}, Qt::DirectConnection);
   Owner row;row.epoch=e;
   it=l->owners.insert(p,row);
  }

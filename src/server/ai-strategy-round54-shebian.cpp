@@ -1,4 +1,5 @@
 #include "ai-strategy-round54-shebian.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round45-slot-bindings.h"
 #include "ai-strategy-round45-code-seal.h"
@@ -24,8 +25,8 @@ namespace {
 struct Stack{lua_State*L;int top;explicit Stack(lua_State*s):L(s),top(lua_gettop(s)){}~Stack(){lua_settop(L,top);}};
 struct State;
 void observe(lua_State*,const lua_TableObservation*,void*)noexcept;
-struct State final:QObject {
- explicit State(Room&r):QObject(&r),room(r){}
+struct State final:AIRoomLedger {
+ explicit State(Room&r):AIRoomLedger(r),room(r){}
  ~State()override{for(auto id:{globals,space,players,cards,invokes})if(id)lua_unobservetableidentity(L,id,observe,this);}
  Room&room;lua_State*L=nullptr;quint64 generation=0,epoch=1;bool valid=false,exhausted=false;
  const void*globals=nullptr,*space=nullptr,*players=nullptr,*cards=nullptr,*invokes=nullptr,*producer=nullptr;

@@ -1,3 +1,5 @@
+#include "gu-audit2025.h"
+#include "gu-audit2026.h"
 #include "mobile.h"
 //#include "client.h"
 //#include "general.h"
@@ -2920,19 +2922,15 @@ public:
 		QVariant &data = *ctx.original_data;
 		QList<const Card*>hs = player->getHandcards();
 		if(hs.isEmpty()) return false;
-		const Card*mc = hs.last();
-		foreach (const Card*c, hs) {
-			if(c->getNumber()>mc->getNumber())
-				mc = c;
-		}
-		foreach (const Card*c, hs) {
-			if(c->getId()!=mc->getId()&&c->getNumber()>=mc->getNumber())
-				return false;
-		}
-		if(mc->getNumber()>player->getMark("&lunxiong")
-			&&room->askForCard(player,mc->toString(),"lunxiong0",data,objectName())){
-			room->setPlayerMark(player,"&lunxiong",mc->getNumber());
-			player->drawCards(3,objectName());
+		int maxn = 0;
+		foreach (const Card*c, hs)
+			maxn = qMax(maxn, c->getNumber());
+		if (maxn < player->getMark("&lunxiong")) return false;
+		const Card *picked = room->askForCard(player, ".|.|" + QString::number(maxn) + "|hand",
+			"lunxiong0", data, objectName());
+		if (picked) {
+			room->setPlayerMark(player, "&lunxiong", picked->getNumber());
+			player->drawCards(2, objectName());
 		}
 		return false;
 	}
@@ -4858,6 +4856,9 @@ public:
 mobilePackage::mobilePackage()
 	: Package("mobile")
 {
+	guAudit2025Mobile(this);
+	guAudit2026Mobile(this);
+	guAudit2025Source2Mobile(this);
 	General *mobile_zhouyu = new General(this, "mobile_zhouyu", "wu", 3);
 	mobile_zhouyu->addSkill(new Shouyue);
 	mobile_zhouyu->addSkill(new Dieyin);
@@ -6497,6 +6498,7 @@ class Yueyuan : public ViewAsSkillV2
 public:
 	Yueyuan() : ViewAsSkillV2("yueyuan") { setPhaseName("Play"); }
 	LimitScope getLimitScope() const override { return Limit_Phase; }
+	int getMaxUsageLimit(const SkillContext &) const override { return 4; }
 	QString historyKey(const ActiveSkillRequest &) const override { return "YueyuanCard"; }
 	bool canActivate(const ActiveSkillRequest &request) const override
 	{
@@ -6552,12 +6554,8 @@ public:
 			&& accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
 	}
 	LimitScope getLimitScope() const override { return Limit_Custom; }
-	QString usageKey(const SkillContext &ctx) const
-	{
-		const QString saved = ctx.extra_data.toMap().value("usage_key").toString();
-		return !saved.isEmpty() ? saved
-			: (ctx.current_event == TargetSpecified ? "outgoing_turn" : "incoming_turn");
-	}
+	// 每名角色的回合各限一次（兩個時機共用同一次數）
+	QString usageKey(const SkillContext &) const { return "turn"; }
 	bool checkCustomUsage(const SkillContext &ctx) const override
 	{
 		if (!ctx.owner || !getUsageRef(ctx).isValid()) return false;
@@ -6585,7 +6583,7 @@ public:
 	}
 	bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
 	{
-		ctx.extra_data = QVariantMap{{"usage_key", event == TargetSpecified ? "outgoing_turn" : "incoming_turn"}};
+		ctx.extra_data = QVariantMap();
 		if (!checkCustomUsage(ctx)) return false;
 		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 		ServerPlayer *other = event == TargetSpecified ? use.to.first() : use.from;
@@ -6858,9 +6856,10 @@ mobileStarPackage::mobileStarPackage()
 	addMetaObject<XingJinfanCard>();
 
 	General *xing_weiyan = new General(this, "xing_weiyan", "qun", 4);
-	xing_weiyan->addSkill(new Guli);
-	xing_weiyan->addSkill(new Aoshi);
-	xing_weiyan->addSkill(new AoshiBf);
+	xing_weiyan->addSkill(guNewGuli());
+	xing_weiyan->addSkill(guNewAoshi());
+	xing_weiyan->addSkill(guNewAoshiMod());
+	insertRelatedSkills("aoshi", "#aoshi-mod");
 	related_skills.insert("aoshi", "#aoshibf");
 
 	General *xing_huangzhong = new General(this, "xing_huangzhong", "qun", 4);
@@ -6885,8 +6884,6 @@ mobileStarPackage::mobileStarPackage()
 
 	General *xing_fazheng = new General(this, "xing_fazheng", "qun", 4);
 	xing_fazheng->addSkill(new Cangjia);
-	xing_fazheng->addSkill(new CangjiaLimit);
-	related_skills.insert("cangjia", "#CangjiaLimit");
 	xing_fazheng->addSkill(new Duohui);
 	xing_fazheng->addSkill(new Yueyuan);
 	addMetaObject<YueyuanCard>();
@@ -16570,7 +16567,7 @@ public:
 	}
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (ctx.extra_data.toString() == "draw") { target->drawCards(2 * getEffectiveAmount(ctx), objectName()); return false; }
+		if (ctx.extra_data.toString() == "draw") { target->drawCards(getEffectiveAmount(ctx), objectName()); return false; }
 		const QVariant turn = room->historyScopes().value("turn_id");
 		QVariantList receipts = target->getTag("mobile_wangzhuan_invalidity").toList();
 		for (const QVariant &entry : receipts) {
@@ -16659,7 +16656,7 @@ public:
 		if (event == GameStart) {
 			QList<ServerPlayer *> candidates;
 			for (ServerPlayer *target : room->getOtherPlayers(player)) if (target->hasEquipArea(0)) candidates << target;
-			ctx.targets = room->askForPlayersChosen(player, candidates, objectName(), 0, 2, "cuizhen0:", true);
+			ctx.targets = room->askForPlayersChosen(player, candidates, objectName(), 0, 3, "cuizhen0:", true);
 			return !ctx.targets.isEmpty();
 		}
 		ctx.targets = {player};
@@ -16672,7 +16669,7 @@ public:
 		int count = 0;
 		for (ServerPlayer *candidate : room->getAlivePlayers()) if (!candidate->hasEquipArea(0)) ++count;
 		DrawStruct draw = ctx.original_data->value<DrawStruct>();
-		draw.num += qMin(2, count) * getEffectiveAmount(ctx);
+		draw.num += qMin(3, count) * getEffectiveAmount(ctx);
 		ctx.original_data->setValue(draw);
 		return false;
 	}
@@ -19095,7 +19092,7 @@ bool ZhuguoCard::targetFilter(const QList<const Player *> &targets, const Player
 void ZhuguoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
 	foreach (ServerPlayer *p, targets) {
-		int n = p->getMaxHp()-p->getHandcardNum();
+		int n = qMin(p->getMaxHp(),5)-p->getHandcardNum();
 		if(n>0){
 			p->drawCards(n,"zhuguo");
 		}else{
@@ -19109,7 +19106,7 @@ void ZhuguoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
 			if(n<999){
 				ServerPlayer *tp = room->askForPlayerChosen(source,room->getOtherPlayers(p),"zhuguo","zhuguo0:"+p->objectName(),true);
 				if(tp){
-					room->askForUseSlashTo(p,tp,"zhuguo1:"+tp->objectName(),false);
+					room->askForUseSlashTo(p,tp,"zhuguo1:"+tp->objectName(),true);
 				}
 			}
 		}
@@ -19168,10 +19165,10 @@ public:
 
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 	{
-		if (player->getMark("andaUse-Clear")<1&&player->hasTurn()) {
+		if (player->getMark("andaUse_lun")<1) {
 			DyingStruct dying = data.value<DyingStruct>();
 			if (dying.damage&&dying.damage->from&&player->askForSkillInvoke(objectName()+"$-1",data)) {
-				player->addMark("andaUse-Clear");
+				player->addMark("andaUse_lun");
 				if(dying.damage->from->getCardCount()>1){
 					const Card*sc = room->askForUseCard(dying.damage->from,"@@anda","anda0:"+dying.who->objectName());
 					if(sc){
@@ -19433,7 +19430,7 @@ MobileKuangxiangCard::MobileKuangxiangCard()
 
 bool MobileKuangxiangCard::targetFilter(const QList<const Player *> &targets, const Player *to, const Player *Self) const
 {
-	return targets.isEmpty()&&Self->getHandcardNum()>to->getHandcardNum();
+	return targets.isEmpty()&&to!=Self&&Self->getHandcardNum()>=to->getHandcardNum();
 }
 
 namespace {
@@ -20795,9 +20792,6 @@ public:
 
 	bool isEnabledAtPlay(const Player *player) const
 	{
-		foreach (const Player *p, player->getAliveSiblings(true)) {
-			if(p->getHandcardNum()==4) return false;
-		}
 		return player->getMark(limit_mark)>0;
 	}
 
@@ -23077,7 +23071,7 @@ void FujiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) co
 	}
 	if(source->getGeneralName().endsWith("yuji"))
 		source->setAvatarIcon("mobilebs_yuji2");
-	source->drawCards(1,objectName());
+	source->drawCards(2,objectName());
 	room->setPlayerMark(source,"&fuji",1);
 }
 
@@ -23358,7 +23352,7 @@ public:
 		ServerPlayer *holder = room->findPlayerByObjectName(ref.ownerObjectName, true);
 		if (!holder || !ref.isValid()) return false;
 		const int count = holder->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "count").toInt();
-		if (event != EventPhaseStart) return count < 4;
+		if (event != EventPhaseStart) return count < 5;
 		const QString draw = "bshongyi1=" + QString::number(count);
 		const QString choice = room->askForChoice(player, objectName(), draw + "+bshongyi2");
 		ctx.extra_data = QVariantMap{{"draw", choice != "bshongyi2"}};
@@ -23375,7 +23369,7 @@ public:
 		const bool live = holder && holder->hasSkillInstance(ref.key.skillName, ref.key.instanceID);
 		const int count = live ? holder->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "count").toInt() : receipt.value("count").toInt();
 		if (!pending && event != EventPhaseStart) {
-			setCount(room, player, ref, qBound(0, count + (event == GameStart ? 2 : 1) * getEffectiveAmount(ctx), 4));
+			setCount(room, player, ref, qBound(0, count + (event == GameStart ? 4 : 1) * getEffectiveAmount(ctx), 5));
 			return false;
 		}
 		const bool draw = receipt.value("draw").toBool();
@@ -23646,6 +23640,9 @@ void XiongtuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &t
 			room->damage(DamageStruct("xiongtu",source,p));
 		}
 	}
+	// 2026-06 上线版尾段：然后当你本回合下次不因此技能造成伤害后，你摸一张牌且此技能本阶段改为“限两次”。
+	if(source->isAlive())
+		room->setPlayerMark(source,"xiongtu_next-Clear",1);
 }
 
 class Xiongtuvs : public ZeroCardViewAsSkill
@@ -23657,7 +23654,7 @@ public:
 
 	bool isEnabledAtPlay(const Player *player) const
 	{
-		return player->usedTimes("XiongtuCard")<1;
+		return player->usedTimes("XiongtuCard")<(player->getMark("xiongtu_twice-PlayClear")>0?2:1);
 	}
 
 	const Card *viewAs() const
@@ -23671,7 +23668,7 @@ class Xiongtu : public TriggerSkill
 public:
 	Xiongtu() : TriggerSkill("xiongtu")
 	{
-		events << CardsMoveOneTime;
+		events << CardsMoveOneTime << Damage;
 		view_as_skill = new Xiongtuvs;
 	}
 
@@ -23682,7 +23679,16 @@ public:
 
 	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 	{
-		if(triggerEvent==CardsMoveOneTime){
+		if(triggerEvent==Damage){
+			DamageStruct damage = data.value<DamageStruct>();
+			if(damage.from!=player||player->getMark("xiongtu_next-Clear")<1||damage.reason=="xiongtu") return false;
+			room->setPlayerMark(player,"xiongtu_next-Clear",0);
+			if(!player->hasSkill(objectName())) return false;
+			room->sendCompulsoryTriggerLog(player,this);
+			player->drawCards(1,objectName());
+			if(player->getPhase()==Player::Play)
+				room->setPlayerMark(player,"xiongtu_twice-PlayClear",1);
+		}else if(triggerEvent==CardsMoveOneTime){
 			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
 			if(move.to_place==Player::DiscardPile&&player->hasSkill(objectName(),true)){
 				foreach (int id, move.card_ids){
@@ -24615,7 +24621,7 @@ public:
 
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
 	{
-		ServerPlayer *tp = room->askForPlayerChosen(player,room->getOtherPlayers(player),objectName(),"bsqingshi0",true);
+		ServerPlayer *tp = room->askForPlayerChosen(player,room->getAlivePlayers(),objectName(),"bsqingshi0",true);
 		if(tp){
 			bsqingshiUse(room,player,tp);
 		}
@@ -25304,8 +25310,9 @@ mobileBsQiPackage::mobileBsQiPackage()
 	: Package("mobilebs_qi")
 {
 	General *mobilebs_yuji = new General(this, "mobilebs_yuji", "qun", 3);
-	mobilebs_yuji->addSkill(new Daozhuan);
+	mobilebs_yuji->addSkill(guNewDaozhuan());
 	mobilebs_yuji->addSkill(new Fuji);
+	addMetaObject<GuS2DaozhuanCard>();
 	addMetaObject<DaozhuanCard>();
 	addMetaObject<FujiCard>();
 	
@@ -25437,7 +25444,8 @@ mobileBsJiePackage::mobileBsJiePackage()
 	skills << new Jiejievs;
 	addMetaObject<JiejieCard>();
 
-	General *mobilebs_huanjie = new General(this, "mobilebs_huanjie", "wei", 3);
+	General *mobilebs_huanjie = new General(this, "mobilebs_huanjie", "wei", 4);
+	mobilebs_huanjie->setStartHujia(1);
 	mobilebs_huanjie->addSkill(new BsGongmou);
 	mobilebs_huanjie->addSkill(new Zhengshuo);
 	addMetaObject<ZhengshuoCard>();

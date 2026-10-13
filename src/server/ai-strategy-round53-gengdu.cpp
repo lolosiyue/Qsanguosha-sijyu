@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-gengdu.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-slot-bindings.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round45-inovation-providers.h"
@@ -26,7 +27,7 @@
 namespace {
 struct Stack{lua_State*L;int n;explicit Stack(lua_State*s):L(s),n(lua_gettop(s)){}~Stack(){lua_settop(L,n);}};
 struct Row {QPointer<ServerPlayer>owner;AIReadonlyCardLease lease;int observedWrappedId=-1;};
-class Ledger final:public QObject {public:explicit Ledger(Room&r):QObject(&r){} quint64 generation=0;QHash<const ServerPlayer*,QHash<QString,Row>>rows;};
+class Ledger final:public AIRoomLedger {public:explicit Ledger(Room&r):AIRoomLedger(r){} quint64 generation=0;QHash<const ServerPlayer*,QHash<QString,Row>>rows;};
 Ledger*ledger(Room&r,bool create=false){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(r):nullptr;}
 bool current(const AIRequest&q,ServerPlayer*p){return p&&p->getRoom()&&q.decisionId>0
  &&!p->getRoom()->roomRuntime()->isClosing()&&q.viewerObjectName==p->objectName()

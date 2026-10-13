@@ -1,6 +1,7 @@
 #ifndef GENERAL_INFO_CARD_H
 #define GENERAL_INFO_CARD_H
 
+#include <QHash>
 #include <QString>
 
 class General;
@@ -35,6 +36,9 @@ struct Palette
     QString derived = QStringLiteral("#01A5AF");
     QString head = QStringLiteral("#6E2C00");
     QString deputy = QStringLiteral("#4A5A6A");
+    // Live skill state (uses left, awakened, switch form, marks, auto-invoke).
+    QString state = QStringLiteral("#EADFC6");
+    QString stateText = QStringLiteral("#4A3B28");
 };
 
 const Palette &palette();
@@ -64,7 +68,9 @@ struct AvatarCards
 };
 // Both avatar cards of one seat from one Player::getSkillDescription() text, so the
 // head and deputy avatars share a single description and restyle pass.
-AvatarCards forPlayerAvatars(const Player *player, const QString &skillDescription);
+// autoInvoke: the viewer's own auto-invoke toggles (skill name -> on), shown as state.
+AvatarCards forPlayerAvatars(const Player *player, const QString &skillDescription,
+                             const QHash<QString, bool> &autoInvoke = {});
 
 // Builds the card on the first tooltip request instead of when the widget is created.
 void setLazyToolTip(QWidget *widget, const QString &generalName);

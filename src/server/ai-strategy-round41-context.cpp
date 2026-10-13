@@ -1,4 +1,5 @@
 #include "ai-strategy-round41-context.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -10,9 +11,9 @@
 namespace {
 const QStringList names={"FiveFanjianPindianTarget","FourTianxiang",
     "feijiangtsTarget","luajueshengTarget"};
-class Observations final:public QObject {
+class Observations final:public AIRoomLedger {
 public:
- explicit Observations(Room &room):QObject(&room){}
+ explicit Observations(Room &room):AIRoomLedger(room){}
  // Pointer identity, not player name: deletion never transfers observations to a
  // replacement player. Room owns this across isolated VM recreation.
  QHash<ServerPlayer *,QJsonObject> flags;
@@ -24,7 +25,7 @@ Observations *observations(Room &room,bool create=false){
 void watch(Observations *o,ServerPlayer *p){
  if(o->flags.contains(p))return;
  o->flags.insert(p,{});
- QObject::connect(p,&QObject::destroyed,o,[o,p]{o->flags.remove(p);});
+ QObject::connect(p,&QObject::destroyed,o,[o,p]{o->flags.remove(p);}, Qt::DirectConnection);
 }
 QJsonObject values(Room &room,ServerPlayer *viewer,const QString &key){
  QJsonObject rows;const auto *o=observations(room);

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round28-choice.h"
@@ -103,8 +104,8 @@ struct LihuoInput {
  QString name,klass;int suit=0,number=0;
  QList<int> costs;QStringList targets;
 };
-class LihuoInputs final:public QObject {
-public:explicit LihuoInputs(Room &room):QObject(&room){}
+class LihuoInputs final:public AIRoomLedger {
+public:explicit LihuoInputs(Room &room):AIRoomLedger(room){}
  QHash<QString,LihuoInput> values;
 };
 LihuoInputs *lihInputs(Room &room) {

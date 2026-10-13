@@ -1,4 +1,5 @@
 #include "ai-strategy-round46-jianman.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-inovation-providers.h"
 #include "ai-strategy-round45-native-seal.h"
 #include "ai-strategy-round45-code-seal.h"
@@ -26,8 +27,8 @@ struct Row{
  QString offered;quint64 producerDecision=0,producerRevision=0;
  QList<int>materials;int physical=-1;
 };
-class Ledger final:public QObject{
-public:explicit Ledger(Room&r):QObject(&r){}lua_State*L=nullptr;quint64 generation=0;
+class Ledger final:public AIRoomLedger{
+public:explicit Ledger(Room&r):AIRoomLedger(r){}lua_State*L=nullptr;quint64 generation=0;
  QHash<const ServerPlayer*,Row>rows;
 };
 Ledger*ledger(Room&r,bool create=false){for(auto*c:r.children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(r):nullptr;}

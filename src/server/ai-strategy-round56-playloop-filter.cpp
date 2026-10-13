@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-playloop-filter.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-async.h"
 #include "ai-strategy-round56-bootstrap-write.h"
 #include "ai-strategy-round56-clone-lineage.h"
@@ -47,7 +48,7 @@ struct State;
 void changed(lua_State*,const lua_TableObservation*,void*) noexcept;
 void born(lua_State*,const lua_TableBirthObservation*,void*) noexcept;
 thread_local AIRound56PlayLoopFilterScope*active=nullptr;
-struct State final:QObject{
+struct State final:AIRoomLedger{
  Room&r;lua_State*L;quint64 generation,epoch;bool alive=true,ready=false,completed=false,prepareAttempted=false;
  bool generationScalar=false,turnScalar=false,pristine=false,resetComplete=false;
  quint64 resetSerial=0;
@@ -56,7 +57,7 @@ struct State final:QObject{
  // These identities exist only after actual middleclass NEWTABLE receipts.
  // No preflight scan populates or repairs these source ledgers.
  QHash<const void*,const void*>selfClasses,selfDictionaries;
- State(Room&room,const LuaRuntime::NativeNamespaceBirth&b):QObject(&room),r(room),L(b.state()),generation(b.generation()),epoch(room.roomRuntime()->prioritySourceEpoch()){
+ State(Room&room,const LuaRuntime::NativeNamespaceBirth&b):AIRoomLedger(room),r(room),L(b.state()),generation(b.generation()),epoch(room.roomRuntime()->prioritySourceEpoch()){
   root[Globals]=b.globalsIdentity();root[Namespace]=b.namespaceIdentity();
  }
  ~State()override{lua_unobservetablebirth(L,born,this);for(auto i=watches.cbegin();i!=watches.cend();++i)lua_unobservetableidentity(L,i.key(),changed,this);}

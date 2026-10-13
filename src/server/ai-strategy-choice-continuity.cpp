@@ -1,4 +1,5 @@
 #include "ai-strategy-round54-priority.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round54-shebian.h"
 #include "ai-strategy-round53-pingjian.h"
 #include "ai-strategy-round47-xufa-event-scope.h"
@@ -23,8 +24,8 @@
 #include "ai-strategy-round45-lua-inspect.h"
 namespace {
 struct Row {QPointer<ServerPlayer>writer;QJsonObject value;bool known=false,diverged=false;quint64 epoch=0;quint64 xufaTransportEpoch=0,xufaWriteSerial=0,xufaGeneration=0;};
-struct Continuity:QObject {
- explicit Continuity(Room&r):QObject(&r),room(r){}
+struct Continuity:AIRoomLedger {
+ explicit Continuity(Room&r):AIRoomLedger(r),room(r){}
  Room&room;
  quint64 epoch=1;bool exhausted=false;
  quint64 serial=0;bool legacyReady=false,isolatedReady=false,entered=false;

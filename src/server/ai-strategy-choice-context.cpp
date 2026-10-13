@@ -1,4 +1,5 @@
 #include "ai-strategy-choice-context.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "ai-strategy-public-disclosure.h"
 #include "ai-strategy-card-identity.h"
@@ -15,7 +16,7 @@ bool roster(Room &room, const Player *p)
 QObject *agHistory(Room &room, bool create)
 {
     auto *ledger=room.findChild<QObject *>(QStringLiteral("isolated-ai-choice-ag-history"),Qt::FindDirectChildrenOnly);
-    if (!ledger && create) { ledger=new QObject(&room); ledger->setObjectName(QStringLiteral("isolated-ai-choice-ag-history")); }
+    if (!ledger && create) { ledger=new AIRoomLedger(room); ledger->setObjectName(QStringLiteral("isolated-ai-choice-ag-history")); }
     return ledger;
 }
 QJsonObject agFace(const Card *card, int id)

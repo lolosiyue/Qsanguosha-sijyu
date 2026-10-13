@@ -183,6 +183,7 @@ public:
 
 public slots:
     virtual void updateAvatar();
+    QHash<QString, bool> skillAutoInvokeStates() override;
     void refreshLayout();
     void setTouchUiEnabled(bool enabled);
     void setTouchTargetMinimum(qreal minimumSize);

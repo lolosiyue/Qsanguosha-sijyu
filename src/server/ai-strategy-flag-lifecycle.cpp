@@ -1,4 +1,5 @@
 #include "ai-strategy-flag-lifecycle.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -10,9 +11,9 @@
 namespace {
 // Room ownership avoids process-global state, address reuse and viewer lifetime
 // dependencies. No Lua is entered by the mutation hook.
-class FlagClearLedger final : public QObject {
+class FlagClearLedger final : public AIRoomLedger {
 public:
-    explicit FlagClearLedger(Room &room) : QObject(&room) {}
+    explicit FlagClearLedger(Room &room) : AIRoomLedger(room) {}
     qint64 sequence = 0;
     QHash<QString, qint64> latest;
     QHash<QString, qint64> playLatest;

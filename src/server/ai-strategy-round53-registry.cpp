@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-registry.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai.h"
 #include "ai-runtime.h"
@@ -18,9 +19,9 @@ namespace {
 struct Stack {lua_State*L;int n;explicit Stack(lua_State*s):L(s),n(lua_gettop(s)){}~Stack(){lua_settop(L,n);}};
 class State;
 void observe(lua_State*,const lua_TableObservation*,void*)noexcept;
-class State final:public QObject {
+class State final:public AIRoomLedger {
 public:
- explicit State(Room&r):QObject(&r),room(r){}
+ explicit State(Room&r):AIRoomLedger(r),room(r){}
  ~State()override {
   // FREE removes each identity before reuse. Normal runtime clear is before
   // Lua closes; no dead table address is passed to the observer API.

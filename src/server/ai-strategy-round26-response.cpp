@@ -1,4 +1,5 @@
 #include "ai-strategy-round26-response.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -13,8 +14,8 @@
 namespace {
 constexpr const char *flagLedgerProperty = "_ai_round26_public_flag_ledger";
 constexpr const char *feilongFlag = "LxtxFeiLongDuoFeng";
-struct PublicFlagLedger : QObject {
-    explicit PublicFlagLedger(Room &room) : QObject(&room) {}
+struct PublicFlagLedger : AIRoomLedger {
+    explicit PublicFlagLedger(Room &room) : AIRoomLedger(room) {}
     QHash<ServerPlayer *, QHash<ServerPlayer *, bool>> values;
     QSet<ServerPlayer *> watched;
     void invalidate(ServerPlayer *target) {
@@ -25,8 +26,8 @@ struct PublicFlagLedger : QObject {
         watched.insert(target);
         // No writer-specific private epoch is exposed. Any property mutation
         // conservatively retires this target's previous public witness.
-        QObject::connect(target,&Player::gameplay_property_changed,this,[this,target]{invalidate(target);});
-        QObject::connect(target,&QObject::destroyed,this,[this,target]{invalidate(target);values.remove(target);watched.remove(target);});
+        QObject::connect(target,&Player::gameplay_property_changed,this,[this,target]{invalidate(target);}, Qt::DirectConnection);
+        QObject::connect(target,&QObject::destroyed,this,[this,target]{invalidate(target);values.remove(target);watched.remove(target);}, Qt::DirectConnection);
     }
 };
 PublicFlagLedger *flagLedger(Room &room,bool create) {

@@ -1,4 +1,5 @@
 #include "ai-strategy-round47-xiedou.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "ai-strategy-round44-certificate.h"
 #include "card.h"
@@ -48,9 +49,9 @@ struct XiedouFlagEntry {
  QPointer<const Card> card;
  quint64 epoch=0;
 };
-class XiedouFlagLedger final:public QObject {
+class XiedouFlagLedger final:public AIRoomLedger {
 public:
- explicit XiedouFlagLedger(Room &room):QObject(&room){}
+ explicit XiedouFlagLedger(Room &room):AIRoomLedger(room){}
  QHash<const Card*,XiedouFlagEntry> entries;
 };
 XiedouFlagLedger *xiedouFlagLedger(Room &room,bool create)

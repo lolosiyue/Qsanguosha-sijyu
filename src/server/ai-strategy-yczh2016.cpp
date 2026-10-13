@@ -1,4 +1,5 @@
 #include "ai-strategy-yczh2016.h"
+#include "ai-strategy-room-ledger.h"
 #include "room.h"
 #include "room-runtime.h"
 #include "serverplayer.h"
@@ -12,9 +13,9 @@
 
 namespace {
 const QString LedgerName = QStringLiteral("_IsolatedAI.YCZH2016.Hints");
-class HintLedger final : public QObject {
+class HintLedger final : public AIRoomLedger {
 public:
-    explicit HintLedger(Room &room) : QObject(&room) { setObjectName(LedgerName); }
+    explicit HintLedger(Room &room) : AIRoomLedger(room) { setObjectName(LedgerName); }
     QVariantMap pending;
     QVariantMap visible;
     QHash<QString, QPointer<const Card>> acceptedCards;

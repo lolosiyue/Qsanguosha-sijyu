@@ -1,4 +1,5 @@
 #include "ai-strategy-aliases.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -222,10 +223,10 @@ static const AuditedAlias audited[] = {
     {"ai_skill_playerschosen.heg_nos_huaiyi", "ai_skill_playerschosen", "heg_nos_huaiyi", "", "ai_skill_playerschosen", "heg_huaiyi", "", "extra-ai.lua", 3960},
 };
 
-class AliasCapture final : public QObject {
+class AliasCapture final : public AIRoomLedger {
 public:
     AliasCapture(Room &room, QJsonObject value)
-        : QObject(&room), snapshot(std::move(value))
+        : AIRoomLedger(room), snapshot(std::move(value))
     { setObjectName(QStringLiteral("isolated-strategy-alias-capture")); }
     const QJsonObject snapshot;
 };

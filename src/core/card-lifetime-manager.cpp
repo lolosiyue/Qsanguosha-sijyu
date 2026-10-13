@@ -1733,8 +1733,13 @@ bool CardLifetimeManager::handoffInitializedDomain(const void *domain,
     return true;
 }
 
-bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *retired)
+bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *retired,
+                                               const QThread *affinity)
 {
+    const QThread *worker = affinity ? affinity : QThread::currentThread();
+    // Deleting another thread's QObjects is only safe once that thread has stopped.
+    if (worker != QThread::currentThread() && worker->isRunning())
+        return false;
     if (retired)
         *retired = 0;
     if (!domain)
@@ -1756,7 +1761,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
 
         for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
             if (it->domain != domain || it->baselineDomain == domain
-                || !it->physical || it->affinityThread != QThread::currentThread())
+                || !it->physical || it->affinityThread != worker)
                 continue;
             if (it->token->state == CardLifetimeState::Adopted)
                 return false;
@@ -1779,7 +1784,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
             if (it == m_entries.end() || it->token.get() != candidate.token.get()
                 || it->token->generation != candidate.token->generation
                 || !it->token->live || it->domain != domain
-                || it->affinityThread != QThread::currentThread())
+                || it->affinityThread != worker)
                 return false;
             if (it->pending) {
                 it->pending = false;
@@ -1802,7 +1807,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
         reconcileDestroyedLocked();
         for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
             if (it->domain != domain || it->baselineDomain == domain
-                || !it->physical || it->affinityThread != QThread::currentThread())
+                || !it->physical || it->affinityThread != worker)
                 continue;
             if (it->token->state == CardLifetimeState::Adopted)
                 return false;

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round24-choice.h"
 #include "ai-strategy-public-disclosure.h"
@@ -16,9 +17,9 @@
 #include <limits>
 
 namespace {
-class CapturedRegistry final : public QObject {
+class CapturedRegistry final : public AIRoomLedger {
 public:
-    CapturedRegistry(Room &room, const QJsonObject &value) : QObject(&room), value(value)
+    CapturedRegistry(Room &room, const QJsonObject &value) : AIRoomLedger(room), value(value)
     { setObjectName("isolated-round24-choice-registry"); }
     const QJsonObject value;
 };

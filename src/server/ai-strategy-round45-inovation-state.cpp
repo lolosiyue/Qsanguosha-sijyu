@@ -1,4 +1,5 @@
 #include "ai-strategy-round45-inovation-state.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-readonly-card-store.h"
 #include "ai-strategy-round45-inovation-providers.h"
@@ -31,9 +32,9 @@ struct Input {
  QString name;int suit=0,number=0;
 };
 struct YohaneTag {QPointer<ServerPlayer>owner,target;int card=-1;bool known=false;quint64 generation=0;};
-class State final:public QObject {
+class State final:public AIRoomLedger {
 public:
- explicit State(Room&r):QObject(&r),room(&r){std::lock_guard<std::mutex>lock(statesMutex);states.emplace(&r,this);}
+ explicit State(Room&r):AIRoomLedger(r),room(&r){std::lock_guard<std::mutex>lock(statesMutex);states.emplace(&r,this);}
  ~State()override{std::lock_guard<std::mutex>lock(statesMutex);states.erase(room);}
  Room *room;
  QMap<QString,Input>inputs;

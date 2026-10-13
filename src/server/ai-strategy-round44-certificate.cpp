@@ -1,4 +1,5 @@
 #include "ai-strategy-round44-certificate.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round53-ainoto.h"
 #include "ai-strategy-round46-inovation.h"
 #include "ai-strategy-round50-effects.h"
@@ -46,9 +47,9 @@ struct RetiredRangeDecision {
     const AIRequest *request=nullptr;
     const AIWorldView *world=nullptr;
 };
-class RangeCertificate final : public QObject {
+class RangeCertificate final : public AIRoomLedger {
 public:
-    explicit RangeCertificate(Room &r) : QObject(&r) {}
+    explicit RangeCertificate(Room &r) : AIRoomLedger(r) {}
     QPointer<ServerPlayer> owner;
     const AIRequest *request=nullptr;
     const AIWorldView *world=nullptr;

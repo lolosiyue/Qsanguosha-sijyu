@@ -1,4 +1,5 @@
 #include "ai-strategy-round46-inovation.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai.h"
@@ -12,8 +13,8 @@
 #include <QWeakPointer>
 #include "ai-strategy-round45-lua-inspect.h"
 namespace {
-struct Sequence final:QObject {
- explicit Sequence(Room&r):QObject(&r){}
+struct Sequence final:AIRoomLedger {
+ explicit Sequence(Room&r):AIRoomLedger(r){}
  const AIRequest*request=nullptr;quint64 decision=0;QPointer<ServerPlayer>owner;
  QWeakPointer<AIConversionLedger>ledger;
  bool flagRead=false,flagValue=false,written=false,tagRead=false,diagnosed=false;

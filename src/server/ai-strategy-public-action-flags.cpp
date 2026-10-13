@@ -1,4 +1,5 @@
 #include "ai-strategy-public-action-flags.h"
+#include "ai-strategy-room-ledger.h"
 
 #include "card.h"
 #include "room.h"
@@ -21,9 +22,9 @@ struct FlagWitness {
     QSet<QString> audience;
 };
 
-class PublicActionFlagsLedger final : public QObject {
+class PublicActionFlagsLedger final : public AIRoomLedger {
 public:
-    explicit PublicActionFlagsLedger(Room &room) : QObject(&room) {}
+    explicit PublicActionFlagsLedger(Room &room) : AIRoomLedger(room) {}
     QHash<const Card *, QHash<QString, FlagWitness>> cards;
     QSet<const Card *> watched;
 };

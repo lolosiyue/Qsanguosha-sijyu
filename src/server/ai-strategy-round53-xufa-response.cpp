@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-xufa-response.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round45-xufa-slot.h"
 #include "ai-strategy-round47-xiedou.h"
 #include "ai-strategy-round44-certificate.h"
@@ -78,7 +79,7 @@ bool ordinaryRaw(ServerPlayer*p,const Card*c,QString&error){
 struct Receipt{QWeakPointer<AIConversionLedger>ledger;QPointer<ServerPlayer>owner;quint64 decision=0,revision=0;
  bool first=false,valuePlan=false;QPointer<const Card>source;QString wire;QStringList targets;AICardSpec spec;SkillInstanceRef activation,root;};
 struct ConstructedSkillNames {std::weak_ptr<const CardLifetimeToken>token;QPointer<const Card>card;};
-class Ledger final:public QObject{public:explicit Ledger(Room&r):QObject(&r){}QList<Receipt>rows;
+class Ledger final:public AIRoomLedger{public:explicit Ledger(Room&r):AIRoomLedger(r){}QList<Receipt>rows;
  QHash<const Card*,ConstructedSkillNames>constructedSkills;};
 Ledger*ledger(Room*r,bool create=false){if(!r)return nullptr;for(auto*c:r->children())if(auto*l=dynamic_cast<Ledger*>(c))return l;return create?new Ledger(*r):nullptr;}
 // Called only on this operation's fresh Card::Parse product. Retain an origin

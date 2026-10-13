@@ -1,4 +1,5 @@
 #include "ai-strategy-round24-response.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-projection.h"
 #include "ai.h"
 #include "card.h"
@@ -13,9 +14,9 @@
 #include <memory>
 namespace {
 struct SavedJudge { QString token, who, pattern; bool good=false; };
-class SavedJudges final : public QObject {
+class SavedJudges final : public AIRoomLedger {
 public:
-    explicit SavedJudges(Room &room) : QObject(&room) { setObjectName("isolated-round24-saved-judges"); }
+    explicit SavedJudges(Room &room) : AIRoomLedger(room) { setObjectName("isolated-round24-saved-judges"); }
     QHash<QString,SavedJudge> rows;
 };
 SavedJudges *store(Room &room) {

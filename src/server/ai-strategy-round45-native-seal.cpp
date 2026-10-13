@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-lianzhan.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-bootstrap-source.h"
 #include "ai-strategy-round45-native-seal.h"
 #include "room.h"
@@ -40,9 +41,9 @@ struct Constructor {const void*table=nullptr;const void*meta=nullptr;lua_CFuncti
 struct Scalar {int type=LUA_TNONE;bool integer=false;lua_Integer i=0;lua_Number n=0;bool b=false;QByteArray s;};
 class Seal;
 void finalizerTransitionWrite(lua_State*,const lua_TableObservation*,void*)noexcept;
-class Seal final:public QObject {
+class Seal final:public AIRoomLedger {
 public:
- explicit Seal(Room &r):QObject(&r),room(r){setObjectName(ledgerName);}
+ explicit Seal(Room &r):AIRoomLedger(r),room(r){setObjectName(ledgerName);}
  ~Seal()override{if(finalizerMeta&&L)lua_unobservetableidentity(L,finalizerMeta,finalizerTransitionWrite,this);}
  Room&room;
  enum FinalizerPhase{Unprepared,Prepared,Observed,Finished,Retired};

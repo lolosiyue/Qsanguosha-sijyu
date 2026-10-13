@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round53-pingjian.h"
 #include "ai-strategy-round21-choice.h"
@@ -48,7 +49,7 @@ QObject *notificationLedger(Room &room, bool create)
 {
     const auto name = QStringLiteral("isolated-ai-notification-ledger");
     auto *ledger = room.findChild<QObject *>(name, Qt::FindDirectChildrenOnly);
-    if (!ledger && create) { ledger = new QObject(&room); ledger->setObjectName(name); }
+    if (!ledger && create) { ledger = new AIRoomLedger(room); ledger->setObjectName(name); }
     return ledger;
 }
 }

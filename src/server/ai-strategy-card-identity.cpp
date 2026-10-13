@@ -1,4 +1,5 @@
 #include "ai-strategy-response-observer.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-public-action-flags.h"
 #include "ai-strategy-round47-xiedou.h"
 #include "ai-strategy-card-identity.h"
@@ -15,9 +16,9 @@ struct ViewerIdentity {
     QString prefix = QUuid::createUuid().toString(QUuid::WithoutBraces);
     quint64 next = 0;
 };
-class IdentityStore final : public QObject {
+class IdentityStore final : public AIRoomLedger {
 public:
-    explicit IdentityStore(Room &room) : QObject(&room) {}
+    explicit IdentityStore(Room &room) : AIRoomLedger(room) {}
     QHash<QString, ViewerIdentity> viewers;
 };
 thread_local Room *activeRoom = nullptr;

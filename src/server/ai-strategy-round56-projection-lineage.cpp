@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection-lineage.h"
+#include "ai-strategy-room-ledger.h"
 #include <cstdio>
 #include "ai-strategy-round56-async.h"
 #include "ai-strategy-round47-xufa-proof.h"
@@ -13,9 +14,9 @@
 namespace {
 struct State;void changed(lua_State*,const lua_TableObservation*,void*) noexcept;
 void born(lua_State*,const lua_TableBirthObservation*,void*) noexcept;
-struct State final:QObject {
+struct State final:AIRoomLedger {
  Room&r;lua_State*L;quint64 generation;bool alive=true,completed=false,sourceReady=false,prepareAttempted=false;QSet<const void*>tables;
- State(Room&room,lua_State*l):QObject(&room),r(room),L(l),generation(room.roomRuntime()->lua().generation()){}
+ State(Room&room,lua_State*l):AIRoomLedger(room),r(room),L(l),generation(room.roomRuntime()->lua().generation()){}
  ~State()override{lua_unobservetablebirth(L,born,this);for(const void*p:tables)lua_unobservetableidentity(L,p,changed,this);}
  bool watch(const void*p){if(tables.contains(p))return true;if(!lua_observetableidentity(L,p,changed,this))return false;try{tables.insert(p);}catch(...){lua_unobservetableidentity(L,p,changed,this);throw;}return true;}
  void retire()noexcept{alive=false;retireAIRound56AsyncUniverse(L);retireAIRound53AiNoTo(r);r.roomRuntime()->revokePrioritySource();}

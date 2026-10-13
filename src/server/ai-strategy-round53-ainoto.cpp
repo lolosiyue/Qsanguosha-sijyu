@@ -1,4 +1,5 @@
 #include "ai-strategy-round53-ainoto.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai.h"
 #include "room.h"
@@ -11,9 +12,9 @@
 namespace {
 // A witness is provenance only. No bool value is cached or substituted.
 struct Witness {bool initialAbsent=false;QString viewer;quint64 transport=0;};
-class State final:public QObject {
+class State final:public AIRoomLedger {
 public:
- explicit State(Room&r):QObject(&r){}
+ explicit State(Room&r):AIRoomLedger(r){}
  bool initialized=false;QString viewer;quint64 generation=0,initialReads=0,choulveWrites=0,choulveAccepted=0;
  QHash<const ServerPlayer*,Witness>witnesses;QSet<const ServerPlayer*>watched;
  QPointer<ServerPlayer>writing;
@@ -40,7 +41,7 @@ QJsonObject error(const char*s){return{{"error",QString::fromLatin1(s)},{"key","
 void createdAIRound53AiNoTo(Room&r,ServerPlayer*p){
  if(!p||p->getRoom()!=&r)return;auto*s=state(r);if(s->watched.contains(p))return;
  s->watched.insert(p);p->installEventFilter(s);
- QObject::connect(p,&QObject::destroyed,s,[s,p](){s->witnesses.remove(p);s->watched.remove(p);});
+ QObject::connect(p,&QObject::destroyed,s,[s,p](){s->witnesses.remove(p);s->watched.remove(p);}, Qt::DirectConnection);
  // Called only from ServerPlayer construction. A later runtime reset cannot
  // sample an already-running native property and turn it into a baseline.
  if(!p->property("aiNoTo").isValid())s->witnesses.insert(p,{true,{},0});

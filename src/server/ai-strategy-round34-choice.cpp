@@ -1,4 +1,5 @@
 #include "ai-strategy-round34-choice.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -7,9 +8,9 @@
 #include <QObject>
 #include <QSet>
 namespace {
-class FixedDistanceLedger final : public QObject {
+class FixedDistanceLedger final : public AIRoomLedger {
 public:
- explicit FixedDistanceLedger(Room &room) : QObject(&room) { setObjectName("isolated-round34-fixed-distance"); }
+ explicit FixedDistanceLedger(Room &room) : AIRoomLedger(room) { setObjectName("isolated-round34-fixed-distance"); }
  // Viewer -> source -> targets. These are notification witnesses, not native maps.
  QHash<const ServerPlayer *, QHash<const Player *, QSet<const Player *>>> rows;
  QSet<const Player *> connected;
@@ -31,14 +32,14 @@ bool roster(Room &room,const Player *p) {
 void connectPlayer(FixedDistanceLedger *state, const Player *p) {
  if (state->connected.contains(p)) return;
  state->connected.insert(p);
- QObject::connect(p,&Player::gameplay_property_changed,state,[state,p]{state->invalidate(p);});
+ QObject::connect(p,&Player::gameplay_property_changed,state,[state,p]{state->invalidate(p);}, Qt::DirectConnection);
  QObject::connect(p,&QObject::destroyed,state,[state,p]{
   state->invalidate(p);state->connected.remove(p);
   // ServerPlayer is the only admitted viewer. Avoid casts during destruction.
   for(auto it=state->rows.begin();it!=state->rows.end();) {
    if(static_cast<const Player *>(it.key())==p) it=state->rows.erase(it);else ++it;
   }
- });
+ }, Qt::DirectConnection);
 }
 }
 void observeAIRound34FixedDistance(Room &room,Player *from,const Player *to,int distance,

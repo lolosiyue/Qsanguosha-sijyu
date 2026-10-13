@@ -1,4 +1,5 @@
 #include "ai-strategy-round47-xufa-proof.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round47-heqia.h"
 #include "ai-strategy-round47b-leiluan.h"
 #include "ai-strategy-round46-jianman.h"
@@ -58,9 +59,9 @@ const Source smartSource{"lua/ai/smart-ai.lua","f92033319db3c6aac3504b4b6ddccf5e
 const Source utilitiesSource{"lua/utilities.lua","b76cdc44c0fec46f1e10d918c6e0676c5e301ed92cd5b0e35da882606a7d4d3a"};
 const Source sanguoshaSource{"lua/sanguosha.lua","fb7ac93090859f607f17158ea9a9ad92c86479457f5193de8c3486d606c5e601"};
 const Source sgsExSource{"lua/sgs_ex.lua","786dfccf96d33c351f096f273af89cfd08d787affacb7a82bf305d87479cd315"};
-class Certificate final:public QObject {
+class Certificate final:public AIRoomLedger {
 public:
- explicit Certificate(Room &r):QObject(&r),room(r){setObjectName(ledgerName);}
+ explicit Certificate(Room &r):AIRoomLedger(r),room(r){setObjectName(ledgerName);}
  Room &room; lua_State *L=nullptr; quint64 generation=0;
  bool initialized=false, modeReady=false, patternsReady=false, bossReady=false, naturalReady=false, correctionReady=false;
  void release(){L=nullptr;modeReady=false;patternsReady=false;bossReady=false;naturalReady=false;correctionReady=false;}

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-projection.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-round26-choice.h"
 #include "ai.h"
@@ -14,8 +15,8 @@
 #include <QSet>
 #include <QHash>
 namespace {
-class FlagLedger final:public QObject {
-public: explicit FlagLedger(Room&room):QObject(&room){setObjectName("isolated-round26-choice-flags");}
+class FlagLedger final:public AIRoomLedger {
+public: explicit FlagLedger(Room&room):AIRoomLedger(room){setObjectName("isolated-round26-choice-flags");}
  QHash<QString,QJsonObject> rows;QSet<ServerPlayer*> connected;
 };
 FlagLedger*flagLedger(Room&room,bool create){
@@ -40,8 +41,8 @@ void observeAIRound26ChoiceFlag(Room&room,ServerPlayer*p,const QString&flag){
   ledger->connected.insert(p);const QString player=p->objectName();
   // A direct/private mutation (including clear then restore) must never revive
   // an old public witness. This conservative invalidation is local to evidence.
-  QObject::connect(p,&Player::gameplay_property_changed,ledger,[ledger,player]{ledger->rows.remove(player);});
-  QObject::connect(p,&QObject::destroyed,ledger,[ledger,p,player]{ledger->connected.remove(p);ledger->rows.remove(player);});
+  QObject::connect(p,&Player::gameplay_property_changed,ledger,[ledger,player]{ledger->rows.remove(player);}, Qt::DirectConnection);
+  QObject::connect(p,&QObject::destroyed,ledger,[ledger,p,player]{ledger->connected.remove(p);ledger->rows.remove(player);}, Qt::DirectConnection);
  }
  auto row=ledger->rows.value(p->objectName());
  if(p->hasFlag(name)==!clear)row.insert(name,!clear);else row.remove(name);

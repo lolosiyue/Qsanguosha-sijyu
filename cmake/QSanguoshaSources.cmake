@@ -93,6 +93,20 @@ set(QSAN_SOURCES
     src/package/standard-generals.cpp
     src/package/tenyear.cpp
     src/package/tenyear2.cpp
+    src/package/gu-audit2025.cpp
+    src/package/gu-audit2025-s2.cpp
+    src/package/gu-audit2025-s3.cpp
+    src/package/gu-audit2026.cpp
+    src/package/gu-audit2026-m06.cpp
+    src/package/gu-audit2026-m06b.cpp
+    src/package/gu-audit2026-m07a.cpp
+    src/package/gu-audit2026-m07b.cpp
+    src/package/gu-audit2026-m07c.cpp
+    src/package/gu-audit2026-m07d.cpp
+    src/package/gu-audit2026-m08a.cpp
+    src/package/gu-audit2026-m08b.cpp
+    src/package/gu-audit2026-m08c.cpp
+    src/package/gu-audit2026-m08d.cpp
     src/package/tenyear-strengthen.cpp
     src/package/thicket.cpp
     src/package/tw.cpp
@@ -363,6 +377,7 @@ set(QSAN_MOC_HEADERS
     src/package/standard-cards.h
     src/package/standard-generals.h
     src/package/tenyear.h
+    src/package/gu-audit2025.h
     src/package/tenyear-strengthen.h
     src/package/thicket.h
     src/package/tw.h

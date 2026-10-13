@@ -1,4 +1,5 @@
 #include "room-runtime.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-projection.h"
 #include "ai-strategy-round56-maxcards.h"
 #include "ai-strategy-animecard.h"
@@ -12,9 +13,9 @@
 #include <QObject>
 
 namespace {
-class ReijyuuWitness final : public QObject {
+class ReijyuuWitness final : public AIRoomLedger {
 public:
-    explicit ReijyuuWitness(Room &room) : QObject(&room) {
+    explicit ReijyuuWitness(Room &room) : AIRoomLedger(room) {
         setObjectName(QStringLiteral("isolated-reijyuu-public-choice-witness"));
     }
     QHash<QString, QString> targets;

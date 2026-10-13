@@ -3152,10 +3152,11 @@ public:
     static QStringList choicesFor(ServerPlayer *player, int instanceId)
     {
 				QStringList choices;
-				for (int i = 1; i <= qMin(3,player->getMark("&bear")); i++){
+				// SOURCE-2 神司马重置：弃置至多两枚“忍”摸等量；购技 X=次数+1 且至少为2
+				for (int i = 1; i <= qMin(2,player->getMark("&bear")); i++){
 					choices << "mobilejilve1="+QString::number(i);
 				}
-				int n = player->getSkillInstanceStateValue("mobilejilve", instanceId, "purchases").toInt()+1;
+				int n = qMax(2, player->getSkillInstanceStateValue("mobilejilve", instanceId, "purchases").toInt()+1);
 				if(n<=player->getMark("&bear")){
 					if(!player->hasSkill("guicai",true))
 						choices << "mobilejilve2=guicai="+QString::number(n);

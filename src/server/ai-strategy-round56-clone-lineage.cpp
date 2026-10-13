@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-playloop-filter.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round54-jijiang.h"
 #include "ai-strategy-round56-patterns.h"
 #include "ai-strategy-round56-connection-cache.h"
@@ -29,12 +30,12 @@ const Root roots[]={
 };
 constexpr int rootCount=sizeof roots/sizeof*roots;
 struct State;void observe(lua_State*,const lua_TableObservation*,void*)noexcept;
-struct State final:QObject {
+struct State final:AIRoomLedger {
  Room&r;lua_State*L;quint64 generation;bool alive=true,completed=false;
  const void*globals;const void*space;const void*root[rootCount]={};
  QHash<const void*,Kind>watches;QSet<QString>connectionKeys;
  QHash<QString,const void*>constructorLists;
- State(Room&room,const LuaRuntime::NativeNamespaceBirth&birth):QObject(&room),r(room),L(birth.state()),generation(birth.generation()),globals(birth.globalsIdentity()),space(birth.namespaceIdentity()){}
+ State(Room&room,const LuaRuntime::NativeNamespaceBirth&birth):AIRoomLedger(room),r(room),L(birth.state()),generation(birth.generation()),globals(birth.globalsIdentity()),space(birth.namespaceIdentity()){}
  ~State()override{if(L)for(auto i=watches.cbegin();i!=watches.cend();++i)lua_unobservetableidentity(L,i.key(),observe,this);}
  void retire()noexcept{alive=false;retireAIRound56AsyncUniverse(L);retireAIRound53AiNoTo(r);if(auto*rt=r.roomRuntime())rt->revokePrioritySource();}
  bool watch(const void*p,Kind k){

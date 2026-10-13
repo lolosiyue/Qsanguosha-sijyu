@@ -1,4 +1,5 @@
 #include "ai-strategy-round50-effects.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai-strategy-card-identity.h"
 #include "ai.h"
@@ -13,8 +14,8 @@
 #include <QWeakPointer>
 #include <limits>
 namespace {
-struct Sequence final:QObject {
- explicit Sequence(Room&r):QObject(&r){}
+struct Sequence final:AIRoomLedger {
+ explicit Sequence(Room&r):AIRoomLedger(r){}
  const AIRequest*request=nullptr;quint64 decision=0;QWeakPointer<AIConversionLedger>ledger;QPointer<ServerPlayer>owner;
  bool written=false;QMap<QString,bool>flagReads;
 };

@@ -1,4 +1,5 @@
 #include "ai-strategy-round56-patterns.h"
+#include "ai-strategy-room-ledger.h"
 #include "ai-strategy-round56-clone-lineage.h"
 #include "ai-strategy-round56-projection-lineage.h"
 #include "ai-strategy-round56-factory-source.h"
@@ -27,11 +28,11 @@ thread_local Call*active=nullptr;
 void changed(lua_State*,const lua_TableObservation*,void*) noexcept;
 void born(lua_State*,const lua_TableBirthObservation*,void*) noexcept;
 enum Kind{Globals,Ban,Names,Classes,Equips};
-struct State final:QObject{
+struct State final:AIRoomLedger{
  Room&r;lua_State*L;quint64 generation;const void*globals;const void*space;
  bool alive=true,ready=false,prepared=false,completed=false;unsigned genesis=0;
  const void*latest[5]={};QHash<const void*,Kind>tables;
- State(Room&room,const LuaRuntime::NativeNamespaceBirth&b):QObject(&room),r(room),L(b.state()),generation(b.generation()),globals(b.globalsIdentity()),space(b.namespaceIdentity()){}
+ State(Room&room,const LuaRuntime::NativeNamespaceBirth&b):AIRoomLedger(room),r(room),L(b.state()),generation(b.generation()),globals(b.globalsIdentity()),space(b.namespaceIdentity()){}
  ~State()override{lua_unobservetablebirth(L,born,this);for(auto i=tables.cbegin();i!=tables.cend();++i)lua_unobservetableidentity(L,i.key(),changed,this);}
  void retire(const char*why)noexcept{
   if(alive&&qEnvironmentVariableIsSet("QSAN_TRACE_R56_BOOTSTRAP")){std::fprintf(stderr,"R56_PATTERNS_REFUSAL stage=%s\n",why);std::fflush(stderr);}
