@@ -1,3 +1,4 @@
+#include "gu-audit2025.h"
 #include "doudizhu.h"
 #include "qt-collection-utils.h"
 //#include "settings.h"
@@ -3777,7 +3778,6 @@ public:
             for (const QVariant &value : page.value("items").toList()) {
                 const QVariantMap fact = value.toMap(), data = fact.value("data").toMap();
                 if (!damage && (data.value("to_place").toInt() != Player::PlaceHand
-                    || data.value("reason").toInt() != CardMoveReason::S_REASON_DRAW
                     || data.value("reason_skill").toString() == "InitialHandCards")) continue;
                 const qint64 event = fact.value("event_id").toLongLong();
                 if (!occurred.contains(event)) occurred << event;
@@ -3801,7 +3801,7 @@ public:
         if ((event != Damage && event != CardsMoveOneTime) || !player || !player->isAlive() || !player->hasSkill(objectName())) return {};
         if (event == CardsMoveOneTime) {
             const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-            if (move.to != player || move.to_place != Player::PlaceHand || move.reason.m_reason != CardMoveReason::S_REASON_DRAW
+            if (move.to != player || move.to_place != Player::PlaceHand
                 || move.reason.m_skillName == "InitialHandCards") return {};
         }
         const QString tip = event == Damage ? "lt_yuanshao" : "lt_yuanshu";
@@ -4294,6 +4294,7 @@ public:
 DoudizhuPackage::DoudizhuPackage()
     : Package("Doudizhu")
 {
+    guAudit2025Doudizhu(this);
     related_skills.insert("bahu", "#bahu-target");
 
     skills << new Feiyang << new Bahu << new BahuTargetMod << new DdzCombatModifier;

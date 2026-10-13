@@ -355,9 +355,40 @@ const QHash<QString, const Skill *> &skillIndex(const Player *player, const QLis
     return cache.insert(player, index)->byName;
 }
 
+// Player::getSkillDescription() marks its "State:" line and each item with
+// comments; the items become chips under the heading. Returns the chip row and
+// advances pos past the marked line.
+QString stateChips(const QString &description, int &pos, bool greyed, const QString &autoInvoke)
+{
+    static const QString open = QStringLiteral("<!--qsan-skill-state-->");
+    static const QString close = QStringLiteral("<!--/qsan-skill-state--><br/>");
+    static const QRegularExpression item(QStringLiteral("<!--i-->(.*?)<!--/i-->"));
+    const GeneralInfoCard::Palette &p = GeneralInfoCard::palette();
+    const QString background = greyed ? QStringLiteral("#BAB8BA") : p.state;
+    const QString text = greyed ? QStringLiteral("#FFFFFF") : p.stateText;
+    QStringList chips;
+    if (description.mid(pos, open.size()) == open) {
+        const int end = description.indexOf(close, pos);
+        if (end > pos) {
+            QRegularExpressionMatchIterator it = item.globalMatch(description.mid(pos, end - pos));
+            while (it.hasNext()) {
+                // Items are escaped already and chip() escapes again.
+                QString plain = it.next().captured(1);
+                plain.replace(QLatin1String("&lt;"), QLatin1String("<")).replace(QLatin1String("&gt;"), QLatin1String(">"))
+                    .replace(QLatin1String("&quot;"), QLatin1String("\"")).replace(QLatin1String("&amp;"), QLatin1String("&"));
+                chips << chip(plain, background, text);
+            }
+            pos = end + close.size();
+        }
+    }
+    if (!autoInvoke.isEmpty()) chips << chip(autoInvoke, background, text);
+    return chips.join(QStringLiteral("&nbsp;"));
+}
+
 // Re-wraps the "<b>name</b>：" headings of Player::getSkillDescription(). Text and
 // order stay as produced there; grey (invalid) and teal (related) spans keep their colour.
-QString restyleSkillHeadings(const QString &description, const Player *player)
+QString restyleSkillHeadings(const QString &description, const Player *player,
+                             const QHash<QString, bool> &autoInvoke = {})
 {
     const GeneralInfoCard::Palette &p = GeneralInfoCard::palette();
     const QHash<QString, const Skill *> &skillsByName = skillIndex(player, player->getSkillList(false, false));
@@ -392,6 +423,11 @@ QString restyleSkillHeadings(const QString &description, const Player *player)
         // Inside a grey or teal span an explicit colour would override that state.
         result += context + skillHeading(name, chips, context.isEmpty() ? p.skillName : QString())
             + QStringLiteral("<br/>");
+        QString toggle;
+        if (skill && !derived && autoInvoke.contains(skill->objectName()))
+            toggle = autoInvoke.value(skill->objectName()) ? tr("Auto-invoke on") : tr("Auto-invoke off");
+        const QString state = stateChips(description, last, greyed, toggle);
+        if (!state.isEmpty()) result += state + QStringLiteral("<br/>");
     }
     result += description.mid(last);
 
@@ -506,7 +542,8 @@ QString forPlayer(const Player *player, const Player *viewer, Focus focus, const
     return playerCard(player, description, restyleSkillHeadings(description, player), focus, caption);
 }
 
-AvatarCards forPlayerAvatars(const Player *player, const QString &description)
+AvatarCards forPlayerAvatars(const Player *player, const QString &description,
+                             const QHash<QString, bool> &autoInvoke)
 {
     AvatarCards cards;
     if (!player) return cards;
@@ -517,12 +554,14 @@ AvatarCards forPlayerAvatars(const Player *player, const QString &description)
     foreach (const Skill *skill, player->getSkillList(false, false))
         key += QLatin1Char(',') + QString::number(int(skill->getFrequency(player)));
     if (Config.value("EnableOracleConcepts", true).toBool()) key += QStringLiteral(",c");
+    for (auto it = autoInvoke.cbegin(); it != autoInvoke.cend(); ++it)
+        key += QLatin1Char(',') + it.key() + (it.value() ? QLatin1Char('+') : QLatin1Char('-'));
     QHash<const Player *, CachedAvatarCards> &cache = avatarCache();
     const auto cached = cache.constFind(player);
     if (cached != cache.constEnd() && cached->key == key) return cached->cards;
 
     // The restyled body is shared; only the header focus and general oracle differ.
-    const QString restyled = restyleSkillHeadings(description, player);
+    const QString restyled = restyleSkillHeadings(description, player, autoInvoke);
     cards.head = playerCard(player, description, restyled, Focus::Head, QString());
     if (player->getGeneral() && player->getGeneral2())
         cards.deputy = playerCard(player, description, restyled, Focus::Deputy, QString());

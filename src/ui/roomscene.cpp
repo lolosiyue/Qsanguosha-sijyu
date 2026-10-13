@@ -4334,7 +4334,8 @@ void RoomScene::switchControlContext(const QString &target_name)
 	updateTable();
 
 	Client::Status status = ClientInstance->getStatus();
-	QString pattern = Sanguosha->getCurrentCardUsePattern();
+	// Login and reconnect can switch focus before Engine has a registered room.
+	const QString pattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
 	CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
 	ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	if (status == Client::Playing) {

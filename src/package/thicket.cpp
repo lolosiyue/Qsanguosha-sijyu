@@ -453,7 +453,7 @@ public:
 class Yinghun : public TriggerSkillV2
 {
 public:
-    Yinghun() : TriggerSkillV2("yinghun")
+    Yinghun(const QString &name = "yinghun") : TriggerSkillV2(name)
     {
         events << EventPhaseStart;
     }
@@ -461,14 +461,14 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
         return player && player->isAlive() && player->hasSkill(objectName())
-            && player->getPhase() == Player::Start && player->isWounded()
+            && player->getPhase() == Player::Start && (objectName() == "xiaoxin_yinghun" || player->isWounded())
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner),
-            objectName(), "yinghun-invoke", true, true);
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, objectName() == "xiaoxin_yinghun" ? room->getAlivePlayers() : room->getOtherPlayers(ctx.owner),
+            objectName(), objectName() == "xiaoxin_yinghun" ? "@xiaoxin_yinghun-invoke" : "yinghun-invoke", true, true);
         if (!target) return false;
         ctx.targets << target;
         return true;
@@ -1698,6 +1698,8 @@ ThicketPackage::ThicketPackage()
     related_skills.insert("kuangbao", "#&wrath-2");
     addMetaObject<ShenfenCard>();
     addMetaObject<WuqianCard>();
+
+    skills << new Yinghun("xiaoxin_yinghun");
 
     addMetaObject<DimengCard>();
     addMetaObject<LuanwuCard>();

@@ -1,3 +1,4 @@
+#include "gu-audit2025.h"
 #include "yjcm2012.h"
 #include <QJsonDocument>
 //#include "skill.h"
@@ -2268,8 +2269,8 @@ YJCM2012Package::YJCM2012Package()
     wangyi->addSkill(new Miji);
 
     General *ol_wangyi = new General(this, "ol_wangyi", "wei", 3, false);
-    ol_wangyi->addSkill("zhenlie");
-    ol_wangyi->addSkill(new OlMiji);
+    ol_wangyi->addSkill(guNewOLZhenlie());
+    ol_wangyi->addSkill(guNewOLMiji());
 
     General *xunyou = new General(this, "xunyou", "wei", 3); // YJ 111
     xunyou->addSkill(new Qice);

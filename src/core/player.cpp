@@ -2860,6 +2860,72 @@ QString descriptionEffect(const Player *holder, const QVariantMap &effect)
     if (!expiry.isEmpty()) parts << Player::tr("Ends: %1").arg(Sanguosha->translate(expiry).toHtmlEscaped());
     return parts.join("<br/>");
 }
+
+QString descriptionUsageScope(const QVariantMap &usage)
+{
+    const QString scope = usage.value("scope").toString();
+    if (scope == "round") return Player::tr("This round");
+    if (scope == "turn") return Player::tr("This turn");
+    if (scope == "game") return Player::tr("This game");
+    if (scope == "phase") {
+        const QString phaseName = usage.value("phase").toString();
+        return phaseName.isEmpty() ? Player::tr("This phase")
+            : Player::tr("%1 count").arg(Sanguosha->translate(phaseName));
+    }
+    return Player::tr(Sanguosha->translate(usage.value("scope_label",
+        QStringLiteral("Custom scope")).toString()).toUtf8().constData());
+}
+
+// Live state the replica already holds for every viewer: public marks and the
+// change-skill property. Reading them runs no rule callback. Wake skills count
+// as awakened once their own mark is set, the same test as TriggerSkill::canWake.
+QStringList descriptionSkillState(const Player *holder, const Skill *skill)
+{
+    QStringList items;
+    const QString skillName = skill->objectName();
+    const QString limitMark = skill->getLimitMark();
+    if (skill->isLimitedSkill() && !limitMark.isEmpty()) {
+        const int count = holder->getMark(limitMark);
+        if (count <= 0) items << Player::tr("Used");
+        else if (count == 1) items << Player::tr("Not yet used");
+        else items << Player::tr("%1 uses left").arg(count);
+    }
+    if (skill->getFrequency(holder) == Skill::Wake)
+        items << (holder->getMark(skillName) > 0 ? Player::tr("Awakened") : Player::tr("Not awakened"));
+    if (skill->isChangeSkill()) {
+        // Forms are written either as yang/yin or as ①②…; follow the description.
+        const int state = holder->getChangeSkillState(skillName);
+        QString form = state >= 1 && state <= 20 ? QString(QChar(0x2460 + state - 1)) : QString::number(state);
+        if (state <= 2 && skill->getDescription(holder).contains(Player::tr("Yang")))
+            form = state == 1 ? Player::tr("Yang") : Player::tr("Yin");
+        items << Player::tr("Current form: %1").arg(form);
+    }
+    // "@<skill>" or "@<skill>_…" marks; a bare prefix would also catch other skills' marks.
+    const QString ownMark = "@" + skillName;
+    QStringList marks = holder->getMarkNames();
+    marks.sort();
+    for (const QString &mark : marks) {
+        if (mark == limitMark || !mark.startsWith(ownMark)
+            || (mark.size() > ownMark.size() && mark.at(ownMark.size()) != QLatin1Char('_'))) continue;
+        const int count = holder->getMark(mark);
+        if (count <= 0) continue;
+        QString label = Sanguosha->translate(mark);
+        if (label == mark) label = Sanguosha->translate(skillName);
+        items << Player::tr("Mark %1: %2").arg(label).arg(count);
+    }
+    return items;
+}
+
+// GeneralInfoCard turns each item into a chip; other readers see one plain line.
+QString descriptionStateLine(const QStringList &items)
+{
+    if (items.isEmpty()) return QString();
+    QStringList wrapped;
+    for (const QString &item : items)
+        wrapped << QStringLiteral("<!--i-->") + item.toHtmlEscaped() + QStringLiteral("<!--/i-->");
+    return QStringLiteral("<!--qsan-skill-state-->") + Player::tr("State: %1").arg(wrapped.join(" · "))
+        + QStringLiteral("<!--/qsan-skill-state--><br/>");
+}
 }
 
 QString Player::getSkillDescription() const
@@ -2929,6 +2995,7 @@ QString Player::getSkillDescription(const Player *viewer) const
         QStringList bodies;
         QList<QStringList> details;
         QList<bool> groupValid;
+        QList<QVariantMap> countedUsage;
         foreach (int id, getSkillInstanceIds(skillName)) {
             const SkillInstance *instance = findSkillInstance(skillName, id);
             if (!instance || !instance->visible)
@@ -2970,16 +3037,8 @@ QString Player::getSkillDescription(const Player *viewer) const
                 if (scope == "unavailable" || usage.value("unavailable").toBool())
                     usageText = tr("Counter unavailable");
                 else {
-                    QString scopeText;
-                    if (scope == "round") scopeText = tr("This round");
-                    else if (scope == "turn") scopeText = tr("This turn");
-                    else if (scope == "game") scopeText = tr("This game");
-                    else if (scope == "phase") {
-                        const QString phaseName = usage.value("phase").toString();
-                        scopeText = phaseName.isEmpty() ? tr("This phase")
-                            : tr("%1 count").arg(Sanguosha->translate(phaseName));
-                    } else scopeText = Player::tr(Sanguosha->translate(usage.value("scope_label",
-                        QStringLiteral("Custom scope")).toString()).toUtf8().constData());
+                    countedUsage << usage;
+                    const QString scopeText = descriptionUsageScope(usage);
                     const QString counter = usage.value("counter").toString();
                     // A shared count is rendered once; differing dynamic caps remain per-skill.
                     const QString displayKey = counter + ":" + QString::number(usage.value("limit").toInt());
@@ -3097,12 +3156,22 @@ QString Player::getSkillDescription(const Player *viewer) const
             groupValid.append(skillValid);
         }
         const QString oracle = skill->getOracleText(this);
+        // Dead seats keep stale marks; their skills have no live state.
+        QStringList state = isDead() ? QStringList() : descriptionSkillState(this, skill);
+        // Remaining uses only when one counter covers the skill; several
+        // instances keep their own rows in the details below.
+        if (countedUsage.size() == 1) {
+            const QVariantMap &usage = countedUsage.first();
+            state << tr("%1: %2 left").arg(descriptionUsageScope(usage))
+                .arg(qMax(0, usage.value("limit").toInt() - usage.value("used").toInt()));
+        }
+        const QString stateLine = descriptionStateLine(state);
         for (int group = 0; group < bodies.size(); ++group) {
             // Include the skill name. Leaving it outside the grey span made an
             // invalid skill look active, and nested type colours did the same
             // to the body.
-            QString line = QString("<b>%1</b>：%2")
-                .arg(Sanguosha->translate(skillName), bodies.at(group));
+            QString line = QString("<b>%1</b>：%2%3")
+                .arg(Sanguosha->translate(skillName), group == 0 ? stateLine : QString(), bodies.at(group));
             if (!groupValid.at(group))
                 line = greyInvalidSkillText(line);
             description += line + "<br/>";

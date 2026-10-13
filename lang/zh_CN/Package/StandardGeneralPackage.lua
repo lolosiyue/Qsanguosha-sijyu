@@ -340,5 +340,13 @@ return {
 	["sujiangf"] = "士兵(女)",
 	["&sujiangf"] = "士兵",
 	["illustrator:sujiangf"] = "木美人",
+	["xiaoxin_huatuo"] = "小新华佗",
+	["&xiaoxin_huatuo"] = "华佗",
+	["xiaoxin_qingnang"] = "青囊",
+	[":xiaoxin_qingnang"] = "出牌阶段限一次，你可以弃置一张牌并令一名角色回复1点体力；若此牌为红色，此技能视为未发动过。",
+	["xiaoxin_jijiu"] = "急救",
+	[":xiaoxin_jijiu"] = "你的回合外，你可以将一张红色牌当【桃】使用；若转化所用的牌为♥基本牌，此牌回复值+1。",
+	["xiaoxin_guanxing"] = "观星",
+	[":xiaoxin_guanxing"] = "准备阶段或结束阶段，你可以观看牌堆顶的五张牌，然后以任意顺序将其中任意张牌置于牌堆顶，其余置于牌堆底。",
 }
 

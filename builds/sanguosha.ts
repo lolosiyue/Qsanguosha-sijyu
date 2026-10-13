@@ -4810,6 +4810,14 @@ Recent events:</source>
         <source>Deputy general</source>
         <translation>副将</translation>
     </message>
+    <message>
+        <source>Auto-invoke on</source>
+        <translation>自动发动：开</translation>
+    </message>
+    <message>
+        <source>Auto-invoke off</source>
+        <translation>自动发动：关</translation>
+    </message>
 </context>
 <context>
     <name>GeneralOverview</name>
@@ -7335,179 +7343,223 @@ Waiting for %1 to respond</source>
     <name>Player</name>
     <message>
         <source>No skills</source>
-        <translation type="vanished">无技能</translation>
+        <translation>无技能</translation>
     </message>
     <message>
         <source>Non-equipment skills are invalid</source>
-        <translation type="vanished">非装备技能失效</translation>
+        <translation>非装备技能失效</translation>
     </message>
     <message>
         <source>%1%2 is invalid</source>
-        <translation type="vanished">%1%2 失效</translation>
+        <translation>%1%2 失效</translation>
     </message>
     <message>
         <source>Use</source>
-        <translation type="vanished">使用</translation>
+        <translation>使用</translation>
     </message>
     <message>
         <source>Respond</source>
-        <translation type="vanished">打出</translation>
+        <translation>打出</translation>
     </message>
     <message>
         <source>Discard</source>
-        <translation type="vanished">弃置</translation>
+        <translation>弃置</translation>
     </message>
     <message>
         <source>Action %1</source>
-        <translation type="vanished">操作 %1</translation>
+        <translation>操作 %1</translation>
     </message>
     <message>
         <source>Card %1 is restricted (pattern: %2)</source>
-        <translation type="vanished">卡牌%1受限（规则：%2）</translation>
+        <translation>卡牌%1受限（规则：%2）</translation>
     </message>
     <message>
         <source>Source: %1</source>
-        <translation type="vanished">来源：%1</translation>
+        <translation>来源：%1</translation>
     </message>
     <message>
         <source>Reason: %1</source>
-        <translation type="vanished">原因：%1</translation>
+        <translation>原因：%1</translation>
     </message>
     <message>
         <source>Target: %1</source>
-        <translation type="vanished">作用对象：%1</translation>
+        <translation>作用对象：%1</translation>
     </message>
     <message>
         <source>Until the end of this turn</source>
-        <translation type="vanished">至本回合结束</translation>
+        <translation>至本回合结束</translation>
     </message>
     <message>
         <source>Ends: %1</source>
-        <translation type="vanished">结束条件：%1</translation>
+        <translation>结束条件：%1</translation>
     </message>
     <message>
         <source>Innate</source>
-        <translation type="vanished">原生</translation>
+        <translation>原生</translation>
     </message>
     <message>
         <source>Acquired</source>
-        <translation type="vanished">后天获得</translation>
+        <translation>后天获得</translation>
     </message>
     <message>
         <source>Attached skill</source>
-        <translation type="vanished">附加技能</translation>
+        <translation>附加技能</translation>
     </message>
     <message>
         <source>Related helper</source>
-        <translation type="vanished">关联附属</translation>
+        <translation>关联附属</translation>
     </message>
     <message>
         <source> / Head general</source>
-        <translation type="vanished">／主将</translation>
+        <translation>／主将</translation>
     </message>
     <message>
         <source> / Deputy general</source>
-        <translation type="vanished">／副将</translation>
+        <translation>／副将</translation>
     </message>
     <message>
         <source>Counter unavailable</source>
-        <translation type="vanished">计数来源不可用</translation>
+        <translation>计数来源不可用</translation>
     </message>
     <message>
         <source>This round</source>
-        <translation type="vanished">本轮</translation>
+        <translation>本轮</translation>
     </message>
     <message>
         <source>This turn</source>
-        <translation type="vanished">本回合</translation>
+        <translation>本回合</translation>
     </message>
     <message>
         <source>This game</source>
-        <translation type="vanished">本局</translation>
+        <translation>本局</translation>
     </message>
     <message>
         <source>This phase</source>
-        <translation type="vanished">本阶段</translation>
+        <translation>本阶段</translation>
     </message>
     <message>
         <source>%1 count</source>
-        <translation type="vanished">%1计数</translation>
+        <translation>%1计数</translation>
     </message>
     <message>
         <source>Custom scope</source>
-        <translation type="vanished">自定义范围</translation>
+        <translation>自定义范围</translation>
     </message>
     <message>
         <source>%1 shared count, see %2</source>
-        <translation type="vanished">%1共用次数，见 %2</translation>
+        <translation>%1共用次数，见 %2</translation>
     </message>
     <message>
         <source>%1: used %2 / %3 times</source>
-        <translation type="vanished">%1已使用 %2 / %3 次</translation>
+        <translation>%1已使用 %2 / %3 次</translation>
     </message>
     <message>
         <source> (shared count)</source>
-        <translation type="vanished">（共用次数）</translation>
+        <translation>（共用次数）</translation>
     </message>
     <message>
         <source> (no uses currently available)</source>
-        <translation type="vanished">（目前无可用额度）</translation>
+        <translation>（目前无可用额度）</translation>
     </message>
     <message>
         <source>; %1 reserved, not yet committed</source>
-        <translation type="vanished">；另有 %1 次预留，尚未提交</translation>
+        <translation>；另有 %1 次预留，尚未提交</translation>
     </message>
     <message>
         <source>Usage: %1</source>
-        <translation type="vanished">使用情况：%1</translation>
+        <translation>使用情况：%1</translation>
     </message>
     <message>
         <source>Skill state: %1: %2</source>
-        <translation type="vanished">技能状态：%1：%2</translation>
+        <translation>技能状态：%1：%2</translation>
     </message>
     <message>
         <source>Modification: %1: %2</source>
-        <translation type="vanished">受到的修改：%1：%2</translation>
+        <translation>受到的修改：%1：%2</translation>
     </message>
     <message>
         <source>Skill state: %1 more entries (see technical details)</source>
-        <translation type="vanished">技能状态：另有 %1 项记录（见技术数据）</translation>
+        <translation>技能状态：另有 %1 项记录（见技术数据）</translation>
     </message>
     <message>
         <source>%1 modified by: %2</source>
-        <translation type="vanished">%1 修改来源：%2</translation>
+        <translation>%1 修改来源：%2</translation>
     </message>
     <message>
         <source>Modified by: %1</source>
-        <translation type="vanished">修改来源：%1</translation>
+        <translation>修改来源：%1</translation>
     </message>
     <message>
         <source>Modification reason: %1</source>
-        <translation type="vanished">修改原因：%1</translation>
+        <translation>修改原因：%1</translation>
     </message>
     <message>
         <source>Absolute override amountOverride: %1</source>
-        <translation type="vanished">数值覆盖（绝对值） amountOverride: %1</translation>
+        <translation>数值覆盖（绝对值） amountOverride: %1</translation>
     </message>
     <message>
         <source>Technical details</source>
-        <translation type="vanished">技术数据</translation>
+        <translation>技术数据</translation>
     </message>
     <message>
         <source>Current effects</source>
-        <translation type="vanished">目前受到的效果</translation>
+        <translation>目前受到的效果</translation>
     </message>
     <message>
         <source>; %1</source>
-        <translation type="vanished">；%1</translation>
+        <translation>；%1</translation>
     </message>
     <message>
         <source>Limited effect</source>
-        <translation type="vanished">限定效果</translation>
+        <translation>限定效果</translation>
     </message>
     <message>
         <source>Custom reset period</source>
-        <translation type="vanished">自定义重置周期</translation>
+        <translation>自定义重置周期</translation>
+    </message>
+    <message>
+        <source>Used</source>
+        <translation>已发动</translation>
+    </message>
+    <message>
+        <source>Not yet used</source>
+        <translation>未发动</translation>
+    </message>
+    <message>
+        <source>%1 uses left</source>
+        <translation>剩余 %1 次</translation>
+    </message>
+    <message>
+        <source>Awakened</source>
+        <translation>已觉醒</translation>
+    </message>
+    <message>
+        <source>Not awakened</source>
+        <translation>未觉醒</translation>
+    </message>
+    <message>
+        <source>Current form: %1</source>
+        <translation>当前：%1</translation>
+    </message>
+    <message>
+        <source>Yang</source>
+        <translation>阳</translation>
+    </message>
+    <message>
+        <source>Yin</source>
+        <translation>阴</translation>
+    </message>
+    <message>
+        <source>Mark %1: %2</source>
+        <translation>%1：%2</translation>
+    </message>
+    <message>
+        <source>State: %1</source>
+        <translation>状态：%1</translation>
+    </message>
+    <message>
+        <source>%1: %2 left</source>
+        <translation>%1剩余 %2 次</translation>
     </message>
 </context>
 <context>

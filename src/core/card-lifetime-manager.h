@@ -202,7 +202,11 @@ public:
     // Transfers live Cards only; preserves pending deletion and all leases.
     bool handoffInitializedDomain(const void *domain, QThread *targetThread,
                                   QString *error = nullptr);
-    bool finalizeWorkerDomain(const void *domain, quint64 *retired = nullptr);
+    // Retires the domain's transients owned by a worker that has exited. affinity
+    // defaults to the calling worker; the canonical owner may pass a worker thread
+    // that has already finished, whose Cards no event loop will ever delete.
+    bool finalizeWorkerDomain(const void *domain, quint64 *retired = nullptr,
+                              const QThread *affinity = nullptr);
 
     void registerRuntimeDomain(const void *domain, const void *identity,
                                quint64 generation, lua_State *state = nullptr);

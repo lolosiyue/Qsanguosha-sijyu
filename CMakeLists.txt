@@ -1883,6 +1883,7 @@ if(QSAN_BUILD_GUI)
                 src/client/core/game-view-state.cpp
                 src/core/engine.cpp
                 src/core/correction-trace.cpp
+                # Player::getSkillDescription() feeds the general hover card.
                 src/core/player.cpp
                 src/core/scenario-work.cpp
                 src/scenario/work-scenario.cpp

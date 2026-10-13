@@ -122,6 +122,8 @@ public:
     virtual void stopHuaShen();
     virtual void updateAvatarTooltip();
     void scheduleAvatarTooltipUpdate();
+    // The viewer's auto-invoke toggles (skill name -> on); only the own dashboard has them.
+    virtual QHash<QString, bool> skillAutoInvokeStates() { return {}; }
 
     inline void hookMouseEvents();
 
