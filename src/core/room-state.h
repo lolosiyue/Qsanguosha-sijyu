@@ -67,6 +67,21 @@ public:
     {
         m_currentCardUseReason = reason;
     }
+    // The saver being asked for a peach and the dying player it would save. Room-local
+    // ask state like the pattern above: changing it does not touch gameplay state.
+    inline void setDyingSave(const QString &saver, const QString &dying)
+    {
+        m_dyingSaver = saver;
+        m_dyingSaveTarget = dying;
+    }
+    inline QString getDyingSaver() const
+    {
+        return m_dyingSaver;
+    }
+    inline QString getDyingSaveTarget() const
+    {
+        return m_dyingSaveTarget;
+    }
 
     // Update a card in the room.
     // @param cardId
@@ -87,6 +102,8 @@ protected:
     Player *m_currentPlayer = nullptr;
     QString m_currentCardUsePattern;
     CardUseStruct::CardUseReason m_currentCardUseReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    QString m_dyingSaver;
+    QString m_dyingSaveTarget;
     QHash<QString, QStringList> m_flags;
 };
 

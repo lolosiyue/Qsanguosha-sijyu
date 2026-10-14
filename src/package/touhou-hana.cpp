@@ -2272,7 +2272,7 @@ public:
             || (request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE_USE
                 && request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE))
             return false;
-        const QString dying = self->property("currentdying").toString();
+        const QString dying = Sanguosha->getDyingSaveTarget(self);
         const SkillInstance *instance = self->findSkillInstance(request.activationRef.key.skillName,
                                                                 request.activationRef.key.instanceID);
         return instance && instance->parentRef.key.skillName == "thtianchan"

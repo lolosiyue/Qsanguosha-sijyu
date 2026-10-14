@@ -300,6 +300,8 @@ public:
 
     QString getCurrentCardUsePattern();
     CardUseStruct::CardUseReason getCurrentCardUseReason();
+    // The dying player saver is being asked to save, or empty outside that ask.
+    QString getDyingSaveTarget(const Player *saver);
 
     QString findConvertFrom(const QString &general_name) const;
     bool isGeneralHidden(const QString &general_name) const;

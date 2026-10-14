@@ -1705,6 +1705,13 @@ CardUseStruct::CardUseReason Engine::getCurrentCardUseReason()
     return currentRoomState()->getCurrentCardUseReason();
 }
 
+QString Engine::getDyingSaveTarget(const Player *saver)
+{
+    const RoomState *state = currentRoomState();
+    return saver && state->getDyingSaver() == saver->objectName()
+        ? state->getDyingSaveTarget() : QString();
+}
+
 QString Engine::findConvertFrom(const QString &general_name) const
 {
     foreach (QString general, sp_convert_pairs.keys()) {

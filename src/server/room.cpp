@@ -2065,9 +2065,11 @@ void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
                 if (cursor->saverIndex < cursor->savers.size()) {
                     ServerPlayer *saver = cursor->savers[cursor->saverIndex++];
                     if (!saver) break;
-                    const QVariant previous = saver->property("currentdying");
-                    setPlayerProperty(saver, "currentdying", player->objectName());
-                    const auto restoreSaver = qScopeGuard([&] { setPlayerProperty(saver, "currentdying", previous); });
+                    RoomState &state = m_runtime->state();
+                    const QString previousSaver = state.getDyingSaver();
+                    const QString previousTarget = state.getDyingSaveTarget();
+                    state.setDyingSave(saver->objectName(), player->objectName());
+                    const auto restoreSaver = qScopeGuard([&] { state.setDyingSave(previousSaver, previousTarget); });
                     event(AskForPeaches, saver);
                 } else {
                     cursor->stage = DyingCursor::PeachesDone;

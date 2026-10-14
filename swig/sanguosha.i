@@ -2055,6 +2055,7 @@ public:
 
 	QString getCurrentCardUsePattern();
 	CardUseStruct::CardUseReason getCurrentCardUseReason();
+	QString getDyingSaveTarget(const Player *saver);
 
 	QString findConvertFrom(const char*general_name) const;
 	bool isGeneralHidden(const char*general_name) const;

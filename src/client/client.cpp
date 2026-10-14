@@ -2235,6 +2235,7 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 
 	int handlingMethod = -1;
 	m_respondingUseFixedTarget = nullptr;
+	_m_roomState.setDyingSave(QString(), QString());
 	if (wire.contains(QStringLiteral("handling_method")))
 		handlingMethod = wire.value(QStringLiteral("handling_method")).toInt();
 
@@ -2400,6 +2401,7 @@ void Client::askForNullification(const QVariant &arg)
 	_m_roomState.setCurrentCardUsePattern("nullification");
 	m_isDiscardActionRefusable = true;
 	m_respondingUseFixedTarget = nullptr;
+	_m_roomState.setDyingSave(QString(), QString());
 	beginNullification(prompt_doc->toHtml());
 }
 
@@ -3245,6 +3247,7 @@ void Client::askForSinglePeach(const QVariant &arg)
 		prompt_doc->setHtml(tr("%1 is dying, please provide %2 peach(es) to save him").arg(getPlayerName(dying->objectName())).arg(peaches));
 	_m_roomState.setCurrentCardUsePattern(pattern);
 	m_respondingUseFixedTarget = dying;
+	_m_roomState.setDyingSave(Self->objectName(), dying->objectName());
 	m_isDiscardActionRefusable = true;
 	CardInteractionPayload payload;
 	payload.selection.pattern = pattern;
