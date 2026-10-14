@@ -16,6 +16,7 @@
 #include "roomthread.h"
 #include "card-lifetime-manager.h"
 #include <QScopeGuard>
+#include <algorithm>
 
 Slash::Slash(Suit suit, int number) : BasicCard(suit, number)
 {
@@ -35,7 +36,18 @@ bool Slash::IsAvailable(const Player *player, const Card *slash, bool)
     const auto retire = qScopeGuard([temporary] {
         if (temporary) temporary->deleteLater();
     });
-	foreach (const Player *p, player->getAliveSiblings()) {
+    // Any valid target answers; probe the nearest seats first, since an in-range
+    // target usually sits beside the player. Seat gaps keep the sort free of rule queries.
+    QList<const Player *> siblings = player->getAliveSiblings();
+    const int seats = player->getSiblings(true).size();
+    const auto seatGap = [player, seats](const Player *p) {
+        const int gap = qAbs(p->getSeat() - player->getSeat());
+        return qMin(gap, seats - gap);
+    };
+    std::stable_sort(siblings.begin(), siblings.end(), [&seatGap](const Player *a, const Player *b) {
+        return seatGap(a) < seatGap(b);
+    });
+	foreach (const Player *p, siblings) {
 		if(slash->targetFilter(QList<const Player *>(),p,player))
 			return true;
 	}
