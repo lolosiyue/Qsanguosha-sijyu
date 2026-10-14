@@ -68,7 +68,8 @@ public:
     const LuaRuntime &lua() const { return m_lua; }
     AiRouteRegistry &routes() { return m_routes; }
     const AiRouteRegistry &routes() const { return m_routes; }
-    AIResult decideIsolated(const AIRequest &request);
+    // budgetScale multiplies the room-scaled budget for one fault-containment retry.
+    AIResult decideIsolated(const AIRequest &request, int budgetScale = 1);
     bool processEvent(const AIWorldView &world, const AIEventView &event,
                       LuaRuntime &modeRuntime, QString *error = nullptr);
 
@@ -108,6 +109,7 @@ private:
     void loadConfiguredRoutes();
     void pushRequest(lua_State *state, const AIRequest &request) const;
     bool parseResult(lua_State *state, AIResult &result) const;
+    qint64 scaledInstructionBudget() const;
 
     Room *m_room;
     LuaRuntime m_lua;

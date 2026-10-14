@@ -47,8 +47,10 @@ struct AICardView {
     bool locked = false;
     bool jilei = false;
     bool usingCard = false;
-    // Owner-only rules: isCardLimited per handling method (outside and inside the
-    // hand) and Room::isProhibited per alive target.
+    // Owner-only rules, projected for decision requests only (ownerRulesKnown):
+    // isCardLimited per handling method (outside and inside the hand) and
+    // Room::isProhibited per alive target.
+    bool ownerRulesKnown = false;
     QMap<int, bool> limits;
     QMap<int, bool> limitsHand;
     QMap<QString, bool> prohibited;

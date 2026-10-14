@@ -26,6 +26,8 @@
 namespace {
 // The event log is bounded so a long game cannot grow the snapshot without limit.
 const int AiEventLogLimit = 64;
+// Above this many alive players isolated faults are contained instead of handed to SmartAI.
+const int AiLargeRoomAlive = 16;
 
 
 static QString aiMarkVisibilityKey(const ServerPlayer *owner, const QString &mark)
@@ -491,6 +493,7 @@ static AICardView makeAICardView(const Card *card)
 // (inHand also in the hand) and prohibitions.
 static void projectOwnCardRules(AICardView &view, const ServerPlayer *owner, const Card *card, bool inHand)
 {
+    view.ownerRulesKnown = true;
     view.available = card->isAvailable(owner);
     view.targetModResidue = Sanguosha->correctCardTarget(TargetModSkill::Residue, owner, card);
     view.targetModDistance = Sanguosha->correctCardTarget(TargetModSkill::DistanceLimit, owner, card);
@@ -514,8 +517,10 @@ static void projectOwnCardRules(AICardView &view, const ServerPlayer *owner, con
 }
 
 // What only the owner knows about one of its own physical cards. asHandCard also
-// projects the in-hand limits of a card the owner is about to take.
-static void projectOwnCardState(AICardView &view, const ServerPlayer *owner, bool asHandCard = false)
+// projects the in-hand limits of a card the owner is about to take. withRules false
+// leaves out the owner rules, which cost about one rule query per alive player.
+static void projectOwnCardState(AICardView &view, const ServerPlayer *owner, bool asHandCard = false,
+                                bool withRules = true)
 {
     const Card *card = Sanguosha->getCard(view.effectiveId);
     if (!card || card->isVirtualCard())
@@ -529,7 +534,8 @@ static void projectOwnCardState(AICardView &view, const ServerPlayer *owner, boo
         view.engineClassName = engineCard->getClassName();
         view.gift = engineCard->isGift() && engineCard->objectName() == card->objectName();
     }
-    projectOwnCardRules(view, owner, card, asHandCard || owner->handCards().contains(view.effectiveId));
+    if (withRules)
+        projectOwnCardRules(view, owner, card, asHandCard || owner->handCards().contains(view.effectiveId));
 }
 
 static QJsonObject publicDecisionCard(const Card *card)
@@ -1340,7 +1346,11 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             if (skillView.hasPrivateState) {
                 skillView.state = makeAIStateObject(player->getSkillInstanceState(
                     cached.instance.skillName, cached.instance.instanceID));
-                if (const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(cached.instance.skillName)) {
+                // Play/response availability is decision data; an attached Slash
+                // view-as runs targetFilter on every alive player.
+                const ViewAsSkill *viewAs = eventOnly ? nullptr
+                    : Sanguosha->getViewAsSkill(cached.instance.skillName);
+                if (viewAs) {
                     skillView.viewAsKnown = true;
                     skillView.viewAsV2 = dynamic_cast<const ViewAsSkillV2 *>(viewAs) != nullptr;
                     skillView.enabledAtPlay = viewAs->isEnabledAtPlay(player);
@@ -1370,11 +1380,12 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                     playerView.prototypeRules.insert(QStringLiteral("Slash"), rules);
                 }
             }
+            // Own-card rules are decision data; events skip them like prototype rules.
             for (AICardView &card : playerView.equips)
-                projectOwnCardState(card, viewer);
+                projectOwnCardState(card, viewer, false, !eventOnly);
             for (AICardPileView &pile : playerView.piles)
                 for (AICardView &card : pile.cards)
-                    projectOwnCardState(card, viewer);
+                    projectOwnCardState(card, viewer, false, !eventOnly);
             const QHash<QString, int> history = player->getHistory();
             for (auto entry = history.cbegin(); entry != history.cend(); ++entry)
                 playerView.usedHistory.insert(entry.key(), player->usedTimes(entry.key()));
@@ -1403,7 +1414,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             world.self = playerView;
             foreach (const Card *card, player->getHandcards()) {
                 AICardView view = makeAICardView(card);
-                projectOwnCardState(view, viewer);
+                projectOwnCardState(view, viewer, false, !eventOnly);
                 world.handCards << view;
             }
         } else {
@@ -2320,7 +2331,10 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
         }
         AIRequest isolated = deferDefault ? hinted : request;
         projectDecisionContext(player, QVariant(), isolated);
-        result = m_room.roomRuntime()->ai().decideIsolated(isolated);
+        bool faultContained = false;
+        result = decideIsolatedContained(player, isolated, faultContained);
+        if (faultContained)
+            return false;
         // An isolated answer counts only while it still belongs to this decision and
         // this board state. A stale one is dropped and the legacy AI answers instead;
         // the stamp is never rewritten to make an old answer acceptable.
@@ -2348,6 +2362,26 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     result.decisionId = request.decisionId;
     result.stateRevision = m_room.roomRuntime()->stateRevision();
     return true;
+}
+
+AIResult AiDecisionCoordinator::decideIsolatedContained(ServerPlayer *player,
+                                                        const AIRequest &request,
+                                                        bool &faultContained) const
+{
+    faultContained = false;
+    AiLuaRuntime &ai = m_room.roomRuntime()->ai();
+    AIResult result = ai.decideIsolated(request);
+    if (result.errorCode.isEmpty() || m_room.alivePlayerCount() <= AiLargeRoomAlive)
+        return result;
+    if (result.errorCode == QStringLiteral("AI_INSTRUCTION_LIMIT"))
+        result = ai.decideIsolated(request, 2);
+    if (!result.errorCode.isEmpty()) {
+        faultContained = true;
+        qWarning().noquote() << "Isolated AI fault contained:" << player->objectName()
+                             << "kind" << int(request.kind) << request.choiceOptions.reason
+                             << result.errorCode;
+    }
+    return result;
 }
 
 void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
@@ -3140,7 +3174,10 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
     if (route == AiRouteIsolated) {
         AIRequest isolated = request;
         projectDecisionContext(player, QVariant(), isolated);
-        const AIResult result = m_room.roomRuntime()->ai().decideIsolated(isolated);
+        bool faultContained = false;
+        const AIResult result = decideIsolatedContained(player, isolated, faultContained);
+        if (faultContained)
+            return nullptr;
         // A deliberate, current decline is an isolated decision. The fault guard
         // below must never override it or count as successful isolated coverage.
         if (result.handled && result.errorCode.isEmpty() && result.kind == AIResult::Pass
@@ -3443,8 +3480,16 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     if (route == AiRouteIsolated) {
         AIRequest isolated = request;
         projectDecisionContext(player, QVariant(), isolated);
-        result = m_room.roomRuntime()->ai().decideIsolated(isolated);
-        if (!result.handled || !result.errorCode.isEmpty()) {
+        bool faultContained = false;
+        result = decideIsolatedContained(player, isolated, faultContained);
+        if (faultContained) {
+            // Decline: Pass ends the play phase, or refuses askForUseCard.
+            result = AIResult();
+            result.handled = true;
+            result.kind = AIResult::Pass;
+            result.decisionId = request.decisionId;
+            result.stateRevision = request.stateRevision;
+        } else if (!result.handled || !result.errorCode.isEmpty()) {
             result = player->getAI()->decide(request);
             liveLegacyResult = true;
         }

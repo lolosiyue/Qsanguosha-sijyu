@@ -275,6 +275,8 @@ void pushAICardView(lua_State *state, const AICardView &card)
         lua_setfield(state, -2, "using");
         lua_pushboolean(state, card.gift);
         lua_setfield(state, -2, "gift");
+    }
+    if (card.ownerStateKnown && card.ownerRulesKnown) {
         lua_pushboolean(state, card.available);
         lua_setfield(state, -2, "available");
         lua_pushinteger(state, card.targetModResidue);
@@ -1049,7 +1051,15 @@ void AiLuaRuntime::commitPreparedRng(GameRng &prepared) noexcept
     m_rng.swapState(prepared);
 }
 
-AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
+qint64 AiLuaRuntime::scaledInstructionBudget() const
+{
+    // Planning and event views grow with the table, so the budget does too: one
+    // base budget per 8 alive players. Counting instructions keeps this deterministic.
+    const int alive = m_room ? m_room->alivePlayerCount() : 0;
+    return m_instructionBudget * qMax(1, alive / 8);
+}
+
+AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
 {
     AIResult result;
     result.decisionId = request.decisionId;
@@ -1068,7 +1078,7 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
             return result;
         }
         pushRequest(state, request);
-        m_instructionsRemaining = m_instructionBudget;
+        m_instructionsRemaining = scaledInstructionBudget() * qMax(1, budgetScale);
         m_instructionLimitExceeded = false;
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         LuaRuntime::LuaInvocationScope invocation(m_lua);
@@ -1146,7 +1156,7 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
         }
         pushAIWorldView(state, world);
         pushAIEvent(state, event);
-        m_instructionsRemaining = m_instructionBudget;
+        m_instructionsRemaining = scaledInstructionBudget();
         m_instructionLimitExceeded = false;
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         const int status = LuaRuntime::protectedCall(state, 2, 1, 0);

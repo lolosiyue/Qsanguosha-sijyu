@@ -762,6 +762,9 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
   memory/instruction 錯誤在 callback 返回後才重建 VM。
+- 存活超過 16 人時，帶錯誤碼的失敗不走 legacy fallback（大局的 SmartAI 一次要數分鐘）：
+  `AI_INSTRUCTION_LIMIT` 先以兩倍預算重跑一次，仍失敗就放棄作答：出牌階段為 Pass，其他題用呼叫端的預設值，
+  並記錄 `Isolated AI fault contained`。unhandled 與 unsupported 照常交給 SmartAI。
 
 #### 15.2.1 AIWorldView
 
@@ -1088,17 +1091,17 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 | `AIPlayerView` | `state`（`robot`／`online`／`trust`…）、`skills_complete`（國戰隱藏了部分技能時為 false）、`marks_complete`（viewer 本人為 true，未列出的 mark 即 0） | `getState()`、`areSkillsComplete()`、`getMark(name)` |
 | `AICardView` | `legacy_string_key`／`legacy_sort_key`（只有實體牌）、`name_length`、`can_recast`、`will_throw`、`single_target`；`source_skill` 只在自己的牌或發動技能即其來源時出現 | `getLegacyStringKey()`、`nameLength()`、`canRecast()`、`willThrow()`、`isSingleTargetCard()`、`getSourceSkillName()` |
 | `AICardView`（viewer 自己的手牌、裝備、開放牌堆） | `skill_names`（`skill_names_complete` 為 true）、`engine_class_name`、`locked`、`jilei`、`using` | `PlayerView:isLocked(card)`、`isJilei(card)`、`hasFlag("using")` |
-| `AICardView`（viewer 自己的牌） | `limits`／`limits_hand`（各 HandlingMethod 的 `isCardLimited`）、`prohibited`（每名存活者的 `isProhibited`）、`target_residue`（傷害牌與自用基本牌的 Residue 修正）、`available`（`isAvailable`）、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`（不指定目標的 TargetMod 修正） | `PlayerView:isCardLimited(card, method, is_handcard)`、`isProhibited(other, card)`、`CardView:getTargetResidue(target)`、`CardView:isAvailable(player)`、`getTargetModResidue/Distance/Extra(player)` |
+| `AICardView`（viewer 自己的牌，只在決策請求投影，事件不帶） | `limits`／`limits_hand`（各 HandlingMethod 的 `isCardLimited`）、`prohibited`（每名存活者的 `isProhibited`）、`target_residue`（傷害牌與自用基本牌的 Residue 修正）、`available`（`isAvailable`）、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`（不指定目標的 TargetMod 修正） | `PlayerView:isCardLimited(card, method, is_handcard)`、`isProhibited(other, card)`、`CardView:getTargetResidue(target)`、`CardView:isAvailable(player)`、`getTargetModResidue/Distance/Extra(player)` |
 | `AICardView` | `flags`（`setCardFlag` 會廣播） | `CardView:hasFlag(name)` |
 | `AIWorldView` | `draw_pile_count`、`current_dying`（無人瀕死為空字串） | `world.draw_pile_count`、`RoomView:getCurrentDyingPlayer()` |
 | `AIWorldView`（只在決策請求投影） | `use_history`：進行中的用牌，Room tag `UseHistory`＋牌字串，以牌字串為鍵；值是 `{from, to, card, nullified_list}`，指標已失效的用牌不列 | `SmartAIView:getUseHistory(key)`（沒有該用牌時回 nil） |
 | `AIPlayerView` | `flags`（`setPlayerFlag` 會廣播，所有玩家都有）、`in_yinni_state`、`has_judge_area`、`equip_areas`、`change_skill_states` | `hasFlag(name)`、`inYinniState()`、`hasJudgeArea()`、`hasEquipArea([i])`、`getChangeSkillState(skill)` |
 | `AIPlayerView`（只有 viewer） | `used_history`（每個 history key 的 `usedTimes`）、`tags`／`properties`（自己的 tag 與動態 property，轉成純值；gameplay struct 變成帶玩家名稱與公開牌面的表）、`can_slash_without_crossbow`、`can_discard`（對每名玩家 `h/e/j/he/hj/ej/hej` 的 `canDiscard`） | `hasUsed(key)`、`usedTimes(key)`、`getTag(name)`、`getPropertyValue(name)`、`canSlashWithoutCrossbow()`、`canDiscard(who, zones)` |
-| `AISkillView` | `description`、`limit_mark`、`trigger_events`；viewer 自己的 view-as 技能另有 `view_as_v2`、`enabled_at_play`；ViewAsEquipSkill 有 `view_as_equip_names`（`viewAsEquip(持有者)`） | `getDescription()`、`getLimitMark()`、`hasTriggerEvent(event)`、`SmartAIView:getFillSkillContext(name)`、`getViewAsEquipNames()` |
+| `AISkillView` | `description`、`limit_mark`、`trigger_events`；viewer 自己的 view-as 技能在決策請求另有 `view_as_v2`、`enabled_at_play`；ViewAsEquipSkill 有 `view_as_equip_names`（`viewAsEquip(持有者)`） | `getDescription()`、`getLimitMark()`、`hasTriggerEvent(event)`、`SmartAIView:getFillSkillContext(name)`、`getViewAsEquipNames()` |
 | `AIPlayerView` | `armor_effect_names`：有視為裝備來源時，實體或被視為的防具中 `hasArmorEffect` 成立的名稱（沒有此來源時改用 `active_armor_name`） | `hasArmorEffect([name])` |
 | `CandidateView`／`ConversionView` | `extra_target_count`、`extra_target_by_player`（ExtraTarget 修正）、`target_filter_empty`（空前綴的 `targetFilter`，每名存活者） | `getExtraTargetCount([target])`、`canTargetWithEmptyPrefix(target)` |
 | `AIPlayerView` | `attack_range_without_weapon`、`skipped_phases`、`prototype_rules`（只在決策請求投影，事件與 TriggerOrder 不帶）：Slash／Jink／Peach／Analeptic／Nullification 原型的 `use_limited`、`response_limited`、`available`、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`，viewer 自己的 Slash 另有 `target_filter_empty`、`extra_target` | `getAttackRange(false)`、`isSkipped(phase)`、`sgs.Slash_IsAvailable`；Lua 端組出的轉化牌評估沿用其原型規則 |
-| `AISkillView`（viewer 自己的 view-as 技能） | `enabled_at_response`：對 `slash`、`jink`、`peach`、`analeptic`、`nullification`、`peach+analeptic` 的 `isEnabledAtResponse` | `getConversionPolicy(class)` 的 V1 列 |
+| `AISkillView`（viewer 自己的 view-as 技能，只在決策請求投影，事件不帶） | `enabled_at_response`：對 `slash`、`jink`、`peach`、`analeptic`、`nullification`、`peach+analeptic` 的 `isEnabledAtResponse` | `getConversionPolicy(class)` 的 V1 列 |
 | `AIChoiceOptions`（AmazingGrace） | `context.acquired_card_evaluations[id]`：每張可拿的牌以 viewer 為持有者的 `card`（owner 欄位，`limits_hand` 照手牌算）、同一組規則的 `card_rules`、出牌 `candidate`（目標組合同手牌 candidate，`candidate_id` 為 -1，不是票）；`context.printed_card_evaluations[name]`：每個展示牌名的印刷牌（無花色、無子卡）同樣三欄 | `SmartAIView:getAcquiredCardEvaluation(card)`、`evaluateAcquiredCard(card)`；這些牌的 `isAvailable`／`isCardLimited` 也讀 `card_rules`。`getEvaluationCard(name)` 與無材料的 `evaluateOwnerViewAsCard` 帶上印刷列的規則與 candidate；沒有印刷列的 owner view-as 評估 `complete_coverage` 為 false |
 
 `inherits` 只比對快照裡的類別鏈，所以 `LuaTriggerSkill` 也答得出 `TriggerSkill`；沒有類別
@@ -1463,7 +1466,7 @@ response resolver；isolated 結果未通過驗證時直接回退 legacy，不�
 |---|---|
 | 每牌最多 2048 次投影探測（`AiTargetProjectionBudget` 可向下調整至 1）、128 組、8 層目標；整個 request 共用 16384 次目標／成本探測 | `complete_coverage=false` 或 `conversions_enumerated=false`，部分組合不發票為完整能力。沒有跨 request 分頁續取；需更大投影的情境 unsupported。 |
 | 每 request 128 次候選規劃、8 層巢狀；scratch 複製 4096 值／16 層 | 帶 `planning` 原因的 unsupported，最外層記錄未覆蓋；不改成 declined/pass。 |
-| Lua instructions | 沿用 host 的 `AiLuaInstructionBudget` 與 `AI_INSTRUCTION_LIMIT`，涵蓋巢狀策略；預算不在子分支重置。 |
+| Lua instructions | host 的 `AiLuaInstructionBudget` 乘以 max(1, 存活人數 / 8)（整數除法），超限回 `AI_INSTRUCTION_LIMIT`；涵蓋巢狀策略，預算不在子分支重置。事件處理用同一個縮放後的預算。 |
 
 scratch 不是模擬器；預留牌／使用次數不等於正式 history、quota、距離或裝備狀態已改變。
 重複投票目標、任意多牌轉化、跨 request 意圖、Shadow、覆蓋率與效能量測均不由本節宣稱完成。

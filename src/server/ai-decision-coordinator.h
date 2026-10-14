@@ -123,6 +123,11 @@ private:
     bool externalAnswer(ServerPlayer *player, const AIRequest &request, AIResult &result,
                         const std::function<bool(const AIResult &)> &validate) const;
     static AIResult legacyAnswerResult(const AIRequest &request, const QString &answer);
+    // Above AiLargeRoomAlive players a SmartAI fallback costs minutes per decision.
+    // There an isolated fault retries once at double budget, then sets faultContained
+    // and the caller declines (call-site default) instead of asking SmartAI.
+    AIResult decideIsolatedContained(ServerPlayer *player, const AIRequest &request,
+                                     bool &faultContained) const;
     void projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
                                 AIRequest &request) const;
     Card *buildSpecCard(ServerPlayer *player, const AIRequest &request,
