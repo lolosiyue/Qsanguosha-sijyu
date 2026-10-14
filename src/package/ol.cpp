@@ -4210,9 +4210,131 @@ public:
 
 
 
+// WeChat variant retains OL Xionghuo outcomes and replaces the audited payments/awards.
+class XcxXionghuoVS : public ViewAsSkillV2
+{
+public:
+    XcxXionghuoVS() : ViewAsSkillV2("xcx_xionghuo") { setPhaseName("Play"); }
+    LimitScope getLimitScope() const override { return Limit_None; }
+    bool canActivate(const ActiveSkillRequest &request) const override
+    { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+        && request.initiator->getMark("&xcx_baoli") > 0; }
+    TargetMode targetMode() const override { return SelectTargets; }
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *candidate) const override
+    { return request.initiator && candidate && candidate->isAlive() && candidate != request.initiator
+        && selected.isEmpty() && candidate->getMark("&xcx_baoli") == 0; }
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override { return selected.size() == 1; }
+    bool cost(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
+    {
+        const QString options = ctx.initiator->getMark("&xcx_baoli") >= 2 ? "one+two" : "one";
+        ctx.choice = room->askForChoice(ctx.initiator, objectName(), options);
+        ctx.extra_data = ctx.choice == "two" ? 2 : 1;
+        return ctx.initiator->getMark("&xcx_baoli") >= ctx.extra_data.toInt();
+    }
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
+    {
+        const int count = ctx.extra_data.toInt();
+        if (count < 1 || count > 2 || ctx.initiator->getMark("&xcx_baoli") < count) return false;
+        room->removePlayerMark(ctx.initiator, "&xcx_baoli", count); return true;
+    }
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive()) return ContinueEffects;
+        target->getRoom()->addPlayerMark(target, "&xcx_baoli", ctx.extra_data.toInt());
+        QVariantList receipts = target->getTag("xcx_xionghuo_receipts").toList();
+        receipts << QVariantMap{{"source", ctx.initiator->objectName()}, {"count", ctx.extra_data.toInt()}};
+        target->setTag("xcx_xionghuo_receipts", receipts); return ContinueEffects;
+    }
+};
+
+class XcxXionghuo : public TriggerSkillV2
+{
+public:
+    XcxXionghuo() : TriggerSkillV2("xcx_xionghuo")
+    { events << GameStart << DamageCaused << EventPhaseStart; global = true; view_as_skill = new XcxXionghuoVS; }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &data) const override
+    {
+        if (!actor) return true;
+        if (event == GameStart && actor->hasSkill(objectName())) {
+            room->setPlayerMark(actor, "&xcx_baoli", 3); return true;
+        }
+        if (event == DamageCaused) {
+            DamageStruct damage = data.value<DamageStruct>();
+            if (damage.from && damage.from->hasSkill(objectName()) && damage.to && damage.to != damage.from
+                && damage.to->getMark("&xcx_baoli") > 0) { ++damage.damage; data = QVariant::fromValue(damage); }
+            return true;
+        }
+        if (event != EventPhaseStart || actor->getPhase() != Player::Play) return true;
+        const QVariantList receipts = actor->getTag("xcx_xionghuo_receipts").toList();
+        actor->removeTag("xcx_xionghuo_receipts");
+        for (const QVariant &entry : receipts) {
+            const QVariantMap receipt = entry.toMap();
+            ServerPlayer *source = room->findPlayerByObjectName(receipt.value("source").toString(), true);
+            const int count = qMin(2, receipt.value("count").toInt());
+            room->removePlayerMark(actor, "&xcx_baoli", count);
+            if (!source || !source->isAlive() || !source->hasSkill(objectName()) || !actor->isAlive()) continue;
+            QList<int> outcomes{0, 1, 2};
+            // Two different outcomes necessarily contain fire damage or direct HP loss.
+            for (int i = 0; i < count && actor->isAlive(); ++i) {
+                const int index = qsanRandomBounded(outcomes.size()); const int outcome = outcomes.takeAt(index);
+                if (outcome == 0) {
+                    room->damage(DamageStruct(objectName(), source, actor, 1, DamageStruct::Fire));
+                    if (actor->isAlive()) { room->setPlayerMark(actor, "xcx_xionghuo_from-Clear", 1);
+                        room->setPlayerMark(source, "xcx_xionghuo_to-Clear", 1); }
+                } else if (outcome == 1) {
+                    room->loseHp(HpLostStruct(actor, 1, objectName(), source));
+                    if (actor->isAlive()) room->addMaxCards(actor, -1);
+                } else {
+                    DummyCard cards;
+                    if (!actor->isKongcheng()) cards.addSubcard(actor->getRandomHandCardId());
+                    const auto equips = actor->getEquips();
+                    if (!equips.isEmpty()) cards.addSubcard(equips.at(qsanRandomBounded(equips.size())));
+                    if (cards.subcardsLength() && source->isAlive()) room->obtainCard(source, &cards, false);
+                }
+            }
+        }
+        return true;
+    }
+};
+
+class XcxXionghuoPro : public ProhibitSkill
+{
+public:
+    XcxXionghuoPro() : ProhibitSkill("#xcx-xionghuo-prohibit") {}
+    bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const override
+    { return from && to && card && card->isKindOf("Slash") && from->getMark("xcx_xionghuo_from-Clear") > 0
+        && to->getMark("xcx_xionghuo_to-Clear") > 0; }
+};
+
+class XcxShajue : public TriggerSkillV2
+{
+public:
+    XcxShajue() : TriggerSkillV2("xcx_shajue") { events << Dying; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *actor, QVariant &data) const override
+    { const auto dying = data.value<DyingStruct>(); return actor && actor->isAlive() && actor->hasSkill(objectName())
+        && dying.who && dying.who->getHp() <= 0 ? TriggerList{{actor, {objectName()}}} : TriggerList(); }
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const auto dying = ctx.original_data->value<DyingStruct>();
+        const bool critical = dying.who && dying.who != ctx.owner && dying.who->getHp() < 0;
+        room->setPlayerMark(ctx.owner, "&xcx_baoli", qMin(3, ctx.owner->getMark("&xcx_baoli") + (critical ? 2 : 1)));
+        const Card *card = critical && dying.damage ? dying.damage->card : nullptr;
+        if (card && card->getTypeId() != Card::TypeSkill && room->CardInTable(card)) room->obtainCard(ctx.owner, card);
+        return false;
+    }
+};
+
 OLQifuPackage::OLQifuPackage()
 	: Package("ol_qifu")
 {
+    General *xcx_xurong = new General(this, "xcx_xurong", "qun", 4);
+    xcx_xurong->addSkill(new XcxXionghuo);
+    xcx_xurong->addSkill(new XcxShajue);
+    xcx_xurong->addSkill(new XcxXionghuoPro);
+    related_skills.insert("xcx_xionghuo", "#xcx-xionghuo-prohibit");
+
+
 	/*General*ol_liubei = new General(this, "ol_liubei$", "shu");
 	ol_liubei->addSkill(new OLRende);
 	ol_liubei->addSkill("jijiang");*/

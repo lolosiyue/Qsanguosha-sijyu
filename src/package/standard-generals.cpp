@@ -1910,7 +1910,7 @@ private:
 
 class Wusheng : public ViewAsSkillV2 {
 public:
-    Wusheng() : ViewAsSkillV2("wusheng", 1) { setResponseOrUse(true); }
+    explicit Wusheng(const QString &name = "wusheng") : ViewAsSkillV2(name, 1) { setResponseOrUse(true); }
     QStringList aiConversionStages() const override
     { return {"material", "output", "targets"}; }
     bool canActivate(const ActiveSkillRequest &request) const override
@@ -1957,6 +1957,122 @@ public:
         else if (player->getGeneralName().contains("guansuo") || (player->getGeneralName() != "guanyu" && player->getGeneral2Name().contains("guansuo")))
             index = 7;
         return index;
+    }
+};
+
+class XcxWushengBlade : public ViewAsEquipSkill
+{
+public:
+    XcxWushengBlade() : ViewAsEquipSkill("#xcx-wusheng-blade") {}
+    QString viewAsEquip(const Player *player) const override
+    {
+        return player && player->hasEquipArea(0) && !player->getWeapon() ? "blade" : QString();
+    }
+};
+
+class XcxJianxiong : public TriggerSkillV2
+{
+public:
+    XcxJianxiong() : TriggerSkillV2("xcx_jianxiong") { events << Damage << EventPhaseChanging; global = true; }
+
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive) {
+            for (ServerPlayer *p : room->getAllPlayers(true)) p->removeTag("xcx_jianxiong_names");
+            return true;
+        }
+        return event != Damage;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != Damage || !player || !player->isAlive() || room->getCurrent() != player
+            || !player->hasSkill(objectName())) return {};
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (damage.from != player || !damage.card || damage.card->objectName().isEmpty()) return {};
+        const QStringList names = player->getTag("xcx_jianxiong_names").toStringList();
+        return names.contains(damage.card->objectName()) ? TriggerList() : TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.card || (damage.card->getEffectiveId() < 0 && damage.card->getSubcards().isEmpty())
+            || !room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)) return false;
+        QStringList names = ctx.owner->getTag("xcx_jianxiong_names").toStringList();
+        const QString name = damage.card->objectName();
+        if (names.contains(name)) return false;
+        names << name;
+        ctx.owner->setTag("xcx_jianxiong_names", names);
+        ctx.extra_data = QVariant::fromValue(damage.card);
+        ctx.targets = {ctx.owner};
+        return true;
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        ctx.manual_effect = true;
+        return skillEffect(event, room, player, ctx, ctx.owner);
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        const Card *card = ctx.extra_data.value<const Card *>();
+        if (!card || !target || !target->isAlive()) return false;
+        LogMessage log;
+        log.type = "#InvokeSkill";
+        log.from = target;
+        log.arg = objectName();
+        room->sendLog(log);
+        room->broadcastSkillInvoke(objectName());
+        room->notifySkillInvoked(target, objectName());
+        target->obtainCard(card);
+        return false;
+    }
+};
+
+class XcxShemao : public ViewAsSkillV2
+{
+public:
+    XcxShemao() : ViewAsSkillV2("xcx_shemao", 2) {}
+    LimitScope getLimitScope() const override { return Limit_Phase; }
+    bool isEnabledAtPlay(const Player *player) const override
+    {
+        // SmartAI's fill_skill collector uses this legacy availability gate
+        // before it asks the V2 action-context callback to build the card.
+        return player && player->getPhase() == Player::Play && !player->hasUsed("XcxShemaoCard")
+            && Slash::IsAvailable(player) && player->getHandcardNum() >= 2;
+    }
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && !request.initiator->hasUsed("XcxShemaoCard") && Slash::IsAvailable(request.initiator);
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return card && ViewAsSkillV2::canSelectCard(request, card)
+            && Sanguosha->matchExpPattern(".|.|.|hand", request.initiator, card);
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 2 || request.selectedCardIds.contains(-1)) return nullptr;
+        Slash *slash = new Slash(Card::SuitToBeDecided, -1);
+        slash->addSubcards(request.selectedCardIds);
+        slash->setSkillName(objectName());
+        slash->setShowSkill(objectName());
+        return slash;
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "XcxShemaoCard"; }
+};
+
+class XcxShemaoDistance : public TargetModSkillV2
+{
+public:
+    XcxShemaoDistance() : TargetModSkillV2("#xcx-shemao-distance", ".") { setHolderSelector(CorrectSkill_System); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        return ctx.card && ctx.card->isKindOf("Slash") && ctx.card->getSkillNames().contains("xcx_shemao")
+            && ctx.modType == DistanceLimit ? CorrectSkillResult::useAmount(1000 * ctx.currentAmount) : CorrectSkillResult::noEffect();
     }
 };
 
@@ -6531,6 +6647,10 @@ StrengthenPackage::StrengthenPackage()
     caocao->addSkill(new Jianxiong);
     caocao->addSkill(new Hujia);
 
+    General *xcx_caocao = new General(this, "xcx_caocao$", "wei");
+    xcx_caocao->addSkill(new XcxJianxiong);
+    xcx_caocao->addSkill("hujia");
+
     General *simayi = new General(this, "simayi*standard", "wei", 3); // WEI 002
     simayi->addSkill(new Fankui);
     simayi->addSkill(new Guicai);
@@ -6565,9 +6685,18 @@ StrengthenPackage::StrengthenPackage()
     guanyu->addSkill(new Wusheng);
     guanyu->addSkill(new Yijue);
 
+    General *xcx_guanyu = new General(this, "xcx_guanyu", "shu");
+    xcx_guanyu->addSkill(new Wusheng("xcx_wusheng"));
+    xcx_guanyu->addSkill(new XcxWushengBlade);
+
     General *zhangfei = new General(this, "zhangfei*standard", "shu"); // SHU 003
     zhangfei->addSkill(new Paoxiao);
     zhangfei->addSkill(new Tishen);
+
+    General *xcx_zhangfei = new General(this, "xcx_zhangfei", "shu");
+    xcx_zhangfei->addSkill("paoxiao");
+    xcx_zhangfei->addSkill(new XcxShemao);
+    xcx_zhangfei->addSkill(new XcxShemaoDistance);
 
 
     General *zhaoyun = new General(this, "zhaoyun*standard", "shu"); // SHU 005

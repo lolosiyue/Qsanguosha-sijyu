@@ -23590,6 +23590,11 @@ mobileSpPackage::mobileSpPackage()
 	wangyuanji->addSkill(new Shangjian);
 	related_skills.insert("qianchong", "#qianchong-target");
 
+	General *xcx_wangyuanji = new General(this, "xcx_wangyuanji", "wei", 3, false);
+	xcx_wangyuanji->addSkill("qianchong");
+	xcx_wangyuanji->addSkill("#qianchong-target");
+	xcx_wangyuanji->addSkill("shangjian");
+
 	General *mobile_yanghuiyu = new General(this, "mobile_yanghuiyu", "wei", 3, false);
 	mobile_yanghuiyu->addSkill(new Hongyi);
 	mobile_yanghuiyu->addSkill(new Quanfeng);

@@ -2105,6 +2105,149 @@ public:
     }
 };
 
+class MobileXinLiubingFilter : public FilterSkill
+{
+public:
+    MobileXinLiubingFilter() : FilterSkill("#mobilexinliubing-filter") {}
+    bool viewFilter(const Card *card) const override
+    {
+        return Self && Self->hasSkill("liubing") && Self->getMark("liubing-first-slash-turn") == 0
+            && card && card->isKindOf("Slash") && !card->isVirtualCard()
+            && Sanguosha->getCardPlace(card->getEffectiveId()) == Player::PlaceHand;
+    }
+    const Card *viewAs(const Card *original) const override
+    {
+        if (!original) return nullptr;
+        Card *slash = Sanguosha->cloneCard(original->objectName(), Card::Diamond, original->getNumber());
+        if (!slash) return nullptr;
+        slash->addSubcard(original);
+        slash->setSkillName("liubing");
+        return slash;
+    }
+};
+
+class Liubing : public TriggerSkillV2
+{
+public:
+    Liubing() : TriggerSkillV2("liubing")
+    {
+        events << PreCardUsed << CardUsed << Damage << CardFinished << CardsMoveOneTime << EventPhaseChanging;
+        global = true;
+        frequency = Compulsory;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event == PreCardUsed) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            if (use.from && use.card && use.card->getSkillNames().contains(objectName())) {
+                room->setPlayerMark(use.from, "liubing-first-slash-turn", 1);
+                room->filterCards(use.from, use.from->getCards("he"), true);
+            }
+        } else if (event == CardUsed) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            const Card *card = use.card;
+            if (use.from && card && card->isKindOf("Slash") && !card->isBlack()
+                && use.from == room->getCurrent() && use.from->getPhase() == Player::Play) {
+                for (int id : physicalIds(card)) room->setCardFlag(id, "liubing_candidate");
+            }
+        } else if (event == Damage) {
+            const DamageStruct damage = data.value<DamageStruct>();
+            if (damage.card && damage.card->isKindOf("Slash"))
+                for (int id : physicalIds(damage.card)) room->setCardFlag(id, "liubing_damaged");
+        } else if (event == CardFinished) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            const Card *card = use.card;
+            for (int id : physicalIds(card)) {
+                room->setCardFlag(id, "-liubing_candidate");
+                room->setCardFlag(id, "-liubing_pending");
+                room->setCardFlag(id, "-liubing_damaged");
+            }
+        } else if (event == CardsMoveOneTime) {
+            const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            for (int id : move.card_ids) {
+                const WrappedCard *card = Sanguosha->getWrappedCard(id);
+                if (!card || !card->hasFlag("liubing_candidate")) continue;
+                if (move.to_place == Player::DiscardPile && room->getCurrent()
+                    && room->getCurrent()->getPhase() == Player::Play && !card->hasFlag("liubing_damaged"))
+                    room->setCardFlag(id, "liubing_pending");
+                if (move.to_place != Player::PlaceTable) {
+                    room->setCardFlag(id, "-liubing_candidate");
+                    room->setCardFlag(id, "-liubing_damaged");
+                }
+            }
+        } else if (event == EventPhaseChanging && player
+            && data.value<PhaseChangeStruct>().to == Player::NotActive) {
+            room->setPlayerMark(player, "liubing-first-slash-turn", 0);
+            room->filterCards(player, player->getCards("he"), true);
+        }
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        if (event != CardsMoveOneTime) return {};
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        ServerPlayer *current = room->getCurrent();
+        if (move.to_place != Player::DiscardPile || !current || current->getPhase() != Player::Play) return {};
+        bool pending = false;
+        for (int id : move.card_ids) {
+            const WrappedCard *card = Sanguosha->getWrappedCard(id);
+            if (card && card->hasFlag("liubing_pending")) { pending = true; break; }
+        }
+        if (!pending) return {};
+        TriggerList result;
+        for (ServerPlayer *owner : room->getOtherPlayers(current))
+            if (owner->hasSkill(objectName())) result[owner] << objectName();
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+        QVariantList ids;
+        for (int id : move.card_ids) {
+            const WrappedCard *card = Sanguosha->getWrappedCard(id);
+            if (card && card->hasFlag("liubing_pending")) ids << id;
+        }
+        if (ids.isEmpty()) return false;
+        ctx.extra_data = ids;
+        ctx.targets = {ctx.owner};
+        return true;
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        ctx.manual_effect = true;
+        return skillEffect(event, room, player, ctx, ctx.owner);
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *owner) const override
+    {
+        if (!owner || !owner->isAlive()) return false;
+        for (const QVariant &value : ctx.extra_data.toList()) {
+            const int id = value.toInt();
+            const WrappedCard *card = Sanguosha->getWrappedCard(id);
+            if (!card || !card->hasFlag("liubing_pending")) continue;
+            room->setCardFlag(id, "-liubing_pending");
+            if (room->getCardPlace(id) == Player::DiscardPile && owner->isAlive())
+                room->obtainCard(owner, id, false);
+        }
+        room->sendCompulsoryTriggerLog(owner, objectName());
+        return false;
+    }
+
+private:
+    static QList<int> physicalIds(const Card *card)
+    {
+        if (!card) return {};
+        if (!card->isVirtualCard() && card->getEffectiveId() >= 0) return {card->getEffectiveId()};
+        QList<int> ids;
+        for (int id : card->getSubcards()) if (id >= 0 && !ids.contains(id)) ids << id;
+        return ids;
+    }
+};
+
 MobileXinMouliCard::MobileXinMouliCard()
 {
     setSkillName("mobilexinmouli");
@@ -3661,6 +3804,12 @@ MobileXinPackage::MobileXinPackage()
 
     General*mobilexin_wujing = new General(this, "mobilexin_wujing", "wu", 4);
     mobilexin_wujing->addSkill(new MobileXinHeji);
+
+    General*xcx_wujing = new General(this, "xcx_wujing", "wu", 4);
+    xcx_wujing->addSkill("mobilexinheji");
+    xcx_wujing->addSkill(new Liubing);
+    xcx_wujing->addSkill(new MobileXinLiubingFilter);
+    related_skills.insert("liubing", "#mobilexinliubing-filter");
 
     General*mobilexin_wangling = new General(this, "mobilexin_wangling", "wei", 4);
     mobilexin_wangling->addSkill(new MobileXinMouli);
