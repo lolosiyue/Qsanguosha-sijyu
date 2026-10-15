@@ -8,6 +8,7 @@
 #include "client-core.h"
 #include "clientplayer.h"
 #include "engine.h"
+#include "room-state.h"
 #include "generaloverview.h"
 #include "server-info.h"
 #include "skill-instance-utils.h"
@@ -92,7 +93,8 @@ GuhuoDialog::GuhuoDialog(const QString &object, bool left, bool right, bool play
     layout->addLayout(content_layout);
     setLayout(layout);
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectCard(QAbstractButton *)));
-    prepareOptions();
+    // Skill buttons can be created before GAME_START registers a client room.
+    // Build request-scoped options in popup(), when the selected instance is known.
 }
 
 void GuhuoDialog::prepareOptions(const SkillInstanceRef &activationRef)
@@ -102,10 +104,15 @@ void GuhuoDialog::prepareOptions(const SkillInstanceRef &activationRef)
     left_box = nullptr;
     delete right_box;
     right_box = nullptr;
+    declaration.reset();
+    const RoomState *roomState = Sanguosha ? Sanguosha->currentRoomState() : nullptr;
+    // A queued button activation can outlive the game and its room context.
+    if (!roomState || !Self)
+        return;
     declaration = std::make_unique<SkillDeclarationSession>(
         actualDialogInfo(objectName(), SkillDialogInfo::guhuo(
             objectName(), show_left, show_right, play_only, slash_combined, delayed_tricks)),
-        Self, Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        Self, roomState->getCurrentCardUseReason(), roomState->getCurrentCardUsePattern(),
         ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
     if (declaration->active()) {
         if (show_left) {
@@ -135,6 +142,8 @@ void GuhuoDialog::clearButtons()
 QStringList GuhuoDialog::getOptionNames() const
 {
     QStringList names;
+    if (!declaration)
+        return names;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates())
         names << candidate.value;
     return names;
@@ -147,7 +156,7 @@ const Card *GuhuoDialog::getOptionCard(const QString &option_name) const
 
 bool GuhuoDialog::applyOption(const QString &option_name)
 {
-    return declaration->apply(option_name);
+    return declaration && declaration->apply(option_name);
 }
 
 void GuhuoDialog::clearChoice() const
@@ -158,11 +167,13 @@ void GuhuoDialog::clearChoice() const
 
 bool GuhuoDialog::shouldPopup() const
 {
-    return declaration->active();
+    return declaration && declaration->active();
 }
 
 bool GuhuoDialog::hasEnabledOptions() const
 {
+    if (!declaration)
+        return false;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
         if (declaration->validate(candidate.value).accepted)
             return true;
@@ -172,7 +183,7 @@ bool GuhuoDialog::hasEnabledOptions() const
 
 bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
 {
-    return declaration->validate(button_name).accepted;
+    return declaration && declaration->validate(button_name).accepted;
 }
 
 void GuhuoDialog::popup()
@@ -246,10 +257,7 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
 {
     setObjectName(object);
     setWindowTitle(Sanguosha->translate(object));
-    declaration = std::make_unique<SkillDeclarationSession>(
-        SkillDialogInfo::juguan(object, card_names), Self,
-        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId());
+    // Defer request-scoped declaration queries until popup().
     group = new QButtonGroup(this);
     button_layout = new QVBoxLayout;
     setLayout(button_layout);
@@ -258,12 +266,16 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
 
 void JuguanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 {
+    clearButtons();
+    declaration.reset();
+    const RoomState *roomState = Sanguosha ? Sanguosha->currentRoomState() : nullptr;
+    if (!roomState || !Self)
+        return;
     declaration = std::make_unique<SkillDeclarationSession>(
         SkillDialogInfo::juguan(objectName(), cards), Self,
-        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        roomState->getCurrentCardUseReason(), roomState->getCurrentCardUsePattern(),
         ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
     clearChoice();
-    clearButtons();
     if (!shouldPopup())
         return;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
@@ -276,6 +288,8 @@ void JuguanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 QStringList JuguanDialog::getOptionNames() const
 {
     QStringList names;
+    if (!declaration)
+        return names;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates())
         names << candidate.value;
     return names;
@@ -284,7 +298,7 @@ const Card *JuguanDialog::getOptionCard(const QString &name) const { return map.
 
 bool JuguanDialog::applyOption(const QString &name)
 {
-    return declaration->apply(name);
+    return declaration && declaration->apply(name);
 }
 
 void JuguanDialog::clearChoice() const
@@ -295,11 +309,13 @@ void JuguanDialog::clearChoice() const
 
 bool JuguanDialog::shouldPopup() const
 {
-    return declaration->active();
+    return declaration && declaration->active();
 }
 
 bool JuguanDialog::hasEnabledOptions() const
 {
+    if (!declaration)
+        return false;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
         if (declaration->validate(candidate.value).accepted)
             return true;
@@ -320,7 +336,7 @@ void JuguanDialog::clearButtons()
 
 bool JuguanDialog::isButtonEnabled(const QString &name) const
 {
-    return declaration->validate(name).accepted;
+    return declaration && declaration->validate(name).accepted;
 }
 
 void JuguanDialog::popup()
@@ -368,10 +384,7 @@ TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
 {
     setObjectName(name);
     setWindowTitle(Sanguosha->translate(name));
-    declaration = std::make_unique<SkillDeclarationSession>(
-        SkillDialogInfo::tiansuan(name, choices), Self,
-        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId());
+    // Defer request-scoped declaration queries until popup().
     group = new QButtonGroup(this);
     button_layout = new QVBoxLayout;
     setLayout(button_layout);
@@ -380,11 +393,6 @@ TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
 
 void TiansuanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 {
-    declaration = std::make_unique<SkillDeclarationSession>(
-        SkillDialogInfo::tiansuan(objectName(), tiansuan_choices), Self,
-        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
-    declaration->clearChoice();
     // This singleton is reused across requests. Rebuild its widgets from the
     // same stable choices the table and keyboard presenter consume.
     for (QAbstractButton *button : group->buttons()) {
@@ -392,6 +400,15 @@ void TiansuanDialog::prepareOptions(const SkillInstanceRef &activationRef)
         button_layout->removeWidget(button);
         delete button;
     }
+    declaration.reset();
+    const RoomState *roomState = Sanguosha ? Sanguosha->currentRoomState() : nullptr;
+    if (!roomState || !Self)
+        return;
+    declaration = std::make_unique<SkillDeclarationSession>(
+        SkillDialogInfo::tiansuan(objectName(), tiansuan_choices), Self,
+        roomState->getCurrentCardUseReason(), roomState->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
+    declaration->clearChoice();
     for (const QString &choice : getOptionNames()) {
         QAbstractButton *button = createChoiceButton(choice);
         button->setEnabled(isButtonEnabled(choice));
@@ -402,6 +419,8 @@ void TiansuanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 QStringList TiansuanDialog::getOptionNames() const
 {
     QStringList choices;
+    if (!declaration)
+        return choices;
     for (const SkillDeclarationCandidate &candidate : declaration->candidates())
         choices << candidate.value;
     return choices;
@@ -414,7 +433,7 @@ bool TiansuanDialog::isButtonEnabled(const QString &choice) const
 
 bool TiansuanDialog::applyOption(const QString &choice)
 {
-    return declaration->apply(choice);
+    return declaration && declaration->apply(choice);
 }
 
 void TiansuanDialog::popup()
