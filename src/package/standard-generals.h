@@ -63,7 +63,6 @@ class NosRendeCard : public SkillCard
 public:
     Q_INVOKABLE NosRendeCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 // Retained wire entry; the server rebuilds it through RendeViewAsSkill.

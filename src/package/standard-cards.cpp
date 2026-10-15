@@ -114,8 +114,6 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 
     if (use.from->getPhase() == Player::Play && use.from->getSlashCount() > 1) {
         QString name;
-        if (use.from->hasSkill("paoxiao"))
-            name = "paoxiao";
         if (use.from->hasSkill("tenyearpaoxiao"))
             name = "tenyearpaoxiao";
         if (use.from->hasSkill("olpaoxiao"))
@@ -129,12 +127,6 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 			}
         }else {
             n = qsanRandomBounded(2) + 1;
-            if (name == "paoxiao") {
-				if (Player::isNostalGeneral(use.from, "zhangfei"))
-                    n += 2;
-                else if (use.from->hasSkill("baobian"))
-                    n += 4;
-            }
             room->broadcastSkillInvoke(name, n);
             room->notifySkillInvoked(use.from, name);
 		}

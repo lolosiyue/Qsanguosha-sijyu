@@ -1763,19 +1763,20 @@ JijiangViewAsSkill::JijiangViewAsSkill() : ViewAsSkillV2("jijiang$")
 
 bool JijiangViewAsSkill::isEnabledAtPlay(const Player *player) const
 {
-    return player && hasShuGenerals(player) && Slash::IsAvailable(player);
+    return player && player->hasLordSkill(objectName()) && hasShuGenerals(player) && Slash::IsAvailable(player);
 }
 
 bool JijiangViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pattern) const
 {
-    return player && hasShuGenerals(player)
+    return player && player->hasLordSkill(objectName()) && hasShuGenerals(player)
         && (pattern.contains("slash") || pattern.contains("Slash") || pattern == "@jijiang")
         && Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
 }
 
 bool JijiangViewAsSkill::canActivate(const ActiveSkillRequest &request) const
 {
-    if (!request.initiator || request.initiator->getSkillInstanceStateValue(objectName(),
+    if (!request.initiator || !request.initiator->hasLordSkill(objectName())
+        || request.initiator->getSkillInstanceStateValue(objectName(),
         request.activationRef.key.instanceID, "failed", false).toBool()) return false;
     if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY) return isEnabledAtPlay(request.initiator);
     return request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE && hasShuGenerals(request.initiator)
@@ -1795,7 +1796,7 @@ bool JijiangViewAsSkill::pay(Room *room, SkillContext &ctx, const ActiveSkillReq
 {
     const auto requestScope = standardRequestScope();
     ServerPlayer *liubei = ctx.invoker;
-    if (!liubei || !liubei->isAlive()) return false;
+    if (!ctx.initiator || !ctx.initiator->hasLordSkill(objectName()) || !liubei || !liubei->isAlive()) return false;
     QList<ServerPlayer *> marked;
     for (ServerPlayer *target : ctx.targets) {
         if (!target->hasFlag("JijiangTarget")) {
@@ -2198,7 +2199,7 @@ class Paoxiao : public TargetModSkillV2
 public:
     Paoxiao() : TargetModSkillV2("paoxiao")
     {
-        frequency = NotCompulsory;
+        frequency = Compulsory;
     }
 
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
@@ -2206,6 +2207,60 @@ public:
         // The collector owns exact-source visibility and validity.
         return ctx.modType == TargetModSkill::Residue
             ? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+    }
+};
+
+// Unlimited slashes skip use history, so the roar counts this play phase's slashes itself.
+class PaoxiaoEffect : public TriggerSkillV2
+{
+public:
+    PaoxiaoEffect() : TriggerSkillV2("#paoxiao-effect")
+    {
+        events << CardUsed << EventPhaseChanging;
+        frequency = Compulsory;
+    }
+
+    void record(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        if (!player || player != ctx.owner || !ctx.original_data) return;
+        if (event == EventPhaseChanging) {
+            if (ctx.original_data->value<PhaseChangeStruct>().from == Player::Play)
+                player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "slashes");
+            return;
+        }
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.from != player || player->getPhase() != Player::Play || !use.card || !use.card->isKindOf("Slash"))
+            return;
+        const int slashes = player->getSkillInstanceStateValue(objectName(), ctx.instanceID, "slashes", 0).toInt();
+        player->setSkillInstanceStateValue(objectName(), ctx.instanceID, "slashes", slashes + 1);
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        // A concealed paoxiao stays silent; its reveal belongs to the TargetMod use.
+        if (event != CardUsed || !player || !player->isAlive() || !player->hasShownSkill("paoxiao"))
+            return TriggerList();
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (use.from != player || player->getPhase() != Player::Play || !use.card || !use.card->isKindOf("Slash"))
+            return TriggerList();
+        for (int id : player->getValidSkillInstanceIds(objectName())) {
+            if (player->getSkillInstanceStateValue(objectName(), id, "slashes", 0).toInt() > 1)
+                return TriggerList{{player, {objectName()}}};
+        }
+        return TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        int index = qsanRandomBounded(2) + 1;
+        if (Player::isNostalGeneral(player, "zhangfei"))
+            index += 2;
+        else if (player->hasSkill("baobian"))
+            index += 4;
+        room->broadcastSkillInvoke("paoxiao", index);
+        room->notifySkillInvoked(player, "paoxiao");
+        return false;
     }
 };
 
@@ -5251,16 +5306,20 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         ctx.manual_effect = true;
-        return skillEffect(event, room, player, ctx, ctx.owner);
+        QList<ServerPlayer *> recipients = ctx.targets;
+        if (recipients.isEmpty()) recipients << ctx.owner;
+        for (ServerPlayer *recipient : recipients)
+            skillEffect(event, room, player, ctx, recipient);
+        return false;
     }
 
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const Card *card = ctx.original_data->value<DamageStruct>().card;
         // Nested movement or another instance must not reclaim cards from a new owner.
         if (available(room, card)) {
             room->broadcastSkillInvoke(objectName());
-            ctx.owner->obtainCard(card);
+            target->obtainCard(card);
         }
         return false;
     }
@@ -5677,29 +5736,6 @@ bool NosRendeCard::targetFilter(const QList<const Player *> &targets, const Play
     return to_select!=Self&&targets.isEmpty();
 }
 
-void NosRendeCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
-{
-    ServerPlayer *target = targets.first();
-
-    QDateTime dtbefore = source->getTag("nosrende", QDateTime(QDate::currentDate(), QTime(0, 0, 0))).toDateTime();
-    QDateTime dtafter = QDateTime::currentDateTime();
-
-    if (dtbefore.secsTo(dtafter) > 3 * Config.AIDelay / 1000)
-        room->broadcastSkillInvoke("rende",qsanRandomBounded(2)+1);
-
-    source->setTag("nosrende", QDateTime::currentDateTime());
-
-    CardMoveReason reason(CardMoveReason::S_REASON_GIVE, source->objectName(), target->objectName(), "nosrende", "");
-    room->obtainCard(target, this, reason, false);
-
-    int old_value = source->getMark("nosrende");
-    int new_value = old_value + subcards.length();
-    room->setPlayerMark(source, "nosrende", new_value);
-
-    if (old_value < 2 && new_value >= 2)
-        room->recover(source, RecoverStruct("nosrende", source));
-}
-
 class NosRendeViewAsSkill : public RendeViewAsSkill
 {
 public:
@@ -5718,8 +5754,9 @@ public:
 
     void record(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (event != EventPhaseChanging) return;
-        if (player == ctx.owner && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive) {
+        if (event != EventPhaseChanging || !player || player != ctx.owner || !ctx.original_data) return;
+        const PhaseChangeStruct change = ctx.original_data->value<PhaseChangeStruct>();
+        if (change.from == Player::Play || change.to == Player::NotActive) {
             player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "given");
             player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "started");
         }
@@ -5736,9 +5773,7 @@ public:
             }
             return true;
         }
-        if (event == EventPhaseChanging && player && data.value<PhaseChangeStruct>().to == Player::NotActive
-            && player->getMark("nosrende") > 0) room->setPlayerMark(player, "nosrende", 0);
-        // Continue per-instance recording so the exact given/started state also expires.
+        // Phase counters belong to each instance and expire in record().
         return false;
     }
 };
@@ -6691,6 +6726,8 @@ StrengthenPackage::StrengthenPackage()
 
     General *zhangfei = new General(this, "zhangfei*standard", "shu"); // SHU 003
     zhangfei->addSkill(new Paoxiao);
+    zhangfei->addSkill(new PaoxiaoEffect);
+    related_skills.insert("paoxiao", "#paoxiao-effect");
     zhangfei->addSkill(new Tishen);
 
     General *xcx_zhangfei = new General(this, "xcx_zhangfei", "shu");
