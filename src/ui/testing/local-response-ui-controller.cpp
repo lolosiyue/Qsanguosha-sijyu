@@ -359,15 +359,28 @@ bool LocalResponseUiController::bootstrap(QString *error)
     m_scene = new RoomScene(m_mainWindow);
     std::fprintf(stderr, "LOCAL_UI bootstrap: RoomScene ready\n");
     std::fflush(stderr);
+    // Retain the exact bootstrap boundary if the parent must stop a stalled GUI.
+    auto traceBootstrap = [](const char *phase) {
+        std::fprintf(stderr, "LOCAL_UI bootstrap: %s\n", phase);
+        std::fflush(stderr);
+    };
+    traceBootstrap("create FitView");
     m_view = new FitView(nullptr, m_mainWindow);
+    traceBootstrap("FitView ready");
     m_view->setFrameStyle(QFrame::NoFrame);
     m_mainWindow->setCentralWidget(m_view);
     m_mainWindow->resize(1280, 720);
+    traceBootstrap("show window");
     m_mainWindow->show();
+    traceBootstrap("window shown; flush events");
     flushEvents();
+    traceBootstrap("window events flushed; attach scene");
     m_view->setScene(m_scene);
+    traceBootstrap("scene attached; refit");
     m_view->refit();
+    traceBootstrap("refit complete; flush events");
     flushEvents();
+    traceBootstrap("view ready; add players");
 
     const QJsonArray players = bootstrapObject.value(QStringLiteral("players")).toArray();
     for (const QJsonValue &value : players) {
@@ -460,6 +473,7 @@ bool LocalResponseUiController::bootstrap(QString *error)
     // room sends GAME_START. All request UI paths read the current RoomState.
     if (!injectNotification(S_COMMAND_GAME_START, JsonArray(), error))
         return false;
+    traceBootstrap("game started; set player properties");
 
     if (!setProperties(selfName, selfObject))
         return false;
@@ -516,6 +530,7 @@ bool LocalResponseUiController::bootstrap(QString *error)
 
     if (!resolveCards(error))
         return false;
+    traceBootstrap("cards ready");
     // Count-only opponent hands reproduce the recipient-redacted wire path.
     for (const QJsonValue &value : players) {
         const QJsonObject player = value.toObject();
