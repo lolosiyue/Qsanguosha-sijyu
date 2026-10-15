@@ -605,6 +605,7 @@ class Acceptance:
             return hashlib.sha256(path.read_bytes()).hexdigest()
 
         stale, ahead, missing, checked = [], [], [], 0
+        held_paths = {}
         for source, target in EXTENSIONS_MAP:
             for root, dirs, files in os.walk(authority / source):
                 dirs[:] = [d for d in dirs if d not in SYNC_SKIP_DIRS]
@@ -620,17 +621,32 @@ class Acceptance:
                         # A newer L file is a local edit not yet written back; an older one is stale.
                         newer = local.stat().st_mtime > held.stat().st_mtime
                         (ahead if newer else stale).append(local.relative_to(ROOT).as_posix())
+                        held_paths[local.relative_to(ROOT).as_posix()] = (held, local)
         git = ["git", "-C", str(authority)]
         head = subprocess.run(git + ["log", "-1", "--format=%h %s"], capture_output=True, text=True,
                               encoding="utf-8", errors="replace").stdout.strip()
         dirty = [line[3:] for line in subprocess.run(git + ["status", "--porcelain"], capture_output=True, text=True,
                                                      encoding="utf-8", errors="replace").stdout.splitlines()
                  if line.strip()]
-        evidence = {"authority": str(authority), "head": head, "authority_dirty": dirty,
+        # A newer L file is only "ahead" when H has not moved since: an uncommitted H
+        # edit or an H commit after the L edit means both sides changed (merge first).
+        diverged = []
+        for name in list(ahead):
+            held, local = held_paths[name]
+            relative = held.relative_to(authority).as_posix()
+            committed = subprocess.run(git + ["log", "-1", "--format=%ct", "--", relative], capture_output=True,
+                                       text=True, encoding="utf-8", errors="replace").stdout.strip()
+            if relative in dirty or (committed.isdigit() and int(committed) > local.stat().st_mtime):
+                ahead.remove(name)
+                diverged.append(name)
+        evidence = {"authority": str(authority), "head": head, "authority_dirty": dirty, "diverged": diverged,
                     "stale_in_l": stale, "l_ahead_of_h": ahead, "missing_in_l": missing, "checked": checked}
         (self.stage_dir("sync") / "sync.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2),
                                                           encoding="utf-8")
         note = f"H {head}" + (f", {len(dirty)} uncommitted in H" if dirty else "")
+        if diverged:
+            return "FAIL", (f"{len(diverged)} file(s) changed in both L and H; merge onto H, then sync "
+                            f"({', '.join(diverged[:5])}); {note}"), evidence
         if stale or missing:
             return "FAIL", (f"L stale vs H: {len(stale)} older, {len(missing)} missing "
                             f"(first: {', '.join((stale + missing)[:5])}); sync H to L; {note}"), evidence
