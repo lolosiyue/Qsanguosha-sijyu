@@ -996,6 +996,8 @@ QHash<QString, QJsonObject> AiDecisionCoordinator::buildPrototypeRules() const
                 {"response_limited", player->isCardLimited(prototype, Card::MethodResponse)},
                 {"available", prototype->isAvailable(player)},
                 {"target_mod_residue", Sanguosha->correctCardTarget(TargetModSkill::Residue, player, prototype)},
+                // Public sources only (hegemony): no use limit, as opposed to a large residue.
+                {"residue_unlimited", Sanguosha->hasResidueUnlimited(player, prototype)},
                 {"target_mod_distance", Sanguosha->correctCardTarget(TargetModSkill::DistanceLimit, player, prototype)},
                 {"target_mod_extra", Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, player, prototype)}});
         }
