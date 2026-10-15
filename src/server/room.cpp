@@ -4976,7 +4976,22 @@ bool Room::restorePhysicalCardEffectSource(int cardId, const QVariantMap &receip
     return true;
 }
 
-bool Room::skillEffectCardMaterialsValid(const Card *card) const
+Room::SkillCardMaterialLocations Room::skillCardMaterialLocations(const Card *card) const
+{
+    SkillCardMaterialLocations locations;
+    if (!card) return locations;
+    const QList<int> ids = card->isVirtualCard() ? card->getSubcards() : QList<int>() << card->getEffectiveId();
+    for (int id : ids) {
+        ServerPlayer *owner = getCardOwner(id);
+        const Player::Place place = getCardPlace(id);
+        locations.insert(id, {owner, place,
+            owner && place == Player::PlaceSpecial ? owner->getPileName(id) : QString()});
+    }
+    return locations;
+}
+
+bool Room::skillEffectCardMaterialsValid(const Card *card,
+    const SkillCardMaterialLocations *admittedLocations) const
 {
     if (!card || card->getTypeId() == Card::TypeSkill) return false;
     const QList<int> ids = card->isVirtualCard() ? card->getSubcards() : QList<int>() << card->getEffectiveId();
@@ -4986,6 +5001,13 @@ bool Room::skillEffectCardMaterialsValid(const Card *card) const
         seen.insert(id);
         const Card *material = Sanguosha->getCard(id);
         if (!material || material->hasFlag("using") || getCardPlace(id) == Player::PlaceUnknown) return false;
+        if (admittedLocations) {
+            const auto admitted = admittedLocations->constFind(id);
+            if (admitted != admittedLocations->constEnd()
+                && (getCardOwner(id) != admitted->owner || getCardPlace(id) != admitted->place
+                    || (admitted->owner && admitted->place == Player::PlaceSpecial
+                        && admitted->owner->getPileName(id) != admitted->pileName))) return false;
+        }
     }
     // Foreign-zone material is only supplied by a trusted effect callback. The
     // skill owns its exact reveal/provision receipt; ownership is not guessed here.
@@ -5100,6 +5122,9 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 
 	bool isSkillCard = card->isKindOf("SkillCard");
 	bool isViewAsCard = !acceptedEffect && !isSkillCard && card->isVirtualCard() && !card->getSkillName().isEmpty();
+    // Delegation changes the actor, not the admitted material's owner or zone.
+    const auto admittedMaterialLocations = isViewAsCard
+        ? skillCardMaterialLocations(card) : SkillCardMaterialLocations();
 	SkillContext skillCardCtx;
 	SkillContext skillCardIdentity;
 	ServerPlayer *skillCardInvoker = nullptr;
@@ -5112,6 +5137,7 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 	bool cardProcessingStarted = false;
 	bool cardProcessingCompleted = false;
 	bool cardReplacedDuringActivation = false;
+    bool delegatedActivation = false;
     bool ordinaryEffectHandled = false;
 	const ViewAsSkillV2 *activeSkill = nullptr;
 	QString tagKey;
@@ -5154,6 +5180,15 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 		card = use.card;
 		skillCardCtx.use_card = card;
 	};
+    auto areActivationTargetsLegal = [&](const CardUseStruct &selection) {
+        if (!delegatedActivation) return areCardTargetsLegal(selection);
+        // Delegation preserves the initiator's admitted target rules. Updated
+        // targets must still be real players in this room.
+        const QList<ServerPlayer *> players = getPlayers();
+        for (ServerPlayer *target : selection.to)
+            if (!target || !players.contains(target)) return false;
+        return true;
+    };
 	auto finishSkillExecution = [&](SkillExecutionResult result) {
 		if (!(isSkillCard || isViewAsCard) || skillExecutionFinishStarted) return;
 		skillExecutionFinishStarted = true;
@@ -5267,8 +5302,10 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 		}
 		skillCardInvoker = skillCardCtx.invoker ? skillCardCtx.invoker : skillCardIdentity.invoker;
 		skillCardCtx.invoker = skillCardInvoker;
+		delegatedActivation = activeSkill && skillCardInvoker != skillCardIdentity.initiator;
 		if (skillCardCtx.invoker && skillCardCtx.invoker != use.from) {
-			if (!skillCardCtx.invoker->isAlive() || skillCardCtx.invoker->isCardLimited(card, card->getHandlingMethod())) {
+			if (!getPlayers().contains(skillCardCtx.invoker) || !skillCardCtx.invoker->isAlive()
+                || skillCardCtx.invoker->isCardLimited(card, card->getHandlingMethod())) {
 				finishSkillExecution(SkillExecutionInvalidTargetUpdate);
 				return false;
 			}
@@ -5283,6 +5320,10 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 			}
 		}
 
+        if (isViewAsCard && activeSkill && !skillEffectCardMaterialsValid(card, &admittedMaterialLocations)) {
+            finishSkillExecution(SkillExecutionInvalidTargetUpdate);
+            return false;
+        }
 		if (activeSkill && !reserveActiveSkillUsage(activeSkill, skillCardCtx)) {
 			finishSkillExecution(SkillExecutionPayFailed);
 			return false;
@@ -5303,6 +5344,13 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 				return false;
 			}
 		}
+        if (isViewAsCard && activeSkill && !skillEffectCardMaterialsValid(
+            skillCardCtx.updated_card ? skillCardCtx.updated_card : card, &admittedMaterialLocations)) {
+            if (skillUsageReserved) releaseActiveSkillUsage(activeSkill, skillCardCtx);
+            skillUsageReserved = false;
+            finishSkillExecution(SkillExecutionPayFailed);
+            return false;
+        }
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = m_runtime->state().getCurrentCardUseReason();
@@ -5327,6 +5375,12 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 		}
 		adoptUpdatedCard();
 		skillCardCtx.updated_card = nullptr;
+        if (isViewAsCard && activeSkill && !skillEffectCardMaterialsValid(card, &admittedMaterialLocations)) {
+            if (skillUsageReserved) releaseActiveSkillUsage(activeSkill, skillCardCtx);
+            skillUsageReserved = false;
+            finishSkillExecution(SkillExecutionInvalidTargetUpdate);
+            return false;
+        }
 		if (cardReplacedDuringActivation) {
 			// Provision changes only ownership semantics; callbacks cannot replace
 			// the actor, target list, or provenance through the backing use payload.
@@ -5335,8 +5389,8 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 				use.m_isOwnerUse = entry->backingData.value<CardUseStruct>().m_isOwnerUse;
 			CardUseStruct selection = use;
 			selection.to = skillCardCtx.targets;
-			const bool legalTargets = (!use.m_validateTargets && card->targetFixed())
-				|| areCardTargetsLegal(selection);
+			const bool legalTargets = delegatedActivation ? areActivationTargetsLegal(selection)
+                : (!use.m_validateTargets && card->targetFixed()) || areCardTargetsLegal(selection);
 			saveSkillContext(skillCardCtx);
 			if (!use.from->isAlive() || use.from->isCardLimited(card, card->getHandlingMethod()) || !legalTargets) {
 				if (skillUsageReserved) releaseActiveSkillUsage(activeSkill, skillCardCtx);
@@ -5392,8 +5446,8 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 
 		saveSkillContext(skillCardCtx);
 		// Target-confirming hooks may alter either cost or payment replacement recipients.
-		if (cardReplacedDuringActivation && (use.m_validateTargets || !card->targetFixed())
-			&& !areCardTargetsLegal(use)) {
+		if ((delegatedActivation || (cardReplacedDuringActivation && (use.m_validateTargets || !card->targetFixed())))
+			&& !areActivationTargetsLegal(use)) {
 			finishSkillExecution(SkillExecutionInvalidTargetUpdate);
 			return false;
 		}
@@ -5401,6 +5455,10 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 
     if (isViewAsCard && activeSkill) {
         const auto restoreRequest = qScopeGuard([&] { setCurrentCardUse(admittedPattern, admittedReason); });
+        if (!skillEffectCardMaterialsValid(card, &admittedMaterialLocations)) {
+            finishSkillExecution(SkillExecutionInvalidTargetUpdate);
+            return false;
+        }
         // Ordinary conversions have an accepted effect stage too. Run it before
         // recording the actual card use, so a failed reveal never counts a preview.
         ordinaryEffectHandled = true;
@@ -5437,22 +5495,33 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
         }
         skillCardCtx.use_card = card; skillCardCtx.targets = use.to;
         saveSkillContext(skillCardCtx);
-        if (intercepted || skillCardCtx.is_canceled || flow == ViewAsSkillV2::FinishSkill) {
-            finishSkillExecution(SkillExecutionEffectSkipped);
-            useHistory.finish(QStringLiteral("skipped"));
-            return false; // Accepted payment/quota remains committed.
-        }
-        const QString pattern = admittedPattern;
-        const bool responseUse = admittedReason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
-        const bool validPattern = !responseUse || pattern.startsWith("@") || pattern.isEmpty()
-            || Sanguosha->matchPattern(pattern, use.from, card);
-        if (!use.from->isAlive() || !skillEffectCardMaterialsValid(card)
-            || (admittedReason == CardUseStruct::CARD_USE_REASON_PLAY && !card->isAvailable(use.from))
-            || use.from->isCardLimited(card, card->getHandlingMethod()) || !validPattern
-            || ((use.m_validateTargets || !card->targetFixed()) && !areCardTargetsLegal(use))) {
+        if (!skillEffectCardMaterialsValid(card, &admittedMaterialLocations)) {
             finishSkillExecution(SkillExecutionInvalidTargetUpdate);
             useHistory.finish(QStringLiteral("cancelled"));
             return false;
+        }
+        if (intercepted || skillCardCtx.is_canceled || flow == ViewAsSkillV2::FinishSkill) {
+            if (use.m_isOwnerUse) {
+                // An ordinary conversion has not paid its own material yet.
+                finishSkillExecution(SkillExecutionEffectSkipped);
+                useHistory.finish(QStringLiteral("skipped"));
+                return false;
+            }
+            // Accepted supplied material still needs CardUsed/CardFinished cleanup.
+            use.skipSkillEffect = true;
+        } else {
+            const QString pattern = admittedPattern;
+            const bool responseUse = admittedReason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+            const bool validPattern = !responseUse || pattern.startsWith("@") || pattern.isEmpty()
+                || Sanguosha->matchPattern(pattern, use.from, card);
+            if (!use.from->isAlive() || !skillEffectCardMaterialsValid(card)
+                || (!delegatedActivation && admittedReason == CardUseStruct::CARD_USE_REASON_PLAY && !card->isAvailable(use.from))
+                || use.from->isCardLimited(card, card->getHandlingMethod()) || !validPattern
+                || ((delegatedActivation || use.m_validateTargets || !card->targetFixed()) && !areActivationTargetsLegal(use))) {
+                finishSkillExecution(SkillExecutionInvalidTargetUpdate);
+                useHistory.finish(QStringLiteral("cancelled"));
+                return false;
+            }
         }
     }
 
@@ -5489,8 +5558,9 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 	//use.m_isOwnerUse = (ids.isEmpty()&&use.m_isOwnerUse)||getCardOwner(ids.first())==use.from;
 	if(m_runtime->state().getCurrentCardUseReason()==CardUseStruct::CARD_USE_REASON_PLAY)
 		addPlayerHistory(nullptr, "pushPile");
+	// The final rollback undoes only history counted here; unlimited uses never added one.
+	add_history = use.m_addHistory;
 	if (use.m_addHistory){
-		add_history = true;
 		addPlayerHistory(use.from, key);
 		use.targetModReveal.historyKey = key;
 	}
@@ -5511,6 +5581,9 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 		skillCardCtx.current_event = EventSkillEffect;
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
 		skipOnUse = thread->trigger(EventSkillEffect, this, use.from, skillCardCtxData);
+		skillCardCtx = skillCardCtxData.value<SkillContext>();
+        // Cancellation need not break the surrounding event dispatch.
+        skipOnUse = skipOnUse || skillCardCtx.is_canceled;
 		if (skipOnUse) {
 			if (card->property("LegacyOnUseLimited").toBool()) {
 				// Explicitly marked monolithic cards cannot safely enter their custom onUse.
@@ -5520,7 +5593,6 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 				skipOnUse = false;
 			}
 		}
-		skillCardCtx = skillCardCtxData.value<SkillContext>();
 		restoreSkillCardIdentity(skillCardCtx);
 		skillCardCtx.invoker = skillCardInvoker;
 		saveSkillContext(skillCardCtx);

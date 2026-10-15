@@ -1420,7 +1420,8 @@ bool ActiveSkillCard::targetsFeasible(const QList<const Player *> &targets, cons
 void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 {
     const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
-    if (activeSkill && card_use.skillExecutionID > 0) {
+    // The callback may apply manual effects before CardUsed can honor this flag.
+    if (activeSkill && card_use.skillExecutionID > 0 && !card_use.skipSkillEffect) {
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
         ServerPlayer *acceptedInvoker = context.invoker;
         if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect)

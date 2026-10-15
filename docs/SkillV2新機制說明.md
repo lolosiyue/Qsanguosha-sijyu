@@ -526,7 +526,7 @@ callback 只可儲存 ID／更新已登記的 pending 收據，不得派發規�
 
 ### 已支付的 provision 回傳
 
-`askForCard(..., isProvision=true)` 正常走完 response 與 Finished 且有有效普通牌時，native 只向目前直接外層 `askForCard` 保存有界回執：付款者、原 source/activation/physical source、確切牌值與材料。`Room::provide(card)` 僅能認領同一請求 frame 中該張確切成功回傳牌；外層一次性消耗回執，重驗牌值、牌型、角色限制及材料仍在 table/nonusing，繼續原生 CardResponded／消耗流程，不以外層角色重新 resolve 或支付／執行該轉換技能。護駕請求隊友 Guhuo 等已支付響應可直接沿用此流程，不要另設 bypass_cost。
+`askForCard(..., isProvision=true)` 正常走完 response 與 Finished 且有有效普通牌時，native 只向目前直接外層 `askForCard` 或 `askForUseCardStruct` 保存有界回執：付款者、原 source/activation/physical source、確切牌值與材料。`Room::provide(card)` 僅能認領同一請求 frame 中該張確切成功回傳牌；外層一次性消耗回執，重驗牌值、牌型、角色限制及材料仍在 table/nonusing，不以外層角色重新 resolve 或支付／執行該轉換技能。`askForCard` 繼續原生 CardResponded／消耗流程；`askForUseCardStruct` 沿用已支付來源完成普通用牌的 CardUsed／CardFinished 流程。例如護駕收到隊友傾國的閃，實際使用者是曹操，source／activation 仍屬供牌者的傾國實例。不要另設 bypass_cost。
 
 回執不在公開 tag、client payload 或長期 pointer map；CardResponseStruct 保活牌至請求結束。未認領、取消、中斷的回執到 frame 結束即失效，只清理其仍在 table 的材料；成功繼續 provision 時將材料責任交父 frame。外層 response history 的 provenance.paid_provision.player 保存原付款者，實際外層 responding player 維持原規則。舊 `provide` 普通實體牌仍沿既有入口，任意生成牌、重播一次已消耗回執或不同請求中的同牌都不能取得免重付資格。
 

@@ -255,6 +255,7 @@ checkpoint 之後才寫入的欄位不追溯生效。
 - B 可以不持有 source／activation 技能。
 - 不重新檢查 B 的 ViewAs、技能所有權、使用配額、距離、prohibit 或目標條件。
 - selected cards 仍是 A 的選擇；改變 invoker 不轉移或重選副牌。
+- 普通轉牌會記住已接受素材的持有者、區域及特殊牌堆；巢狀事件改變其位置後，不得再取回作本次用牌或回應。這是素材位置重驗，不重新檢查 B 的 ViewAs、配額或目標條件。
 - B 承擔最終 CardUsed/CardResponded、普通卡歷史、移動理由中的使用者及效果來源。
 - V2 activation 配額仍屬 A 的 activation instance，除非技能宣告 `SourceInstance` scope。
 - 預設副牌代價由 A 支付；要求 B 支付自己資源的技能必須覆寫 `pay()`。
@@ -264,6 +265,7 @@ checkpoint 之後才寫入的欄位不追溯生效。
 - 只建議在 WillInvoke 修改並於該 checkpoint 提交一次。
 - sourceRef、activationRef、initiator 不因換卡而改變。
 - 檢查卡牌指標、subcard ID 結構及最終 invoker 的硬性 card limitation。
+- replacement 仍引用原素材時，保留原素材的位置重驗；新素材沿用受信任效果／供牌流程的收據，不推定由最終 invoker 持有。
 - 不重新跑來源技能所有權、ViewAs、使用配額、距離、prohibit、targetFilter 或 feasible。
 - pay 之後不再用 Active mutation 換卡；後續沿用普通 `CardUseStruct` 的既有變換。
 
@@ -285,6 +287,7 @@ InvalidTargetUpdate
 
 - Lua `pay` 出錯：記錄錯誤並作 `PayFailed`。
 - Lua effect 出錯：記錄錯誤、停止剩餘效果並作 `EffectSkipped`。
+- 普通轉牌在普通用牌管線前取消時，保留尚未支付的自有素材；已接受的供牌則仍完成普通 `CardUsed/CardFinished` 收尾，只略過效果，不退還已支付素材。
 - precommit 驗證失敗只寫診斷，不發 `EffectFinished`。
 
 ### 8.2 StageChange／TurnBroken

@@ -1013,7 +1013,15 @@ private:
     bool useCardInternal(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect);
     bool resolveCardUse(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect);
     void resolveDamage(DamageStruct damage);
-    bool skillEffectCardMaterialsValid(const Card *card) const;
+    struct SkillCardMaterialLocation {
+        ServerPlayer *owner = nullptr;
+        Player::Place place = Player::PlaceUnknown;
+        QString pileName;
+    };
+    using SkillCardMaterialLocations = QMap<int, SkillCardMaterialLocation>;
+    SkillCardMaterialLocations skillCardMaterialLocations(const Card *card) const;
+    bool skillEffectCardMaterialsValid(const Card *card,
+        const SkillCardMaterialLocations *admittedLocations = nullptr) const;
     bool physicalCardEffectContext(const Card *card, SkillContext &context) const;
     friend struct ScenarioWorkRuntimeTestAccess;
     void addPlayerToRoster(ServerPlayer *player);

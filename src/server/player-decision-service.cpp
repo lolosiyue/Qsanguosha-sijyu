@@ -1147,6 +1147,30 @@ struct PlayerDecisionService::ProvisionFrame {
     };
     ProvisionFrame *parent = nullptr;
     QList<Receipt> receipts;
+    void cleanup(Room &room)
+    {
+        // Both response entry points own the same bounded paid-card custody.
+        const auto abandoned = receipts;
+        receipts.clear();
+        for (const auto &receipt : abandoned) {
+            if (receipt.provided && room.getTag("provided").value<CardUseStruct>().card == receipt.response.m_card)
+                room.removeTag("provided");
+            QList<int> stranded;
+            for (int id : receipt.materials)
+                if (room.getCardPlace(id) == Player::PlaceTable) stranded << id;
+            if (stranded.isEmpty()) continue;
+            CardMoveReason reason(CardMoveReason::S_REASON_RESPONSE, receipt.payer,
+                receipt.response.sourceRef.key.skillName, QString());
+            reason.m_useStruct.sourceRef = receipt.response.sourceRef;
+            reason.m_useStruct.activationRef = receipt.response.activationRef;
+            reason.m_useStruct.physicalEquipSource = receipt.response.physicalEquipSource;
+            try {
+                room.moveCardsAtomic(CardsMoveStruct(stranded, nullptr, Player::DiscardPile, reason), true);
+            } catch (...) {
+                // Cleanup must preserve the original control exception.
+            }
+        }
+    }
 };
 
 void PlayerDecisionService::markProvidedResponse(const Card *card)
@@ -1173,28 +1197,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
     m_provisionFrame = &provisionFrame;
     const auto provisionGuard = qScopeGuard([&] {
         m_provisionFrame = provisionFrame.parent;
-        // Unused/aborted handoffs remain paid. Dispose only their still-table
-        // materials; callbacks which already moved them keep their result.
-        const auto receipts = provisionFrame.receipts;
-        provisionFrame.receipts.clear();
-        for (const auto &receipt : receipts) {
-            if (receipt.provided && m_room.getTag("provided").value<CardUseStruct>().card == receipt.response.m_card)
-                m_room.removeTag("provided");
-            QList<int> stranded;
-            for (int id : receipt.materials)
-                if (m_room.getCardPlace(id) == Player::PlaceTable) stranded << id;
-            if (stranded.isEmpty()) continue;
-            CardMoveReason reason(CardMoveReason::S_REASON_RESPONSE, receipt.payer,
-                receipt.response.sourceRef.key.skillName, QString());
-            reason.m_useStruct.sourceRef = receipt.response.sourceRef;
-            reason.m_useStruct.activationRef = receipt.response.activationRef;
-            reason.m_useStruct.physicalEquipSource = receipt.response.physicalEquipSource;
-            try {
-                m_room.moveCardsAtomic(CardsMoveStruct(stranded, nullptr, Player::DiscardPile, reason), true);
-            } catch (...) {
-                // Scope cleanup must not replace the original control exception.
-            }
-        }
+        provisionFrame.cleanup(m_room);
     });
     bool paidProvisionAccepted = false;
     ProvisionFrame::Receipt paidProvision;
@@ -1245,8 +1248,10 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			m_room.tag.remove("AiResult");
 			QVariant over = findTestOverride(player, "card", skill_name.isEmpty() ? _pattern : skill_name);
 			if (over.isValid()) {
-				if (over.canConvert<int>()) {
-					int cardId = over.toInt();
+				bool isCardId = false;
+				const int cardId = over.toInt(&isCardId);
+				// Convertible text is not necessarily a valid integer card ID.
+				if (isCardId) {
 					resp.m_card = Sanguosha->getCard(cardId);
 				} else if (over.canConvert<QString>()) {
 					resp.m_card = Card::Parse(over.toString());
@@ -1376,6 +1381,8 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 	const bool isSkillCardResponse = resp.m_card->isKindOf("SkillCard");
 	const bool isViewAsResponse = !isSkillCardResponse && resp.m_card->isVirtualCard()
 		&& !resp.m_card->getSkillName().isEmpty();
+    const auto admittedMaterialLocations = isViewAsResponse
+        ? m_room.skillCardMaterialLocations(resp.m_card) : Room::SkillCardMaterialLocations();
     SkillContext responseCtx;
     SkillContext responseIdentity;
     ServerPlayer *responseInvoker = nullptr;
@@ -1622,6 +1629,12 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		}
         adoptResponseCard();
         rememberResponseMaterials(resp.m_card);
+        if (isViewAsResponse && responseActiveSkill
+            && !m_room.skillEffectCardMaterialsValid(resp.m_card, &admittedMaterialLocations)) {
+            finishResponseExecution(SkillExecutionInvalidTargetUpdate);
+            finishResponseHistory(QStringLiteral("cancelled"));
+            return nullptr;
+        }
         if (!player->isAlive() || player->isCardLimited(resp.m_card, method)) {
             finishResponseExecution(SkillExecutionInvalidTargetUpdate);
             finishResponseHistory(QStringLiteral("cancelled"));
@@ -1651,6 +1664,14 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 				return nullptr;
 			}
 		}
+        if (isViewAsResponse && responseActiveSkill && !m_room.skillEffectCardMaterialsValid(
+            responseCtx.updated_card ? responseCtx.updated_card : resp.m_card, &admittedMaterialLocations)) {
+            if (responseUsageReserved) m_room.releaseActiveSkillUsage(responseActiveSkill, responseCtx);
+            responseUsageReserved = false;
+            finishResponseExecution(SkillExecutionPayFailed);
+            finishResponseHistory(QStringLiteral("cancelled"));
+            return nullptr;
+        }
 		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = u_reason;
@@ -1701,6 +1722,12 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			responseUsageCommitted = responseUsageReserved;
 			responseUsageReserved = false;
 		}
+        if (isViewAsResponse && responseActiveSkill
+            && !m_room.skillEffectCardMaterialsValid(resp.m_card, &admittedMaterialLocations)) {
+            finishResponseExecution(SkillExecutionInvalidTargetUpdate);
+            finishResponseHistory(QStringLiteral("cancelled"));
+            return nullptr;
+        }
         const auto restoreRequest = qScopeGuard([&] { m_room.setCurrentCardUse(_pattern, u_reason); });
 		responseCtx.current_event = EventSkillInvoking;
         responseCtxData = QVariant::fromValue(responseCtx);
@@ -1735,7 +1762,8 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
             return nullptr; // The accepted activation remains paid and consumed.
         }
         if (responseActiveSkill && (isViewAsResponse || resp.m_card->getTypeId() != Card::TypeSkill)
-            && (!player->isAlive() || !m_room.skillEffectCardMaterialsValid(resp.m_card)
+            && (!player->isAlive() || !m_room.skillEffectCardMaterialsValid(resp.m_card,
+                isViewAsResponse ? &admittedMaterialLocations : nullptr)
             || player->isCardLimited(resp.m_card, method)
             || (!_pattern.startsWith("@") && !Sanguosha->matchPattern(_pattern, player, resp.m_card)))) {
             finishResponseExecution(SkillExecutionInvalidTargetUpdate);
@@ -1943,6 +1971,13 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(method != Card::MethodResponse);
 	if (!player->isAlive()) return CardUseStruct();
+    ProvisionFrame provisionFrame;
+    provisionFrame.parent = m_provisionFrame;
+    m_provisionFrame = &provisionFrame;
+    const auto provisionGuard = qScopeGuard([&] {
+        m_provisionFrame = provisionFrame.parent;
+        provisionFrame.cleanup(m_room);
+    });
 	m_room.tryPause();
 	m_room.notifyMoveFocus(player, S_COMMAND_RESPONSE_CARD);
 	m_room.m_runtime->state().setCurrentCardUsePattern(pattern);
@@ -2005,6 +2040,37 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 			asked_data.setValue(card_use);
 			m_eventDispatcher.dispatch(ChoiceMade, player, asked_data);*/
 			if (!flag.isEmpty()) m_room.setCardFlag(card_use.card, flag);
+            for (auto &receipt : provisionFrame.receipts) {
+                if (!receipt.provided || receipt.consumed || receipt.response.m_card != card_use.card) continue;
+                receipt.consumed = true;
+                // A completed inner response is an ordinary paid continuation,
+                // never another activation owned by the outer responding player.
+                if (method != Card::MethodUse || card_use.card->getTypeId() == Card::TypeSkill
+                    || m_room.historyCardSnapshot(card_use.card) != receipt.cardSnapshot
+                    || !player->isAlive() || player->isCardLimited(card_use.card, method)
+                    || (!pattern.startsWith("@") && !Sanguosha->matchPattern(pattern, player, card_use.card)))
+                    return CardUseStruct();
+                QSet<int> seen;
+                for (int id : receipt.materials) {
+                    if (id < 0 || id >= Sanguosha->getCardCount() || seen.contains(id)
+                        || m_room.getCardPlace(id) != Player::PlaceTable || !Sanguosha->getCard(id)
+                        || Sanguosha->getCard(id)->hasFlag("using")) return CardUseStruct();
+                    seen.insert(id);
+                }
+                SkillContext accepted;
+                accepted.skill_name = receipt.response.sourceRef.key.skillName;
+                accepted.sourceRef = receipt.response.sourceRef;
+                accepted.activationRef = receipt.response.activationRef;
+                accepted.physicalEquipSource = receipt.response.physicalEquipSource;
+                accepted.executionID = receipt.response.skillExecutionID;
+                accepted.instanceID = accepted.activationRef.key.instanceID;
+                accepted.owner = m_room.findPlayerByObjectName(accepted.sourceRef.ownerObjectName, true);
+                accepted.initiator = m_room.findPlayerByObjectName(receipt.payer, true);
+                accepted.invoker = player;
+                accepted.use_card = card_use.card;
+                // Snapshot the receipt before nested card callbacks can append another.
+                return m_room.useCardInternal(card_use, addHistory, &accepted) ? card_use : CardUseStruct();
+            }
 			if (m_room.useCard(card_use, addHistory)) return card_use;
 		} else {
 			asked_data = "cardUsed:"+pattern+":"+prompt+":";
