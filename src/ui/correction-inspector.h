@@ -14,7 +14,7 @@ class QCheckBox;
 class CorrectionInspector : public QDialog {
     Q_DECLARE_TR_FUNCTIONS(CorrectionInspector)
 public:
-    CorrectionInspector(std::shared_ptr<CorrectionTraceStore> store, int roomId, QWidget *parent);
+    CorrectionInspector(std::shared_ptr<CorrectionTraceStore> store, const QString &sourceName, QWidget *parent);
     ~CorrectionInspector() override;
 private:
     void refresh();

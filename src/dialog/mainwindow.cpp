@@ -274,31 +274,32 @@ MainWindow::MainWindow(QWidget *parent)
     correctionAction->setObjectName(QStringLiteral("actionCorrectionInspector"));
     correctionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J));
     connect(correctionAction, &QAction::triggered, this, [this] {
-        if (!server || !Config.EnableCheat) {
-            QMessageBox::information(this, tr("Corrections"),
-                tr("Local host with cheat mode required. Start a local test room first."));
-            return;
-        }
-        const QList<Room *> rooms = server->findChildren<Room *>();
         QStringList choices;
         QList<std::shared_ptr<CorrectionTraceStore>> available;
-        for (Room *room : rooms) if (room->roomRuntime() && !room->roomRuntime()->correctionTraces()->closed()) {
-            available << room->roomRuntime()->correctionTraces(); choices << QString::number(room->getId());
+        if (server) for (Room *room : server->findChildren<Room *>()) {
+            if (!room->roomRuntime() || room->roomRuntime()->correctionTraces()->closed()) continue;
+            available << room->roomRuntime()->correctionTraces();
+            choices << tr("Server room %1").arg(room->getId());
+        }
+        if (ClientInstance && !ClientInstance->correctionTraces()->closed()) {
+            available << ClientInstance->correctionTraces();
+            choices << tr("Client calculations (visible state)");
         }
         if (available.isEmpty()) {
-            QMessageBox::information(this, tr("Corrections"), tr("No local room yet."));
+            QMessageBox::information(this, tr("Corrections"), tr("Start or join a game first."));
             return;
         }
         int index = 0;
         if (available.size() > 1) {
             bool ok = false;
-            const QString choice = QInputDialog::getItem(this, tr("Corrections"), tr("Local room"), choices, 0, false, &ok);
+            const QString choice = QInputDialog::getItem(this, tr("Corrections"), tr("Calculation source"), choices, 0, false, &ok);
             if (!ok) return;
             index = choices.indexOf(choice);
         }
-        const QString name = QStringLiteral("correctionInspector_%1").arg(choices.at(index));
+        // Bind each window to its store so rematches cannot reopen an old session's view.
+        const QString name = QStringLiteral("correctionInspector_%1").arg(quintptr(available.at(index).get()), 0, 16);
         if (auto *existing = findChild<QDialog *>(name)) { existing->show(); existing->raise(); existing->activateWindow(); return; }
-        auto *dialog = new CorrectionInspector(available.at(index), choices.at(index).toInt(), this);
+        auto *dialog = new CorrectionInspector(available.at(index), choices.at(index), this);
         dialog->setObjectName(name);
         dialog->show();
     });

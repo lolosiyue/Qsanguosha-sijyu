@@ -7065,16 +7065,20 @@ Waiting for %1 to respond</source>
         <translation>技能修正检查器</translation>
     </message>
     <message>
-        <source>Local host with cheat mode required. Start a local test room first.</source>
-        <translation>仅限已启用作弊模式的本机房主。请先创建本机测试房间。</translation>
+        <source>Client calculations (visible state)</source>
+        <translation>客户端计算（可见状态）</translation>
     </message>
     <message>
-        <source>No local room yet.</source>
-        <translation>尚无本机房间。</translation>
+        <source>Start or join a game first.</source>
+        <translation>请先创建或加入游戏。</translation>
     </message>
     <message>
-        <source>Local room</source>
-        <translation>本机房间</translation>
+        <source>Server room %1</source>
+        <translation>服务器房间 %1</translation>
+    </message>
+    <message>
+        <source>Calculation source</source>
+        <translation>计算来源</translation>
     </message>
 </context>
 <context>
@@ -13234,14 +13238,14 @@ Changes:
         <translation>全部</translation>
     </message>
     <message>
-        <source>Skill correction inspector (read-only) — Room %1</source>
-        <translation>技能修正检查器（只读）— 房间 %1</translation>
+        <source>Skill correction inspector (read-only) — %1</source>
+        <translation>技能修正检查器（只读）— %1</translation>
     </message>
     <message>
-        <source>Local host with cheat mode required. Enable capture and reproduce an action; this window only reads completed server calculations and never re-runs skills.
+        <source>Enable capture and reproduce an action; this window only reads completed calculations and never re-runs skills. Client calculations use visible state only and do not include remote server calculations.
 Pause capture to inspect. Filters select recorded contexts, not hypothetical calculations.
 Use-count and extra-target values are modifier subtotals. Ordinary targetFilter, card limits, and reasons for unevaluated skills are outside this view.</source>
-        <translation>仅限已启用作弊模式的本机房主。勾选记录后重现操作；此窗口只读取已发生的服务器计算，不重新执行技能。
+        <translation>勾选记录后重现操作；此窗口只读取已完成的计算，不重新执行技能。客户端计算仅使用可见状态，不包含远程服务器的计算。
 暂停记录后查看。筛选器用于选择已记录的上下文，不进行假设计算。
 使用次数和额外目标显示修正小计；普通 targetFilter、卡牌限制和未执行技能的原因不在此范围内。</translation>
     </message>
@@ -13338,8 +13342,8 @@ Use-count and extra-target values are modifier subtotals. Ordinary targetFilter,
         <translation>显示最近记录 %1／%2 条；每条最多 %3 行。父计算记录可能已过期；已省略的行数会计入统计。%4</translation>
     </message>
     <message>
-        <source>Capture unavailable (room ended or cheat disabled).</source>
-        <translation>无法记录（房间已结束或作弊模式已关闭）。</translation>
+        <source>Capture unavailable (session ended).</source>
+        <translation>无法记录（会话已结束）。</translation>
     </message>
     <message>
         <source>Capturing — pause before reading.</source>

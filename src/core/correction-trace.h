@@ -13,7 +13,7 @@ class Card;
 class Skill;
 struct CorrectSkillResult;
 
-// Value-only, local-host diagnostics. Never serialized into gameplay packets.
+// Value-only diagnostics for the local runtime. Never serialized into gameplay packets.
 struct CorrectionTraceRow {
     QString skill, owner, version, operation, detail;
     int instance = -1;

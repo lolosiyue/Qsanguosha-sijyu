@@ -1,5 +1,4 @@
 #include "correction-inspector.h"
-#include "settings.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
@@ -74,15 +73,15 @@ void populate(QComboBox *combo, const QStringList &values, bool categories = fal
 }
 }
 
-CorrectionInspector::CorrectionInspector(std::shared_ptr<CorrectionTraceStore> store, int roomId, QWidget *parent)
+CorrectionInspector::CorrectionInspector(std::shared_ptr<CorrectionTraceStore> store, const QString &sourceName, QWidget *parent)
     : QDialog(parent), m_store(std::move(store))
 {
     setObjectName(QStringLiteral("correctionInspector"));
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(tr("Skill correction inspector (read-only) — Room %1").arg(roomId));
+    setWindowTitle(tr("Skill correction inspector (read-only) — %1").arg(sourceName));
     resize(1100, 760);
     auto *layout = new QVBoxLayout(this);
-    auto *help = new QLabel(tr("Local host with cheat mode required. Enable capture and reproduce an action; this window only reads completed server calculations and never re-runs skills.\n"
+    auto *help = new QLabel(tr("Enable capture and reproduce an action; this window only reads completed calculations and never re-runs skills. Client calculations use visible state only and do not include remote server calculations.\n"
         "Pause capture to inspect. Filters select recorded contexts, not hypothetical calculations.\n"
         "Use-count and extra-target values are modifier subtotals. Ordinary targetFilter, card limits, and reasons for unevaluated skills are outside this view."), this);
     help->setWordWrap(true);
@@ -126,7 +125,7 @@ CorrectionInspector::CorrectionInspector(std::shared_ptr<CorrectionTraceStore> s
     m_status = new QLabel(this); m_status->setWordWrap(true);
     layout->addWidget(m_result); layout->addWidget(m_status);
     connect(m_capture, &QCheckBox::toggled, this, [this](bool on) {
-        m_store->setEnabled(on && Config.EnableCheat);
+        m_store->setEnabled(on);
         refresh();
     });
     connect(refreshButton, &QPushButton::clicked, this, [this] { refresh(); });
@@ -144,8 +143,7 @@ CorrectionInspector::~CorrectionInspector() { m_store->setEnabled(false); }
 
 void CorrectionInspector::refresh()
 {
-    if (!Config.EnableCheat) { m_store->setEnabled(false); m_store->clear(); }
-    const bool available = Config.EnableCheat && !m_store->closed();
+    const bool available = !m_store->closed();
     m_capture->setEnabled(available);
     { QSignalBlocker block(m_capture); m_capture->setChecked(m_store->enabled()); }
     const quint64 selected = m_records->currentItem() ? m_records->currentItem()->data(0, Qt::UserRole).toULongLong() : 0;
@@ -175,7 +173,7 @@ void CorrectionInspector::refresh()
     for (int i = 0; i < 7; ++i) m_records->resizeColumnToContents(i);
     m_status->setText(tr("%1 / %2 recent records; max %3 rows each. Parent IDs may expire; omitted rows are counted. %4")
         .arg(m_records->topLevelItemCount()).arg(m_snapshot.size()).arg(CorrectionTraceStore::MaxRows)
-        .arg(!available ? tr("Capture unavailable (room ended or cheat disabled).") : m_store->enabled() ? tr("Capturing — pause before reading.") : tr("Paused. Enable capture and reproduce an action for new evidence.")));
+        .arg(!available ? tr("Capture unavailable (session ended).") : m_store->enabled() ? tr("Capturing — pause before reading.") : tr("Paused. Enable capture and reproduce an action for new evidence.")));
     showRecord();
 }
 void CorrectionInspector::showRecord()

@@ -1,8 +1,10 @@
 # 技能修正檢查器 / Read-only correction inspector
 
-Open **Options → 技能修正检查器（只读）** or **Ctrl+Shift+J**. It requires a
-locally hosted room with cheat mode; with several rooms, pick the room number.
-Remote clients, the TUI and dedicated servers have no entry point.
+Open **Options → 技能修正检查器（只读）** or **Ctrl+Shift+J** after starting or
+joining a game. No host, player-role or cheat-mode permission is required.
+When several sources are available, pick a server room or client calculations.
+Remote GUI clients can inspect their own calculations; TUI and dedicated servers
+have no inspector window.
 
 1. Check **记录实际计算** (off by default) and reproduce the action in game.
 2. Uncheck it to freeze the records, then filter by source, target, calculation
@@ -11,7 +13,7 @@ Remote clients, the TUI and dedicated servers have no entry point.
    Children without a target/card argument appear only with filters set to All.
 
 Closing the window pauses capture; Clear deletes the records. History stays with
-the room until it ends. Turning cheat mode off pauses capture and clears records.
+the session until it ends. Changing cheat mode does not affect capture or history.
 The tool has no editing or execution controls.
 
 ## Coverage
@@ -39,8 +41,11 @@ circuit are not evaluated and have no row.
 
 ## Scope
 
-- Only server calculations made while capture is on are shown; filtering and
-  refreshing never rerun Lua callbacks.
+- Only calculations made on the selected side while capture is on are shown;
+  filtering and refreshing never rerun Lua callbacks. Client records reflect the
+  state visible to that client and are not authoritative server calculations;
+  their revision is 0 because no server revision is attached. Local server rooms
+  retain their complete server-side calculation source.
 - Use-count and extra-target values are modifier subtotals. Card base limits, use
   history, `targetFilter`/`targetsFeasible`/`isAvailable`, ViewAs/ActiveSkill
   rules, CardLimitSkill internals (Can Slash records only the MethodUse boolean),
@@ -49,7 +54,8 @@ circuit are not evaluated and have no row.
 - Records include AI probes and previews; revision and context show where a call
   ran. Memo hits show only the cached result.
 - Records keep values, not the selected-target list, subcard IDs, hand contents
-  or the Lua stack. They stay in the server's RoomRuntime and never enter
+  or the Lua stack. They stay in the server's RoomRuntime or the local Client and
+  never enter
   packets, replays or saves.
 - Caps: 128 records, 256 rows per record, 4096 rows in total, 256 characters per
   text field. A full record evicts no-op/skip rows before contributing ones;

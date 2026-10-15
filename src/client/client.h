@@ -259,6 +259,7 @@ public:
     const Player *cardOwner(int card_id) const override { return getCardOwner(card_id); }
     Player::Place cardPlace(int card_id) const override { return getCardPlace(card_id); }
     Card *card(int card_id) const override { return getCard(card_id); }
+    std::shared_ptr<CorrectionTraceStore> correctionTraces() const override { return m_correctionTraces; }
     inline Card *getCard(int cardId) const
     {
         return _m_roomState.getCard(cardId);
@@ -394,6 +395,7 @@ protected:
     RoomState _m_roomState;
 
 private:
+    std::shared_ptr<CorrectionTraceStore> m_correctionTraces;
     ClientLiveSession *m_liveSession;
     bool m_isGameOver;
     bool m_isDisconnected;

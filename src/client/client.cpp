@@ -1,4 +1,5 @@
 #include "client.h"
+#include "correction-trace.h"
 #include "build-features.h"
 #include "controller-interaction-contract.h"
 #include "client-core.h"
@@ -127,6 +128,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_dispatchingRequestId(0)
 {
 	ClientInstance = this;
+	m_correctionTraces = std::make_shared<CorrectionTraceStore>();
 	ThemePacks::clearRuntime();
 	m_managedRewindTimer = new QTimer(this);
 	m_managedRewindTimer->setSingleShot(true);
@@ -296,6 +298,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		connect(m_liveSession, &ClientLiveSession::frontendMessageReceived,
 			this, &Client::processLiveProtocolMessage);
 		connect(m_liveSession, &ClientLiveSession::disconnected, this, [this]() {
+			m_correctionTraces->close();
 			m_isDisconnected = true;
 			resetManagedRewindState();
 			emit socket_disconnected();
@@ -349,6 +352,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 Client::~Client()
 {
+	m_correctionTraces->close();
 	// In-game theme overrides belong to this room; the next one starts from the player's packs.
 	ThemePacks::clearRuntime();
 	// The view must die before the core: the core must not present into a dead object.
@@ -569,6 +573,7 @@ void Client::setup(const QVariant &setup_json)
 
 void Client::disconnectFromHost()
 {
+	m_correctionTraces->close();
 	// After a disconnect nobody can receive the answer, so the pending request is invalidated
 	// immediately; never keep around a request that can never complete.
 	cancelInteraction(InteractionType::None, InteractionCancelReason::Disconnected);
@@ -1994,6 +1999,11 @@ void Client::activate(const QVariant &)
 
 void Client::startGame(const QVariant &pile)
 {
+	// A new game must not append to a disconnected session's diagnostic history.
+	if (m_correctionTraces->closed())
+		m_correctionTraces = std::make_shared<CorrectionTraceStore>();
+	else
+		m_correctionTraces->clear();
 	Sanguosha->registerRoom(this);
 	// A rematch builds its Room after this Client, reclaiming the thread's domain.
 	CardLifetimeManager::setCurrentDomain(nullptr);

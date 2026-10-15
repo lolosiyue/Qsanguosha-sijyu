@@ -64,12 +64,13 @@ CorrectionTrace::CorrectionTrace(const char *category, const Player *source,
     if (!CorrectionTraceStore::anyEnabled() || !Sanguosha) return;
     EngineRuntimeContext *context = Sanguosha->currentRoomContext();
     RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
-    if (!runtime) return; // Never collect the normal client's partial/hidden state.
-    m_store = runtime->correctionTraces();
+    // Keep client observations separate from the server's authoritative history.
+    m_store = runtime ? runtime->correctionTraces() : context ? context->correctionTraces() : nullptr;
+    if (!m_store) return;
     m_record.id = m_store->begin(&m_generation);
     if (!m_record.id) return;
     m_record.category = QString::fromLatin1(category);
-    m_record.revision = runtime->stateRevision();
+    m_record.revision = runtime ? runtime->stateRevision() : 0;
     m_record.source = source ? CorrectionTraceStore::bounded(source->objectName()) : QString();
     m_record.target = target ? CorrectionTraceStore::bounded(target->objectName()) : QString();
     // Card name and skill context only: do not stringify hidden subcard IDs.
