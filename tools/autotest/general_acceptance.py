@@ -43,6 +43,21 @@ SCREENSHOT_ROOT = HERE / "autotest-logs" / "skill-ui-latest"
 LUA_ERROR_RE = re.compile(r"attempt to |stack traceback|\[AI_CALLBACK_ERROR\]|lua_error|Lua error", re.I)
 FORCE_RE = re.compile(r"\[AUTOTEST\] force general (\S+) (\S+)")
 ANDROID_PACKAGE = "org.qsanguosha.game"
+# AGENTS.md section 9: the H working tree is the authority for these L directories.
+EXTENSIONS_AUTHORITY = r"H:\Program file\Game\sgs\Qsgs\working\extensions"
+EXTENSIONS_MAP = (("ai", "lua/ai"), ("extensions", "extensions"), ("lua", "lua"))
+SYNC_SKIP_DIRS = {".git", "logs", "data", "temp"}
+# Stages that load the L Lua tree; graded evidence (xp/web/sheets) brings its own runtime.
+LUA_STAGES = set(LOCAL_STAGES) | {"android"}
+# Built-in skill case: a hidden skill-less general must stay hidden after an ordinary use.
+# It catches helper skills that extensions bind to every general's head (they force a reveal).
+HEGEMONY_BASELINE_CASE = {
+    "hegemony": True,
+    "seats": [{"general": "sujiang", "hidden": True, "hand": ["slash"]}, {"general": "sujiang"}],
+    "trigger": "select_use('slash', P[1], {P[2]}); "
+               "error('HEG_BASELINE shown=' .. tostring(P[1]:hasShownGeneral()))",
+    "expect": {"error": "HEG_BASELINE shown=false"},
+}
 ANDROID_ACTIVITY = ANDROID_PACKAGE + "/org.qtproject.qt.android.bindings.QtActivity"
 
 
@@ -193,6 +208,10 @@ class Acceptance:
         if not cases:
             return "NOT RUN", f"no case files in {self.args.cases}", {}
         directory = self.stage_dir("skill")
+        builtin = directory / "builtin" / "heg_hidden_basic_use_baseline.json"
+        builtin.parent.mkdir(exist_ok=True)
+        builtin.write_text(json.dumps(HEGEMONY_BASELINE_CASE, ensure_ascii=False, indent=2), encoding="utf-8")
+        cases.append(builtin)
         code = run([sys.executable, HERE / "skill_scenario_runner.py", *cases,
                     "--exe", self.exe("qsanguosha_skill_scenario"), "--seed", self.args.seed,
                     "--out-dir", directory, "--jobs", self.args.jobs], directory / "runner.log", self.env)
@@ -274,19 +293,21 @@ class Acceptance:
         modes = [line.split("\t")[0].strip() for line in listing.splitlines()[1:] if "\t" in line]
         modes += sorted(SCENARIO_MODES)
         excluded = {m.strip() for m in self.args.exclude_modes.split(",") if m.strip()}
-        return [m for m in modes if m and m not in excluded]
+        # emjr Cao Cao stage modes are not part of general acceptance.
+        return [m for m in modes if m and m not in excluded and "_emjr_cc" not in m]
 
     def headless(self):
         directory = self.stage_dir("headless")
         modes = self.headless_modes()
         code = run([sys.executable, HERE / "headless_runner.py", "--exe", self.exe("QSanguosha"),
                     "--exe-root", ROOT, "--seed", self.args.seed, "--modes", ",".join(modes), "--games", 1,
-                    "--parallel", self.args.jobs, "--force-general", self.general, "--log-dir", directory],
+                    "--parallel", self.args.jobs, "--force-general", self.general, "--log-dir", directory,
+                    "--deadline-minutes", self.args.headless_minutes],
                    directory / "runner.log", self.env)
         summaries = sorted(directory.glob("summary-headless-*.csv"))
         rows = list(csv.DictReader(open(summaries[-1], encoding="utf-8-sig"))) if summaries else []
         run_dirs = sorted((directory / "headless").glob("*/"))
-        per_mode, bad, crashes = {}, [], []
+        per_mode, bad, crashes, budget = {}, [], [], {"stopped": [], "not_run": []}
         for row in rows:
             if row.get("crashed") in ("True", "true", "1") and run_dirs:
                 log = run_dirs[-1] / f"{row['mode']}-headless.log"
@@ -296,6 +317,11 @@ class Acceptance:
             logs = [run_dirs[-1] / f"{mode}.log", run_dirs[-1] / f"{mode}-headless.log"] if run_dirs else []
             evidence = scan_logs(logs, self.general, self.visible_skills)
             row = next((r for r in rows if r.get("mode") == mode), {})
+            if row.get("budget") in budget:
+                # Unfinished because the agreed budget ran out: report it, never grade it.
+                budget[row["budget"]].append(mode)
+                per_mode[mode] = {"status": "STOPPED" if row["budget"] == "stopped" else "NOT RUN"}
+                continue
             passed = str(row.get("result", row.get("status", ""))).upper().startswith("PASS") \
                 or row.get("ok") in ("True", "1", "true")
             status = game_status(passed, evidence)
@@ -303,8 +329,19 @@ class Acceptance:
             if status != "PASS":
                 bad.append(f"{mode}:{status}")
         status = "PASS" if not bad and code == 0 else ("FAIL" if any(":FAIL" in b for b in bad) or code else "WARN")
-        return status, f"{len(modes) - len(bad)}/{len(modes)} modes clean" + (f"; {', '.join(bad)}" if bad else ""), \
-            {"modes": per_mode, "summary_csv": str(summaries[-1]) if summaries else None, "crashes": crashes}
+        unfinished = budget["stopped"] + budget["not_run"]
+        if unfinished and status == "PASS":
+            status = "WARN"  # a partial matrix is not full coverage
+        graded = len(modes) - len(unfinished)
+        detail = f"{graded - len(bad)}/{graded} graded modes clean" + (f"; {', '.join(bad)}" if bad else "")
+        if unfinished:
+            def listed(names):  # full lists stay in summary.json
+                return f"{len(names)}" + (f" ({', '.join(names[:8])}{', ...' if len(names) > 8 else ''})"
+                                          if names else "")
+            detail += (f"; budget {self.args.headless_minutes:g} min: stopped {listed(budget['stopped'])}"
+                       f", NOT RUN {listed(budget['not_run'])}")
+        return status, detail, {"modes": per_mode, "budget": budget,
+                                "summary_csv": str(summaries[-1]) if summaries else None, "crashes": crashes}
 
     def gui(self):
         return self.network_game("gui", PLATFORM_MODE, [])
@@ -558,10 +595,63 @@ class Acceptance:
         return game_status(not issues, evidence), ("; ".join(issues) if issues else
             "graded saved Trustee playback; manual branches NOT RUN"), evidence
 
+    def sync(self):
+        """Compare L's Lua trees with the H authority by size and SHA-256 (AGENTS.md section 9)."""
+        authority = Path(self.args.extensions_authority)
+        if not authority.is_dir():
+            return "NOT RUN", f"authority {authority} not found", {}
+
+        def digest(path):
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        stale, ahead, missing, checked = [], [], [], 0
+        for source, target in EXTENSIONS_MAP:
+            for root, dirs, files in os.walk(authority / source):
+                dirs[:] = [d for d in dirs if d not in SYNC_SKIP_DIRS]
+                for name in files:
+                    if name == ".stignore" or ".bak" in name:
+                        continue
+                    held = Path(root) / name
+                    local = ROOT / target / held.relative_to(authority / source)
+                    checked += 1
+                    if not local.is_file():
+                        missing.append(local.relative_to(ROOT).as_posix())
+                    elif held.stat().st_size != local.stat().st_size or digest(held) != digest(local):
+                        # A newer L file is a local edit not yet written back; an older one is stale.
+                        newer = local.stat().st_mtime > held.stat().st_mtime
+                        (ahead if newer else stale).append(local.relative_to(ROOT).as_posix())
+        git = ["git", "-C", str(authority)]
+        head = subprocess.run(git + ["log", "-1", "--format=%h %s"], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace").stdout.strip()
+        dirty = [line[3:] for line in subprocess.run(git + ["status", "--porcelain"], capture_output=True, text=True,
+                                                     encoding="utf-8", errors="replace").stdout.splitlines()
+                 if line.strip()]
+        evidence = {"authority": str(authority), "head": head, "authority_dirty": dirty,
+                    "stale_in_l": stale, "l_ahead_of_h": ahead, "missing_in_l": missing, "checked": checked}
+        (self.stage_dir("sync") / "sync.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2),
+                                                          encoding="utf-8")
+        note = f"H {head}" + (f", {len(dirty)} uncommitted in H" if dirty else "")
+        if stale or missing:
+            return "FAIL", (f"L stale vs H: {len(stale)} older, {len(missing)} missing "
+                            f"(first: {', '.join((stale + missing)[:5])}); sync H to L; {note}"), evidence
+        if ahead:
+            return "WARN", (f"{len(ahead)} L file(s) newer than H, not written back "
+                            f"({', '.join(ahead[:5])}); {note}"), evidence
+        return "PASS", f"{checked} files match H; {note}", evidence
+
     # -- driver ---------------------------------------------------------------
 
     def run(self, stages):
+        if set(stages) & LUA_STAGES and not self.args.skip_sync_check:
+            self.results["sync"] = self.record("sync")
+            print(f"[{self.results['sync']['status']}] sync: {self.results['sync']['detail']}", flush=True)
+        stale = self.results.get("sync", {}).get("status") == "FAIL"
         for name in stages:
+            if stale and name in LUA_STAGES:
+                # Results on stale Lua are not acceptance evidence; sync H to L first.
+                self.results[name] = {"status": "BLOCKED", "detail": "L Lua trees stale vs H (see sync)"}
+                print(f"[BLOCKED] {name}: L Lua trees stale vs H", flush=True)
+                continue
             if name in UNAVAILABLE_STAGES:
                 self.results[name] = {"status": "NOT RUN", "detail": "environment unavailable on this host"}
                 continue
@@ -643,6 +733,12 @@ def main():
     parser.add_argument("--qt-bin", help="Qt bin directory for every child process")
     parser.add_argument("--jobs", type=int, default=4, help="parallel skill cases / headless modes")
     parser.add_argument("--exclude-modes", default="", help="headless modes to skip, comma separated")
+    parser.add_argument("--headless-minutes", type=float, default=60,
+                        help="headless matrix budget in minutes (0 = unlimited); unfinished modes are reported")
+    parser.add_argument("--extensions-authority", default=EXTENSIONS_AUTHORITY,
+                        help="H working tree that L's lua/ai, extensions and lua must match")
+    parser.add_argument("--skip-sync-check", action="store_true",
+                        help="skip the H-to-L Lua freshness preflight")
     parser.add_argument("--out-dir")
     parser.add_argument("--android-serial", help="adb serial of the verified device")
     parser.add_argument("--adb", default=str(Path(os.environ.get("LOCALAPPDATA", "")) /

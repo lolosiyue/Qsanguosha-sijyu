@@ -10,6 +10,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "runtime-paths.h"
+#include "server-info.h"
 #include "serverplayer.h"
 #include "settings.h"
 
@@ -86,6 +87,7 @@ int resolveRoomCard(Room *room, const QString &spec)
 }
 
 Room *g_triggerRoom = nullptr;
+bool g_hegemony = false;
 
 int luaEnterPlayUse(lua_State *)
 {
@@ -93,6 +95,24 @@ int luaEnterPlayUse(lua_State *)
     state.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
     state.setCurrentCardUsePattern(QString());
     return 0;
+}
+
+// __use_selected(card_id, from_name, {target_names}): a use as a client/AI selection
+// submits it, so target revalidation and the hegemony TargetMod reveal plan run.
+int luaUseSelected(lua_State *L)
+{
+    CardUseStruct use;
+    use.card = Sanguosha->getCard(int(luaL_checkinteger(L, 1)));
+    use.from = g_triggerRoom->findPlayerByObjectName(QString::fromUtf8(luaL_checkstring(L, 2)), true);
+    luaL_checktype(L, 3, LUA_TTABLE);
+    for (lua_Integer i = 1; lua_rawgeti(L, 3, i) == LUA_TSTRING; ++i) {
+        use.to << g_triggerRoom->findPlayerByObjectName(QString::fromUtf8(lua_tostring(L, -1)), true);
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    use.m_validateTargets = true;
+    lua_pushboolean(L, use.card && use.from && g_triggerRoom->useCard(use, true));
+    return 1;
 }
 
 QString luaPrelude(const QStringList &seatNames)
@@ -144,14 +164,27 @@ QString luaPrelude(const QStringList &seatNames)
         "  return c\n"
         "end\n"
         // Uses a card as a play-phase activation: the state PlayerDecisionService::activate sets.
-        "function activate(c, from, targets)\n"
+        "local function enter_play(from)\n"
         "  room:setCurrent(from)\n"
         "  if from:getPhase() ~= sgs.Player_Play then\n"
         "    from:setPhase(sgs.Player_Play)\n"
         "    room:broadcastProperty(from, 'phase')\n"
         "  end\n"
         "  __enter_play_use()\n"
+        "end\n"
+        "function activate(c, from, targets)\n"
+        "  enter_play(from)\n"
         "  use_card(c, from, targets)\n"
+        "end\n"
+        // Same, but submitted as a selection: targets and limits are revalidated.
+        "function select_use(c, from, targets)\n"
+        "  if type(c) ~= 'userdata' then c = card(c) end\n"
+        "  enter_play(from)\n"
+        "  local names = {}\n"
+        "  for _, t in ipairs(targets or {}) do table.insert(names, t:objectName()) end\n"
+        "  if not __use_selected(c:getEffectiveId(), from:objectName(), names) then\n"
+        "    error('useCard rejected ' .. c:toString(), 2)\n"
+        "  end\n"
         "end\n").arg(seats.join(QStringLiteral(", ")));
 }
 
@@ -238,6 +271,18 @@ public:
         QStringList names;
         for (ServerPlayer *seat : seats) names << seat->objectName();
         MiniSceneRule::trigger(event, room, player, data);
+        // Hegemony rules switch on only now: the hegemony start would deal random head/deputy pairs.
+        if (g_hegemony) Config.EnableHegemony = ServerInfo.EnableHegemony = true;
+        // Hegemony "hidden" seats conceal the head general the way the hegemony start does,
+        // keeping the innate instances so a later reveal is presentation only.
+        for (int index = 0; index < seats.size(); ++index) {
+            ServerPlayer *seat = seats.at(index);
+            if (!Config.EnableHegemony || players.at(index).value(QStringLiteral("hidden")) != QLatin1String("1")) continue;
+            room->setTag(seat->objectName(), QStringList{seat->getGeneralName(), seat->getGeneral2Name()});
+            room->safeSetPlayerProperty(seat, "actual_general1", seat->getGeneralName());
+            room->setPlayerProperty(seat, "general_showed", true);
+            seat->hideGeneral(true);
+        }
         const QVariant watermark =
             room->queryHistoryFacts({{QStringLiteral("limit"), 1}}).value(QStringLiteral("watermark"));
         QString error = registerScript(room, seats);
@@ -295,6 +340,7 @@ private:
         room->initializeLuaTestEnvironment(); // binds the R (room) global
         g_triggerRoom = room;
         lua_register(L, "__enter_play_use", luaEnterPlayUse);
+        lua_register(L, "__use_selected", luaUseSelected);
         lua_getglobal(L, "debug");
         lua_getfield(L, -1, "traceback");
         lua_remove(L, -2);
@@ -330,7 +376,7 @@ bool parseCase(const QJsonObject &root, CaseSetup &setup, QString *error)
 {
     static const QSet<QString> seatKeys = {
         "general", "general2", "role", "hp", "maxhp", "hujia", "draw", "kingdom", "chained",
-        "turned", "starter", "skills", "marks", "hand", "equip", "judge"};
+        "turned", "starter", "skills", "marks", "hand", "equip", "judge", "hidden"};
     const QList<int> pool = Sanguosha->getRandomCards();
     QSet<int> used;
     const QJsonArray seats = root.value(QStringLiteral("seats")).toArray();
@@ -361,6 +407,7 @@ bool parseCase(const QJsonObject &root, CaseSetup &setup, QString *error)
         if (seat.contains(QStringLiteral("kingdom"))) fields["nationality"] = seat.value(QStringLiteral("kingdom")).toString();
         if (seat.value(QStringLiteral("chained")).toBool()) fields["chained"] = "1";
         if (seat.value(QStringLiteral("turned")).toBool()) fields["turned"] = "1";
+        if (seat.value(QStringLiteral("hidden")).toBool()) fields["hidden"] = "1";
         if (seat.value(QStringLiteral("starter")).toBool()) { fields["starter"] = "1"; hasStarter = true; }
         QStringList skills;
         for (const QJsonValue &skill : seat.value(QStringLiteral("skills")).toArray()) skills << skill.toString();
@@ -475,8 +522,17 @@ int main(int argc, char **argv)
     Config.EnableAI = true;
     Config.Enable2ndGeneral = false;
     Config.EnableHegemony = false;
+    g_hegemony = caseJson.object().value(QStringLiteral("hegemony")).toBool();
     Config.AIDelay = Config.OriginAIDelay = 0;
     Config.CountDownSeconds = 0;
+    // Standalone cases have no client handshake to initialize lord-skill eligibility.
+    ServerInfo.GameMode = kScenarioName;
+    ServerInfo.EnableHegemony = Config.EnableHegemony;
+    ServerInfo.Enable2ndGeneral = Config.Enable2ndGeneral;
+    ServerInfo.EnableAI = Config.EnableAI;
+    QVariantMap scenarioOverrides = Config.valueOverrides();
+    scenarioOverrides.insert(QStringLiteral("WithoutLordskill"), false);
+    Config.setValueOverrides(scenarioOverrides);
 
     CaseSetup setup;
     if (!parseCase(caseJson.object(), setup, &error)) {

@@ -17,6 +17,7 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QDialog>
+#include <QGraphicsSceneMouseEvent>
 #include <QJsonArray>
 #include <QMetaEnum>
 #include <QTextDocument>
@@ -318,8 +319,22 @@ bool LocalResponseUiProbe::selectCard(const QString &alias, bool selected, QStri
         return false;
     }
     const bool current = item->isSelected() || item->isMarked();
-    if (current != selected)
-        item->clickItem();
+    if (current != selected) {
+        if (m_scene->dashboard->equipCardItems().contains(item)) {
+            if (!item->isMarkable()) {
+                *error = QStringLiteral("equipment card '%1' is not markable").arg(alias);
+                return false;
+            }
+            // The dashboard equipment control selects through the mark signal.
+            item->mark(selected);
+        } else {
+            item->clickItem();
+        }
+    }
+    if ((item->isSelected() || item->isMarked()) != selected) {
+        *error = QStringLiteral("card '%1' selection did not change").arg(alias);
+        return false;
+    }
     return true;
 }
 
@@ -374,6 +389,27 @@ bool LocalResponseUiProbe::clickButton(const QString &name, QString *error)
 
 bool LocalResponseUiProbe::chooseOption(const QString &option, QString *error)
 {
+    if (m_scene->dashboard->isShowingDialogOptions()) {
+        QGraphicsObject *item = m_scene->dashboard->m_dialogOptionItemMap.value(option, nullptr);
+        if (!item || !item->isVisible() || !item->isEnabled()) {
+            *error = QStringLiteral("declaration option is not enabled and visible");
+            return false;
+        }
+        // Send real scene mouse events to the same Dashboard tile the player clicks.
+        for (QEvent::Type type : {QEvent::GraphicsSceneMousePress, QEvent::GraphicsSceneMouseRelease}) {
+            QGraphicsSceneMouseEvent event(type);
+            event.setButton(Qt::LeftButton);
+            event.setButtons(type == QEvent::GraphicsSceneMousePress ? Qt::LeftButton : Qt::NoButton);
+            event.setPos(item->boundingRect().center());
+            event.setScenePos(item->mapToScene(event.pos()));
+            m_scene->sendEvent(item, &event);
+        }
+        if (m_scene->dashboard->selectedDialogOption() != option) {
+            *error = QStringLiteral("declaration option selection did not change");
+            return false;
+        }
+        return true;
+    }
     QDialog *dialog = m_scene->m_choiceDialog;
     if (!dialog || !dialog->isVisible()) {
         *error = QStringLiteral("choice dialog is not open");

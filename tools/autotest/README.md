@@ -36,6 +36,8 @@ python tools\autotest\headless_runner.py `
 一個 process；模式數不足時同一模式開多份 (round-robin)，每份獨立 log
 (`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 08p --parallel 10`
 = 10 個 08p process 同時跑。注意多 process 同時打 08p 對 CPU/RAM 負載高。
+`--deadline-minutes` 為整批時間預算：到期不再啟動新模式，進行中的局停止；
+CSV 的 `budget` 欄記 `stopped`／`not_run`，這些模式不算失敗。
 
 輸出: `tools\autotest\autotest-logs\headless\<時間戳>-<pid>\<mode>[-N].log`
 + `<mode>[-N]-headless.log`; 彙總表 `summary-headless-<時間>.csv` 在
@@ -122,8 +124,9 @@ case 格式：
 
 | 欄位 | 內容 |
 |---|---|
-| `seats[]` | `general`（必填）、`general2`、`role`（預設第 1 席 lord，其餘 rebel）、`hp`、`maxhp`、`hujia`、`kingdom`、`chained`、`turned`、`starter`（預設第 1 席）、`skills`（取得技能）、`marks`（`{"@x": 2}`）、`hand`／`equip`／`judge`（牌 spec 或 id）、`draw`（開局摸牌數，預設 0）。未知 key 直接報錯 |
+| `seats[]` | `general`（必填）、`general2`、`role`（預設第 1 席 lord，其餘 rebel）、`hp`、`maxhp`、`hujia`、`kingdom`、`chained`、`turned`、`starter`（預設第 1 席）、`skills`（取得技能）、`marks`（`{"@x": 2}`）、`hand`／`equip`／`judge`（牌 spec 或 id）、`draw`（開局摸牌數，預設 0）、`hidden`（國戰暗置主將，需 `hegemony`）。未知 key 直接報錯 |
 | `pile` | 牌堆頂，第一張在最上 |
+| `hegemony` | `true` 時盤面擺好後才開啟國戰規則（不經國戰選將），供暗將、亮將與明置判斷 |
 | `script[]` | `seat`、`type`、`key`、`answer`。`type`：`skill_invoke`（bool）、`choice`（字串）、`player_chosen`（座位號）、`card_chosen`（牌 spec）、`card`（牌 spec 或 legacy 牌字串；key 為技能名或 pattern）、`activate`（`"pass"`）。key 是該詢問的 reason，與技能程式呼叫的 `askForXxx` 一致 |
 | `trigger` | Lua，在 room thread 執行 |
 | `expect` | 見下方比對規則 |
@@ -138,6 +141,7 @@ trigger 可用：
 | `card(spec)` | 先找角色持有的相符牌，再找牌堆 |
 | `use(c, from, {targets})` | `room:useCard`；被拒絕時報錯 |
 | `activate(c, from, {targets})` | 以出牌階段發動使用：設 current、出牌階段、用牌原因 PLAY 後 `useCard` |
+| `select_use(c, from, {targets})` | 同 `activate`，但如 client／AI 選擇提交：重驗目標、次數與距離，國戰 TargetMod 亮將規劃也會執行；被拒絕時報錯 |
 | `skillcard(class, skill, owner, {specs})` | clone 技能卡並綁定 owner 的 V2 技能實例 |
 
 其他時機直接呼叫引擎 API，如 `room:damage(...)`、`room:loseHp(P[1])`、`room:judge(...)`、`P[1]:play({sgs.Player_Start})`。
@@ -180,10 +184,11 @@ python tools\autotest\general_acceptance.py --general s4_cloud_huangzhong --seed
 
 | stage | 內容 | 判定 |
 |---|---|---|
+| `sync`（自動） | 任一 stage 會載入 L 的 Lua 時先執行：`lua/ai`、`extensions`、`lua` 與 H 權威樹（`--extensions-authority`）以大小＋SHA-256 比對，列出 H 未提交檔 | L 較舊或缺檔 FAIL，載入 Lua 的 stage 一律 BLOCKED；L 較新（未回寫）WARN；`--skip-sync-check` 略過 |
 | `describe` | `qsanguosha_skill_scenario --describe-general`：package、技能與翻譯後描述 | 武將存在 |
 | `skill` | `--cases` 目錄交給 `skill_scenario_runner.py` | 全 PASS |
 | `ui` | 每個可見技能生成一份發動詢問 case 給 `skill_ui_runner.py`：詢問顯示翻譯名而非 id | runner exit 0 |
-| `headless` | registry 全部模式 + 6 個劇情模式，各 1 局 | 對局完成、有 force 標記；Lua 錯誤記 WARN |
+| `headless` | registry 全部模式（不含 `*_emjr_cc*` 曹操劇情關卡）+ 6 個劇情模式，各 1 局；`--headless-minutes`（預設 60，0 = 不限）為整批預算 | 對局完成、有 force 標記；Lua 錯誤記 WARN；預算內未完成的模式記 STOPPED／NOT RUN，stage 至多 WARN |
 | `gui` | `network_runner.py` 03_1v2 | 同上 |
 | `gui_heg` | `network_runner.py` 08p 國戰：stage 目錄的 `hegemony.ini`（`EnableHegemony=true`）經 `--server-config` 交給 server `--config`，只在 server 記憶體生效，不寫回 `config.ini` | 同上 |
 | `tui` | `tui_network_smoke.py` 03_1v2 | 同上 |

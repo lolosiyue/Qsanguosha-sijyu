@@ -405,6 +405,11 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     log_path = os.path.join(run_dir, "%s%s.log" % (mode, suffix))
     headless_log = os.path.join(run_dir, "%s%s-headless.log" % (mode, suffix))
     label = mode + ("" if not tag else "#%s" % tag)
+    stop_at = getattr(args, "stop_at", None)
+    if stop_at is not None and time.time() >= stop_at:
+        # The run budget is spent before this mode started: NOT RUN, not a failure.
+        return {"mode": label, "budget": "not_run", "ok": False, "log": "",
+                "process_failure": "budget-not-run"}
     cmd = [exe, "--headless", "--game-mode", mode, "--games", str(games),
            "--headless-log", headless_log]
     if getattr(args, "seed", None) is not None:
@@ -420,6 +425,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     timeout = games * PER_GAME_TIMEOUT + 120
     deadline = time.time() + timeout
     timed_out = False
+    budget_stopped = False
     code = None
     # Poll marker files and report each game's start and completion.
     prev = {"total": 0, "failed": 0}
@@ -428,6 +434,12 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     while True:
         code = proc.poll()
         if code is not None:
+            break
+        if stop_at is not None and time.time() > stop_at:
+            # Run budget reached: stop this game through our handle; it is unfinished, not failed.
+            budget_stopped = True
+            proc.kill()
+            code = wait_exit(proc, 5)
             break
         if time.time() > deadline:
             timed_out = True
@@ -459,6 +471,8 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     process_failures: list[str] = []
     if timed_out:
         process_failures.append("timeout")
+    if budget_stopped:
+        process_failures.append("budget-stopped")
     if not done:
         process_failures.append(f"shutdown-marker-count={shutdown_count}")
     if n_finished != games:
@@ -472,12 +486,13 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     process_failure = ";".join(process_failures)
     ok = (not process_failures) and gauge_validation.status == "valid"
     # Treat Windows crash codes as crashes, but not timeouts or small application exit codes.
-    crashed = (not timed_out) and is_crash_code(code)
+    crashed = (not timed_out) and (not budget_stopped) and is_crash_code(code)
     context = tail_lines(headless_log, 20) if crashed else []
     return {
         "mode": mode + ("" if not tag else "#%s" % tag),
         "exit": code, "exit_name": describe_exit(code), "exit_hex": hex_exit(code),
         "timeout": timed_out, "crashed": crashed, "crash_context": context,
+        "budget": "stopped" if budget_stopped else "",
         "smart_ai_failed": smart_ai_failed,
         "finished": n_finished, "expected": games, "failed_games": failed,
         "done_marker": done, "shutdown_marker_count": shutdown_count,
@@ -515,6 +530,8 @@ def main():
                         help="開局時把第 0 席 (owner) 換成此武將, 任何模式皆生效 (武將驗收用)")
     parser.add_argument("--spawn-delay", type=int, default=0,
                         help="多份 process 的啟動間隔秒數 (0 = 同時啟動)")
+    parser.add_argument("--deadline-minutes", type=float, default=0,
+                        help="整批時間預算 (分鐘, 0 = 不限): 到期不再啟動新模式, 進行中的局停止並記為 stopped")
     parser.add_argument("--mode", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--exe", required=True)
@@ -549,6 +566,7 @@ def main():
         print("executable not found: %s" % exe, file=sys.stderr)
         return 2
     workdir = resolve_workdir(args.exe_root)
+    args.stop_at = time.time() + args.deadline_minutes * 60 if args.deadline_minutes > 0 else None
     log_root = log_dir_for(args)
     # Use a unique timestamped output directory for each run.
     args.run_dir = os.path.join(log_root, "headless", "%s-%d" % (stamp(), os.getpid()))
@@ -581,7 +599,10 @@ def main():
                 r = {"mode": mode, "error": str(e), "ok": False}
             results.append(r)
             status = "PASS" if r.get("ok") else "FAIL"
-            if r.get("error"):
+            if r.get("budget"):
+                print("[BUDGET] %s: %s" % (mode, "未開始 (時間預算已用完)" if r["budget"] == "not_run"
+                                             else "時間預算到期, 已停止"))
+            elif r.get("error"):
                 print("[%s] %s: %s" % (status, mode, r["error"]))
             else:
                 extra = ""
@@ -610,7 +631,7 @@ def main():
     header = ["mode", "game", "ok", "exit", "exit_name", "timeout", "crashed",
               "finished", "expected", "failed_games", "done_marker",
               "marker_count", "marker_status", "marker_fields", "marker_failure",
-              "log"]
+              "log", "budget"]
     csv_rows = []
     for result in results:
         gauge_rows = result.get("gauge_rows", ())
@@ -630,7 +651,7 @@ def main():
                     result.get("finished"), result.get("expected"),
                     result.get("failed_games"), result.get("done_marker"),
                     gauge.marker_count, gauge.status, gauge.fields, failures,
-                    result.get("log", "").replace("\\", "/"),
+                    result.get("log", "").replace("\\", "/"), result.get("budget", ""),
                 ])
         else:
             csv_rows.append([
@@ -640,14 +661,17 @@ def main():
                 result.get("expected"), result.get("failed_games"),
                 result.get("done_marker"), 0, "invalid", "",
                 process_failure or result.get("error", ""),
-                result.get("log", "").replace("\\", "/"),
+                result.get("log", "").replace("\\", "/"), result.get("budget", ""),
             ])
     write_csv(csv_path, header, csv_rows)
     print("結果: %s" % csv_path)
 
     ok = sum(1 for r in results if r.get("ok"))
-    print("總計: %d/%d 通過" % (ok, len(results)))
-    return 0 if ok == len(results) else 1
+    # Budget-stopped and unstarted modes are reported separately; they are not failures.
+    budgeted = sum(1 for r in results if r.get("budget"))
+    print("總計: %d/%d 通過" % (ok, len(results))
+          + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
+    return 0 if ok + budgeted == len(results) else 1
 
 
 if __name__ == "__main__":

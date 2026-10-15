@@ -321,7 +321,9 @@ bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *comm
         { QStringLiteral("S_COMMAND_FILL_GENERAL"), S_COMMAND_FILL_GENERAL },
         { QStringLiteral("S_COMMAND_TAKE_GENERAL"), S_COMMAND_TAKE_GENERAL },
         { QStringLiteral("S_COMMAND_ARRANGE_GENERAL"), S_COMMAND_ARRANGE_GENERAL },
-        { QStringLiteral("S_COMMAND_QML_INTERACT"), S_COMMAND_QML_INTERACT }
+        { QStringLiteral("S_COMMAND_QML_INTERACT"), S_COMMAND_QML_INTERACT },
+        // Bootstrap snapshots exercise the production V2 instance presentation.
+        { QStringLiteral("S_COMMAND_SKILL_INSTANCE"), S_COMMAND_SKILL_INSTANCE }
     };
     if (!commands.contains(name))
         return false;

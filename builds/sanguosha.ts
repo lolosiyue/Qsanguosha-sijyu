@@ -13687,4 +13687,23 @@ V1 持有者未知；零值或无效果是实际观察到的返回结果，不�
         <translation>累加</translation>
     </message>
 </context>
+<context>
+    <name>LocalResponseUiController</name>
+    <message>
+        <source>Awaiting manual input</source>
+        <translation>等待人工操作</translation>
+    </message>
+    <message>
+        <source>Inspect</source>
+        <translation>人工检查</translation>
+    </message>
+    <message>
+        <source>FAIL: %1</source>
+        <translation>失败：%1</translation>
+    </message>
+    <message>
+        <source>PASS - close when finished inspecting</source>
+        <translation>通过，请在检查完毕后关闭</translation>
+    </message>
+</context>
 </TS>

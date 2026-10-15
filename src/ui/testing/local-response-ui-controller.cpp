@@ -829,7 +829,8 @@ void LocalResponseUiController::presentRequest()
         updateInspectorSnapshot();
         if (m_inspector) {
             m_inspector->setPresentationResult(QStringLiteral("PASS"));
-            m_inspector->setFinalResult(QStringLiteral("Awaiting manual input"));
+            // Translate visible guidance while keeping report result codes stable.
+            m_inspector->setFinalResult(tr("Awaiting manual input"));
         }
         // Inspect the actual request surface, not the inspector's action panel.
         // Native choices such as ChooseGeneralDialog own their keyboard focus.
@@ -1088,7 +1089,7 @@ void LocalResponseUiController::createInspector(const QString &command, int seri
 {
     m_inspector = new LocalResponseUiInspector(m_mainWindow);
     m_inspector->setCaseName(m_case.name());
-    m_inspector->setMode(QStringLiteral("Inspect"));
+    m_inspector->setMode(tr("Inspect"));
     m_inspector->setRequest(command, serial);
     qApp->installEventFilter(this);
     connect(m_inspector->nextActionButton(), &QPushButton::clicked,
@@ -1149,7 +1150,7 @@ void LocalResponseUiController::setInspectFailure(ExitCode code, const QString &
     setStage(RunnerStage::Completed);
     updateInspectorSnapshot();
     if (m_inspector)
-        m_inspector->setFinalResult(QStringLiteral("FAIL: %1").arg(message));
+        m_inspector->setFinalResult(tr("FAIL: %1").arg(message));
     if (!persistReport(QStringLiteral("FAIL"), stage, message))
         finish(InternalError, QStringLiteral("report"),
             QStringLiteral("could not persist inspect failure report"));
@@ -1283,7 +1284,7 @@ void LocalResponseUiController::processInspectReply()
 
     m_inspectExitCode = Passed;
     if (m_inspector)
-        m_inspector->setFinalResult(QStringLiteral("PASS - close when finished inspecting"));
+        m_inspector->setFinalResult(tr("PASS - close when finished inspecting"));
     persistReport(QStringLiteral("PASS"));
 }
 
