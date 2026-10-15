@@ -276,6 +276,8 @@ QSanSkillButton::QSanSkillButton(QGraphicsItem *parent)
     _m_canDisable = true;
     _m_skill = nullptr;
     _m_viewAsSkill = nullptr;
+    _m_skillValid = true;
+    _m_stateBeforeInvalidity = S_STATE_UP;
     _m_preshowEnabled = false;
     _m_savedStyle = _m_style;
     _m_savedState = _m_state;
@@ -331,7 +333,7 @@ void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, 
 		_m_canEnable = _m_savedCanEnable;
 		_m_canDisable = _m_savedCanDisable;
 		setState(_m_savedState);
-		QSanButton::setEnabled(_m_savedState != S_STATE_DISABLED);
+		QSanButton::setEnabled(_m_skillValid && _m_savedState != S_STATE_DISABLED);
 		_repaint();
 		update();
 		return;
@@ -343,7 +345,7 @@ void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, 
 		_m_style = S_STYLE_TOGGLE;
 		_m_emitActivateSignal = false;
 		_m_emitDeactivateSignal = false;
-		QSanButton::setEnabled(true);
+		QSanButton::setEnabled(_m_skillValid);
 		setPreshowState(preshowed);
 		if (appearanceChanged) {
 			_repaint();
@@ -356,6 +358,11 @@ void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, 
 
 void QSanSkillButton::setEnabled(bool enabled)
 {
+	// Server-projected invalidity wins over activation and trigger toggle policies.
+	if (!_m_skillValid) {
+		QSanButton::setEnabled(false);
+		return;
+	}
 	if (_m_preshowEnabled) {
 		// Skill refreshes disable ordinary activation buttons; pre-show remains a
 		// separate owner-authorized action while the skill is hidden.
@@ -368,10 +375,36 @@ void QSanSkillButton::setEnabled(bool enabled)
 	QSanButton::setEnabled(enabled);
 }
 
+void QSanSkillButton::setSkillValid(bool valid)
+{
+    if (_m_skillValid == valid) {
+        if (!valid) QSanButton::setEnabled(false);
+        return;
+    }
+    _m_skillValid = valid;
+    if (!valid) {
+        _m_stateBeforeInvalidity = _m_state;
+        const bool deactivate = isDown() && _m_emitDeactivateSignal;
+        QSanButton::setEnabled(false);
+        if (deactivate) {
+            emit skill_deactivated(_m_skill);
+            emit skill_deactivated();
+        }
+    } else if (_m_preshowEnabled || !_m_canDisable) {
+        // Restore a trigger's auto-invoke toggle without activating a view-as skill.
+        QSanButton::setEnabled(true);
+        setState(_m_stateBeforeInvalidity);
+    }
+}
+
 void QSanSkillButton::setPreshowState(bool preshowed)
 {
 	if (!_m_preshowEnabled)
 		return;
+	if (!_m_skillValid) {
+		setState(S_STATE_DISABLED);
+		return;
+	}
 	setState(preshowed ? S_STATE_DOWN : S_STATE_UP);
 }
 

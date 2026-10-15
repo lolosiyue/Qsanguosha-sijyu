@@ -126,6 +126,8 @@ public:
         return _m_skill;
     }
     virtual void setEnabled(bool enabled);
+    void setSkillValid(bool valid);
+    bool isSkillValid() const { return _m_skillValid; }
     // Reloads the button art, e.g. after a theme override changed it mid-game.
     void refreshArt() { _repaint(); update(); }
     QSanSkillButton(QGraphicsItem *parent = nullptr);
@@ -145,6 +147,8 @@ protected:
     bool _m_canDisable;
     const Skill *_m_skill;
     const ViewAsSkill *_m_viewAsSkill;
+    bool _m_skillValid;
+    ButtonState _m_stateBeforeInvalidity;
     QString _m_displayName;
     bool _m_preshowEnabled;
     QString _m_preshowSkillName;

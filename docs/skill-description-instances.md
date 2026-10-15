@@ -40,6 +40,7 @@ Player 的 skill_set_changed／skill_state_changed 以 queued unique connection 
 | 共用計數 | 相同 counter 與上限的數字在 tooltip 僅列一次，其餘實例指向該列；不同動態上限保留各自上限並標示共用 |
 | 無通用／自訂限制 | None／空摘要不輸出使用情況或原始 usage；Custom 未提供計數不输出使用情況、不猜數字。明確的 mark/state adapter 或作者提供的私有摘要可補齊數字 |
 | 逐實例有效性 | 伺服器計算 isSkillInvalid(skill,id)，客戶端只讀 skillValidity。相同正文全部失效才整段灰字；失效實例的資料亦灰字，不另列有效／失效狀態，沒有「現在可發動」標籤 |
+| 桌面技能按鈕 | 按完整技能實例鍵讀取 skillValidity；失效實例停用並取消已選的轉化技能，有效的同名實例不受影響。恢復有效後按當前互動重算可用性，觸發技的自動發動選項保留 |
 | 可讀 state | 靜態翻譯 metadata 指定標題、player/players 類型及列舉值；其餘原始值仍在技術區。已接使命狀態、破圍目標、衛明目標、探幽角色與限定使用情況 |
 | 修改 | 有 amount 語意名稱才顯示 base → override；override 是絕對值。Room 數值修改與 correctState 修改 API 同時記錄當時來源，來源不由最終數值反推 |
 | 附加效果 | 失效記錄、卡牌限制及技能明確登記的描述另列「目前受到的效果」。探幽已接入來源 ref、作用對象、標記結束條件；不授予技能所有權 |

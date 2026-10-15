@@ -4,6 +4,7 @@
 // tools/autotest/skill_scenario_runner.py; see tools/autotest/README.md.
 #include "engine-bootstrap.h"
 #include "engine.h"
+#include "general.h"
 #include "lua-runtime.h"
 #include "lua.hpp"
 #include "miniscenarios.h"
@@ -278,6 +279,25 @@ public:
         for (int index = 0; index < seats.size(); ++index) {
             ServerPlayer *seat = seats.at(index);
             if (!Config.EnableHegemony || players.at(index).value(QStringLiteral("hidden")) != QLatin1String("1")) continue;
+            // MiniScene changes generals through the ordinary scenario lifecycle.
+            // Restore head-source metadata before hiding, preserving IDs and state.
+            const General *head = seat->getGeneral();
+            const QStringList explicitSkills = players.at(index).value(QStringLiteral("acquireSkills")).split(',');
+            for (SkillInstance instance : seat->getSkillInstances()) {
+                if ((instance.source != SourceInnate && instance.source != SourceAcquired)
+                    || instance.bindHead != 0 || !head || !head->hasSkill(instance.skillName)
+                    || instance.parentRef.isValid() || instance.frozenSourceRef.isValid()
+                    || explicitSkills.contains(instance.skillName)) continue;
+                std::fprintf(stderr, "SKILL_SCENARIO hidden root: %s %s#%d source=%d -> innate head\n",
+                    qPrintable(seat->objectName()), qPrintable(instance.skillName), instance.instanceID,
+                    static_cast<int>(instance.source));
+                if (instance.source == SourceAcquired)
+                    seat->removeSkillInstance(instance.skillName, instance.instanceID);
+                instance.source = SourceInnate;
+                instance.bindHead = 1;
+                seat->upsertSkillInstance(instance);
+            }
+            std::fflush(stderr);
             room->setTag(seat->objectName(), QStringList{seat->getGeneralName(), seat->getGeneral2Name()});
             room->safeSetPlayerProperty(seat, "actual_general1", seat->getGeneralName());
             room->setPlayerProperty(seat, "general_showed", true);

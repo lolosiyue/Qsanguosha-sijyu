@@ -198,7 +198,7 @@ static bool isSkillButtonVisible(const Skill *skill, const Player *player)
 static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPlayer *activePlayer,
     CardUseStruct::CardUseReason reason, const QString &pattern)
 {
-    if (!button || !activePlayer) return false;
+    if (!button || !activePlayer || !button->isSkillValid()) return false;
     const ViewAsSkill *viewAsSkill = button->getViewAsSkill();
     if (!viewAsSkill) return false;
 
@@ -3616,6 +3616,8 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 	foreach(QSanSkillButton*button,m_skillButtons) {
 		if(button->objectName() == skillInstanceName) {
 			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+			button->setSkillValid(activePlayer == nullptr
+				|| activePlayer->uiState().skillValidity.value(skillInstanceName, true).toBool());
 			const bool canPreshow = ServerInfo.EnableHegemony && activePlayer != nullptr
 				&& activePlayer == Self
 				&& activePlayer->canPreshowSkill(skillInstanceName);
@@ -3693,6 +3695,8 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 		&& activePlayer->canPreshowSkill(skillInstanceName);
 	btn->setPreshowEnabled(skillInstanceName, canPreshow,
 		activePlayer != nullptr && activePlayer->hasPreshowedSkill(skillInstanceName));
+	btn->setSkillValid(activePlayer == nullptr
+		|| activePlayer->uiState().skillValidity.value(skillInstanceName, true).toBool());
 	if (canPreshow) {
 		btn->setToolTip(btn->toolTip() + QLatin1String("\n")
 			+ (activePlayer->hasPreshowedSkill(skillInstanceName)
@@ -4354,6 +4358,8 @@ void RoomScene::switchControlContext(const QString &target_name)
 	}
 
 	foreach (QSanSkillButton *button, m_skillButtons) {
+		button->setSkillValid(activePlayer == nullptr
+			|| activePlayer->uiState().skillValidity.value(button->objectName(), true).toBool());
 		const ViewAsSkill *vsSkill = button->getViewAsSkill();
 		if (vsSkill != nullptr) {
 			button->setEnabled(isSkillButtonAvailable(button, activePlayer, reason, pattern));
@@ -4400,6 +4406,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	const QString skillPattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
 	foreach (QSanSkillButton*button,m_skillButtons){
+		button->setSkillValid(activePlayer == nullptr
+			|| activePlayer->uiState().skillValidity.value(button->objectName(), true).toBool());
 		const ViewAsSkill*vsSkill = button->getViewAsSkill();
 		if(vsSkill){
 			const QString &pattern = skillPattern;
@@ -4863,6 +4871,21 @@ void RoomScene::onDialogOptionSelectionChanged(bool hasSelection)
 
 void RoomScene::updateTrustButton()
 {
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	for (QSanSkillButton *button : m_skillButtons) {
+		const bool valid = activePlayer == nullptr
+			|| activePlayer->uiState().skillValidity.value(button->objectName(), true).toBool();
+		const bool restored = valid && !button->isSkillValid();
+		button->setSkillValid(valid);
+		if (restored && button->getViewAsSkill()) {
+			const Client::Status status = ClientInstance->getStatus();
+			const bool interactive = status == Client::Playing
+				|| (status & Client::ClientStatusBasicMask) == Client::Responding;
+			button->setEnabled(interactive && isSkillButtonAvailable(button, activePlayer,
+				ClientInstance->getRoomState()->getCurrentCardUseReason(),
+				ClientInstance->getRoomState()->getCurrentCardUsePattern()));
+		}
+	}
 	if(!ClientInstance->getReplayer()){
 		ClientPlayer *trustPlayer = getControlRootPlayer(dashboard->getPlayer());
 		if (trustPlayer == nullptr)
