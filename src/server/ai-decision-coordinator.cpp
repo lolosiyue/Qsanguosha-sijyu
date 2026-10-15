@@ -244,6 +244,11 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
         // Beyond this exact native upper bound, every next target is rejected.
         // Avoid rescanning all 50 seats at each otherwise terminal leaf.
         if (terminalCount >= 0 && prefix.size() >= terminalCount) return true;
+        // Scan the whole level before descending, so the first level always lists
+        // every legal target. Each next target's subtree costs at least its own visit
+        // plus, below the native bound, one filter probe per seat; a level that cannot
+        // fit the remaining budget fails now instead of after spending it.
+        QList<ServerPlayer *> next;
         foreach (ServerPlayer *target, alive) {
             if (!spend()) return false;
             int votes = 0;
@@ -256,6 +261,12 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
                 if (votes > 1) maxVotes.insert(target->objectName(), votes);
             }
             if (votes > 1 || prefix.contains(target) || prefix.size() >= 8) return false;
+            next << target;
+        }
+        const qint64 childScan = terminalCount >= 0 && prefix.size() + 1 >= terminalCount
+            ? 0 : alive.size();
+        if (qint64(next.size()) * (1 + childScan) > qMin(probesLeft, requestBudget)) return false;
+        for (ServerPlayer *target : next) {
             prefix << target;
             names << target->objectName();
             if (!visit()) return false;
@@ -616,8 +627,10 @@ static bool makeAIOwnStateValue(const QVariant &source, QJsonValue &target, int 
                                 const AIStateRefs &refs)
 {
     if (remaining <= 0) return false;
+    // Inspect exact-type payloads in place: copying a history struct can register
+    // stale auxiliary Card pointers before refs validates the projected fields.
     if (source.userType() == qMetaTypeId<CardUseStruct>()) {
-        const CardUseStruct use = source.value<CardUseStruct>();
+        const CardUseStruct &use = *static_cast<const CardUseStruct *>(source.constData());
         if (!refs.player(use.from) || !refs.card(use.card)) return false;
         for (const ServerPlayer *to : use.to) if (!refs.player(to)) return false;
         QJsonArray targets;
@@ -626,11 +639,11 @@ static bool makeAIOwnStateValue(const QVariant &source, QJsonValue &target, int 
             {"card", publicDecisionCard(use.card)},
             {"nullified_list", QJsonArray::fromStringList(use.nullified_list)}};
     } else if (source.userType() == qMetaTypeId<DamageStruct>()) {
-        const DamageStruct damage = source.value<DamageStruct>();
+        const DamageStruct &damage = *static_cast<const DamageStruct *>(source.constData());
         if (!refs.player(damage.from) || !refs.player(damage.to) || !refs.card(damage.card)) return false;
         target = damageValue(damage);
     } else if (source.userType() == qMetaTypeId<CardEffectStruct>()) {
-        const CardEffectStruct effect = source.value<CardEffectStruct>();
+        const CardEffectStruct &effect = *static_cast<const CardEffectStruct *>(source.constData());
         if (!refs.player(effect.from) || !refs.player(effect.to) || !refs.card(effect.card)) return false;
         target = QJsonObject{{"from", playerName(effect.from)}, {"to", playerName(effect.to)},
             {"card", publicDecisionCard(effect.card)},
@@ -642,7 +655,7 @@ static bool makeAIOwnStateValue(const QVariant &source, QJsonValue &target, int 
         if (!refs.player(dying.who)) return false;
         target = QJsonObject{{"who", playerName(dying.who)}};
     } else if (source.userType() == qMetaTypeId<RecoverStruct>()) {
-        const RecoverStruct recover = source.value<RecoverStruct>();
+        const RecoverStruct &recover = *static_cast<const RecoverStruct *>(source.constData());
         if (!refs.player(recover.who) || !refs.card(recover.card)) return false;
         target = QJsonObject{{"who", playerName(recover.who)}, {"recover", recover.recover},
             {"reason", recover.reason}, {"card", publicDecisionCard(recover.card)}};

@@ -1464,7 +1464,7 @@ response resolver；isolated 結果未通過驗證時直接回退 legacy，不�
 
 | 預算 | 超限結果 |
 |---|---|
-| 每牌最多 2048 次投影探測（`AiTargetProjectionBudget` 可向下調整至 1）、128 組、8 層目標；整個 request 共用 16384 次目標／成本探測 | `complete_coverage=false` 或 `conversions_enumerated=false`，部分組合不發票為完整能力。沒有跨 request 分頁續取；需更大投影的情境 unsupported。 |
+| 每牌最多 2048 次投影探測（`AiTargetProjectionBudget` 可向下調整至 1）、128 組、8 層目標；整個 request 共用 16384 次目標／成本探測 | `complete_coverage=false` 或 `conversions_enumerated=false`，部分組合不發票為完整能力。每層先掃完整層再往下，第一層 `legal_targets` 不因子樹耗盡預算而截斷；子樹下界（每個下一目標 1 次 visit 加每座位 1 次 filter）超過剩餘預算時當場判定，不先耗盡預算。沒有跨 request 分頁續取；需更大投影的情境 unsupported。 |
 | 每 request 128 次候選規劃、8 層巢狀；scratch 複製 4096 值／16 層 | 帶 `planning` 原因的 unsupported，最外層記錄未覆蓋；不改成 declined/pass。 |
 | Lua instructions | host 的 `AiLuaInstructionBudget` 乘以 max(1, 存活人數 / 8)（整數除法），超限回 `AI_INSTRUCTION_LIMIT`；涵蓋巢狀策略，預算不在子分支重置。事件處理用同一個縮放後的預算。 |
 

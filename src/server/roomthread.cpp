@@ -544,16 +544,35 @@ QString EventTriplet::toString() const
 }
 
 namespace {
+// Origin keys are only compared with each other in memory, so length-prefixed
+// fields keep distinct contexts apart without a JSON round trip per context.
 QString callbackContextSource(const SkillContext &context)
 {
-    const auto ref = [](const SkillInstanceRef &source) {
-        return QVariantList{source.ownerObjectName, source.key.skillName, source.key.instanceID};
+    QString source;
+    const auto field = [&source](const QString &value) {
+        source += QString::number(value.size());
+        source += QLatin1Char(':');
+        source += value;
     };
-    const QVariantMap identity{{QStringLiteral("source"), ref(context.sourceRef)},
-        {QStringLiteral("activation"), ref(context.activationRef)},
-        {QStringLiteral("physical"), context.physicalEquipSource.toVariantMap()},
-        {QStringLiteral("owner"), context.owner ? context.owner->objectName() : QString()}};
-    return QString::fromUtf8(QJsonDocument::fromVariant(identity).toJson(QJsonDocument::Compact));
+    const auto ref = [&field](const SkillInstanceRef &ref) {
+        field(ref.ownerObjectName);
+        field(ref.key.skillName);
+        field(QString::number(ref.key.instanceID));
+    };
+    ref(context.sourceRef);
+    ref(context.activationRef);
+    const PhysicalEquipSource &physical = context.physicalEquipSource;
+    if (physical.isValid()) {
+        source += QLatin1Char('P');
+        field(physical.holder());
+        field(physical.equipment());
+        field(physical.skill());
+        field(QString::number(physical.cardId()));
+    } else {
+        source += QLatin1Char('-');
+    }
+    field(context.owner ? context.owner->objectName() : QString());
+    return source;
 }
 TriggerDispatchBudget::Limits triggerDispatchLimits()
 {
@@ -623,7 +642,7 @@ struct RoomThread::DyingContinuationScope::State {
     QList<unsigned> commitAuthors;
     QSet<int> discarded;
     QList<DispatchBreadcrumb> recent;
-    QList<QString> origins;
+    QList<CallbackOrigin> origins;
     quint64 settlementOwner;
     TriggerCascadeBreak cancellation;
     bool propagate = true;
@@ -815,12 +834,21 @@ bool RoomThread::triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *targ
 bool RoomThread::enterCallbackOrigin(const void *definition, TriggerEvent event, ServerPlayer *target,
                                     const QString &site, const QString &source, int instance)
 {
-    const QString key = QStringLiteral("%1/%2/%3/%4/%5/%6")
+    const CallbackOrigin origin{definition, event, target, site, source, instance};
+    if (m_settlementOwner) {
+        const auto cancelled = m_cancelledCallbackOrigins.constFind(m_settlementOwner);
+        if (cancelled != m_cancelledCallbackOrigins.cend() && !cancelled->isEmpty()
+            && cancelled->contains(origin.key())) return false;
+    }
+    m_callbackOrigins << origin;
+    return true;
+}
+
+QString RoomThread::CallbackOrigin::key() const
+{
+    return QStringLiteral("%1/%2/%3/%4/%5/%6")
         .arg(quintptr(definition), 0, 16).arg(int(event)).arg(quintptr(target), 0, 16)
         .arg(site).arg(source).arg(instance);
-    if (m_settlementOwner && m_cancelledCallbackOrigins.value(m_settlementOwner).contains(key)) return false;
-    m_callbackOrigins << key;
-    return true;
 }
 
 void RoomThread::retireCancelledCallbackOrigins(quint64 owner)
@@ -1081,9 +1109,9 @@ void RoomThread::abortTriggerDispatch(TriggerEvent event, ServerPlayer *target, 
     // receipts while its retained native dying/death cursor finishes.
     const quint64 owner = m_settlementOwner ? m_settlementOwner : m_cascadeId;
     QSet<QString> &origins = m_cancelledCallbackOrigins[owner];
-    for (const QString &origin : m_callbackOrigins) {
+    for (const CallbackOrigin &origin : m_callbackOrigins) {
         if (quint64(origins.size()) >= m_dispatchBudget.limits().contexts) break;
-        origins.insert(origin);
+        origins.insert(origin.key());
     }
     if (!m_dispatchAbortReported) {
         m_dispatchAbortReported = true;

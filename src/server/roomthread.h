@@ -331,7 +331,17 @@ private:
         bool *entered;
     };
     QList<DyingRuleFrame> m_dyingRuleFrames;
-    QList<QString> m_callbackOrigins;
+    // Pushed on every callback entry but read only on abort, so the key is built lazily.
+    struct CallbackOrigin {
+        const void *definition;
+        TriggerEvent event;
+        ServerPlayer *target;
+        QString site;
+        QString source;
+        int instance;
+        QString key() const;
+    };
+    QList<CallbackOrigin> m_callbackOrigins;
     QHash<quint64, QSet<QString>> m_cancelledCallbackOrigins;
     quint64 m_settlementOwner = 0;
     struct SettlementEpoch {
