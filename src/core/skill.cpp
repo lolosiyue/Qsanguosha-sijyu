@@ -1262,8 +1262,9 @@ bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
 bool TriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                              QVariant &data) const
 {
-    // Match the Lua V2 bridge: the legacy entry has no explicit skill owner.
-    return trigger(triggerEvent, room, player, data, nullptr);
+    // Legacy callers (e.g. Pingjian borrowing V2 skills) have no explicit owner.
+    // V2 cost()/effect() dereference ctx.owner, so the invoking player is the owner.
+    return trigger(triggerEvent, room, player, data, player);
 }
 
 bool TriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
