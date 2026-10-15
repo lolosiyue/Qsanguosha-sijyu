@@ -26,17 +26,6 @@
 #include <QScopeGuard>
 
 namespace {
-// Nested response requests must not replace the enclosing ordinary card-use reason.
-auto standardRequestScope()
-{
-    RoomState *state = Sanguosha->currentRoomState();
-    const auto reason = state->getCurrentCardUseReason();
-    const QString pattern = state->getCurrentCardUsePattern();
-    return qScopeGuard([=] {
-        state->setCurrentCardUseReason(reason);
-        state->setCurrentCardUsePattern(pattern);
-    });
-}
 // Pin nested responses to the invoking instance and unwind only transient prompt state.
 auto standardPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry, const QVariantMap &prompt)
 {
@@ -44,15 +33,10 @@ auto standardPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRe
     const int id = entry.key.instanceID;
     const QString selector = ViewAsSkillV2::borrowedActivationMarkName(name);
     const int previousSelector = player->getMark(selector);
-    RoomState *state = Sanguosha->currentRoomState();
-    const auto previousReason = state->getCurrentCardUseReason();
-    const QString previousPattern = state->getCurrentCardUsePattern();
     const QVariant previousPrompt = player->getSkillInstanceStateValue(name, id, "prompt");
     room->setPlayerMark(player, selector, id);
     player->setSkillInstanceStateValue(name, id, "prompt", prompt);
     return qScopeGuard([=] {
-        state->setCurrentCardUseReason(previousReason);
-        state->setCurrentCardUsePattern(previousPattern);
         room->setPlayerMark(player, selector, previousSelector);
         if (!player->findSkillInstance(name, id)) return;
         if (previousPrompt.isValid()) player->setSkillInstanceStateValue(name, id, "prompt", previousPrompt);
@@ -675,15 +659,10 @@ public:
         return ctx.choice != "cancel";
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
-        ctx.manual_effect = true;
-        return skillEffect(event, room, player, ctx, ctx.owner);
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *caocao = ctx.owner;
+        if (!caocao || !caocao->isAlive()) return false;
         LogMessage log;
         log.type = "#InvokeSkill";
         log.from = caocao;
@@ -728,15 +707,9 @@ bool Hujia::cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) co
     return room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data);
 }
 
-bool Hujia::effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const
+bool Hujia::effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const
 {
-    ctx.manual_effect = true;
-    return skillEffect(event, room, player, ctx, ctx.owner);
-}
-
-bool Hujia::effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const
-{
-    const auto requestScope = standardRequestScope();
+    // Resolve the lord's request here; lieges respond through askForCard below.
     ServerPlayer *caocao = ctx.owner;
     QList<ServerPlayer *> lieges = room->getLieges("wei", caocao);
     if (!caocao->isLord() && caocao->hasSkill("weidi"))
@@ -1237,7 +1210,6 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        const auto requestScope = standardRequestScope();
         JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
         if (player->isNude() || !judge)
             return false;
@@ -1794,7 +1766,6 @@ const Card *JijiangViewAsSkill::createCard(const ActiveSkillRequest &request) co
 
 bool JijiangViewAsSkill::pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const
 {
-    const auto requestScope = standardRequestScope();
     ServerPlayer *liubei = ctx.invoker;
     if (!ctx.initiator || !ctx.initiator->hasLordSkill(objectName()) || !liubei || !liubei->isAlive()) return false;
     QList<ServerPlayer *> marked;
@@ -1876,7 +1847,6 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *liubei, SkillContext &, ServerPlayer *) const override
     {
-        const auto requestScope = standardRequestScope();
         QList<ServerPlayer *> lieges = room->getLieges("shu", liubei);
         if (!liubei->isLord() && liubei->hasSkill("weidi"))
             room->broadcastSkillInvoke("weidi");
@@ -2632,7 +2602,6 @@ public:
         judge.who = player;
         judge.play_animation = false;
         room->judge(judge);
-        const auto requestScope = standardRequestScope();
         if (target->isAlive() && (!target->canDiscard(target, "he")
             || !room->askForCard(target, ".|" + judge.pattern, "@tieji-discard:::" + judge.pattern,
                 *ctx.original_data, Card::MethodDiscard))) {
@@ -2894,7 +2863,6 @@ public:
         else
             room->broadcastSkillInvoke(objectName());
 
-        const auto requestScope = standardRequestScope();
         for (int i = 0; i < getEffectiveAmount(ctx) && yueying->isAlive(); ++i) {
         QList<int> ids = room->getNCards(1, false);
         if (ids.isEmpty()) break;
@@ -3017,7 +2985,6 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        const auto requestScope = standardRequestScope();
         ServerPlayer *p = ctx.owner, *player = ctx.invoker;
         if (player->isDead() || !p->canSlash(player, false)) return false;
         const bool oldFlag = p->hasFlag("ZhuhaiSlash");
@@ -4555,7 +4522,6 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (event == CardResponded) {
-            const auto requestScope = standardRequestScope();
             CardResponseStruct response = ctx.original_data->value<CardResponseStruct>();
             const Card *duel = response.m_toCard;
             const QString key = ctx.extra_data.toString();
@@ -5303,23 +5269,15 @@ public:
             && room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data);
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        ctx.manual_effect = true;
-        QList<ServerPlayer *> recipients = ctx.targets;
-        if (recipients.isEmpty()) recipients << ctx.owner;
-        for (ServerPlayer *recipient : recipients)
-            skillEffect(event, room, player, ctx, recipient);
-        return false;
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
+        ServerPlayer *caocao = ctx.owner;
+        if (!caocao || !caocao->isAlive()) return false;
         const Card *card = ctx.original_data->value<DamageStruct>().card;
         // Nested movement or another instance must not reclaim cards from a new owner.
         if (available(room, card)) {
             room->broadcastSkillInvoke(objectName());
-            target->obtainCard(card);
+            caocao->obtainCard(card);
         }
         return false;
     }
@@ -5386,7 +5344,6 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        const auto requestScope = standardRequestScope();
         JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
         if (player->isKongcheng() || !judge)
             return false;
@@ -6497,7 +6454,6 @@ public:
 
     bool resolvePrompt(Room *room, SkillContext &ctx) const
     {
-        const auto requestScope = standardRequestScope();
         ServerPlayer *player = ctx.invoker;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (!eligible(player, ctx.owner, use)) return false;

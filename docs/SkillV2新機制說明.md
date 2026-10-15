@@ -518,6 +518,8 @@ V2 trigger 排程對 `Compulsory`、`Wake` 及該 context 的 `is_forced` 使用
 callback 只可儲存 ID／更新已登記的 pending 收據，不得派發規則、授予／移除技能或丟出遊戲流程例外。應在此時把 ID 寫回到期收據，不能等 API 正常回傳才補寫：後續 EventAcquireSkill／limit mark 回呼可能直接 TurnBroken。引擎不因後續例外自動回滾已提交 grant；技能仍以其既有到期規則處理。純 callback 範圍的臨時借用應先建立 RAII，再在 committed 回呼填入 cleanup ID，例外出口也只精確撤回該 ID，不掃同來源的所有新技能。
 ### askForCard 回應完成與材料交接
 
+`PlayerDecisionService::askForCard` 與 `askForUseCardStruct` 在入口保存呼叫前的 `reason/pattern`，正常回傳、取消、提早退出與例外都自動還原；巢狀請求結束後，外層繼續使用自己的請求狀態。提供牌回執清理與本次完成回呼仍在還原前結算。`askForUseCard`／`askForUseSlashTo` 共用後者入口，技能不需另寫請求狀態守衛；技能實例的臨時 prompt、selector 與標記仍由原有技能作用域管理。
+
 `askForCard` 的 `MethodResponse` 與 `MethodUse` 都在本入口完成 V2 付款、配額與效果；例如普通閃的 MethodUse 回應不會另經 `Room::useCard`。本入口先呼叫 cost，再派發 WillInvoke；bypass_cost 跳過 pay。原請求的 reason/pattern 固定到該次回應，不讀巢狀請求留下的全域值。
 
 `EventSkillEffectFinished` 的 `ctx.original_data` 同步最後的 `CardResponseStruct`。原生在 `ctx.interceptor_data["native_response_completion"]` 提供 `completed`、`is_provision`、`nullified`、`result`；`completed` 只在整段回應流程成功且未無效時成立，不能以早期 CardResponded 推定成功提供。提供牌技能只在該回執成立、精確 execution/activation/材料吻合時交接材料；其他結果清理本次仍在桌面的精確付款材料。

@@ -8,17 +8,6 @@
 #include <memory>
 #include <QScopeGuard>
 
-static auto yjcm2023RequestScope()
-{
-    RoomState *state = Sanguosha->currentRoomState();
-    const auto reason = state->getCurrentCardUseReason();
-    const QString pattern = state->getCurrentCardUsePattern();
-    return qScopeGuard([=] {
-        state->setCurrentCardUseReason(reason);
-        state->setCurrentCardUsePattern(pattern);
-    });
-}
-
 static QString zhizheEquipObjectNameByArea(int area)
 {
 	if (area == 0) return "_zhizhe_weapon";
@@ -877,7 +866,6 @@ public:
         if (!source || !target) return ContinueEffects;
         Room *room = source->getRoom();
         Room::AcceptedViewAsEffectScope prompt(room, source, objectName(), ctx);
-        const auto requestGuard = yjcm2023RequestScope();
         const SkillInstanceRef ref = prompt.activationRef();
         if (!prompt.isValid()) return ContinueEffects;
         source->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "cards", QVariantList());
@@ -1148,7 +1136,6 @@ public:
             if (!target || !ctx.use_card) return FinishSkill;
             Room *room = target->getRoom();
             Room::AcceptedViewAsEffectScope prompt(room, target, objectName(), ctx);
-            const auto requestGuard = yjcm2023RequestScope();
             const SkillInstanceRef ref = prompt.activationRef();
             if (!prompt.isValid()) return FinishSkill;
             target->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "stage", "give");
@@ -1197,7 +1184,6 @@ public:
         }
         if (!ctx.invoker) return ContinueEffects;
         Room *room = ctx.invoker->getRoom();
-        const auto requestGuard = yjcm2023RequestScope();
         for (const QString &name : accepted) {
             ServerPlayer *target = room->findPlayerByObjectName(name);
             if (target && target->isAlive())
@@ -1244,7 +1230,6 @@ public:
     {
         if (!ctx.owner) return false;
         Room::BorrowedSkillScope prompt(room, ctx.owner, objectName(), ctx.activationRef);
-        const auto requestGuard = yjcm2023RequestScope();
         const SkillInstanceRef ref = prompt.activationRef();
         if (!ref.isValid()) return false;
         ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "stage", "recast");

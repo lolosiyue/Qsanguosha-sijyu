@@ -9,6 +9,7 @@
 #include "json.h"
 #include "protocol.h"
 #include "room.h"
+#include "room-state.h"
 #include "roomthread.h"
 #include "server-info.h"
 #include "serverplayer.h"
@@ -28,6 +29,19 @@
 #include <cstdio>
 
 using namespace QSanProtocol;
+
+namespace {
+auto cardRequestScope(RoomState &state)
+{
+    const auto reason = state.getCurrentCardUseReason();
+    const QString pattern = state.getCurrentCardUsePattern();
+    // Keep the request active through cleanup, then restore its enclosing request.
+    return qScopeGuard([&state, reason, pattern] {
+        state.setCurrentCardUseReason(reason);
+        state.setCurrentCardUsePattern(pattern);
+    });
+}
+}
 
 PlayerDecisionService::PlayerDecisionService(Room &room, EventDispatcher &eventDispatcher)
     : m_room(room), m_eventDispatcher(eventDispatcher)
@@ -1188,6 +1202,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 	const QVariant&data, Card::HandlingMethod method, ServerPlayer*m_who, bool isRetrial, const QString&skill_name,
 	bool isProvision, const Card*m_toCard)
 {
+	const auto requestScope = cardRequestScope(m_room.m_runtime->state());
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(pattern != "slash" || method != Card::MethodUse); // use askForUseSlashTo instead
 	if (!player->isAlive()) return nullptr;
@@ -1968,6 +1983,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, const QString&pattern, const QString&prompt, int notice_index,
 	Card::HandlingMethod method, bool addHistory, ServerPlayer*who, const Card*whocard, QString flag)
 {
+	const auto requestScope = cardRequestScope(m_room.m_runtime->state());
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(method != Card::MethodResponse);
 	if (!player->isAlive()) return CardUseStruct();

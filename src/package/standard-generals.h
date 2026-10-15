@@ -113,7 +113,6 @@ public:
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
 
 protected:
     QString hujia;

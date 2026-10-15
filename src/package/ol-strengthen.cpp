@@ -28,20 +28,6 @@
 #include "room-state.h"
 #include <QScopeGuard>
 
-namespace {
-// Nested liege responses must not replace the enclosing card-use reason.
-auto olRequestScope()
-{
-    RoomState *state = Sanguosha->currentRoomState();
-    const auto reason = state->getCurrentCardUseReason();
-    const QString pattern = state->getCurrentCardUsePattern();
-    return qScopeGuard([=] {
-        state->setCurrentCardUseReason(reason);
-        state->setCurrentCardUsePattern(pattern);
-    });
-}
-}
-
 // Ordinary conversions leave material payment and target dispatch to the card pipeline.
 // PhaseChanging already belongs to the next phase; expire only the recorded, closed predecessor.
 static bool finishedOLPlayPhase(Room *room, const QVariant &id, const ServerPlayer *actor)
@@ -264,7 +250,6 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "Slash"; }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
     {
-        const auto requestScope = olRequestScope();
         ServerPlayer *liubei = ctx.invoker;
         if (!liubei || !liubei->isAlive()) return false;
         if (!liubei->isLord() && liubei->hasSkill("weidi"))
@@ -411,7 +396,6 @@ public:
             if (amount > 0) drawer->drawCards(amount, objectName());
             return false;
         }
-        const auto requestScope = olRequestScope();
         if (!liubei->isLord() && liubei->hasSkill("weidi"))
             room->broadcastSkillInvoke("weidi");
         else {
