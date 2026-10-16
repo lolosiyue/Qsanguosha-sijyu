@@ -4,6 +4,7 @@
 #include "engine.h"
 //#include "client.h"
 #include "room.h"
+#include "room-state.h"
 //#include "structs.h"
 #include "lua-wrapper.h"
 //#include "standard.h"
@@ -728,6 +729,15 @@ const Card*Card::Parse(const QString &str)
 				user_string.remove(0, 1);
 				card->setUserString(user_string);
 			}
+			if (qobject_cast<ShowDistanceCard *>(card)) {
+				// A shared wire card must retain its distance skill, not its class name.
+				const QString name = card->getUserString();
+				if (!dynamic_cast<const DistanceSkillV2 *>(Sanguosha->getSkill(name))) {
+					delete card;
+					return nullptr;
+				}
+				card->setSkillName(name);
+			}
 			card->deleteLater();
 			return card;
 		}
@@ -1346,6 +1356,36 @@ bool Card::setProperty(const char* name, const QVariant& value) {
 SkillCard::SkillCard() : Card(NoSuit, 0), m_skillOwner(nullptr)
 {
 	handling_method = MethodDiscard;
+}
+
+ShowDistanceCard::ShowDistanceCard()
+{
+    // Named products receive V2 conversion tickets instead of bare-proxy treatment.
+    setObjectName("show_distance");
+    mute = true;
+    target_fixed = true;
+    will_throw = false;
+    handling_method = Card::MethodNone;
+}
+
+const Card *ShowDistanceCard::validate(CardUseStruct &use) const
+{
+    if (!use.from || !use.from->getRoom()) return nullptr;
+    Room *room = use.from->getRoom();
+    const auto *entry = dynamic_cast<const ShowDistanceSkill *>(
+        Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
+    ActiveSkillRequest request;
+    request.initiator = use.from;
+    request.activationRef = use.activationRef;
+    request.reason = room->getRoomState()->getCurrentCardUseReason();
+    request.setCardSelection(this);
+    for (const ServerPlayer *target : use.to) {
+        if (!target) return nullptr;
+        request.selectedTargetNames << target->objectName();
+    }
+    if (entry && entry->canActivateRequest(request)) room->showGeneralForSkill(request.activationRef);
+    // Reveal only: no history, CardUsed or activation audio, as in the donor.
+    return nullptr;
 }
 
 ActiveSkillCard::ActiveSkillCard()

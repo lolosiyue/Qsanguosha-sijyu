@@ -24,6 +24,7 @@ private:
 #include "target-tip.h"
 #include "structs.h"
 #include "scenario.h"
+#include <memory>
 
 enum class SkillDeclarationReason;
 struct SkillDeclarationCandidate;
@@ -750,10 +751,21 @@ public:
     virtual int getFixed(const Player *from, const Player *to) const;
 };
 
+class ShowDistanceSkill : public ViewAsSkillV2
+{
+public:
+    explicit ShowDistanceSkill(const QString &name);
+    bool canActivate(const ActiveSkillRequest &request) const override;
+    TargetMode targetMode() const override { return NoTarget; }
+    bool willThrowSelectedCards() const override { return false; }
+    const Card *createCard(const ActiveSkillRequest &request) const override;
+};
+
 class DistanceSkillV2 : public DistanceSkill, public AmountSkillV2
 {
 public:
     explicit DistanceSkillV2(const QString &name);
+    const ViewAsSkillV2 *getViewAsSkill() const { return m_reveal.get(); }
 
     virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
     virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
@@ -768,6 +780,10 @@ protected:
     int m_baseAmount;
     CorrectSkillHolderSelector m_holderSelector;
     CorrectSkillGate m_gate;
+
+private:
+    // QObject parenting would register the entry as a second same-name skill.
+    std::unique_ptr<ShowDistanceSkill> m_reveal;
 };
 
 class MaxCardsSkill : public Skill

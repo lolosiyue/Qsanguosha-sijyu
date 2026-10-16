@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "roomscene.h"
 #include "skill-instance-utils.h"
+#include "hegemony-mode.h"
 #include <QMutexLocker>
 #include <QtMath>
 
@@ -451,7 +452,9 @@ void QSanSkillButton::setSkill(const Skill *skill)
         _m_emitActivateSignal = false;
         _m_canDisable = false;
         _m_canEnable = true;
-    } else if (freq == Skill::Limited || freq == Skill::NotFrequent) {
+    } else if (freq == Skill::Limited || freq == Skill::NotFrequent
+               || (_m_viewAsSkill && dynamic_cast<const DistanceSkillV2 *>(skill)
+                   && HegemonyMode::enabledFor(Self))) {
         if (skill->isChangeSkill()) {
             //setState(QSanButton::S_STATE_HOVER);
             _setSkillType(QSanInvokeSkillButton::S_SKILL_CHANGE);

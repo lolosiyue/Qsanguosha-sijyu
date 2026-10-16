@@ -310,6 +310,15 @@ protected:
     ServerPlayer *m_skillOwner;
 };
 
+// Shared DistanceSkillV2 reveal command; userString carries the distance skill name.
+class ShowDistanceCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE ShowDistanceCard();
+    const Card *validate(CardUseStruct &use) const override;
+};
+
 // Server-created proxy for ViewAsSkillV2 custom actions.  It has no
 // client-authoritative state: Room recreates it from the immutable request.
 class ActiveSkillCard : public SkillCard

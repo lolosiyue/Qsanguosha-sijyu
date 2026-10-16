@@ -608,6 +608,7 @@ Engine::Engine(bool isManualMode)
     // V2 actions travel as this core proxy, independently of content packages.
     // Without its factory, Card::Parse rejects Mark Card replies as empty plays.
     metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject);
+    metaobjects.insert(QStringLiteral("ShowDistanceCard"), &ShowDistanceCard::staticMetaObject);
 
     QString packageError;
     if (!QSanPackages::prepareRuntime(&packageError)) {
@@ -2794,14 +2795,7 @@ const TriggerSkill *Engine::getTriggerSkill(const QString &skill_name, int insta
 
 const ViewAsSkill*Engine::getViewAsSkill(const QString &skill_name) const
 {
-    const Skill*skill = getSkill(skill_name);
-	if(skill){
-		if (skill->inherits("ViewAsSkill"))
-			return qobject_cast<const ViewAsSkill*>(skill);
-		else if (skill->inherits("TriggerSkill"))
-			return qobject_cast<const TriggerSkill*>(skill)->getViewAsSkill();
-	}
-	return nullptr;
+    return ViewAsSkill::parseViewAsSkill(getSkill(skill_name));
 }
 
 const ViewAsEquipSkill*Engine::getViewAsEquipSkill(const QString &skill_name) const

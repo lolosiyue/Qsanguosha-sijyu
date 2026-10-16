@@ -14,6 +14,7 @@
 #include "exppattern.h"
 #include "standard.h"
 #include "skill-instance-utils.h"
+#include "hegemony-mode.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <algorithm>
 #include <atomic>
@@ -521,6 +522,8 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
 			return qobject_cast<const ViewAsSkill *>(skill);
 		if (skill->inherits("TriggerSkill"))
 			return qobject_cast<const TriggerSkill *>(skill)->getViewAsSkill();
+		if (const auto *distance = dynamic_cast<const DistanceSkillV2 *>(skill))
+			return distance->getViewAsSkill();
 	}
     return nullptr;
 }
@@ -1501,8 +1504,50 @@ bool CorrectSkillGate::mayApply(const Player *primary, const Player *secondary, 
 }
 
 DistanceSkillV2::DistanceSkillV2(const QString &name)
-    : DistanceSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary)
+    : DistanceSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary),
+      m_reveal(new ShowDistanceSkill(objectName()))
 {
+}
+
+ShowDistanceSkill::ShowDistanceSkill(const QString &name) : ViewAsSkillV2(name)
+{
+}
+
+bool ShowDistanceSkill::canActivate(const ActiveSkillRequest &request) const
+{
+    const Player *player = request.initiator;
+    const SkillInstanceRef &ref = request.activationRef;
+    const auto *distance = dynamic_cast<const DistanceSkillV2 *>(Sanguosha->getSkill(objectName()));
+    if (!distance || distance->getViewAsSkill() != this || !distance->isVisible()
+        || !player || !player->isAlive() || !HegemonyMode::enabledFor(player)
+        || player->getPhase() != Player::Play
+        || request.reason != CardUseStruct::CARD_USE_REASON_PLAY
+        || ref.ownerObjectName != player->objectName() || ref.key.skillName != objectName()
+        || (!request.userString.isEmpty() && request.userString != objectName())
+        || !request.selectedCardIds.isEmpty() || !request.selectedTargetNames.isEmpty())
+        return false;
+
+    // Follow this exact live source, never a shown same-name sibling or another player's grant.
+    const SkillInstanceRef root = SkillInstanceUtils::resolveRootRef(ref,
+        [player](const SkillInstanceRef &current) -> const SkillInstance * {
+            if (current.ownerObjectName != player->objectName()
+                || player->isSkillInvalid(current.key.skillName, current.key.instanceID)) return nullptr;
+            return player->findSkillInstance(current.key.skillName, current.key.instanceID);
+        }, false);
+    const SkillInstance *instance = root.isValid()
+        ? player->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
+    return instance && instance->source == SourceInnate
+        && HegemonyMode::innateGeneralConcealed(player, instance->bindHead)
+        && player->canShowGeneral(instance->bindHead == 1 ? "h" : "d");
+}
+
+const Card *ShowDistanceSkill::createCard(const ActiveSkillRequest &request) const
+{
+    if (!canActivate(request)) return nullptr;
+    auto *card = new ShowDistanceCard;
+    card->setSkillName(objectName());
+    card->setUserString(objectName());
+    return card;
 }
 
 CorrectSkillResult DistanceSkillV2::getCorrection(const CorrectSkillContext &context) const

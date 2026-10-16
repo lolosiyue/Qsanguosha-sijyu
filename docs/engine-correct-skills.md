@@ -50,6 +50,14 @@ CorrectSkillV2 的持續效果、fixed 修正與 UI 貢獻查詢在 callback 前
 
 暗置不寫入 SkillInvalidity、不刪除 instance，也不修改 `hasSkill()`／TriggerSkillV2 的候選判斷。重新暗置後，下次查詢即停止該來源的持續修正；獨立建立、有自身期限的後天效果不因暗置而撤銷。普通身份局保留既有有效性語意。
 
+### DistanceSkillV2：出牌階段主動明置
+
+`DistanceSkillV2` 基底自動持有同名的 `ShowDistanceSkill` 共用入口，C++／Lua V2 距離技能均沿用；舊版 `DistanceSkill` 不變。`mashu` 只保留距離修正設定，沒有專用明置類別。國戰出牌階段可點選可見、尚未明置的距離技能實例，零耗牌、無目標地明置其來源將牌。已明置、死亡、失效、禁止明置、獨立後天來源及非國戰皆不可使用此入口；主／副將同名實例分別判斷，重新暗置後可再次使用。
+
+參考 [Mogara 的 ShowDistanceCard／ShowMashu](https://github.com/Mogara/QSanguosha-For-Hegemony/blob/dev/src/core/card.cpp)，這是明置命令而非距離技能效果發動：核心註冊 `ShowDistanceCard`，以 `userString` 傳遞技能名，解析時恢復該名稱並拒絕非 V2 距離技能；`ShowMashu` 專用類別與註冊已移除，所有技能均使用共用卡名。`ShowDistanceCard::validate()` 重驗伺服器解析的精確 activation ref，再呼叫 `Room::showGeneralForSkill()` 並返回空卡，不建立技能 execution、不記用牌 history、不觸發 CardUsed，也不播放技能配音。`canActivate()`／`createCard()` 維持純查詢；此命令保留 donor 的 validate 終止語意，不適用一般技能把效果搬入 V2 `effect()` 的遷移方式。距離修正仍完全沿用上述被動效果閘門。
+
+Isolated AI 以 `ShowDistanceCard` 牌族接入共用 activate 分派，不按技能名註冊策略。共用卡設定 `show_distance` objectName，確保 V2 投影產生 conversion ticket；零耗牌、無目標方案先驗票，再沿用 isolated 國戰的攻擊／防禦亮將時機判斷。逐實例詢問比對 activation／source 的 owner、skill、instance 六欄，一般出牌詢問則先處理明置，讓下一次詢問重新建立距離候選；多個距離技能不重複抽樣亮將意願。拒絕明置會繼續其他出牌策略，缺必要資料仍為未覆蓋，不呼叫 SmartAI。這是共用亮將策略，不推演各距離技能明置後的具體收益。
+
 ### TargetMod V2：先選目標，用到才亮將
 
 | 階段 | 契約 |
