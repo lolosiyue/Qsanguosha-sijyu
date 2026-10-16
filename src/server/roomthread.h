@@ -267,6 +267,31 @@ private:
         bool gameRule = false;
     };
 
+    // A native turn/phase driver runs on a fresh budget outside any cascade;
+    // the enclosing budget, generation and cascade id are restored afterwards.
+    class DriverBudgetScope {
+    public:
+        explicit DriverBudgetScope(RoomThread &thread)
+            : m_thread(thread), m_budget(thread.m_dispatchBudget),
+              m_generation(thread.m_budgetGeneration), m_id(thread.m_cascadeId) {
+            ++m_thread.m_budgetGeneration;
+            m_thread.m_cascadeId = 0;
+            m_thread.m_dispatchBudget = TriggerDispatchBudget(m_budget.limits());
+        }
+        ~DriverBudgetScope() {
+            m_thread.m_dispatchBudget = m_budget;
+            m_thread.m_budgetGeneration = m_generation;
+            m_thread.m_cascadeId = m_id;
+        }
+        DriverBudgetScope(const DriverBudgetScope &) = delete;
+        DriverBudgetScope &operator=(const DriverBudgetScope &) = delete;
+    private:
+        RoomThread &m_thread;
+        TriggerDispatchBudget m_budget;
+        quint64 m_generation;
+        quint64 m_id;
+    };
+
     void _handleTurnBroken3v3(QList<ServerPlayer *> &first, QList<ServerPlayer *> &second, GameRule *game_rule);
     void _handleTurnBrokenHulaoPass(ServerPlayer *shenlvbu, QList<ServerPlayer *> league, GameRule *game_rule, int stage);
     void _handleTurnBrokenNormal(GameRule *game_rule);

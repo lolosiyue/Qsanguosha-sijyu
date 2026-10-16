@@ -2860,17 +2860,7 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                     }
                 } else if (!m_operationRootActive && m_authorCallbackDepth == 0
                     && (triggerEvent == TurnStart || triggerEvent == EventPhaseProceeding)) {
-                    const TriggerDispatchBudget driverBudget = m_dispatchBudget;
-                    const quint64 driverGeneration = m_budgetGeneration;
-                    const quint64 driverId = m_cascadeId;
-                    ++m_budgetGeneration;
-                    m_cascadeId = 0;
-                    m_dispatchBudget = TriggerDispatchBudget(driverBudget.limits());
-                    const auto driverGuard = qScopeGuard([&]() {
-                        m_dispatchBudget = driverBudget;
-                        m_budgetGeneration = driverGeneration;
-                        m_cascadeId = driverId;
-                    });
+                    DriverBudgetScope driverBudget(*this);
                     if (triggerEvent == EventPhaseProceeding && target && target->getPhase() == Player::Judge)
                         invokeAuthorCallback([&]() { broken = ts->trigger(triggerEvent, room, target, data); }, true);
                     else
@@ -2938,17 +2928,7 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
         for (TriggerSkill *skill : skill_table[triggerEvent]) {
             if (triggered.contains(skill)) continue;
             if (auto *rule = qobject_cast<GameRule *>(skill)) {
-                const TriggerDispatchBudget savedBudget = m_dispatchBudget;
-                const quint64 savedGeneration = m_budgetGeneration;
-                const quint64 savedId = m_cascadeId;
-                ++m_budgetGeneration;
-                m_cascadeId = 0;
-                m_dispatchBudget = TriggerDispatchBudget(savedBudget.limits());
-                const auto ruleGuard = qScopeGuard([&]() {
-                    m_dispatchBudget = savedBudget;
-                    m_budgetGeneration = savedGeneration;
-                    m_cascadeId = savedId;
-                });
+                DriverBudgetScope ruleBudget(*this);
                 if (triggerEvent == EventPhaseProceeding && target && target->getPhase() == Player::Judge)
                     invokeAuthorCallback([&]() { rule->trigger(triggerEvent, room, target, data); }, true);
                 else
