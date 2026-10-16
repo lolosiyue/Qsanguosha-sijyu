@@ -2487,31 +2487,10 @@ static bool invalidatesDistanceCache(TriggerEvent triggerEvent)
 namespace {
 void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary, const QString &completion);
 }
-bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
+// ResolutionHistory facts recorded around one dispatch. The turn event guard
+// itself stays in trigger() because it must span dispatchTrigger().
+qint64 RoomThread::recordTriggerHistoryBefore(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, const QVariant &data)
 {
-    if (isMandatoryCleanup() && (triggerEvent == GameOverJudge || triggerEvent == BuryVictim))
-        return triggerMandatoryGameRule(triggerEvent, target, data);
-    if (suppressOptionalDispatch()) return false;
-    beginTriggerDispatch(triggerEvent, target);
-    const quint64 budgetGeneration = m_budgetGeneration;
-    const auto budgetGuard = qScopeGuard([this, budgetGeneration]() {
-        leaveTriggerDispatch(budgetGeneration);
-    });
-    // Physical provenance is native admission data. Hooks may change effect state,
-    // but cannot replace this receipt with another equipment or an empty identity.
-    const QVariant physicalIdentity = data;
-    const auto restorePhysicalIdentity = qScopeGuard([&] {
-        restorePhysicalEquipmentIdentity(data, physicalIdentity);
-    });
-	// Room APIs used by TakeoverRule must update containers and notifications
-	// without replaying historical gameplay triggers during reconstruction.
-	if (room && room->isRestoringTakeoverSnapshot())
-		return false;
-	if (!room)
-		return dispatchTrigger(triggerEvent, room, target, data);
-	room->processPendingPreshows();
-    checkTriggerDispatchAbort();
-
     // Record accepted invocations, not skill scopes opened before cost/payment.
     // Legacy adapters also emit SkillTriggered; record that path only once.
     if (room->historyRecordingEnabled()
@@ -2536,25 +2515,6 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
                 QStringLiteral("skill_invoked"), invocation);
         }
     }
-
-	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
-	QVariantMap turnData;
-	if (triggerEvent == TurnStart && room) {
-		turnData.insert(QStringLiteral("player"), target ? target->objectName() : QString());
-		turnData.insert(QStringLiteral("extra_turn"), room->isCurrentExtraTurn());
-		if (room->isCurrentExtraTurn()) {
-			turnData.insert(QStringLiteral("reason"), room->getCurrentExtraTurnReason());
-			const SkillInstanceRef source = room->getCurrentExtraTurnSourceRef();
-			turnData.insert(QStringLiteral("cause_event_id"), room->getCurrentExtraTurnCauseEventId());
-			turnData.insert(QStringLiteral("skill_name"), source.key.skillName);
-			turnData.insert(QStringLiteral("skill_owner"), source.ownerObjectName);
-			turnData.insert(QStringLiteral("instance_id"), source.key.instanceID);
-		}
-	}
-	ResolutionHistoryEventGuard turnHistory(room->resolutionHistory(), QStringLiteral("turn"),
-		turnData, room->historyRecordingEnabled() && triggerEvent == TurnStart);
-    if (turnHistory.id() != 0) recordTurnHpSnapshot(room, turnHistory.id(), "start", "running");
-	bool broken = false;
 	// Capture the enclosing use before callbacks can open nested uses. The
 	// accepted-use fact keeps its original targets; completion is a new fact.
 	const qint64 targetUseEventId = triggerEvent == TargetSpecified && room->historyRecordingEnabled()
@@ -2606,13 +2566,29 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
             room->resolutionHistory().appendFact(eventId, QStringLiteral("target_confirmed"), fact);
         }
     }
-	try {
-		broken = dispatchTrigger(triggerEvent, room, target, data);
-	} catch (TriggerEvent) {
-		if (triggerEvent == TurnStart && turnHistory.id() != 0)
-			rememberInterruptedTurn(turnHistory.id());
-		throw;
+	return targetUseEventId;
+}
+
+QVariantMap RoomThread::turnHistoryData(TriggerEvent triggerEvent, Room *room, ServerPlayer *target) const
+{
+	QVariantMap turnData;
+	if (triggerEvent == TurnStart && room) {
+		turnData.insert(QStringLiteral("player"), target ? target->objectName() : QString());
+		turnData.insert(QStringLiteral("extra_turn"), room->isCurrentExtraTurn());
+		if (room->isCurrentExtraTurn()) {
+			turnData.insert(QStringLiteral("reason"), room->getCurrentExtraTurnReason());
+			const SkillInstanceRef source = room->getCurrentExtraTurnSourceRef();
+			turnData.insert(QStringLiteral("cause_event_id"), room->getCurrentExtraTurnCauseEventId());
+			turnData.insert(QStringLiteral("skill_name"), source.key.skillName);
+			turnData.insert(QStringLiteral("skill_owner"), source.ownerObjectName);
+			turnData.insert(QStringLiteral("instance_id"), source.key.instanceID);
+		}
 	}
+	return turnData;
+}
+
+void RoomThread::recordTriggerHistoryAfter(Room *room, qint64 targetUseEventId, const QVariant &data)
+{
 	if (targetUseEventId > 0 && data.canConvert<CardUseStruct>()) {
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (use.from && use.card) {
@@ -2625,6 +2601,47 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				 {"targets", targets}, {"attribution_complete", true}});
 		}
 	}
+}
+
+bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
+{
+    if (isMandatoryCleanup() && (triggerEvent == GameOverJudge || triggerEvent == BuryVictim))
+        return triggerMandatoryGameRule(triggerEvent, target, data);
+    if (suppressOptionalDispatch()) return false;
+    beginTriggerDispatch(triggerEvent, target);
+    const quint64 budgetGeneration = m_budgetGeneration;
+    const auto budgetGuard = qScopeGuard([this, budgetGeneration]() {
+        leaveTriggerDispatch(budgetGeneration);
+    });
+    // Physical provenance is native admission data. Hooks may change effect state,
+    // but cannot replace this receipt with another equipment or an empty identity.
+    const QVariant physicalIdentity = data;
+    const auto restorePhysicalIdentity = qScopeGuard([&] {
+        restorePhysicalEquipmentIdentity(data, physicalIdentity);
+    });
+	// Room APIs used by TakeoverRule must update containers and notifications
+	// without replaying historical gameplay triggers during reconstruction.
+	if (room && room->isRestoringTakeoverSnapshot())
+		return false;
+	if (!room)
+		return dispatchTrigger(triggerEvent, room, target, data);
+	room->processPendingPreshows();
+    checkTriggerDispatchAbort();
+
+    const qint64 targetUseEventId = recordTriggerHistoryBefore(triggerEvent, room, target, data);
+	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
+	ResolutionHistoryEventGuard turnHistory(room->resolutionHistory(), QStringLiteral("turn"),
+		turnHistoryData(triggerEvent, room, target), room->historyRecordingEnabled() && triggerEvent == TurnStart);
+    if (turnHistory.id() != 0) recordTurnHpSnapshot(room, turnHistory.id(), "start", "running");
+	bool broken = false;
+	try {
+		broken = dispatchTrigger(triggerEvent, room, target, data);
+	} catch (TriggerEvent) {
+		if (triggerEvent == TurnStart && turnHistory.id() != 0)
+			rememberInterruptedTurn(turnHistory.id());
+		throw;
+	}
+	recordTriggerHistoryAfter(room, targetUseEventId, data);
 	if (turnHistory.id() != 0)
         recordTurnHpSnapshot(room, turnHistory.id(), "end", broken ? "broken" : "completed");
     turnHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));

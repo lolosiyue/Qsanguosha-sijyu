@@ -272,6 +272,11 @@ private:
     void _handleTurnBrokenNormal(GameRule *game_rule);
     bool dispatchTrigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     void reclaimCompletedTurn();
+    // ResolutionHistory facts around one dispatch; the turn guard stays in trigger().
+    qint64 recordTriggerHistoryBefore(TriggerEvent triggerEvent, Room *room, ServerPlayer *target,
+                                      const QVariant &data);
+    QVariantMap turnHistoryData(TriggerEvent triggerEvent, Room *room, ServerPlayer *target) const;
+    void recordTriggerHistoryAfter(Room *room, qint64 targetUseEventId, const QVariant &data);
     bool triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
                          const QList<TriggerSkill *> *equipmentGroup = nullptr,
                          const QList<SkillInstanceRef> *allowedSources = nullptr);
