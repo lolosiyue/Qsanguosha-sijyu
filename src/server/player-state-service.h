@@ -71,6 +71,7 @@ private:
 		const QVariant &value, const std::function<void()> &beforeEventDispatch);
 
 	friend class Room;
+	friend class DamageResolutionService;
 
 	Room &m_room;
 	RoomRuntime &m_runtime;

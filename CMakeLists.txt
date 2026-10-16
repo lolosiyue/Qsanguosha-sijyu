@@ -505,6 +505,8 @@ add_library(qsanguosha_engine STATIC
     src/server/request-coordinator.h
     src/server/player-decision-service.cpp
     src/server/player-decision-service.h
+    src/server/damage-resolution-service.cpp
+    src/server/damage-resolution-service.h
     src/server/room-notifier.cpp
     src/server/room-notifier.h
     src/server/room-roster.cpp
