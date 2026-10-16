@@ -476,8 +476,12 @@ function sgs.CreateInvaliditySkill(spec)
 		skill.skill_valid = spec.skill_valid
 	--end
 	-- Optional prerequisite (src/core/invalidity-gate.h): if false, C++ treats the skill as valid without calling skill_valid.
+	-- validity_mark: skill_valid can invalidate a skill only when the player has this fixed mark (> 0).
 	-- validity_mark_prefix: skill_valid can invalidate a skill only when the player has the prefix..skillName mark.
 	-- validity_current_sibling_skill: invalidation is possible only when the first living other player with CurrentPlayer has the skill.
+	if type(spec.validity_mark)=="string" then
+		skill:setProperty("InvalidityMark",sgs.QVariant(spec.validity_mark))
+	end
 	if type(spec.validity_mark_prefix)=="string" then
 		skill:setProperty("InvalidityMarkPrefix",sgs.QVariant(spec.validity_mark_prefix))
 	end

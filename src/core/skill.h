@@ -871,6 +871,7 @@ public:
     virtual bool isSkillValid(const Player *player, const Skill *skill) const = 0;
 
     // Required by invalidity-gate.h; mirrors the dynamic property of the same name and avoids a property() lookup on every query.
+    const QString &gateMark() const { return m_gateMark; }
     const QString &gateMarkPrefix() const { return m_gateMarkPrefix; }
     const QString &gateCurrentSiblingSkill() const { return m_gateCurrentSiblingSkill; }
 
@@ -878,6 +879,7 @@ protected:
     bool event(QEvent *event) override;
 
 private:
+    QString m_gateMark;
     QString m_gateMarkPrefix;
     QString m_gateCurrentSiblingSkill;
 };

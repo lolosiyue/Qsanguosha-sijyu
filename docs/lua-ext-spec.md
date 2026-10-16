@@ -515,6 +515,16 @@ skill_name = sgs.CreateFilterSkill {
 
 ### 5.12 InvaliditySkill（技能無效化）
 
+`skill_valid` 必須是純查詢。可選的必要條件閘門會在每次查詢讀取即時狀態；任一條件不成立時，C++ 略過此規則的 Lua 回呼，繼續檢查其他無效化規則：
+
+| 欄位 | 允許呼叫 `skill_valid` 的必要條件 |
+|------|------|
+| `validity_mark` | 被查詢玩家的固定標記值大於 0，與技能名稱無關 |
+| `validity_mark_prefix` | 被查詢玩家的 `prefix .. skillName` 標記值大於 0 |
+| `validity_current_sibling_skill` | 第一位帶有 `CurrentPlayer` 旗標的存活其他玩家持有指定技能（忽略有效性） |
+
+未設定或空字串不啟用該閘門。閘門成立仍由原回呼決定有效性；技能名稱篩選、鎖定技／覺醒技豁免等條件應保留在回呼內。只有「回呼拒絕時一定成立」的條件才可宣告為閘門。
+
 ```lua
 skill_name = sgs.CreateInvaliditySkill {
     name = "skill_name",

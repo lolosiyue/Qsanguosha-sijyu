@@ -1612,6 +1612,7 @@ InvaliditySkill::InvaliditySkill(const QString &name)
 bool InvaliditySkill::event(QEvent *event)
 {
     if (event->type() == QEvent::DynamicPropertyChange) {
+        m_gateMark = property("InvalidityMark").toString();
         m_gateMarkPrefix = property("InvalidityMarkPrefix").toString();
         m_gateCurrentSiblingSkill = property("InvalidityCurrentSiblingSkill").toString();
     }

@@ -10,6 +10,11 @@
 inline bool invalidityCallbackMayReject(const InvaliditySkill *rule,
                                         const Player *player, const Skill *skill)
 {
+    // Fixed per-player prerequisites do not depend on the queried skill name.
+    const QString &mark = rule->gateMark();
+    if (!mark.isEmpty() && (!player || player->getMark(mark) < 1))
+        return false;
+
     const QString &prefix = rule->gateMarkPrefix();
     if (!prefix.isEmpty()
         && (!player || !skill || player->getMark(prefix + skill->objectName()) < 1))
