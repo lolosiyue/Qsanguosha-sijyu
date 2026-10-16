@@ -3,8 +3,10 @@
 #include "room.h"
 #include "json.h"
 #include "card-lifetime-manager.h"
+#include "skill-instance-utils.h"
 #include "protocol/protocol-message-utils.h"
 #include <QMetaType>
+#include <utility>
 
 // Register metatypes for multi-instance skills so QVariant::toString() returns the base skill name.
 static struct SkillInstanceMetaRegistrar {
@@ -595,4 +597,486 @@ bool ChoiceData::tryParse(const QVariant &arg)
     forced_answer = args[5].toString();
     canceled = args[6].toBool();
     return true;
+}
+
+DamageStruct::DamageStruct()
+	: from(nullptr), to(nullptr), card(nullptr), damage(1), nature(Normal), chain(false),
+	transfer(false), by_user(true), prevented(false), ignore_hujia(false)
+{
+}
+
+DamageStruct::DamageStruct(const Card*card, ServerPlayer*from, ServerPlayer*to, int damage, DamageStruct::Nature nature)
+	: from(from), to(to), card(card), damage(damage), nature(nature),
+	chain(false), transfer(false), by_user(true), prevented(false), ignore_hujia(false)
+{
+}
+
+DamageStruct::DamageStruct(const QString &reason, ServerPlayer*from, ServerPlayer*to, int damage, DamageStruct::Nature nature)
+	: from(from), to(to), card(nullptr), damage(damage), nature(nature),
+	chain(false), transfer(false), by_user(true), reason(reason), prevented(false), ignore_hujia(false)
+{
+}
+
+DamageStruct::DamageStruct(const DamageStruct &other) { *this = other; }
+DamageStruct::DamageStruct(DamageStruct &&other) noexcept { *this = other; }
+DamageStruct &DamageStruct::operator=(const DamageStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	from=other.from; to=other.to; card=other.card; damage=other.damage; nature=other.nature;
+	chain=other.chain; transfer=other.transfer; by_user=other.by_user; reason=other.reason;
+	transfer_reason=other.transfer_reason; prevented=other.prevented; tips=other.tips; ignore_hujia=other.ignore_hujia;
+	globalCardLifetimeManager().retainEventPayload(this, {card});
+	return *this;
+}
+DamageStruct &DamageStruct::operator=(DamageStruct &&other) noexcept { return operator=(static_cast<const DamageStruct &>(other)); }
+DamageStruct::~DamageStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+QString DamageStruct::getReason() const
+{
+	if (reason.isEmpty()&&card)
+		return card->objectName();
+	return reason;
+}
+
+CardEffectStruct::CardEffectStruct()
+	: card(nullptr), offset_card(nullptr), offset_num(1), from(nullptr), to(nullptr), multiple(false),
+	nullified(false), no_respond(false), no_offset(false), extra_effect(0), skillExecutionID(0)
+{
+}
+
+CardEffectStruct::CardEffectStruct(const CardEffectStruct &other) { *this = other; }
+CardEffectStruct::CardEffectStruct(CardEffectStruct &&other) noexcept { *this = other; }
+CardEffectStruct &CardEffectStruct::operator=(const CardEffectStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	card=other.card; offset_card=other.offset_card; offset_num=other.offset_num; from=other.from; to=other.to;
+	multiple=other.multiple; nullified=other.nullified; no_respond=other.no_respond; no_offset=other.no_offset;
+	extra_effect=other.extra_effect; skillExecutionID=other.skillExecutionID;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
+	globalCardLifetimeManager().retainEventPayload(this, {card, offset_card});
+	return *this;
+}
+CardEffectStruct &CardEffectStruct::operator=(CardEffectStruct &&other) noexcept { return operator=(static_cast<const CardEffectStruct &>(other)); }
+CardEffectStruct::~CardEffectStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+void CardEffectStruct::setSkillUseContext(const CardUseStruct &use)
+{
+    skillExecutionID = use.skillExecutionID;
+    physicalEquipSource = use.physicalEquipSource;
+    m_acceptedSkillEffectCard = use.isAcceptedSkillEffectCard();
+}
+
+
+SlashEffectStruct::SlashEffectStruct()
+	: jink_num(1), slash(nullptr), jink(nullptr), from(nullptr), to(nullptr), drank(0), nature(DamageStruct::Normal), multiple(false), nullified(false),
+	no_respond(false), no_offset(false)
+{
+}
+
+SlashEffectStruct::SlashEffectStruct(const SlashEffectStruct &other) { *this = other; }
+SlashEffectStruct::SlashEffectStruct(SlashEffectStruct &&other) noexcept { *this = other; }
+SlashEffectStruct &SlashEffectStruct::operator=(const SlashEffectStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	jink_num=other.jink_num; slash=other.slash; jink=other.jink; from=other.from; to=other.to; drank=other.drank;
+	nature=other.nature; multiple=other.multiple; nullified=other.nullified; no_respond=other.no_respond; no_offset=other.no_offset;
+	globalCardLifetimeManager().retainEventPayload(this, {slash, jink});
+	return *this;
+}
+SlashEffectStruct &SlashEffectStruct::operator=(SlashEffectStruct &&other) noexcept { return operator=(static_cast<const SlashEffectStruct &>(other)); }
+SlashEffectStruct::~SlashEffectStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+DyingStruct::DyingStruct()
+	: who(nullptr), damage(nullptr)
+{
+}
+
+DeathStruct::DeathStruct()
+	: who(nullptr), damage(nullptr)
+{
+}
+
+RecoverStruct::RecoverStruct(ServerPlayer*who, const Card*card, int recover, const QString &reason)
+	: recover(recover), who(who), card(card), reason(reason)
+{
+}
+
+RecoverStruct::RecoverStruct(const QString &reason, ServerPlayer*who, int recover)
+	: recover(recover), who(who), card(nullptr), reason(reason)
+{
+}
+
+RecoverStruct::RecoverStruct(const RecoverStruct &other) { *this = other; }
+RecoverStruct::RecoverStruct(RecoverStruct &&other) noexcept { *this = other; }
+RecoverStruct &RecoverStruct::operator=(const RecoverStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	recover=other.recover; who=other.who; card=other.card; reason=other.reason;
+	globalCardLifetimeManager().retainEventPayload(this, {card});
+	return *this;
+}
+RecoverStruct &RecoverStruct::operator=(RecoverStruct &&other) noexcept { return operator=(static_cast<const RecoverStruct &>(other)); }
+RecoverStruct::~RecoverStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+MarkStruct::MarkStruct()
+	: who(nullptr), count(1), gain(-1)
+{
+}
+
+DrawStruct::DrawStruct()
+	: historyEventId(0), who(nullptr), num(1), top(true), visible(false)
+{
+}
+
+HpLostStruct::HpLostStruct()
+	: from(nullptr), to(nullptr), lose(1), ignore_hujia(true)
+{
+}
+
+HpLostStruct::HpLostStruct(ServerPlayer*to, int lose, const QString &reason, ServerPlayer*from, bool ignore_hujia)
+	: from(from), to(to), reason(reason), lose(lose), ignore_hujia(ignore_hujia)
+{
+}
+
+MaxHpStruct::MaxHpStruct()
+	: who(nullptr), change(0)
+{
+}
+
+MaxHpStruct::MaxHpStruct(ServerPlayer*who, int change, const QString &reason)
+	: who(who), change(change), reason(reason)
+{
+}
+
+PindianStruct::PindianStruct()
+	: from(nullptr), to(nullptr), from_card(nullptr), to_card(nullptr), success(false)
+{
+}
+
+bool PindianStruct::isSuccess() const
+{
+	return success;
+}
+
+JudgeStruct::JudgeStruct()
+	: who(nullptr), card(nullptr), pattern("."), good(true), time_consuming(false),
+	negative(false), play_animation(true), throw_card(true), retrial_by_response(nullptr),
+	_m_result(TRIAL_RESULT_UNKNOWN)
+{
+}
+
+bool JudgeStruct::isEffected() const
+{
+	return negative ? isBad() : isGood();
+}
+
+void JudgeStruct::updateResult()
+{
+	if (good == Sanguosha->matchExpPattern(pattern,who,card))
+		_m_result = TRIAL_RESULT_GOOD;
+	else
+		_m_result = TRIAL_RESULT_BAD;
+}
+
+bool JudgeStruct::isGood() const
+{
+	//Q_ASSERT(_m_result != TRIAL_RESULT_UNKNOWN);
+	return _m_result == TRIAL_RESULT_GOOD;
+}
+
+bool JudgeStruct::isBad() const
+{
+	return !isGood();
+}
+
+bool JudgeStruct::isGood(const Card*card) const
+{
+	//Q_ASSERT(card);
+	return good == Sanguosha->matchExpPattern(pattern,who,card);
+}
+
+PhaseChangeStruct::PhaseChangeStruct()
+	: from(Player::NotActive), to(Player::NotActive)
+{
+}
+
+CardUseStruct::CardUseStruct()
+	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(nullptr), who(nullptr), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+{
+}
+
+CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, QList<ServerPlayer*> to, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
+	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+{
+	globalCardLifetimeManager().retainEventPayload(this, {card, whocard});
+}
+
+CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
+	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+{
+	if (target) this->to << target;
+	globalCardLifetimeManager().retainEventPayload(this, {card, whocard});
+}
+
+CardUseStruct::CardUseStruct(const CardUseStruct &other) { *this = other; }
+CardUseStruct::CardUseStruct(CardUseStruct &&other) noexcept { *this = std::move(other); }
+CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	card=other.card; from=other.from; to=other.to; m_isOwnerUse=other.m_isOwnerUse; m_addHistory=other.m_addHistory;
+	m_isHandcard=other.m_isHandcard; m_validateTargets=other.m_validateTargets; nullified_list=other.nullified_list;
+	whocard=other.whocard; who=other.who; no_respond_list=other.no_respond_list; no_offset_list=other.no_offset_list;
+	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
+	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
+	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
+	targetModReveal=other.targetModReveal;
+	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+	return *this;
+}
+CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	card=other.card; from=other.from; to=std::move(other.to); m_isOwnerUse=other.m_isOwnerUse; m_addHistory=other.m_addHistory;
+	m_isHandcard=other.m_isHandcard; m_validateTargets=other.m_validateTargets; nullified_list=std::move(other.nullified_list);
+	whocard=other.whocard; who=other.who; no_respond_list=std::move(other.no_respond_list); no_offset_list=std::move(other.no_offset_list);
+	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
+	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
+	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
+	targetModReveal=std::move(other.targetModReveal);
+	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+	globalCardLifetimeManager().releaseEventPayload(&other);
+	other.card = nullptr;
+	other.whocard = nullptr;
+    other.m_acceptedSkillEffectCard = false;
+	return *this;
+}
+CardUseStruct::~CardUseStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+void CardUseStruct::replaceCard(const Card *newCard, Card *ownedCard)
+{
+	Q_ASSERT(!ownedCard || ownedCard == newCard);
+	CardLifetimeManager &manager = globalCardLifetimeManager();
+	CardLifetimeLease replacementLease(manager, manager.liveToken(newCard));
+	manager.releaseEventPayload(this);
+	card = nullptr;
+	if (m_ownedCard.data() != ownedCard) {
+		m_ownedCard.clear();
+		if (ownedCard)
+			m_ownedCard.reset(ownedCard);
+	}
+	card = newCard;
+	manager.retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+}
+
+bool CardUseStruct::isValid(const QString &pattern) const
+{
+	Q_UNUSED(pattern)
+	return card != nullptr;
+	/*if (card == nullptr) return false;
+	if (!card->getSkillName().isEmpty()) {
+	bool validSkill = false;
+	QString skillName = card->getSkillName();
+	QSet<const Skill*> skills = from->getVisibleSkills();
+	for (int i = 0; i < 4; i++) {
+	const EquipCard*equip = from->getEquip(i);
+	if (equip == nullptr) continue;
+	const Skill*skill = Sanguosha->getSkill(equip);
+	if (skill)
+	skills.insert(skill);
+	}
+	foreach (const Skill*skill, skills) {
+	if (skill->objectName() != skillName) continue;
+	const ViewAsSkill*vsSkill = ViewAsSkill::parseViewAsSkill(skill);
+	if (vsSkill) {
+	if (!vsSkill->isAvailable(from, m_reason, pattern))
+	return false;
+	else {
+	validSkill = true;
+	break;
+	}
+	} else if (skill->getFrequency() == Skill::Wake) {
+	bool valid = (from->getMark(skill->objectName()) > 0);
+	if (!valid)
+	return false;
+	else
+	validSkill = true;
+	} else
+	return false;
+	}
+	if (!validSkill) return false;
+	}
+	if (card->targetFixed())
+	return true;
+	else {
+	QList<const Player*> targets;
+	foreach (const ServerPlayer*player, to)
+	targets.push_back(player);
+	return card->targetsFeasible(targets, from);
+	}*/
+}
+
+bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
+{
+    m_acceptedSkillEffectCard = false;
+    sourceRef = SkillInstanceRef(); activationRef = SkillInstanceRef(); physicalEquipSource = PhysicalEquipSource(); skillExecutionID = 0;
+	JsonArray use = usage.value<JsonArray>();
+	replaceCard(nullptr);
+	to.clear();
+	m_validateTargets = true;
+	hasSkillActivationRequest = false;
+	if (use.length()>1&&JsonUtils::isString(use[0])&&use[1].canConvert<JsonArray>()){
+		foreach(const QVariant &target, use[1].value<JsonArray>()) {
+			if (!JsonUtils::isString(target)) return false;
+			ServerPlayer *player = room->findChild<ServerPlayer*>(target.toString());
+			if (!player) return false;
+			to << player;
+		}
+		const Card *parsedCard = Card::Parse(use[0].toString());
+		if (!parsedCard) return false;
+		SkillInstanceUtils::SkillActivationRequest request;
+		if (!SkillInstanceUtils::decodeActivationRequest(use, parsedCard->getSkillName(false), request)) return false;
+		hasSkillActivationRequest = request.supplied;
+		if (request.instanceID > 0)
+			const_cast<Card *>(parsedCard)->setActivationSkill(request.skillName, request.instanceID);
+		CardLifetimeManager &manager = globalCardLifetimeManager();
+		const auto token = manager.liveToken(parsedCard);
+		replaceCard(parsedCard, token && manager.state(token) == CardLifetimeState::PendingDelete
+			? const_cast<Card *>(parsedCard) : nullptr);
+		return true;
+	}
+	return false;
+}
+
+void CardUseStruct::parse(const QString &str, Room*room)
+{
+    m_acceptedSkillEffectCard = false;
+    sourceRef = SkillInstanceRef(); activationRef = SkillInstanceRef(); physicalEquipSource = PhysicalEquipSource(); skillExecutionID = 0;
+	replaceCard(nullptr);
+	to.clear();
+	m_validateTargets = true;
+	const Card *parsedCard = Card::Parse(str);
+	CardLifetimeManager &manager = globalCardLifetimeManager();
+	const auto token = manager.liveToken(parsedCard);
+	replaceCard(parsedCard, token && manager.state(token) == CardLifetimeState::PendingDelete
+		? const_cast<Card *>(parsedCard) : nullptr);
+	if (str.contains("->sgs")){
+		foreach(QString target_name, str.split("->").last().split("+"))
+			to << room->findChild<ServerPlayer*>(target_name);
+	}
+}
+
+void CardUseStruct::clientReply()
+{
+	if (from){
+		const QVariant &client = from->getRoom()->getTag("AiResult");
+		if(client.canConvert<JsonArray>()) tryParse(client, from->getRoom());
+		else parse(client.toString(), from->getRoom());
+	}
+}
+
+void CardUseStruct::changeCard(Card*newcard)
+{
+	globalCardLifetimeManager().releaseEventPayload(this);
+	const bool replacingOwnedCard = !m_ownedCard.isNull() && m_ownedCard.data() == card;
+	QVariantMap tag = newcard->tag;
+	for (auto it = card->tag.cbegin(); it != card->tag.cend(); ++it)
+		tag.insert(it.key(), it.value());
+	newcard->tag = tag;
+	newcard->setFlags(newcard->getFlags()+card->getFlags());
+	if (activationRef.isValid())
+		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
+	if (sourceRef.isValid())
+		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
+	if (!replacingOwnedCard)
+		newcard->change_cards << card;
+	replaceCard(newcard);
+	if (from) {
+		Room *room = from->getRoom();
+		const QVariantMap use = room->historyParent(room->currentHistoryEventId(), "use_card", true);
+		if (room->historyRecordingEnabled() && use.value("data").toMap().value("from").toString() == from->objectName()) {
+			// Conversions such as Fan keep the same use event. Its resolved card
+			// changes, while the accepted-use fact remains an immutable snapshot.
+			room->resolutionHistory().updateEvent(use.value("id").toLongLong(),
+				{{"card", room->historyCardSnapshot(newcard)}});
+		}
+	}
+}
+
+void CardUseStruct::setOwnedCard(Card *ownedCard)
+{
+	replaceCard(ownedCard, ownedCard);
+}
+
+CardResponseStruct::CardResponseStruct()
+	: m_card(nullptr), m_who(nullptr), m_isUse(false), m_isHandcard(false), m_isRetrial(false),
+	  m_toCard(nullptr), skillExecutionID(0), nullified(false)
+{
+}
+
+CardResponseStruct::CardResponseStruct(const Card *card, bool isUse)
+	: m_card(card), m_who(nullptr), m_isUse(isUse), m_isHandcard(false), m_isRetrial(false),
+	  m_toCard(nullptr), skillExecutionID(0), nullified(false)
+{
+	globalCardLifetimeManager().retainEventPayload(this, {m_card});
+}
+
+CardResponseStruct::CardResponseStruct(const Card *card, ServerPlayer *who, bool isUse)
+	: m_card(card), m_who(who), m_isUse(isUse), m_isHandcard(false), m_isRetrial(false),
+	  m_toCard(nullptr), skillExecutionID(0), nullified(false)
+{
+	globalCardLifetimeManager().retainEventPayload(this, {m_card});
+}
+
+CardResponseStruct::CardResponseStruct(const CardResponseStruct &other) { *this = other; }
+CardResponseStruct::CardResponseStruct(CardResponseStruct &&other) noexcept { *this = std::move(other); }
+CardResponseStruct &CardResponseStruct::operator=(const CardResponseStruct &other)
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	m_card=other.m_card; m_who=other.m_who; m_isUse=other.m_isUse; m_isHandcard=other.m_isHandcard;
+	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef; physicalEquipSource=other.physicalEquipSource;
+	activationRef=other.activationRef; skillExecutionID=other.skillExecutionID; nullified=other.nullified;
+	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
+	return *this;
+}
+CardResponseStruct &CardResponseStruct::operator=(CardResponseStruct &&other) noexcept
+{
+	if (this == &other) return *this;
+	globalCardLifetimeManager().releaseEventPayload(this);
+	m_card=other.m_card; m_who=other.m_who; m_isUse=other.m_isUse; m_isHandcard=other.m_isHandcard;
+	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef; physicalEquipSource=other.physicalEquipSource;
+	activationRef=other.activationRef; skillExecutionID=other.skillExecutionID; nullified=other.nullified;
+	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
+	globalCardLifetimeManager().releaseEventPayload(&other);
+	other.m_card = nullptr;
+	other.m_toCard = nullptr;
+	return *this;
+}
+CardResponseStruct::~CardResponseStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+void CardResponseStruct::changeCard(Card*newcard)
+{
+	globalCardLifetimeManager().releaseEventPayload(this);
+	QVariantMap tag = newcard->tag;
+	for (auto it = m_card->tag.cbegin(); it != m_card->tag.cend(); ++it)
+		tag.insert(it.key(), it.value());
+	newcard->tag = tag;
+	newcard->setFlags(newcard->getFlags()+m_card->getFlags());
+	if (activationRef.isValid())
+		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
+	if (sourceRef.isValid())
+		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
+	newcard->change_cards << m_card;
+	m_card = newcard;
+	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
 }
