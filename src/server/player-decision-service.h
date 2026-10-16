@@ -85,6 +85,27 @@ public:
     GuanxingSelection askForGuanxingSelection(ServerPlayer *zhuge, const QList<int> &cards,
                                               int guanxing_type);
 
+    QList<int> askForExchangeCards(ServerPlayer *player, const QString &reason,
+                                   int maximum, int minimum, const QString &prompt,
+                                   const QString &expandPile, const QString &pattern);
+    QList<int> askForCardsChosen(ServerPlayer *player, ServerPlayer *target,
+                                 const QString &flags, const QString &reason,
+                                 int minimum, int maximum, bool handcardVisible,
+                                 Card::HandlingMethod method, const QList<int> &disabledIds,
+                                 bool optional);
+    bool askForQiaobian(ServerPlayer *player, const QList<ServerPlayer *> &targets,
+                        const QString &reason, const QString &prompt,
+                        bool equipArea, bool judgingArea);
+    AskForMoveCardsStruct askForMoveCards(ServerPlayer *player, const QList<int> &upCards,
+                                          const QList<int> &downCards, bool upOnly,
+                                          const QString &reason, const QString &prompt,
+                                          int minimum, int maximum, bool optional);
+    YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants,
+                            const QString &reason, int minimum_participants);
+    int doGongxin(ServerPlayer *shenlvmeng, ServerPlayer *target, QList<int> enabled_ids,
+                  QString skill_name);
+    QVariant askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params,
+                       int timeout);
     void activate(ServerPlayer *player, CardUseStruct &card_use);
     CardUseStruct askForUseCardStruct(ServerPlayer *player, const QString &pattern,
                                       const QString &prompt, int notice_index,

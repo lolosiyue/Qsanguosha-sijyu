@@ -7606,25 +7606,7 @@ void Room::updateCardDescription(const QString &card_name, const QVariantMap &pl
 
 QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout)
 {
-	tryPause();
-	notifyMoveFocus(player, S_COMMAND_QML_INTERACT);
-
-	QVariantMap payload;
-	payload.insert(QStringLiteral("schema_version"), 1);
-	payload.insert(QStringLiteral("type"), QStringLiteral("qsanguosha.qml"));
-	payload.insert(QStringLiteral("title"), QString());
-	QVariantMap rendererPayload;
-	rendererPayload.insert(QStringLiteral("qml_path"), qmlPath);
-	rendererPayload.insert(QStringLiteral("parameters"), params);
-	payload.insert(QStringLiteral("payload"), rendererPayload);
-	payload.insert(QStringLiteral("response_schema"),
-		QVariantMap{{QStringLiteral("type"), QStringLiteral("json")}});
-
-	if (doRequest(player, S_COMMAND_QML_INTERACT, payload, timeout, true)) {
-		return player->getClientReply();
-	}
-
-	return QVariant();
+	return m_playerDecisions->askForQml(player, qmlPath, params, timeout);
 }
 
 void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
@@ -7775,94 +7757,6 @@ Card*Room::askForExchange(ServerPlayer*player, const QString&reason, int exchang
 
 namespace {
 
-class AGVisibilityGuard final {
-public:
-    AGVisibilityGuard(Room *room, ServerPlayer *player) : m_room(room), m_player(player) {}
-    ~AGVisibilityGuard()
-    {
-        if (m_room && m_player) m_room->clearAG(m_player);
-    }
-
-    void show(const QList<int> &ids) const
-    {
-        if (m_room && m_player) m_room->fillAG(ids, m_player);
-    }
-
-    void show(const QList<int> &ids, const QList<int> &disabled) const
-    {
-        if (m_room && m_player) m_room->fillAG(ids, m_player, disabled);
-    }
-
-private:
-    Room *m_room;
-    ServerPlayer *m_player;
-};
-
-QList<int> selectFromPiles(Room *room, ServerPlayer *player, const QString &reason,
-                           int maximum, int minimum, const QString &prompt,
-                           const QString &expandPile, const QString &pattern)
-{
-    if (!room || !player || maximum <= 0 || expandPile.isEmpty()) return {};
-
-    QList<int> available;
-    for (const QString &pileName : expandPile.split(',', Qt::SkipEmptyParts))
-        available.append(player->getPile(pileName));
-
-    // The donor pattern is applied before presenting the private pile.  AG is
-    // intentionally repeated so every selected id is removed from the next menu.
-    if (!pattern.isEmpty() && pattern != ".") {
-        QList<int> filtered;
-        for (int id : available) {
-            const Card *card = Sanguosha->getCard(id);
-            if (card && Sanguosha->matchExpPattern(pattern, player, card)) filtered << id;
-        }
-        available = filtered;
-    }
-
-    QList<int> result;
-    AGVisibilityGuard ag(room, player);
-    const int limit = qMin(maximum, available.size());
-    while (result.size() < limit && !available.isEmpty()) {
-        ag.show(available);
-        // A required donor selection must not be refusable until minimum is
-        // met; after that point the optional tail may cancel.
-        const int id = room->askForAG(player, available, result.size() >= minimum,
-                                      reason, prompt);
-        if (id < 0 || !available.contains(id)) break;
-        result << id;
-        available.removeOne(id);
-    }
-    return result.size() >= minimum ? result : QList<int>();
-}
-
-void appendPhysicalIds(QList<int> &result, const Card *card)
-{
-    if (!card) return;
-    const QList<int> subcards = card->getSubcards();
-    if (card->isVirtualCard() && !subcards.isEmpty()) {
-        for (int id : subcards) {
-            const Card *subcard = Sanguosha->getCard(id);
-            if (subcard && subcard != card && subcard->isVirtualCard()
-                && !subcard->getSubcards().isEmpty())
-                appendPhysicalIds(result, subcard);
-            else {
-                const int effectiveId = subcard ? subcard->getEffectiveId() : id;
-                if (effectiveId >= 0) result << effectiveId;
-            }
-        }
-        return;
-    }
-    const int id = card->getEffectiveId();
-    if (id >= 0) result << id;
-}
-
-QList<int> flattenPhysicalIds(const Card *selection)
-{
-    QList<int> result;
-    appendPhysicalIds(result, selection);
-    return result;
-}
-
 QList<const Player *> selectedPlayers(const CardUseStruct &use)
 {
     QList<const Player *> result;
@@ -7877,15 +7771,8 @@ QList<int> Room::askForExchangeCards(ServerPlayer *player, const QString &reason
                                    int maximum, int minimum, const QString &prompt,
                                    const QString &expandPile, const QString &pattern)
 {
-    if (!player || maximum <= 0 || minimum < 0 || minimum > maximum) return {};
-    if (!expandPile.isEmpty())
-        return selectFromPiles(this, player, reason, maximum, minimum, prompt, expandPile, pattern);
-
-    const QString effectivePattern = pattern.isEmpty() ? QStringLiteral(".") : pattern;
-    const Card *selection = askForExchange(player, reason, maximum, minimum,
-                                                  true, prompt, minimum == 0,
-                                                  effectivePattern);
-    return selection ? flattenPhysicalIds(selection) : QList<int>();
+    return m_playerDecisions->askForExchangeCards(player, reason, maximum, minimum, prompt,
+                                                  expandPile, pattern);
 }
 
 QList<int> Room::askForCardsChosen(ServerPlayer *player, ServerPlayer *target,
@@ -7894,47 +7781,8 @@ QList<int> Room::askForCardsChosen(ServerPlayer *player, ServerPlayer *target,
                              Card::HandlingMethod method, const QList<int> &disabledIds,
                              bool optional)
 {
-    if (!player || !target || minimum < 0 || maximum < minimum || maximum <= 0)
-        return {};
-
-    QList<int> selected = disabledIds;
-    QList<int> available;
-    for (const Card *card : target->getCards(flags)) {
-        const int id = card->getEffectiveId();
-        if (selected.contains(id)) continue;
-        if ((method == Card::MethodDiscard && !player->canDiscard(target, id))
-            || (method == Card::MethodGet && !player->canGet(target, id)))
-            selected << id;
-        else
-            available << id;
-    }
-    // Donor clamps both limits to the legal cards. In particular, Shejian may
-    // request more discards than remain, and Weimeng must not reopen an empty
-    // hidden-hand chooser after its last available card has been selected.
-    maximum = qMin(maximum, available.size());
-    minimum = qMin(minimum, maximum);
-    QList<int> result;
-    while (result.size() < maximum) {
-        // Required selections cannot be cancelled.  Optional selections may
-        // stop at any prompt after satisfying the minimum.
-        const bool canCancel = optional && result.size() >= minimum;
-        const int id = askForCardChosen(player, target, flags, reason,
-                                              handcardVisible, method, selected,
-                                              canCancel);
-        if (id < 0) {
-            if (result.size() >= minimum) return result;
-            return {};
-        }
-        if (selected.contains(id) || !available.contains(id)) {
-            // A malformed/legacy decision must never create a duplicate card
-            // in the returned cost list.
-            if (result.size() >= minimum) return result;
-            return {};
-        }
-        selected << id;
-        result << id;
-    }
-    return result.size() >= minimum ? result : QList<int>();
+    return m_playerDecisions->askForCardsChosen(player, target, flags, reason, minimum, maximum,
+                                                handcardVisible, method, disabledIds, optional);
 }
 
 int Room::getRandomCardInPile(const QString &pattern, bool drawPile)
@@ -7988,67 +7836,7 @@ bool Room::askForQiaobian(ServerPlayer *player,
                     const QString &reason, const QString &prompt,
                     bool equipArea, bool judgingArea)
 {
-    if (!player || !player->isAlive() || (!equipArea && !judgingArea)) return false;
-    const QString flags = (equipArea ? QStringLiteral("e") : QString())
-        + (judgingArea ? QStringLiteral("j") : QString());
-
-    // Donor booleans select field zones, not draw/play phases. Both ends must
-    // belong to the supplied seats; never substitute hand-card extraction.
-    const auto destinations = [&](ServerPlayer *from, const Card *card) {
-        QList<ServerPlayer *> result;
-        if (!from || !card || !from->canMove(from, card->getEffectiveId())) return result;
-        const Player::Place place = getCardPlace(card->getEffectiveId());
-        if (getCardOwner(card->getEffectiveId()) != from) return result;
-        for (ServerPlayer *to : targets) {
-            if (!to || to == from || !to->isAlive() || player->isProhibited(to, card)) continue;
-            if (place == Player::PlaceEquip && equipArea) {
-                const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
-                if (!equip) continue;
-                bool available = true;
-                for (int slot : equip->getOccupyLocations()) {
-                    if (!to->hasEquipArea(slot)
-                        || to->getEquips(slot).size() >= to->getEquipArea(slot)) {
-                        available = false;
-                        break;
-                    }
-                }
-                if (available) result << to;
-            } else if (place == Player::PlaceDelayedTrick && judgingArea
-                       && to->hasJudgeArea() && !to->containsTrick(card->objectName())) {
-                result << to;
-            }
-        }
-        return result;
-    };
-
-    QList<ServerPlayer *> sources;
-    for (ServerPlayer *from : targets) {
-        if (!from || !from->isAlive()) continue;
-        for (const Card *card : from->getCards(flags)) {
-            if (!destinations(from, card).isEmpty()) {
-                sources << from;
-                break;
-            }
-        }
-    }
-    if (sources.isEmpty()) return false;
-    ServerPlayer *from = askForPlayerChosen(player, sources, reason, prompt, true);
-    if (!from || !from->isAlive() || !player->isAlive()) return false;
-    QList<int> disabled;
-    for (const Card *card : from->getCards(flags))
-        if (destinations(from, card).isEmpty()) disabled << card->getEffectiveId();
-    const int id = askForCardChosen(player, from, flags, reason,
-                                         false, Card::MethodNone, disabled);
-    const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
-    const QList<ServerPlayer *> receivers = destinations(from, card);
-    if (receivers.isEmpty()) return false;
-    ServerPlayer *to = askForPlayerChosen(player, receivers, reason,
-                                               QStringLiteral("@movefield-to:") + card->objectName());
-    if (!to || !destinations(from, card).contains(to)) return false;
-    moveCardTo(card, from, to, getCardPlace(id),
-                    CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
-                                   player->objectName(), reason, QString()), true);
-    return true;
+    return m_playerDecisions->askForQiaobian(player, targets, reason, prompt, equipArea, judgingArea);
 }
 
 AskForMoveCardsStruct Room::askForMoveCards(ServerPlayer *player,
@@ -8059,44 +7847,8 @@ AskForMoveCardsStruct Room::askForMoveCards(ServerPlayer *player,
                                       const QString &, int minimum, int maximum,
                                       bool optional, bool)
 {
-    AskForMoveCardsStruct result;
-    if (!player) {
-        result.top = upCards;
-        result.top.append(downCards);
-        return result;
-    }
-
-    QList<int> candidates = upCards;
-    if (!upOnly) candidates.append(downCards);
-    result.top = candidates;
-    const int limit = maximum > 0 ? qMin(maximum, candidates.size())
-                                  : qMin(minimum, candidates.size());
-    const bool differentSuit = prompt == QStringLiteral("differentsuit");
-    QList<int> selected;
-    QSet<Card::Suit> selectedSuits;
-    AGVisibilityGuard ag(this, player);
-    while (selected.size() < limit && !candidates.isEmpty()) {
-        QList<int> disabled = selected;
-        if (differentSuit) {
-            for (int id : candidates) {
-                const Card *card = Sanguosha->getCard(id);
-                if (card && selectedSuits.contains(card->getSuit())) disabled << id;
-            }
-        }
-        ag.show(candidates, disabled);
-        const int id = askForAG(player, candidates,
-                                      optional && selected.size() >= minimum,
-                                      reason, prompt);
-        if (id < 0 || disabled.contains(id)) break;
-        selected << id;
-        const Card *card = Sanguosha->getCard(id);
-        if (card) selectedSuits.insert(card->getSuit());
-        candidates.removeOne(id);
-    }
-    if (selected.size() < minimum) return AskForMoveCardsStruct{upCards, downCards};
-    result.bottom = selected;
-    result.top = candidates;
-    return result;
+    return m_playerDecisions->askForMoveCards(player, upCards, downCards, upOnly, reason, prompt,
+                                              minimum, maximum, optional);
 }
 
 QStringList Room::getUsedGeneral()
@@ -8132,137 +7884,7 @@ bool Room::isAllOnPlace(const Card *card, Player::Place place)
 YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants,
                             const QString &reason, int minimum_participants)
 {
-	QList<ServerPlayer *> valid_participants;
-	foreach (ServerPlayer *participant, participants) {
-		if (participant && participant->isAlive()
-			&& !valid_participants.contains(participant))
-			valid_participants << participant;
-	}
-	sortByActionOrder(valid_participants);
-
-	YishiStruct yishi(initiator, valid_participants, reason);
-	minimum_participants = qMax(1, minimum_participants);
-	if (!initiator || !initiator->isAlive() || valid_participants.length() < minimum_participants)
-		return yishi;
-
-	yishi.started = true;
-	auto trigger_yishi_event = [this, &yishi](TriggerEvent event) {
-		QList<ServerPlayer *> targets = yishi.participants;
-		if (yishi.initiator && !targets.contains(yishi.initiator))
-			targets << yishi.initiator;
-		sortByActionOrder(targets);
-		QVariant data = QVariant::fromValue(&yishi);
-		foreach (ServerPlayer *target, targets) {
-			if (target && target->isAlive())
-				thread->trigger(event, this, target, data);
-		}
-	};
-
-	trigger_yishi_event(YishiStart);
-	// Start hooks can supply a fixed opinion without requiring a hand card.
-	foreach (ServerPlayer *participant, valid_participants) {
-		if (!participant->isAlive()
-			|| (participant->isKongcheng() && yishi.getCardCount(participant) > 0))
-			yishi.removeParticipant(participant);
-	}
-	valid_participants = yishi.participants;
-	if (!initiator->isAlive() || valid_participants.length() < minimum_participants) {
-		yishi.started = false;
-		return yishi;
-	}
-
-	LogMessage log;
-	log.type = "$askYishi";
-	log.from = initiator;
-	log.to = valid_participants;
-	log.arg = reason;
-	sendLog(log);
-	foreach (ServerPlayer *participant, valid_participants)
-		doAnimate(1, initiator->objectName(), participant->objectName());
-
-	foreach (ServerPlayer *participant, valid_participants) {
-		const int count = qBound(0, yishi.getCardCount(participant), participant->getHandcardNum());
-		if (count != yishi.getCardCount(participant))
-			yishi.setCardCount(participant, count);
-		if (count == 0)
-			continue;
-
-		QList<int> selected;
-		QSet<int> unique_ids;
-		bool preset_is_valid = true;
-		foreach (int id, yishi.getCards(participant)) {
-			if (id < 0)
-				continue;
-			if (unique_ids.contains(id) || getCardOwner(id) != participant
-				|| getCardPlace(id) != Player::PlaceHand) {
-				preset_is_valid = false;
-				break;
-			}
-			unique_ids.insert(id);
-			selected << id;
-		}
-
-		if (!preset_is_valid)
-			selected.clear();
-		const int missing = count - selected.length();
-		if (missing > 0) {
-			// Keep a fixed revealed card when another skill adds opinion cards.
-			QStringList excluded;
-			foreach (int id, selected)
-				excluded << QString("^%1").arg(id);
-			const QString pattern = excluded.isEmpty() ? "." : excluded.join('+');
-			Card *chosen = askForExchange(participant, reason + "_yishi", missing, missing, false,
-				QString("askyishicard:%1").arg(missing), false, pattern);
-			if (chosen)
-				selected << chosen->getSubcards();
-		}
-		yishi.setCards(participant, selected);
-	}
-
-	foreach (ServerPlayer *participant, valid_participants) {
-		if (yishi.getCardCount(participant) == 0)
-			continue;
-		QStringList opinions;
-		foreach (int id, yishi.getCards(participant)) {
-			const Card *card = Sanguosha->getCard(id);
-			const QString color = card ? card->getColorString() : QString();
-			opinions << (color == "red" || color == "black" ? color : "no_opinion");
-		}
-		yishi.setOpinions(participant, opinions);
-	}
-
-	trigger_yishi_event(YishiBeforeReveal);
-	thread->delay(800);
-	foreach (ServerPlayer *participant, valid_participants) {
-		const QList<int> ids = yishi.getCards(participant);
-		if (!ids.isEmpty())
-			showCard(participant, ids);
-	}
-
-	trigger_yishi_event(YishiResultDetermining);
-	const int red = yishi.opinionCount("red");
-	const int black = yishi.opinionCount("black");
-	if (yishi.forced_result == "red" || yishi.forced_result == "black"
-		|| yishi.forced_result == "no_result") {
-		yishi.result = yishi.forced_result;
-	} else if (red > black) {
-		yishi.result = "red";
-	} else if (black > red) {
-		yishi.result = "black";
-	} else {
-		yishi.result = "no_result";
-	}
-
-	thread->delay(1200);
-	log.type = "$yishiresult";
-	log.from = initiator;
-	log.to.clear();
-	log.arg = yishi.result;
-	sendLog(log);
-	doLightbox("$keyishi" + yishi.result);
-	trigger_yishi_event(YishiResultConfirmed);
-	trigger_yishi_event(YishiFinished);
-	return yishi;
+	return m_playerDecisions->askForYishi(initiator, participants, reason, minimum_participants);
 }
 
 void Room::setCardMapping(int card_id, ServerPlayer*owner, Player::Place place)
@@ -8361,48 +7983,7 @@ void Room::returnToEndDrawPile(QList<int> cards)
 
 int Room::doGongxin(ServerPlayer*shenlvmeng, ServerPlayer*target, QList<int> enabled_ids, QString skill_name)
 {
-	//Q_ASSERT(!target->isKongcheng());
-	tryPause();
-	notifyMoveFocus(shenlvmeng, S_COMMAND_SKILL_GONGXIN);
-
-	QList<int> hand = target->handCards();
-	if (hand.length()>0){
-		LogMessage log;
-		log.type = "$ViewAllCards";
-		log.from = shenlvmeng;
-		log.to << target;
-		log.card_str = ListI2S(hand).join("+");
-		sendLog(log, shenlvmeng);
-		QVariant data = QString("viewCards:%1:%2").arg(target->objectName()).arg(log.card_str);
-		thread->trigger(ChoiceMade, this, shenlvmeng, data);
-	}
-
-	int card_id = -1;
-	shenlvmeng->setTag(skill_name, QVariant::fromValue(target));
-	AI*ai = shenlvmeng->getAI();
-	if (ai){
-        if (externalAgent(shenlvmeng->objectName()))
-            decideAiAmazingGrace(shenlvmeng, enabled_ids, true, skill_name, card_id);
-        else
-            card_id = ai->askForAG(enabled_ids, true, skill_name);
-	} else {/*
-		foreach(int cardId, hand){
-			WrappedCard*card = Sanguosha->getWrappedCard(cardId);
-			if(card->isModified()) notifyUpdateCard(shenlvmeng,cardId,card);
-			//else notifyResetCard(shenlvmeng, cardId);
-		}*/
-		JsonArray args;
-		args << target->objectName() << true << JsonUtils::toJsonArray(hand) << JsonUtils::toJsonArray(enabled_ids);
-		if(doRequest(shenlvmeng, S_COMMAND_SKILL_GONGXIN, args, true)){
-			const QVariant&clientReply = shenlvmeng->getClientReply();
-			if(JsonUtils::isNumber(clientReply))
-				card_id = clientReply.toInt();
-		}else{
-			ai = shenlvmeng->getAI();
-			if(ai) card_id = ai->askForAG(enabled_ids, true, skill_name);
-		}
-	}
-	return card_id; // Do remember to remove the tag later!
+	return m_playerDecisions->doGongxin(shenlvmeng, target, enabled_ids, skill_name);
 }
 
 const Card*Room::askForPindian(ServerPlayer*player, ServerPlayer*from, const QString&reason)
