@@ -1046,9 +1046,12 @@ public:
         room->throwCard(id, objectName(), payer);
         ServerPlayer *user = ctx.invoker;
         if (!user || !user->isAlive()) return false;
+        CardUseStruct provision;
+        provision.from = user;
+        provision.to = ctx.targets;
         for (ServerPlayer *liege : room->getLieges("shu", user)) {
             const Card *provided = room->askForCard(liege, "slash", "@jijiang-slash:" + user->objectName(),
-                QVariant::fromValue(user), Card::MethodResponse, user, false, "", true);
+                QVariant::fromValue(provision), Card::MethodResponse, user, false, "", true);
             if (!provided) continue;
             Card *slash = Sanguosha->cloneCard(provided->objectName(), provided->getSuit(), provided->getNumber());
             if (!slash) return false;
@@ -1126,9 +1129,11 @@ public:
             state->setCurrentCardUsePattern(pattern);
         });
         room->broadcastSkillInvoke(objectName());
+        CardUseStruct provision;
+        provision.from = ctx.owner;
         for (ServerPlayer *liege : room->getLieges("shu", ctx.owner)) {
             const Card *provided = room->askForCard(liege, "slash", "@jijiang-slash:" + ctx.owner->objectName(),
-                QVariant::fromValue(ctx.owner), Card::MethodResponse, ctx.owner, false, "", true);
+                QVariant::fromValue(provision), Card::MethodResponse, ctx.owner, false, "", true);
             if (!provided) continue;
             Card *slash = Sanguosha->cloneCard(provided->objectName(), provided->getSuit(), provided->getNumber());
             if (!slash) return false;

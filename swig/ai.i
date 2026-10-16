@@ -409,6 +409,13 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	// the top of stack treated SmartAI's compulsive ".!" answer as empty.
 	const char *cstr = lua_tostring(L, -2);
 	const QString result = cstr ? QString::fromUtf8(cstr) : QString();
+	// Card strings omit V2 provenance. Copy the callback's request before popping it.
+	AiLegacyRequestView responseRequest;
+	const bool hasResponseRequest = !lua_isnil(L, -1);
+	void *responseRequestPointer = nullptr;
+	if (hasResponseRequest && SWIG_IsOK(SWIG_ConvertPtr(L, -1, &responseRequestPointer,
+			SWIGTYPE_p_AiLegacyRequestView, 0)) && responseRequestPointer)
+		responseRequest = *static_cast<AiLegacyRequestView *>(responseRequestPointer);
 	lua_pop(L, 2);
 	if (result.isEmpty())
 		return TrustAI::askForCard(pattern, prompt, data, method);
@@ -421,10 +428,15 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	const CardUseStruct::CardUseReason reason = method == Card::MethodResponse
 		? CardUseStruct::CARD_USE_REASON_RESPONSE
 		: CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
-	AiLegacyRequestView request = room->getAiSkillActionContext(self, card->getActivationSkillName(),
-			reason, pattern, prompt, method);
+	if (hasResponseRequest && (!responseRequest.isValid() || responseRequest.initiator != self
+		|| responseRequest.getReason() != reason || responseRequest.getPattern() != pattern
+		|| responseRequest.getPrompt() != prompt || responseRequest.getHandlingMethod() != method))
+		return nullptr;
+	AiLegacyRequestView request = hasResponseRequest ? responseRequest
+		: room->getAiSkillActionContext(self, card->getActivationSkillName(), reason, pattern, prompt, method);
 	if (request.isValid()) {
 		Card *mutableCard = const_cast<Card *>(card);
+		mutableCard->setSkillName(request.getActivationSkillName());
 		mutableCard->setActivationSkill(request.getActivationSkillName(),
 			request.getActivationInstanceId());
 		mutableCard->setSourceSkill(request.getSourceSkillName(),

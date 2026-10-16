@@ -273,9 +273,13 @@ public:
         const auto restoreHints = qScopeGuard([marked] {
             for (ServerPlayer *target : marked) target->setFlags("-OLJijiangTarget");
         });
+        // Request-local public context; payment authority remains in this execution.
+        CardUseStruct provision;
+        provision.from = liubei;
+        provision.to = ctx.targets;
         for (ServerPlayer *liege : room->getLieges("shu", liubei)) {
             const Card *provided = room->askForCard(liege, "slash", "@oljijiang-slash:" + liubei->objectName(),
-                QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
+                QVariant::fromValue(provision), Card::MethodResponse, liubei, false, "", true);
             if (!provided) continue;
             Card *slash = Sanguosha->cloneCard(provided->objectName(), provided->getSuit(), provided->getNumber());
             if (!slash) return false;
@@ -406,9 +410,11 @@ public:
                 r += 4;
             room->broadcastSkillInvoke("jijiang", r);
         }
+        CardUseStruct provision;
+        provision.from = liubei;
         foreach (ServerPlayer *liege, room->getLieges("shu", liubei)) {
             const Card *slash = room->askForCard(liege, "slash", "@oljijiang-slash:" + liubei->objectName(),
-                QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
+                QVariant::fromValue(provision), Card::MethodResponse, liubei, false, "", true);
             if (!slash) continue;
             room->setCardFlag(slash, "YUANBEN");
             room->provide(slash);

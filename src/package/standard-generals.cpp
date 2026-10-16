@@ -520,7 +520,7 @@ const Card *JijiangCard::validate(CardUseStruct &cardUse) const
     foreach (ServerPlayer *liege, room->getLieges("shu", liubei)) {
         try {
             slash = room->askForCard(liege, "slash", "@" + jijiang + "-slash:" + liubei->objectName(),
-                QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
+                QVariant::fromValue(cardUse), Card::MethodResponse, liubei, false, "", true);
         }
         catch (TriggerEvent triggerEvent) {
             if (triggerEvent == TurnBroken || triggerEvent == StageChange) {
@@ -1601,7 +1601,9 @@ public:
         const int id = ctx.activationRef.key.instanceID;
         const int given = ctx.initiator->getSkillInstanceStateValue(objectName(), id, "given", 0).toInt();
         ctx.initiator->setSkillInstanceStateValue(objectName(), id, "given", given + ctx.use_card->subcardsLength());
-        ctx.initiator->setSkillInstanceStateValue(objectName(), id, "started", true);
+        // The repeatable nostalgia variant does not use the standard start latch.
+        if (objectName() != "nosrende")
+            ctx.initiator->setSkillInstanceStateValue(objectName(), id, "started", true);
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
@@ -1778,9 +1780,13 @@ bool JijiangViewAsSkill::pay(Room *room, SkillContext &ctx, const ActiveSkillReq
     const auto restoreHints = qScopeGuard([marked] {
         for (ServerPlayer *target : marked) target->setFlags("-JijiangTarget");
     });
+    // Request-local public context; payment authority remains in this execution.
+    CardUseStruct provision;
+    provision.from = liubei;
+    provision.to = ctx.targets;
     for (ServerPlayer *liege : room->getLieges("shu", liubei)) {
         const Card *provided = room->askForCard(liege, "slash", "@jijiang-slash:" + liubei->objectName(),
-            QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
+            QVariant::fromValue(provision), Card::MethodResponse, liubei, false, "", true);
         if (!provided) continue;
         Card *slash = Sanguosha->cloneCard(provided->objectName(), provided->getSuit(), provided->getNumber());
         if (!slash) return false;
@@ -1858,9 +1864,11 @@ public:
                 r = qsanRandomBounded(2) + 5;
             room->broadcastSkillInvoke("jijiang", r);
         }
+        CardUseStruct provision;
+        provision.from = liubei;
         foreach (ServerPlayer *liege, lieges) {
             const Card *slash = room->askForCard(liege, "slash", "@jijiang-slash:" + liubei->objectName(),
-                QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
+                QVariant::fromValue(provision), Card::MethodResponse, liubei, false, "", true);
             if (slash) {
                 room->setCardFlag(slash,"YUANBEN");
 				room->provide(slash);
@@ -2370,6 +2378,10 @@ public:
     {
         response_or_use = true;
     }
+
+    // The request fixes the output; the selected material retains its face.
+    QStringList aiConversionStages() const override
+    { return {"material", "output", "targets"}; }
 
     bool canActivate(const ActiveSkillRequest &request) const override
     {
@@ -5705,7 +5717,6 @@ public:
     NosRende() : TriggerSkillV2("nosrende")
     {
         events << EventPhaseChanging << EventSkillInvoking;
-        global = true;
         view_as_skill = new NosRendeViewAsSkill;
     }
 
@@ -5715,7 +5726,6 @@ public:
         const PhaseChangeStruct change = ctx.original_data->value<PhaseChangeStruct>();
         if (change.from == Player::Play || change.to == Player::NotActive) {
             player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "given");
-            player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "started");
         }
     }
 
