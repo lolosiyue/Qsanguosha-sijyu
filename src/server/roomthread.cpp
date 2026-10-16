@@ -22,6 +22,8 @@
 #include <QJsonArray>
 #include <QScopeGuard>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <exception>
 #include <memory>
@@ -61,6 +63,22 @@ QString EventTriplet::toString() const
 }
 
 namespace {
+// RoomThreadPerfTrace helpers. The hook counts Lua -> C function calls on the
+// room state; thread_local keeps rooms on different threads apart.
+qint64 perfNowNs()
+{
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+thread_local quint64 perfLuaCCalls = 0;
+
+void perfLuaCallHook(lua_State *L, lua_Debug *ar)
+{
+	if (ar->event != LUA_HOOKCALL && ar->event != LUA_HOOKTAILCALL) return;
+	if (lua_getinfo(L, "S", ar) && ar->what && ar->what[0] == 'C') ++perfLuaCCalls;
+}
+
 // Origin keys are only compared with each other in memory, so length-prefixed
 // fields keep distinct contexts apart without a JSON round trip per context.
 QString callbackContextSource(const SkillContext &context)
@@ -658,6 +676,7 @@ void RoomThread::emitPerfTrace() const
 	QJsonObject payload;
 	payload.insert(QStringLiteral("room_id"), m_profileRoomId);
 	payload.insert(QStringLiteral("mode"), m_profileMode);
+	payload.insert(QStringLiteral("outer_turns"), double(m_triggerDispatchProfile.outerTurns));
 	payload.insert(QStringLiteral("trigger_dispatch"),
 		QJsonObject::fromVariantMap(triggerDispatchProfile()));
 
@@ -668,7 +687,90 @@ void RoomThread::emitPerfTrace() const
 
 QVariantMap RoomThread::triggerDispatchProfile() const
 {
+	const auto &profile = m_triggerDispatchProfile;
+	QVariantList events;
+	{
+		QList<int> keys = profile.events.keys();
+		std::sort(keys.begin(), keys.end(), [&](int a, int b) {
+			return profile.events[a].exclusiveNs > profile.events[b].exclusiveNs;
+		});
+		for (int key : keys) {
+			const auto &e = profile.events[key];
+			events << QVariantMap{
+				{QStringLiteral("event"), key},
+				{QStringLiteral("dispatches"), qint64(e.dispatches)},
+				{QStringLiteral("inclusive_ns"), qint64(e.inclusiveNs)},
+				{QStringLiteral("exclusive_ns"), qint64(e.exclusiveNs)},
+				{QStringLiteral("sort_ns"), qint64(e.sortNs)},
+				{QStringLiteral("v2_scan_ns"), qint64(e.v2ScanNs)},
+				{QStringLiteral("v2_candidates"), qint64(e.v2Candidates)},
+				{QStringLiteral("triggerable_calls"), qint64(e.triggerableCalls)},
+				{QStringLiteral("triggerable_hits"), qint64(e.triggerableHits)},
+				{QStringLiteral("triggerable_ns"), qint64(e.triggerableNs)},
+				{QStringLiteral("triggerable_c_calls"), qint64(e.triggerableCCalls)},
+				{QStringLiteral("record_calls"), qint64(e.recordCalls)},
+				{QStringLiteral("record_ns"), qint64(e.recordNs)},
+				{QStringLiteral("contexts"), qint64(e.contexts)},
+				{QStringLiteral("main_table_visits"), qint64(e.mainTableVisits)},
+				{QStringLiteral("v1_triggerable_calls"), qint64(e.v1TriggerableCalls)},
+				{QStringLiteral("v1_triggerable_ns"), qint64(e.v1TriggerableNs)},
+				{QStringLiteral("candidate_ns"), qint64(e.candidateNs)},
+				{QStringLiteral("record_pass_ns"), qint64(e.recordPassNs)},
+				{QStringLiteral("global_candidates"), qint64(e.globalCandidates)},
+				{QStringLiteral("ownerless_candidates"), qint64(e.ownerlessCandidates)},
+				{QStringLiteral("ownerless_hits"), qint64(e.ownerlessHits)}};
+		}
+	}
+	QVariantList skills;
+	{
+		QStringList names = profile.skills.keys();
+		std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) {
+			return profile.skills[a].ns > profile.skills[b].ns;
+		});
+		for (const QString &name : names) {
+			const auto &s = profile.skills[name];
+			skills << QVariantMap{{QStringLiteral("skill"), name},
+				{QStringLiteral("calls"), qint64(s.calls)}, {QStringLiteral("hits"), qint64(s.hits)},
+				{QStringLiteral("ns"), qint64(s.ns)}, {QStringLiteral("c_calls"), qint64(s.cCalls)},
+				{QStringLiteral("global"), qint64(s.global)}};
+		}
+	}
 	return QVariantMap{
+		{QStringLiteral("game_ns"), profile.gameStartNs ? qint64(perfNowNs() - profile.gameStartNs) : 0},
+		{QStringLiteral("top_level_inclusive_ns"), qint64(profile.topLevelInclusiveNs)},
+		{QStringLiteral("sort_ns"), qint64(profile.sortNs)},
+		{QStringLiteral("v2_scan_ns"), qint64(profile.v2ScanNs)},
+		{QStringLiteral("lua_protected_calls"),
+		 qint64(LuaRuntime::protectedCallCount() - profile.luaProtectedCallsAtStart)},
+		{QStringLiteral("lua_c_calls"), qint64(perfLuaCCalls - profile.luaCCallsAtStart)},
+		{QStringLiteral("lua_c_calls_in_triggerable"), qint64(profile.luaCCallsInTriggerable)},
+		{QStringLiteral("sort_index_ns"), qint64(profile.sortIndexNs)},
+		{QStringLiteral("sort_index_rebuilds"), qint64(profile.sortIndexRebuilds)},
+		{QStringLiteral("sort_priority_ns"), qint64(profile.sortPriorityNs)},
+		{QStringLiteral("sort_owner_ns"), qint64(profile.sortOwnerNs)},
+		{QStringLiteral("sort_owner_checks"), qint64(profile.sortOwnerChecks)},
+		{QStringLiteral("dbg_has_skill_calls"), qint64(profile.dbgHasSkillCalls)},
+		{QStringLiteral("dbg_has_skill_ns"), qint64(profile.dbgHasSkillNs)},
+		{QStringLiteral("dbg_owns_ns"), qint64(profile.dbgOwnsNs)},
+		{QStringLiteral("dbg_shown_ns"), qint64(profile.dbgShownNs)},
+		{QStringLiteral("dbg_invalid_ns"), qint64(profile.dbgInvalidNs)},
+		{QStringLiteral("dbg_cand_total"), qint64(profile.dbgCandTotal)},
+		{QStringLiteral("dbg_gen_changed"), qint64(profile.dbgGenChanged)},
+		{QStringLiteral("hit_pairs"), qint64(profile.hitPairs)},
+		{QStringLiteral("hit_instances"), qint64(profile.hitInstances)},
+		{QStringLiteral("hit_validity_ns"), qint64(profile.hitValidityNs)},
+		{QStringLiteral("hit_resolve_ns"), qint64(profile.hitResolveNs)},
+		{QStringLiteral("hit_prepare_ns"), qint64(profile.hitPrepareNs)},
+		{QStringLiteral("hit_append_ns"), qint64(profile.hitAppendNs)},
+		{QStringLiteral("cand_step_ns"), qint64(profile.candStepNs)},
+		{QStringLiteral("cand_collect_ns"), qint64(profile.candCollectNs)},
+		{QStringLiteral("cand_restore_ns"), qint64(profile.candRestoreNs)},
+		{QStringLiteral("triggerable_lua_outer_ns"), qint64(profile.triggerableLuaOuterNs)},
+		{QStringLiteral("triggerable_outer_calls"), qint64(profile.triggerableOuterCalls)},
+		{QStringLiteral("record_lua_outer_ns"), qint64(profile.recordLuaOuterNs)},
+		{QStringLiteral("record_outer_calls"), qint64(profile.recordOuterCalls)},
+		{QStringLiteral("events"), events},
+		{QStringLiteral("skills"), skills},
 		{QStringLiteral("trigger_count"), qint64(m_triggerDispatchProfile.triggerCount)},
 		{QStringLiteral("priority_rebuild_count"), qint64(m_triggerDispatchProfile.priorityRebuildCount)},
 		{QStringLiteral("priority_skill_count"), qint64(m_triggerDispatchProfile.prioritySkillCount)},
@@ -1296,6 +1398,13 @@ void RoomThread::run()
 		CrashHandler::setLuaState(nullptr);
 		Sanguosha->unregisterRoom();
 	});
+	if (m_perfTraceEnabled) {
+		m_triggerDispatchProfile.gameStartNs = perfNowNs();
+		m_triggerDispatchProfile.luaProtectedCallsAtStart = LuaRuntime::protectedCallCount();
+		m_triggerDispatchProfile.luaCCallsAtStart = perfLuaCCalls;
+		if (room->getLuaState())
+			lua_sethook(room->getLuaState(), &perfLuaCallHook, LUA_MASKCALL, 0);
+	}
 	bool turnReclamationRegistered = false;
 	auto turnReclaimCleanup = qScopeGuard([this, &turnReclamationRegistered]() {
 		if (turnReclamationRegistered)
@@ -1438,7 +1547,9 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	static thread_local QList<ServerPlayer *> ownerRoster;
 	static thread_local QHash<QString, QSet<ServerPlayer *>> possibleOwners;
 	const quint64 generation = SkillSet::generation();
+	const qint64 perfIndexStartNs = m_perfTraceEnabled ? perfNowNs() : 0;
 	if (ownerRoom != targetRoom || ownerGeneration != generation || ownerRoster != players) {
+		if (m_perfTraceEnabled) ++m_triggerDispatchProfile.sortIndexRebuilds;
 		possibleOwners.clear();
 		foreach (ServerPlayer *player, players) {
 			foreach (const QString &name, player->getSkillNames()) {
@@ -1452,6 +1563,7 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	}
 	// A nested Room dispatch must not replace this invocation's ownership view.
 	const auto owners = possibleOwners;
+	if (m_perfTraceEnabled) m_triggerDispatchProfile.sortIndexNs += quint64(perfNowNs() - perfIndexStartNs);
 	QHash<const TriggerSkill *, double> priorities;
 	priorities.reserve(skills.length());
 	foreach (TriggerSkill *skill, skills) {
@@ -1464,21 +1576,49 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
         const auto originGuard = qScopeGuard([&] { if (authored) m_callbackOrigins.removeLast(); });
 		double len = players.length();
         double priority = 0;
+        const qint64 perfPriorityStartNs = m_perfTraceEnabled ? perfNowNs() : 0;
         if (qobject_cast<GameRule *>(skill)) priority = skill->getPriority(triggerEvent);
         else invokeAuthorCallback([&]() {
             priority = skill->getPriority(triggerEvent);
         });
         checkTriggerDispatchAbort();
+        const qint64 perfOwnerStartNs = m_perfTraceEnabled ? perfNowNs() : 0;
+        if (m_perfTraceEnabled) m_triggerDispatchProfile.sortPriorityNs += quint64(perfOwnerStartNs - perfPriorityStartNs);
 		const QString skillName = skill->objectName();
 		const auto candidates = owners.value(skillName);
+		if (m_perfTraceEnabled) {
+			m_triggerDispatchProfile.dbgCandTotal += candidates.size();
+			if (SkillSet::generation() != generation) ++m_triggerDispatchProfile.dbgGenChanged;
+		}
 		foreach (ServerPlayer *player, players) {
 			// A callback may acquire a skill while priorities are being queried.
-			if ((SkillSet::generation() != generation || candidates.contains(player))
-				&& player->hasSkill(skillName, includeLose)) {
-				priority += len / 100.0;
-				break;
+			if (SkillSet::generation() != generation || candidates.contains(player)) {
+				if (m_perfTraceEnabled) {
+					++m_triggerDispatchProfile.dbgHasSkillCalls;
+					const qint64 t0 = perfNowNs();
+					(void)player->ownsSkill(skillName);
+					const qint64 t1 = perfNowNs();
+					(void)player->hasShownSkill(skillName);
+					const qint64 t2 = perfNowNs();
+					(void)player->isSkillInvalid(skillName);
+					const qint64 t3 = perfNowNs();
+					m_triggerDispatchProfile.dbgOwnsNs += quint64(t1 - t0);
+					m_triggerDispatchProfile.dbgShownNs += quint64(t2 - t1);
+					m_triggerDispatchProfile.dbgInvalidNs += quint64(t3 - t2);
+				}
+				const qint64 t4 = m_perfTraceEnabled ? perfNowNs() : 0;
+				const bool has = player->hasSkill(skillName, includeLose);
+				if (m_perfTraceEnabled) m_triggerDispatchProfile.dbgHasSkillNs += quint64(perfNowNs() - t4);
+				if (has) {
+					priority += len / 100.0;
+					break;
+				}
 			}
 			--len;
+		}
+		if (m_perfTraceEnabled) {
+			m_triggerDispatchProfile.sortOwnerNs += quint64(perfNowNs() - perfOwnerStartNs);
+			++m_triggerDispatchProfile.sortOwnerChecks;
 		}
 		priorities.insert(skill, priority);
 	}
@@ -1663,14 +1803,46 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	QMap<QString, QStringList> consumedEquipmentTargets;
 	QMap<QString, QStringList> consumedContextTargets;
 
+	// Perf trace: the scan phases (record pass, triggerable/context collection)
+	// run before any player choice, so their time is pure dispatch overhead.
+	// Nested dispatches insert into the hash, so look the entry up on each use.
+	const bool perfEvent = m_perfTraceEnabled;
+	const auto perfEv = [&]() -> TriggerDispatchProfile::EventProfile & {
+		return m_triggerDispatchProfile.events[int(triggerEvent)];
+	};
+	if (perfEvent) perfEv().v2Candidates += quint64(v2_skills.length());
+	const auto perfRecord = [&](const std::function<void()> &call) {
+		if (!perfEvent) { call(); return; }
+		const qint64 startNs = perfNowNs();
+		const bool outer = LuaRuntime::protectedCallDepth() == 0;
+		const quint64 luaBefore = LuaRuntime::protectedCallOuterNs();
+		call();
+		auto &event = perfEv();
+		++event.recordCalls;
+		event.recordNs += quint64(perfNowNs() - startNs);
+		if (outer) {
+			++m_triggerDispatchProfile.recordOuterCalls;
+			m_triggerDispatchProfile.recordLuaOuterNs += LuaRuntime::protectedCallOuterNs() - luaBefore;
+		}
+	};
+	qint64 perfScanStartNs = perfEvent ? perfNowNs() : 0;
+	const auto perfEndScan = [&](bool recordPass) {
+		if (!perfEvent) return;
+		const quint64 scanNs = quint64(perfNowNs() - perfScanStartNs);
+		perfEv().v2ScanNs += scanNs;
+		if (recordPass) perfEv().recordPassNs += scanNs;
+		m_triggerDispatchProfile.v2ScanNs += scanNs;
+	};
+	const QList<ServerPlayer *> perfPlayers = perfEvent ? room->getAllPlayers(true) : QList<ServerPlayer *>();
+
 	// Run once per recorded event and provide full context for each current player instance.
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
         triggerDispatchStep(triggerEvent, target, v2->objectName());
         bool recorded = false;
-        invokeOrigin(v2, QStringLiteral("v2-recordEvent"), nullptr,
-                     [&]() { recorded = v2->recordEvent(triggerEvent, room, target, data); });
+        perfRecord([&]() { invokeOrigin(v2, QStringLiteral("v2-recordEvent"), nullptr,
+                     [&]() { recorded = v2->recordEvent(triggerEvent, room, target, data); }); });
         checkTriggerDispatchAbort();
         restoreIdentity();
         if (recorded) continue;
@@ -1683,7 +1855,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			recordCtx.invoker = target;
 			recordCtx.original_data = &data;
 			recordCtx.current_event = triggerEvent;
-			invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
+			perfRecord([&]() { invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); }); });
 			checkTriggerDispatchAbort();
 			restoreIdentity();
 			continue;
@@ -1703,7 +1875,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 recordCtx.original_data = &data;
                 recordCtx.current_event = triggerEvent;
                 recordCtx.amount = v2->getBaseAmount();
-                invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
+                perfRecord([&]() { invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); }); });
                 checkTriggerDispatchAbort();
                 restoreIdentity();
             }
@@ -1741,17 +1913,19 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				if (!amountOk) recordCtx.amount = v2->getBaseAmount();
 				recordCtx.original_data = &data;
 				recordCtx.current_event = triggerEvent;
-				invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
+				perfRecord([&]() { invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); }); });
 				checkTriggerDispatchAbort();
 				restoreIdentity();
 			}
 		}
 	}
+	perfEndScan(true);
 
 	bool broken = false;
 
 	while (!broken) {
         triggerDispatchStep(triggerEvent, target);
+        if (perfEvent) perfScanStartNs = perfNowNs();
 		if (equipmentGroup && (triggerEvent == EnterDying || triggerEvent == Dying
 			|| triggerEvent == AskForPeaches)) {
 			const ServerPlayer *dying = data.value<DyingStruct>().who;
@@ -1777,13 +1951,25 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		foreach (const TriggerSkill *ts, v2_skills) {
 			TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 			if (!v2) continue;
+        const qint64 perfCandidateStartNs = perfEvent ? perfNowNs() : 0;
+        const auto perfCandidateGuard = qScopeGuard([&]() {
+            if (perfEvent) perfEv().candidateNs += quint64(perfNowNs() - perfCandidateStartNs);
+        });
+        const qint64 perfStepStartNs = perfEvent ? perfNowNs() : 0;
         triggerDispatchStep(triggerEvent, target, v2->objectName());
+        const qint64 perfCollectStartNs = perfEvent ? perfNowNs() : 0;
         QList<SkillContext> supplied;
         bool collected = false;
         invokeOrigin(v2, QStringLiteral("v2-collect"), nullptr,
                      [&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); });
+        const qint64 perfRestoreStartNs = perfEvent ? perfNowNs() : 0;
         checkTriggerDispatchAbort();
         restoreIdentity();
+        if (perfEvent) {
+            m_triggerDispatchProfile.candStepNs += quint64(perfCollectStartNs - perfStepStartNs);
+            m_triggerDispatchProfile.candCollectNs += quint64(perfRestoreStartNs - perfCollectStartNs);
+            m_triggerDispatchProfile.candRestoreNs += quint64(perfNowNs() - perfRestoreStartNs);
+        }
         if (collected) {
             QMap<QString, QStringList> precedingTargets;
             QSet<QString> compulsoryOrderedKeys;
@@ -1827,10 +2013,53 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
 		TriggerList list;
-        invokeOrigin(v2, QStringLiteral("v2-triggerable"), nullptr,
-                     [&]() { list = v2->triggerable(triggerEvent, room, target, data); });
-		checkTriggerDispatchAbort();
-		restoreIdentity();
+        {
+            const qint64 startNs = perfEvent ? perfNowNs() : 0;
+            const quint64 cCallsBefore = perfLuaCCalls;
+            const bool luaOuter = LuaRuntime::protectedCallDepth() == 0;
+            const quint64 luaOuterBefore = LuaRuntime::protectedCallOuterNs();
+            invokeOrigin(v2, QStringLiteral("v2-triggerable"), nullptr,
+                         [&]() { list = v2->triggerable(triggerEvent, room, target, data); });
+            if (perfEvent) {
+                const quint64 ns = quint64(perfNowNs() - startNs);
+                if (luaOuter) {
+                    ++m_triggerDispatchProfile.triggerableOuterCalls;
+                    m_triggerDispatchProfile.triggerableLuaOuterNs += LuaRuntime::protectedCallOuterNs() - luaOuterBefore;
+                }
+                const quint64 cCalls = perfLuaCCalls - cCallsBefore;
+                bool hit = false;
+                for (auto it = list.cbegin(); it != list.cend(); ++it)
+                    if (!it.value().isEmpty()) { hit = true; break; }
+                auto &event = perfEv();
+                ++event.triggerableCalls;
+                event.triggerableNs += ns;
+                event.triggerableCCalls += cCalls;
+                if (hit) ++event.triggerableHits;
+                if (v2->isGlobal()) {
+                    ++event.globalCandidates;
+                } else {
+                    static thread_local V2RecordOwnerIndex triggerableOwners;
+                    quint64 ownerGeneration;
+                    if (triggerableOwners.candidates(room, perfPlayers, v2->objectName(), ownerGeneration).isEmpty()) {
+                        ++event.ownerlessCandidates;
+                        if (hit) ++event.ownerlessHits;
+                    }
+                }
+                m_triggerDispatchProfile.luaCCallsInTriggerable += cCalls;
+                auto &skill = m_triggerDispatchProfile.skills[v2->objectName()];
+                ++skill.calls;
+                skill.ns += ns;
+                skill.cCalls += cCalls;
+                skill.global = v2->isGlobal() ? 1 : 0;
+                if (hit) ++skill.hits;
+            }
+        }
+		{
+			const qint64 perfRestoreStartNs = perfEvent ? perfNowNs() : 0;
+			checkTriggerDispatchAbort();
+			restoreIdentity();
+			if (perfEvent) m_triggerDispatchProfile.candRestoreNs += quint64(perfNowNs() - perfRestoreStartNs);
+		}
 
 		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
@@ -1840,6 +2069,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				if (!skills.isEmpty()) {
 					foreach (const QString &skill, skills) {
                         triggerDispatchStep(triggerEvent, p, v2->objectName());
+                        if (perfEvent) ++m_triggerDispatchProfile.hitPairs;
 						QString skillName = skill;
 						int multiplier = 1;
 						int split = skillName.indexOf('*');
@@ -1913,11 +2143,15 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 							}
 							instanceIds << 0;
 						} else if (instanceId > 0) {
+							const qint64 perfValidityStartNs = perfEvent ? perfNowNs() : 0;
 							if (p->hasSkillInstance(skillName, instanceId)
 								&& !p->isSkillInvalid(skillName, instanceId))
 								instanceIds << instanceId;
+							if (perfEvent) m_triggerDispatchProfile.hitValidityNs += quint64(perfNowNs() - perfValidityStartNs);
 						} else {
+							const qint64 perfValidityStartNs = perfEvent ? perfNowNs() : 0;
 							instanceIds = p->getValidSkillInstanceIds(skillName);
+							if (perfEvent) m_triggerDispatchProfile.hitValidityNs += quint64(perfNowNs() - perfValidityStartNs);
                             if (instanceIds.isEmpty() && skillName == v2->objectName()
                                 && v2->isGlobal() && !v2->isEquipSkill())
                                 instanceIds << 0;
@@ -1940,20 +2174,29 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.invoker = target;
 								ctx.instanceID = resolvedId;
 								if (!v2->isEquipSkill() && !removalSource) ctx.activationRef = ref;
+								const qint64 perfResolveStartNs = perfEvent ? perfNowNs() : 0;
 								ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
                                 if (ctx.activationRef.isValid() && !ctx.sourceRef.isValid()) continue;
 								bool amountOk = false;
 								if (!v2->isEquipSkill())
 									ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
 								if (!amountOk) ctx.amount = v2->getBaseAmount();
+								if (perfEvent) m_triggerDispatchProfile.hitResolveNs += quint64(perfNowNs() - perfResolveStartNs);
 								ctx.trigger_count = currentTriggerCount + i;
 								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
                                 bool prepared = false;
+								const qint64 perfPrepareStartNs = perfEvent ? perfNowNs() : 0;
                                 invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
                                              [&] { prepared = v2->prepareSource(room, ctx); });
+								const qint64 perfAppendStartNs = perfEvent ? perfNowNs() : 0;
                                 if (prepared) appendContext(ctx);
+								if (perfEvent) {
+									m_triggerDispatchProfile.hitPrepareNs += quint64(perfAppendStartNs - perfPrepareStartNs);
+									m_triggerDispatchProfile.hitAppendNs += quint64(perfNowNs() - perfAppendStartNs);
+									++m_triggerDispatchProfile.hitInstances;
+								}
 							}
 						}
 					}
@@ -1976,6 +2219,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                     skillContexts.removeAt(i);
             }
         }
+		if (perfEvent) perfEv().contexts += quint64(skillContexts.size());
+		perfEndScan(false);
 		if (skillContexts.isEmpty())
 			break;
 
@@ -2630,6 +2875,9 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 
     const qint64 targetUseEventId = recordTriggerHistoryBefore(triggerEvent, room, target, data);
 	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
+	// Long games: a snapshot every ten turns keeps partial runs measurable.
+	if (m_perfTraceEnabled && outerTurn && ++m_triggerDispatchProfile.outerTurns % 10 == 0)
+		emitPerfTrace();
 	ResolutionHistoryEventGuard turnHistory(room->resolutionHistory(), QStringLiteral("turn"),
 		turnHistoryData(triggerEvent, room, target), room->historyRecordingEnabled() && triggerEvent == TurnStart);
     if (turnHistory.id() != 0) recordTurnHpSnapshot(room, turnHistory.id(), "start", "running");
@@ -2744,6 +2992,20 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (m_perfTraceEnabled)
 		++m_triggerDispatchProfile.triggerCount;
+	const qint64 perfStartNs = m_perfTraceEnabled ? perfNowNs() : 0;
+	if (m_perfTraceEnabled) m_triggerDispatchProfile.childNsStack << 0;
+	const auto perfGuard = qScopeGuard([this, perfStartNs, triggerEvent]() {
+		if (!m_perfTraceEnabled) return;
+		auto &profile = m_triggerDispatchProfile;
+		const quint64 inclusive = quint64(perfNowNs() - perfStartNs);
+		const quint64 child = profile.childNsStack.takeLast();
+		auto &event = profile.events[int(triggerEvent)];
+		++event.dispatches;
+		event.inclusiveNs += inclusive;
+		event.exclusiveNs += inclusive > child ? inclusive - child : 0;
+		if (profile.childNsStack.isEmpty()) profile.topLevelInclusiveNs += inclusive;
+		else profile.childNsStack.last() += inclusive;
+	});
 	// push it to event stack
 	EventTriplet triplet(triggerEvent, room, target);
 	event_stack.push_back(triplet);
@@ -2758,7 +3020,15 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	bool broken = false;
     QSet<TriggerSkill *> triggered;
     try {
-	sortTriggerSkills(triggerEvent, room, false);
+	{
+		const qint64 sortStartNs = m_perfTraceEnabled ? perfNowNs() : 0;
+		sortTriggerSkills(triggerEvent, room, false);
+		if (m_perfTraceEnabled) {
+			const quint64 sortNs = quint64(perfNowNs() - sortStartNs);
+			m_triggerDispatchProfile.sortNs += sortNs;
+			m_triggerDispatchProfile.events[int(triggerEvent)].sortNs += sortNs;
+		}
+	}
 	if (invalidatesDistanceCache(triggerEvent)) {
 		m_playerUiStateDirty = true;
 		markDistanceCacheDirty();
@@ -2783,8 +3053,10 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
             if (authored && !enterCallbackOrigin(ts, triggerEvent, target, QStringLiteral("v1-lifecycle"))) continue;
             const auto originGuard = qScopeGuard([&] { if (authored) m_callbackOrigins.removeLast(); });
             if (m_discardOptionalFrames.contains(event_stack.size()) && !qobject_cast<GameRule *>(ts)) continue;
-			if (m_perfTraceEnabled)
+			if (m_perfTraceEnabled) {
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
+				++m_triggerDispatchProfile.events[int(triggerEvent)].mainTableVisits;
+			}
 			if (m_triggerSkillTraits.value(ts).v2 && !usesV2EventPriority(ts)) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
@@ -2811,7 +3083,16 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
             }
             bool eligible = false;
             if (qobject_cast<GameRule *>(ts)) eligible = ts->triggerable(target, room, triggerEvent, target, data);
-            else if (!invokeAuthorCallback([&]() { eligible = ts->triggerable(target, room, triggerEvent, target, data); })) continue;
+            else {
+                const qint64 v1StartNs = m_perfTraceEnabled ? perfNowNs() : 0;
+                const bool admitted = invokeAuthorCallback([&]() { eligible = ts->triggerable(target, room, triggerEvent, target, data); });
+                if (m_perfTraceEnabled) {
+                    auto &event = m_triggerDispatchProfile.events[int(triggerEvent)];
+                    ++event.v1TriggerableCalls;
+                    event.v1TriggerableNs += quint64(perfNowNs() - v1StartNs);
+                }
+                if (!admitted) continue;
+            }
 			if (eligible) {
                 Skill::Frequency frequency = Skill::NotFrequent;
                 if (qobject_cast<GameRule *>(ts)) frequency = ts->getFrequency(target);

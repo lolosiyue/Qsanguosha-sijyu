@@ -7,6 +7,7 @@
 #include "game-state-contract.h"
 
 #include <QHash>
+#include <QList>
 #include <QSet>
 #include <atomic>
 #include <functional>
@@ -259,6 +260,38 @@ private:
         quint64 v2EmptyDispatchCount = 0;
         quint64 v2CandidateCount = 0;
         quint64 mainTableCandidateVisitCount = 0;
+        // Timing (ns) and Lua boundary counts; only maintained with RoomThreadPerfTrace.
+        qint64 gameStartNs = 0;
+        quint64 outerTurns = 0;
+        quint64 topLevelInclusiveNs = 0;
+        quint64 sortNs = 0;
+        quint64 v2ScanNs = 0;
+        quint64 luaProtectedCallsAtStart = 0;
+        quint64 luaCCallsAtStart = 0;
+        quint64 luaCCallsInTriggerable = 0;
+        quint64 sortIndexNs = 0, sortIndexRebuilds = 0, sortPriorityNs = 0, sortOwnerNs = 0, sortOwnerChecks = 0;
+        quint64 dbgHasSkillCalls = 0, dbgHasSkillNs = 0, dbgOwnsNs = 0, dbgShownNs = 0, dbgInvalidNs = 0, dbgCandTotal = 0, dbgGenChanged = 0;
+        quint64 hitPairs = 0, hitInstances = 0, hitValidityNs = 0, hitResolveNs = 0, hitPrepareNs = 0, hitAppendNs = 0;
+        quint64 candStepNs = 0, candCollectNs = 0, candRestoreNs = 0;
+        quint64 triggerableLuaOuterNs = 0, triggerableOuterCalls = 0;
+        quint64 recordLuaOuterNs = 0, recordOuterCalls = 0;
+        struct EventProfile {
+            quint64 dispatches = 0, inclusiveNs = 0, exclusiveNs = 0, sortNs = 0, v2ScanNs = 0;
+            quint64 v2Candidates = 0, triggerableCalls = 0, triggerableHits = 0, triggerableNs = 0;
+            quint64 triggerableCCalls = 0, recordCalls = 0, recordNs = 0, contexts = 0;
+            quint64 mainTableVisits = 0, v1TriggerableCalls = 0, v1TriggerableNs = 0;
+            // candidateNs covers each triggerable-loop iteration (Lua call included);
+            // recordPassNs is the record pass of the scan. Ownerless: non-global
+            // definitions no seat currently holds.
+            quint64 candidateNs = 0, recordPassNs = 0, globalCandidates = 0;
+            quint64 ownerlessCandidates = 0, ownerlessHits = 0;
+        };
+        QHash<int, EventProfile> events;
+        struct SkillProfile {
+            quint64 calls = 0, hits = 0, ns = 0, cCalls = 0, global = 0;
+        };
+        QHash<QString, SkillProfile> skills;
+        QList<quint64> childNsStack;
     };
 
     struct TriggerSkillTraits {

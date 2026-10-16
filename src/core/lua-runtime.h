@@ -61,6 +61,12 @@ public:
     static lua_State *currentState();
     static int protectedCall(lua_State *state, int argumentCount,
                              int resultCount, int errorFunction);
+    // Profiling only: C++ -> Lua protected calls made on the calling thread.
+    static quint64 protectedCallCount();
+    // Profiling only: time (ns) spent inside outermost protected calls, and the
+    // current nesting depth, for the calling thread.
+    static quint64 protectedCallOuterNs();
+    static int protectedCallDepth();
     static void setCurrentForThread(LuaRuntime *runtime);
 
     class Binding

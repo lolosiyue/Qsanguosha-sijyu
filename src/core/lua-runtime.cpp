@@ -16,6 +16,7 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cmath>
 #include <limits>
@@ -37,6 +38,24 @@ QAtomicInteger<quint64> &nextGeneration()
 }
 
 thread_local LuaRuntime *currentRuntime = nullptr;
+thread_local quint64 protectedCallCounter = 0;
+thread_local quint64 protectedCallOuterNanoseconds = 0;
+thread_local int protectedCallNesting = 0;
+
+struct ProtectedCallTimer {
+    bool outer;
+    std::chrono::steady_clock::time_point start;
+    ProtectedCallTimer() : outer(protectedCallNesting == 0) {
+        ++protectedCallNesting;
+        if (outer) start = std::chrono::steady_clock::now();
+    }
+    ~ProtectedCallTimer() {
+        --protectedCallNesting;
+        if (outer)
+            protectedCallOuterNanoseconds += quint64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - start).count());
+    }
+};
 
 // Each C++ entry owns its transport. Nested native -> Lua -> native calls
 // rethrow into the next protected entry only after Lua restores that entry.
@@ -798,9 +817,26 @@ lua_State *LuaRuntime::currentState()
     return currentRuntime ? currentRuntime->state() : nullptr;
 }
 
+quint64 LuaRuntime::protectedCallCount()
+{
+    return protectedCallCounter;
+}
+
+quint64 LuaRuntime::protectedCallOuterNs()
+{
+    return protectedCallOuterNanoseconds;
+}
+
+int LuaRuntime::protectedCallDepth()
+{
+    return protectedCallNesting;
+}
+
 int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
                               int resultCount, int errorFunction)
 {
+    ++protectedCallCounter;
+    ProtectedCallTimer callTimer;
     LuaRuntime *runtime = fromState(state);
     // Coroutine states share their runtime's bridge, but only the main state
     // is in the ownership registry. Native callbacks already bind the owner.
