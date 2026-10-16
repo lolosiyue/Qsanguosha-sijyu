@@ -281,6 +281,7 @@ protected:
 
 private:
     friend class Room;
+    friend class CardUseService;
     friend class RoomManagedState;
     friend class WrappedCard;
     // Native authority only: neither card strings nor ordinary tags can mint this receipt.

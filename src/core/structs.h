@@ -227,6 +227,7 @@ struct CardUseStruct {
 
 private:
     friend class Room;
+    friend class CardUseService;
     // Server continuation identity is copied internally but never parsed from a request.
     bool m_acceptedSkillEffectCard = false;
     void replaceCard(const Card *newCard, Card *ownedCard = nullptr);

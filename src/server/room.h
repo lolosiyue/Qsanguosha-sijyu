@@ -53,6 +53,7 @@ class CardStateService;
 class ExtraTurnScheduler;
 class PlayerLifecycleService;
 class DamageResolutionService;
+class CardUseService;
 class PlayerStateService;
 class GameSessionController;
 class GameRule;
@@ -95,6 +96,7 @@ public:
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
     friend class DamageResolutionService;
+    friend class CardUseService;
     friend class GameSessionController;
     friend class Server;
     friend class RoomRuntime;
@@ -1135,6 +1137,7 @@ private:
     std::unique_ptr<RoomRoster> m_roster;
     std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;
     std::unique_ptr<DamageResolutionService> m_damageResolution;
+    std::unique_ptr<CardUseService> m_cardUse;
     std::unique_ptr<GameSessionController> m_gameSession;
 
     bool dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data) override;

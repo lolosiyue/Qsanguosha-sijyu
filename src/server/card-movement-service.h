@@ -136,6 +136,7 @@ public:
 
 private:
     friend class Room;
+    friend class CardUseService;
     friend class RoomManagedState;
     friend struct CardMovementServiceTestAccess;
 
