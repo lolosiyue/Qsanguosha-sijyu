@@ -749,13 +749,9 @@ QVariantMap RoomThread::triggerDispatchProfile() const
 		{QStringLiteral("sort_priority_ns"), qint64(profile.sortPriorityNs)},
 		{QStringLiteral("sort_owner_ns"), qint64(profile.sortOwnerNs)},
 		{QStringLiteral("sort_owner_checks"), qint64(profile.sortOwnerChecks)},
-		{QStringLiteral("dbg_has_skill_calls"), qint64(profile.dbgHasSkillCalls)},
-		{QStringLiteral("dbg_has_skill_ns"), qint64(profile.dbgHasSkillNs)},
-		{QStringLiteral("dbg_owns_ns"), qint64(profile.dbgOwnsNs)},
-		{QStringLiteral("dbg_shown_ns"), qint64(profile.dbgShownNs)},
-		{QStringLiteral("dbg_invalid_ns"), qint64(profile.dbgInvalidNs)},
-		{QStringLiteral("dbg_cand_total"), qint64(profile.dbgCandTotal)},
-		{QStringLiteral("dbg_gen_changed"), qint64(profile.dbgGenChanged)},
+		{QStringLiteral("sort_memo_hits"), qint64(profile.sortMemoHits)},
+		{QStringLiteral("sort_memo_misses"), qint64(profile.sortMemoMisses)},
+		{QStringLiteral("sort_memo_resets"), qint64(profile.sortMemoResets)},
 		{QStringLiteral("hit_pairs"), qint64(profile.hitPairs)},
 		{QStringLiteral("hit_instances"), qint64(profile.hitInstances)},
 		{QStringLiteral("hit_validity_ns"), qint64(profile.hitValidityNs)},
@@ -1564,6 +1560,42 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	// A nested Room dispatch must not replace this invocation's ownership view.
 	const auto owners = possibleOwners;
 	if (m_perfTraceEnabled) m_triggerDispatchProfile.sortIndexNs += quint64(perfNowNs() - perfIndexStartNs);
+	// Seat weighting asks hasSkill(name, false) of every candidate owner. For a
+	// server player that answer is a function of the skill instances (skill-set
+	// generation) and of room state that advances RoomRuntime's state revision:
+	// marks, flags, hp, tags (SkillInvalidityRecords), shown generals,
+	// disable-show, phase, life state and card moves, which is everything the
+	// hegemony gate and the InvaliditySkill callbacks read. The result is
+	// therefore memoized per (player, skill) until either counter moves; both
+	// counters are re-read on every lookup, so a callback that mutates state in
+	// the middle of a sort invalidates the memo at once. The include-lose form
+	// (addTriggerSkill) is ownership only and stays live.
+	RoomRuntime *memoRuntime = targetRoom->roomRuntime();
+	const auto memoHasSkill = [&](ServerPlayer *player, const QString &name) {
+		if (includeLose || !memoRuntime) return player->hasSkill(name, includeLose);
+		const quint64 memoGeneration = SkillSet::generation();
+		const quint64 memoRevision = memoRuntime->stateRevision();
+		if (m_sortMemoRoom != targetRoom || m_sortMemoGeneration != memoGeneration
+			|| m_sortMemoRevision != memoRevision) {
+			m_sortHasSkillMemo.clear();
+			m_sortMemoRoom = targetRoom;
+			m_sortMemoGeneration = memoGeneration;
+			m_sortMemoRevision = memoRevision;
+			if (m_perfTraceEnabled) ++m_triggerDispatchProfile.sortMemoResets;
+		}
+		const auto key = qMakePair(player, name);
+		const auto cached = m_sortHasSkillMemo.constFind(key);
+		if (cached != m_sortHasSkillMemo.constEnd()) {
+			if (m_perfTraceEnabled) ++m_triggerDispatchProfile.sortMemoHits;
+			return cached.value();
+		}
+		if (m_perfTraceEnabled) ++m_triggerDispatchProfile.sortMemoMisses;
+		const bool has = player->hasSkill(name, false);
+		// Keep the entry only if hasSkill itself left both counters untouched.
+		if (SkillSet::generation() == memoGeneration && memoRuntime->stateRevision() == memoRevision)
+			m_sortHasSkillMemo.insert(key, has);
+		return has;
+	};
 	QHash<const TriggerSkill *, double> priorities;
 	priorities.reserve(skills.length());
 	foreach (TriggerSkill *skill, skills) {
@@ -1586,33 +1618,12 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
         if (m_perfTraceEnabled) m_triggerDispatchProfile.sortPriorityNs += quint64(perfOwnerStartNs - perfPriorityStartNs);
 		const QString skillName = skill->objectName();
 		const auto candidates = owners.value(skillName);
-		if (m_perfTraceEnabled) {
-			m_triggerDispatchProfile.dbgCandTotal += candidates.size();
-			if (SkillSet::generation() != generation) ++m_triggerDispatchProfile.dbgGenChanged;
-		}
 		foreach (ServerPlayer *player, players) {
 			// A callback may acquire a skill while priorities are being queried.
-			if (SkillSet::generation() != generation || candidates.contains(player)) {
-				if (m_perfTraceEnabled) {
-					++m_triggerDispatchProfile.dbgHasSkillCalls;
-					const qint64 t0 = perfNowNs();
-					(void)player->ownsSkill(skillName);
-					const qint64 t1 = perfNowNs();
-					(void)player->hasShownSkill(skillName);
-					const qint64 t2 = perfNowNs();
-					(void)player->isSkillInvalid(skillName);
-					const qint64 t3 = perfNowNs();
-					m_triggerDispatchProfile.dbgOwnsNs += quint64(t1 - t0);
-					m_triggerDispatchProfile.dbgShownNs += quint64(t2 - t1);
-					m_triggerDispatchProfile.dbgInvalidNs += quint64(t3 - t2);
-				}
-				const qint64 t4 = m_perfTraceEnabled ? perfNowNs() : 0;
-				const bool has = player->hasSkill(skillName, includeLose);
-				if (m_perfTraceEnabled) m_triggerDispatchProfile.dbgHasSkillNs += quint64(perfNowNs() - t4);
-				if (has) {
-					priority += len / 100.0;
-					break;
-				}
+			if ((SkillSet::generation() != generation || candidates.contains(player))
+				&& memoHasSkill(player, skillName)) {
+				priority += len / 100.0;
+				break;
 			}
 			--len;
 		}

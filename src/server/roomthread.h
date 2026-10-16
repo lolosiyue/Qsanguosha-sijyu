@@ -8,6 +8,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QPointer>
 #include <QSet>
 #include <atomic>
 #include <functional>
@@ -270,7 +271,7 @@ private:
         quint64 luaCCallsAtStart = 0;
         quint64 luaCCallsInTriggerable = 0;
         quint64 sortIndexNs = 0, sortIndexRebuilds = 0, sortPriorityNs = 0, sortOwnerNs = 0, sortOwnerChecks = 0;
-        quint64 dbgHasSkillCalls = 0, dbgHasSkillNs = 0, dbgOwnsNs = 0, dbgShownNs = 0, dbgInvalidNs = 0, dbgCandTotal = 0, dbgGenChanged = 0;
+        quint64 sortMemoHits = 0, sortMemoMisses = 0, sortMemoResets = 0;
         quint64 hitPairs = 0, hitInstances = 0, hitValidityNs = 0, hitResolveNs = 0, hitPrepareNs = 0, hitAppendNs = 0;
         quint64 candStepNs = 0, candCollectNs = 0, candRestoreNs = 0;
         quint64 triggerableLuaOuterNs = 0, triggerableOuterCalls = 0;
@@ -424,6 +425,12 @@ private:
     bool m_refreshingSkillDescriptions = false;
     bool m_distanceCacheDirty = false;
     bool m_perfTraceEnabled;
+    // sortTriggerSkills seat-weighting memo of hasSkill(name, false), valid
+    // while the room, its skill-set generation and its state revision match.
+    QPointer<Room> m_sortMemoRoom;
+    quint64 m_sortMemoGeneration = 0;
+    quint64 m_sortMemoRevision = 0;
+    QHash<QPair<ServerPlayer *, QString>, bool> m_sortHasSkillMemo;
     int m_profileRoomId;
     QString m_profileMode;
     TriggerDispatchProfile m_triggerDispatchProfile;

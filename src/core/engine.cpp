@@ -1171,6 +1171,11 @@ void Engine::addPackage(Package*package)
     for (auto it = packagePatterns.cbegin(); it != packagePatterns.cend(); ++it)
         patterns.insert(it.key(), it.value());
     related_skills.unite(package->getRelatedSkills());
+    {
+        const QMultiMap<QString, QString> packageRelations = package->getRelatedSkills();
+        for (auto it = packageRelations.cbegin(); it != packageRelations.cend(); ++it)
+            indexRelatedSkill(it.key(), it.value());
+    }
 
 	foreach (Card*card, package->findChildren<Card*>()) {
         card->setId(cards.length());
@@ -1231,8 +1236,10 @@ void Engine::addPackage(Package*package)
 		}
 		if(skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
-            if (sk_name.startsWith("#"))
+            if (sk_name.startsWith("#")) {
 				related_skills.insert(skill->objectName(), sk_name);
+				indexRelatedSkill(skill->objectName(), sk_name);
+			}
         }
     }
     startupPhase.next("package.skills");
@@ -1328,6 +1335,11 @@ void Engine::setPackage(Package*package)
     //package->setParent(this);
     //patterns.unite(package->getPatterns());
     related_skills.unite(package->getRelatedSkills());
+    {
+        const QMultiMap<QString, QString> packageRelations = package->getRelatedSkills();
+        for (auto it = packageRelations.cbegin(); it != packageRelations.cend(); ++it)
+            indexRelatedSkill(it.key(), it.value());
+    }
     //sp_convert_pairs.unite(package->getConvertPairs());
 
     foreach (Card*card, package->findChildren<Card*>()) {
@@ -1390,8 +1402,10 @@ void Engine::setPackage(Package*package)
 
         if (skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
-            if (sk_name.startsWith("#"))
+            if (sk_name.startsWith("#")) {
                 related_skills.insert(skill->objectName(), sk_name);
+                indexRelatedSkill(skill->objectName(), sk_name);
+            }
         }
     }
 
@@ -1540,12 +1554,19 @@ QList<const Skill*> Engine::getRelatedSkills(const QString &skill_name) const
     return relateds;
 }
 
+void Engine::indexRelatedSkill(const QString &mainSkill, const QString &relatedSkill)
+{
+    const auto existing = m_mainSkillByRelated.constFind(relatedSkill);
+    if (existing == m_mainSkillByRelated.constEnd() || mainSkill < existing.value())
+        m_mainSkillByRelated.insert(relatedSkill, mainSkill);
+}
+
 const Skill*Engine::getMainSkill(const QString &skill_name) const
 {
 	if(skill_name.startsWith("#")){
-		foreach (QString key, related_skills.keys())
-			if (related_skills.values(key).contains(skill_name))
-				return getSkill(key);
+		const auto main = m_mainSkillByRelated.constFind(skill_name);
+		if (main != m_mainSkillByRelated.constEnd())
+			return getSkill(main.value());
 	}
     return getSkill(skill_name);
 }

@@ -354,6 +354,10 @@ private:
     QMap<QString, QString> mode_roles;
     QSet<QString> m_customModeIds;
     QMultiMap<QString, QString> related_skills;
+    // Hidden ("#") related skill -> its lowest main key: what the former
+    // linear scan of related_skills returned. Written only while loading packages.
+    QHash<QString, QString> m_mainSkillByRelated;
+    void indexRelatedSkill(const QString &mainSkill, const QString &relatedSkill);
     mutable QMap<QString, const CardPattern *> patterns;
     mutable QMap<QString, ExpPattern *> exp_patterns;
     QHash<QString, QList<int> > audio_type;
