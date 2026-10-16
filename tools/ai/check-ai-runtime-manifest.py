@@ -15,6 +15,7 @@ enabled and lua/ai/isolated/<package>-ai.lua exists.  These checks hold that lin
 4. no package handler is marked required
 5. both fetchers refuse a fetch that cannot satisfy the core
 6. the CMake asset manifest lists the isolated core as required
+7. the two shared strategy modules never declare the same SmartAIView method
 """
 from __future__ import annotations
 
@@ -25,6 +26,25 @@ import sys
 from pathlib import Path
 
 FETCH_HINT = "run tools/ci/fetch-extensions.sh (or .ps1) to populate lua/ai/"
+
+# Validation scope only: the bootstrap remains the authority for what loads.
+SHARED_METHOD_FILES = (
+    "lua/ai/isolated/decision-core.lua",
+    "lua/ai/isolated/smart-ai-functions.lua",
+)
+LUA_NON_CODE = re.compile(
+    r"--\[(?P<comment_eq>=*)\[.*?\](?P=comment_eq)\]"
+    r"|--[^\n]*"
+    r'|"(?:\\.|[^"\\])*"'
+    r"|'(?:\\.|[^'\\])*'"
+    r"|\[(?P<string_eq>=*)\[.*?\](?P=string_eq)\]",
+    re.DOTALL,
+)
+NAMED_METHOD = re.compile(
+    r"^[ \t]*(?:function[ \t]+SmartAIView[.:]([A-Za-z_]\w*)[ \t]*\("
+    r"|SmartAIView\.([A-Za-z_]\w*)[ \t]*=(?!=))",
+    re.MULTILINE,
+)
 
 
 class CheckError(Exception):
@@ -139,16 +159,60 @@ def check_asset_required(root: Path, files: list[dict]) -> list[str]:
             and Path(entry["path"]).parent.as_posix() not in listed]
 
 
+def check_shared_method_owners(root: Path) -> list[str]:
+    """Named declarations and aliases have one owner, including inside do blocks.
+
+    Dynamic required-query decorators intentionally wrap existing providers and
+    are not declarations. Strip strings/comments without changing line numbers
+    so documentation examples cannot create false duplicate-method reports.
+    """
+    owners: dict[str, tuple[str, int]] = {}
+    problems = []
+    for relative in SHARED_METHOD_FILES:
+        source = read(root, relative)
+        code = LUA_NON_CODE.sub(
+            lambda match: re.sub(r"[^\n]", " ", match.group()), source)
+        for match in NAMED_METHOD.finditer(code):
+            method = match.group(1) or match.group(2)
+            line = code.count("\n", 0, match.start()) + 1
+            previous = owners.get(method)
+            if previous:
+                problems.append(
+                    f"SmartAIView.{method} has multiple owners: "
+                    f"{previous[0]}:{previous[1]} and {relative}:{line}; "
+                    "shared method behavior must not depend on load order")
+            else:
+                owners[method] = (relative, line)
+    for method in ("isLordInDanger", "isLordHealthy", "getSourceLord"):
+        owner = owners.get(method)
+        if not owner or owner[0] != SHARED_METHOD_FILES[1]:
+            problems.append(
+                f"SmartAIView.{method} must be declared in "
+                f"{SHARED_METHOD_FILES[1]} (shared lord queries)")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fail-closed isolated AI runtime source checker")
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--manifest", type=Path,
                         default=Path("docs/ai-runtime-manifest.json"))
+    parser.add_argument("--shared-methods-only", action="store_true",
+                        help="check shared method ownership without deployment inventory")
     arguments = parser.parse_args()
     root = arguments.root.resolve()
 
     try:
+        if arguments.shared_methods_only:
+            problems = check_shared_method_owners(root)
+            for problem in problems:
+                print(f"shared-method-owners: {problem}")
+            if problems:
+                return 1
+            print("shared-method-owners: PASS; named methods and aliases have "
+                  "one owner; shared lord queries belong to smart-ai-functions.lua")
+            return 0
         manifest = json.loads(read(root, str(arguments.manifest).replace("\\", "/")))
         files = manifest["files"]
         core = manifest["isolated_core_scripts"]
@@ -157,7 +221,8 @@ def main() -> int:
                     + check_isolated_inventory(root, files)
                     + check_package_handlers(root, files)
                     + check_fetchers_gate_core(root, core)
-                    + check_asset_required(root, files))
+                    + check_asset_required(root, files)
+                    + check_shared_method_owners(root))
     except (CheckError, KeyError, json.JSONDecodeError) as error:
         print(f"ai-runtime-manifest: ERROR: {error}")
         return 2
@@ -172,7 +237,7 @@ def main() -> int:
     packages = sum(1 for entry in files if entry.get("kind") == "package_handler")
     print(f"ai-runtime-manifest: files={len(files)} required={required} "
           f"core={len(core)} package_handlers={packages}; the Lua declaration, the "
-          f"fetch gates and the asset manifest agree")
+          f"fetch gates and the asset manifest agree; shared method owners are unique")
     return 0
 
 

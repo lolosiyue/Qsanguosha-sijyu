@@ -835,6 +835,8 @@ array 與 string-key table 讀取 snapshot。
 | `AIValue.kind(value)` | 建構器建立的代理分為 `player/card/skill/room/ai/request`（`request` 是 §15.2.3 的 legacy request view）；其他值回 nil。不改寫 Lua `type()`，也不以同名方法猜型別 |
 | `AIValue.isPlayer/isCard/isSkill` | 明確區分代理種類；原生 userdata 不屬於隔離代理 |
 | `AIValue.isList(value)` | 接受 `AIList` 或連續普通 array（含空 array）；拒絕代理、字典、稀疏表及未知 metatable |
+| `AIValue.requireKnown(value, key, reason?)` | 必要值守衛：原樣回傳已知值（含 false、0、空字串與空集合）；原樣拋出 `AIUnsupported`，nil 則以 key 記錄 unsupported。reason 可覆寫未知值診斷訊息；isolated 套件以 `local known = AIValue.requireKnown` 共用，禁止另寫副本 |
+| `AIValue.requireKnownFor(key, reason_prefix)` | 綁定固定 coverage key 與診斷前綴，回傳 `(value, field)` 守衛；僅 nil 時組合 `reason_prefix .. field`，其餘值與 unsupported 沿用 `requireKnown`。專屬診斷用此函式設定別名，不另寫守衛 |
 | `AIList.new(array)` | 建立淺層集合副本；nil 原樣回 nil；非集合輸入報錯。`AIList.new({})` 表示已知空集合 |
 | `length/isEmpty/first/last/at` | `at(0)` 對應 `[1]`；越界／非法索引回 nil；空集合 first/last 回 nil |
 | `contains/append/removeOne` | 操作呼叫端集合，元素用 Lua `==` 比較；append 禁止 nil，removeOne 回成功與否。玩家同 request 共用身份；CardView／SkillView 每次查詢為新代理，跨查詢比較應使用公開 ID／instance，而非假定 native pointer 身份 |

@@ -27,6 +27,8 @@
 
 鍵值對應實際 request 的 reason／pattern／技能名（不一定是顯示名稱）。新 ABI 的 `options` 不是 QVariant；`sgs.ai_skill_*` 相容表是 legacy ABI，參數位置不可混用。
 
+已登記的純值 `ai_skill_invoke[reason]` 在一般模式與 Original 國戰皆優先處理該詢問；Original 的舊詢問流程只處理未登記純值 handler 的技能。技能別名可直接登記到同一純值回呼，不必保留 `sgs.ai_skill_invoke` 包裝。
+
 ## 例：受傷才選擇回血
 
 假設技能 `demo_recover` 詢問「是否接受無代價回血」，`demo_reward` 提供 `recover`、`draw` 選項：
@@ -66,6 +68,10 @@ end
 5. `card_spec` 正規化後，native 仍驗 conversion ID、activation／source owner 與 instance、成本、request kind、目標與 revision。不拼 legacy 牌字串、`cloneCard` 或 `Card_Parse`。
 
 一般 V2 轉化有現成投影，不必為每個技能新增 host registry；未知成本或 V1 轉化仍可能 `NotCovered`。`hasIndependentAIConversion()` 是 C++ 的嚴格 opt-in，只用於固定數量、獨立選牌且不改變生成牌身份／目標規則的技能。
+
+推演計劃統一用 `AIUsePlan.dummy(is_dummy, extra, current)` 建構：省略參數時為 dummy、額外目標數 `0`、空的現有目標列表；明確傳入 `false` 時保留正式規劃語意。每次建構都有獨立的 `to`／預設現有目標列表；傳入的 `current` 保留原列表及元素，不複製或轉換。套件若需把玩家轉成名稱，只保留轉換後呼叫共用建構的薄轉接。
+
+`AIUsePlan.new()` 只建構一般計劃，不接受 initializer；傳入參數會報錯。不要用 `AIUsePlan.new({isDummy=true})`，也不要在套件重寫 dummy 欄位初始化。dummy 標記控制規劃流程的副作用；唯讀牌推演仍使用 `self:evaluateCard()`／省略第二參數的 `self:aiUseCard()`。
 
 ## 資料與回傳界線
 

@@ -4,6 +4,25 @@
 
 本文件是目前 standalone `lua/ai/isolated/` 純值 AI 架構的維護錨點。原版 SmartAI 只作行為參考；共用層接收 viewer-scoped 純值 (pure values)，提出值型答案，再由 C++ 權威端重驗。安全 fallback 只是故障保護；任何 `unhandled`／unsupported／error 觸發都使 isolated acceptance 失敗。
 
+## Shared core ownership
+
+兩個共用檔按責任分區，檔頭列出導航索引；分區保留既有 lexical scope 與註冊順序。新增方法先選唯一所屬檔案，另一檔透過 `self` 呼叫；不得用同名宣告或「先提供簡版、後覆寫完整版」決定策略。
+
+| 所屬檔案 | 分區 | 責任與代表入口 |
+|---|---|---|
+| `decision-core.lua` | C01–C03 | 牌值、優先序、排序與防禦評分：`getKeepValue`、`getUsePriority`、`sort`、`getDefense`。 |
+| `decision-core.lua` | C04–C06 | 出牌值型計劃、手牌／體力收益與傷害估值：`bindConversionCosts`、`aiUseCard`、`needKongcheng`、`ajustDamage`。 |
+| `decision-core.lua` | C07–C08 | 棄牌損益、牌需與目標分配：`doDisCard`、`cardNeed`、`getCardNeedPlayer`、`findPlayerToDamage`。 |
+| `decision-core.lua` | C09–C12 | 牌策略派發、修正／驗證、標準牌估值、回合規劃與付費無效決策：`tryUseCard`、`getAoeValue`、`getTurnUse`、`planTurnUse`。 |
+| `smart-ai-functions.lua` | S01–S06 | 快照／unknown 契約、可見牌查詢、效果／殺判斷、階段預測、詢問與轉化適配。排序與估值呼叫 core 的唯一實作。 |
+| `smart-ai-functions.lua` | S07–S14 | 主公／回復、生存／救援、技能／鐵索、觀測快取、選人、棄牌偏好、移動場上牌與技能 action 綁定。 |
+| `smart-ai-functions.lua` | S15–S19 | 來源靜態 metadata 與預設 damage／priority／revision／nullification hooks。套件以 registry 擴充。 |
+| `smart-ai-functions.lua` | S20–S22 | 具名來源適配、一般選牌策略、明確的原地排序與必要查詢包裝。 |
+
+`isLordInDanger`、`isLordHealthy`、`getSourceLord` 集中在 S07。`isLordInDanger` 沿用正常 bootstrap 最後生效的版本：只查 `RoomView:getLord()` 的 projected lord，無主公回 false，主公體力小於 3 回 true；保留 `benghuai` 的原有體力處理與未知輸入拒絕。推定身份掃描不再作同名替代。`getSourceLord(player)` 保留來源演算法的同身份夥伴／自身規則，與房間主公查詢分開。
+
+`tools/ai/check-ai-runtime-manifest.py` 同時檢查兩檔具名 `SmartAIView` 方法與 alias 的唯一所屬，以及上述主公查詢的所屬檔案；可加 `--shared-methods-only` 單獨檢查方法邊界。檢查涵蓋 `do` 區塊內宣告，忽略註解／字串；動態 required-query decorator 是既有 provider 的包裝，保持明確的末尾接線。這是靜態檢查，不代表對局或策略等價驗收。完整覆寫 `AiIsolatedScripts` 的配置仍須明列其使用的共用模組，不會自動補載。
+
 ## 原版入口與目前共用 API
 
 | SmartAI 原版入口 | isolated 共用層 | 目前語意與邊界 |
@@ -13,6 +32,7 @@
 | `useCardByClassName`、`findPlayerToUseSlash`、`getBestTarget` | `planTargetSequence`、`relationTo`、`ai_card_use.<ClassName>`、`ai_card_effect` | 目標選擇使用權威端列出的 target combinations；managed mode 才能使用 friend/enemy relation。效果特殊規則以 class/name registry 擴展，不在核心增加武將分支。 |
 | `askForChoice`／`askForCard`／`askForPlayerChosen` | `ask-for-choice.lua` 的 request handlers、candidate index 與 relation helpers | 被選 action 缺資料或不完整投影才維持 unsupported／NotCovered；同題其他 unknown 不得被當 pass，也不以 native userdata 回查。 |
 | `doDisCard`、`poisonCards`、`getCardNeedPlayer`、`cardNeed` | `decision-core.lua`，由順拆、選牌、Yiji、Guanxing 預設消費 | 分友敵、手／裝／判定區與損失收益；給牌先處理救命／裝備，再呼叫 `ai_cardneed(to, card, self)`。只評估投影事實，不代替合法性檢查。 |
+| `sort`／`sortBy*` 的原清單排序 | `smart-ai-functions.lua` 的 `sortInPlace`、`sortByKeepValueInPlace`、`sortByUseValueInPlace`、`sortByUsePriorityInPlace`、`sortByDynamicUsePriorityInPlace`、`sortByCardNeedInPlace` | 套件需要排序副作用時直接使用共用方法，轉送排序鍵、反向與 flags 並回傳原清單；一般 `sort`／`sortBy*` 仍回傳副本。寫回僅覆蓋結果前綴，保留既有轉接語意；`flags="j"` 的副本過濾不代表原清單尾端已刪除。自訂比較器、來源操作與外部持牌者隱私檢查仍由原策略負責。 |
 | `needKongcheng`、`getBestHp`、`needToLoseHp` | 手牌／血量共用規則與 `ai_getLeastHandcardNum_skill`、`ai_getBestHp_skill`、`ai_need_damaged`、damage adjustment hooks | 保留原版關鍵優先序、精確 callback ABI 與 false；傷害只屬公開基準加 hook 的策略估算，未等價移植全部原生傷害分支。另提供 `dodiscard`、`aiUsecard`、`needToloseHp` 相容拼法。 |
 | `needRetrial`、`getRetrialCardId`、`getFinalRetrial` | `retrial.lua`、`getDecisionData():toJudge()` | C++ 投影 `JudgeStruct::isGood(card)` 結果；支援常見判定、交換、Lightning 保留、拆牌偏好與最低 keep。FilterSkill、連鎖傷害、Beige 花色效果、最終改判能力缺資料時保持 unknown。 |
 | `ai_use_revises`／`ai_useto_revises`／`ai_target_revises`／`ai_used_revises` | `tryUseCard` 的同一推演流程 | 使用 skill instance 的可見能力，重複技能去重；target revise 只重排完整權威組合。AOE 使用 affected targets；`used` 不在 dummy 推演觸發。另接 `ai_skill_use_func`、`ai_skill_carduse`、`ai_slash_prohibit`。 |
@@ -31,6 +51,10 @@
 預設詢問已包含：頻率驅動的 skill invoke、choice 排除 `benghuai`、suit 權重、general 可選項、discard、AG、card chosen、Yiji、player(s) chosen、實體回應／show／pindian／救桃／無懈。隨機選擇使用 runtime 受控 RNG。Guanxing 雙向排序目前只覆蓋自己摸牌前且沒有待判定的基線：按需求排序全放頂；只有明確 draw count 才分頂／底，不推測摸牌數。
 
 `nil` 是 `unhandled`（isolated 尚未處理）；`AIUnsupported` 是 unsupported（isolated defect/debt，記錄原因）；`{kind="pass"}` 是已處理的 pass。`"."`／空字串經 normalization 也是 declined/pass，但 compulsory pattern (`!`) 不接受 declined／pass。三者不可合併成「沒有出牌」。
+
+必要投影值統一用 `AIValue.requireKnown(value, key, reason?)`；套件內僅檢查 `nil` 後原樣回傳的 helper 可直接寫成 `local known = AIValue.requireKnown`，省去轉呼叫包裝。專屬診斷 helper 也委派至此守衛，保留原 coverage key，並以 `value == nil and (原診斷運算式) or nil` 傳入第三參數，避免已知值額外求值診斷。它會傳播既有 `AIUnsupported`，只將 `nil` 判為未知，保留 `false`、`0`、空字串與空表。允許合法查無結果的 API 不套此檢查；型別、完整性及合法性檢查仍須保留。
+
+固定 coverage key 與診斷前綴用 `local guard = AIValue.requireKnownFor("key", "prefix")` 綁定；呼叫仍為 `guard(value, field)`，僅值為 nil 時組合原訊息。`value_known`、`damage_known`、`card_selection_known`、`pindian_known` 均採此方式保留原 key 與診斷，不再各自實作守衛。
 
 每個共用 registry 透過 `ai_coverage.declare` 申報；未註冊、過期、資料不完整、未知 conversion 或未知 target strategy 記錄 bounded `NotCovered`／`Error` metadata，並視為 isolated acceptance debt。逐候選 unknown 不會取消同一 request 中已知完整合法 action；只有沒有可行 action 且仍有 unknown 才使該 request NotCovered。已知為空和列不完必須分開。
 
