@@ -1601,6 +1601,16 @@ bool ServerPlayer::isOnline() const
 	return getState() == "online";
 }
 
+void ServerPlayer::setTurnLifecycle(bool turnOpen, bool playOpen)
+{
+	if (m_turnOpen == turnOpen && m_playOpen == playOpen) return;
+	m_turnOpen = turnOpen;
+	m_playOpen = playOpen;
+	// AI boards are cached by revision; a lifecycle change must reach the next view.
+	if (room && room->roomRuntime())
+		room->roomRuntime()->advanceStateRevision(RoomRuntime::TurnStateChanged);
+}
+
 void ServerPlayer::setAI(AI *ai)
 {
 	this->ai = ai;

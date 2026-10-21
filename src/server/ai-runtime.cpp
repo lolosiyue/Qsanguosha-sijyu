@@ -563,6 +563,10 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "removed");
     lua_pushboolean(state, player.inYinniState);
     lua_setfield(state, -2, "in_yinni_state");
+    lua_pushboolean(state, player.turnOpen);
+    lua_setfield(state, -2, "turn_open");
+    lua_pushboolean(state, player.playOpen);
+    lua_setfield(state, -2, "play_open");
     lua_pushinteger(state, player.attackRangeWithoutWeapon);
     lua_setfield(state, -2, "attack_range_without_weapon");
     pushAIJsonValue(state, player.prototypeRules);

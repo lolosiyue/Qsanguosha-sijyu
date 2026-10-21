@@ -597,6 +597,10 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         LogMessage log;
         log.type = "$AppendSeparator";
 		room->sendLog(log);
+        // Open before Global_TurnCount grows, so a clear epoch derived from the count
+        // never runs ahead of the clears. The guard closes a turned-over or broken turn.
+        player->setTurnLifecycle(true, true);
+        const auto closeTurn = qScopeGuard([player] { player->setTurnLifecycle(false, false); });
         room->addPlayerMark(player,"Global_TurnCount");
         room->setPlayerMark(player,"damage_point_round",0);
 
@@ -696,6 +700,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			player->removeTag("NextTurnSkill");
             room->handleAcquireDetachSkills(player,lose);
 		}else if(change.to==Player::NotActive) {
+        player->setTurnLifecycle(false, false);
         for (ServerPlayer *target : room->getPlayers()) {
             if (target->getMark("command4_effect") > 0) {
                 room->setPlayerMark(target, "command4_effect", 0);
@@ -760,6 +765,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
             if(change.to==Player::Play)
 				room->setPlayerMark(player,"damage_point_play_phase",0);
 			else{
+				player->setTurnLifecycle(player->isTurnOpen(), false);
 				foreach (ServerPlayer *p,room->getAlivePlayers()) {
 					foreach (QString mark,p->getMarkNames()) {
 						if(mark.endsWith("-PlayClear")||(player==p&&mark.endsWith("-SelfPlayClear")))

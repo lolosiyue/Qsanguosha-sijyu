@@ -1065,6 +1065,8 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         playerView.dead = player->isDead();
         playerView.removed = player->isRemoved();
         playerView.inYinniState = player->inYinniState();
+        playerView.turnOpen = player->isTurnOpen();
+        playerView.playOpen = player->isPlayOpen();
         // Room::setPlayerFlag broadcasts every flag change to all clients.
         playerView.privateFlagsVisible = true;
         playerView.privateFlags = player->getFlagList();

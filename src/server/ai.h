@@ -249,6 +249,9 @@ struct AIPlayerView {
     bool dead;
     bool removed;
     bool inYinniState = false;
+    // ServerPlayer turn lifecycle: Lua derives -Clear / -PlayClear epochs from these.
+    bool turnOpen = false;
+    bool playOpen = false;
     int attackRangeWithoutWeapon = 1;
     // Basic card prototypes (Slash, Jink, Peach, Analeptic, Nullification) for this
     // player: isCardLimited for use and response, and isAvailable.

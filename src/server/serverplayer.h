@@ -113,6 +113,11 @@ public:
     AI *getSmartAI() const;
 
     bool isOnline() const;
+    // Turn lifecycle for AI clear epochs: open from TurnStart until GameRule clears
+    // this turn's -Clear marks; play stays open until it clears the -PlayClear marks.
+    bool isTurnOpen() const { return m_turnOpen; }
+    bool isPlayOpen() const { return m_playOpen; }
+    void setTurnLifecycle(bool turnOpen, bool playOpen);
     inline bool isOffline() const
     {
         return getState() == "robot" || getState() == "offline";
@@ -329,6 +334,8 @@ private:
     // must never touch QAbstractSocket directly.
     void disconnectSocketFromOwnerThread();
     void syncHegemonyRevealState();
+    bool m_turnOpen = false;
+    bool m_playOpen = false;
 
     ClientSocket *socket;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;
