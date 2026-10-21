@@ -2719,13 +2719,7 @@ bool Guanxing::pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) 
     return room->showGeneralForSkill(SkillInstanceRef(ctx.owner->objectName(), SkillInstanceKey(other, ctx.extra_data.toInt())));
 }
 
-bool Guanxing::effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const
-{
-    ctx.manual_effect = true;
-    return skillEffect(event, room, player, ctx, ctx.owner);
-}
-
-bool Guanxing::effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const
+bool Guanxing::effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const
 {
     ServerPlayer *owner = ctx.owner;
     if (!owner) return false;
@@ -2784,16 +2778,20 @@ public:
     }
 };
 
-class Kongcheng : public ProhibitSkill
+class Kongcheng : public ProhibitSkillV2
 {
 public:
-    Kongcheng() : ProhibitSkill("kongcheng")
+    Kongcheng() : ProhibitSkillV2("kongcheng")
     {
     }
 
-    bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
-        return (card->isKindOf("Slash") || card->isKindOf("Duel")) && to->isKongcheng() && to->hasSkill(objectName());
+        // Secondary selects the target; Engine has already checked this skill instance.
+        const Player *target = context.holder;
+        const Card *card = context.card;
+        return target && card && target->isKongcheng()
+            && (card->isKindOf("Slash") || card->isKindOf("Duel"));
     }
 };
 

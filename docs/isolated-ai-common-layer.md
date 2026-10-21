@@ -48,7 +48,22 @@
 
 `sgs.ai_skill_*` 保留舊 callback 位置參數；無前綴的 isolated `ai_skill_*` 使用 `(self, options, request)`（use-card 為 prompt 版本）。兩種 ABI 分開登記，不能把同名表合併。`strategy-hooks.lua` 在共用 modules 後、套件 scripts 前載入；明確指定 `AiIsolatedScripts` 且載入 `decision-core.lua` 的配置，須同時載入 `strategy-hooks.lua`。
 
-預設詢問已包含：頻率驅動的 skill invoke、choice 排除 `benghuai`、suit 權重、general 可選項、discard、AG、card chosen、Yiji、player(s) chosen、實體回應／show／pindian／救桃／無懈。隨機選擇使用 runtime 受控 RNG。Guanxing 雙向排序目前只覆蓋自己摸牌前且沒有待判定的基線：按需求排序全放頂；只有明確 draw count 才分頂／底，不推測摸牌數。
+預設詢問已包含：頻率驅動的 skill invoke、choice 排除 `benghuai`、suit 權重、general 可選項、discard、AG、card chosen、Yiji、player(s) chosen、實體回應／show／pindian／救桃／無懈。隨機選擇使用 runtime 受控 RNG。
+
+### 標準諸葛亮／觀星 V2
+
+武將註冊 ID 為 `zhugeliang`，技能為 `guanxing`／`kongcheng`，沒有 `nos_zhugeliang`。觀星規則已使用 `TriggerSkillV2`；isolated 的 `guanxing.lua` 以 `ai_skill_guanxing.guanxing(self, options, request)` 接收 native 統一的 `guanxing` reason，沿用當次可見牌 ID、方向與既有模式策略，回傳 `answer.cards`／`bottom_cards`。回傳前驗證兩堆恰好分割 offered IDs，禁止遺漏、重複、額外牌與方向不符；native 仍負責最終驗證。native 對觀星揭示的牌與五穀相同，投影 viewer 持有時的 acquired-card evaluation（residue／limits／play candidate），不含印刷牌評估；排序估值與自摸挑牌依此作答。
+
+| 分支 | 策略與資料邊界 |
+|---|---|
+| 發動、空城 | 沿用頻率驅動的純值 invoke，以及 `needKongcheng` 的保牌／給牌 consumers；不另建同義策略。 |
+| 雙向觀星 | 依當前角色尚未經過的階段排序：判定（僅判定階段前且未跳過）、摸牌（自己／友方給好牌，敵方給最差牌，關係不明則不規劃後續），再到下一位行動角色的判定；當前回合已過出牌階段時，再依兵糧結果安排下一位的摸牌。同名延時錦囊按判定位置分槽，避免重複分配牌。 |
+| 下一位判定 | 只有確定 friend／enemy 才做有利／不利安排；unknown 保持未覆蓋，不視為敵方。 |
+| 置頂／置底 | 置頂沿用雙向觀星的同一消費順序規劃，未規劃的牌接在其後；置底全放牌堆底。兩者均受當次方向與牌集合驗證。 |
+| 後備武將控底 | 限 `02_1v1` 進入；一般模式不讀私有 `1v1Arrange`。1v1 未投影的後備武將資料仍是未覆蓋。 |
+| 模式覆寫 | 透過現有 `self:askForGuanxing` 分派，保留 Original 國戰自己的排序。 |
+
+此變更僅涉及 isolated AI；SmartAI 與原生規則未改。策略實作與靜態接線不代表實局觸發、策略強度或全部模式已驗收。
 
 `nil` 是 `unhandled`（isolated 尚未處理）；`AIUnsupported` 是 unsupported（isolated defect/debt，記錄原因）；`{kind="pass"}` 是已處理的 pass。`"."`／空字串經 normalization 也是 declined/pass，但 compulsory pattern (`!`) 不接受 declined／pass。三者不可合併成「沒有出牌」。
 

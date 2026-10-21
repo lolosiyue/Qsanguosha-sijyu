@@ -2161,7 +2161,9 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     // A card this viewer may take is evaluated as the viewer would hold it, with the
     // same rules and play candidate its own hand cards get. An AG may also name a
     // card to use, so each offered name's printed card is evaluated the same way.
-    if (kind == AIRequest::AmazingGrace && player
+    // Guanxing's disclosed cards may be drawn by the viewer next, so they get the
+    // same held-card view, but no printed-card evaluation.
+    if ((kind == AIRequest::AmazingGrace || kind == AIRequest::Guanxing) && player
         && (Config.EnableAI || m_room.externalAgent(player->objectName()))) {
         TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
@@ -2177,7 +2179,7 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
             acquired.candidate = makeAICardCandidate(m_room, player, card, Card::MethodUse,
                                                      AIRequest::Activate, QString(), projectionBudget);
             request.choiceOptions.acquiredCards << acquired;
-            if (names.contains(card->objectName())) continue;
+            if (kind != AIRequest::AmazingGrace || names.contains(card->objectName())) continue;
             names.insert(card->objectName());
             const std::unique_ptr<Card> printed(Sanguosha->cloneCard(card->objectName()));
             if (!printed) continue;

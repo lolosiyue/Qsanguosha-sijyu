@@ -16,7 +16,6 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
 };
 
 class StrengthenPackage : public Package
