@@ -644,6 +644,7 @@ class OLZhixi : public TriggerSkillV2
 public:
 	OLZhixi() : TriggerSkillV2("olzhixi")
 	{
+		frequency = Compulsory;
 		events << CardUsed << EventLoseSkill;
 	}
 
@@ -27622,6 +27623,7 @@ class OLYangwei : public TriggerSkillV2
 public:
 	OLYangwei() : TriggerSkillV2("olyangwei")
 	{
+		frequency = Compulsory;
 		events << ConfirmDamage << DamageForseen << CardsMoveOneTime;
 	}
 
@@ -29269,6 +29271,7 @@ class Xutu : public TriggerSkillV2
 public:
 	Xutu() : TriggerSkillV2("xutu")
 	{
+		frequency = Compulsory;
 		events << GameStart << EventPhaseStart << CardsMoveOneTime;
 	}
 
@@ -37030,6 +37033,7 @@ class Chenshi : public TriggerSkillV2
 public:
 	Chenshi() : TriggerSkillV2("chenshi")
 	{
+		frequency = Compulsory;
 		events << CardUsed << CardEffected << Damage << Damaged;
 		waked_skills = "#olmorumo";
 	}

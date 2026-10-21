@@ -2118,6 +2118,7 @@ class Tuoyu : public TriggerSkill
 public:
 	Tuoyu() : TriggerSkill("tuoyu")
 	{
+		frequency = Compulsory;
 		events << EventPhaseStart << EventPhaseEnd << PreCardUsed;
 		view_as_skill = new TuoyuVS;
 		waked_skills = "#tuoyu,#tuoyu-target";
@@ -7148,6 +7149,7 @@ class Yingjia : public TriggerSkill
 public:
 	Yingjia() :TriggerSkill("yingjia")
 	{
+		frequency = Compulsory;
 		events << CardFinished << EventPhaseChanging;
 	}
 	bool triggerable(const ServerPlayer *player) const

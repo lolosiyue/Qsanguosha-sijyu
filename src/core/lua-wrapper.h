@@ -412,6 +412,7 @@ public:
     void setTargetMode(TargetMode mode) { m_targetMode = mode; }
     void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }
     void setWillThrowSelectedCards(bool willThrow) { m_willThrowSelectedCards = willThrow; }
+    void setChangeSkill(bool change) { change_skill = change; }
     void setBaseAmount(int amount) { m_baseAmount = amount; }
     void setLimitScope(Skill::LimitScope scope) { m_limitScope = scope; }
     void setMaxUsageLimit(int limit) { m_maxUsageLimit = limit; }

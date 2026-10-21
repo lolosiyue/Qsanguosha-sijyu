@@ -13524,7 +13524,7 @@ public:
 class Dufeng : public TriggerSkillV2
 {
 public:
-	Dufeng(): TriggerSkillV2("dufeng") { events << EventPhaseStart; }
+	Dufeng(): TriggerSkillV2("dufeng") { events << EventPhaseStart; frequency = Compulsory; }
 
 	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
 	{
@@ -34780,6 +34780,7 @@ class Yinbi : public TriggerSkill
 public:
 	Yinbi(): TriggerSkill("yinbi")
 	{
+		frequency = Compulsory;
 		events << EventPhaseProceeding << HpChanged << CardUsed;
 	}
 	bool triggerable(const ServerPlayer*target)const

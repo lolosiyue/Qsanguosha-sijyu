@@ -266,6 +266,7 @@ function sgs.CreateViewAsSkillV2(spec)
 	-- name and asks ambiguous responses; these hooks add a rule or a custom card.
 	if spec.allow_declaration then skill.allow_declaration = spec.allow_declaration end
 	if spec.build_card then skill.build_card = spec.build_card end
+	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
 	return skill
 end
 

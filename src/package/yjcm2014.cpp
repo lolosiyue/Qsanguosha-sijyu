@@ -2337,6 +2337,7 @@ class OLBenxi : public TriggerSkill
 public:
     OLBenxi() : TriggerSkill("olbenxi")
     {
+        frequency = Compulsory;
         events << CardUsed << Damage << PreCardUsed << CardResponded;
         view_as_skill =new OLBenxiVS;
     }

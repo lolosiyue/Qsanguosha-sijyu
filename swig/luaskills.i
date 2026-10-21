@@ -544,6 +544,7 @@ public:
 	void setTargetMode(TargetMode mode);
 	void setTargetEffectMode(TargetEffectMode mode);
 	void setWillThrowSelectedCards(bool willThrow);
+	void setChangeSkill(bool change);
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);

@@ -318,6 +318,7 @@ class Xueyi : public TriggerSkillV2
 public:
     Xueyi() : TriggerSkillV2("xueyi$")
     {
+        frequency = Compulsory;
         events << EventPhaseChanging;
     }
 

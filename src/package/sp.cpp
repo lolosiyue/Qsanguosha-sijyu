@@ -8321,7 +8321,7 @@ public:
 
 class XcxEnshe : public TriggerSkillV2 {
 public:
-    XcxEnshe() : TriggerSkillV2("xcx_enshe") { events << DamageCaused << CardsMoveOneTime; global = true; }
+    XcxEnshe() : TriggerSkillV2("xcx_enshe") { events << DamageCaused << CardsMoveOneTime; global = true; frequency = Compulsory; }
     bool recordEvent(TriggerEvent event, Room *, ServerPlayer *p, QVariant &data) const override {
         if (event != CardsMoveOneTime) return false;
         if (!p || !p->hasSkill(objectName())) return true;

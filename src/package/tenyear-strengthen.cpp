@@ -3907,6 +3907,7 @@ class TenyearBenxi : public TriggerSkill
 public:
 	TenyearBenxi() : TriggerSkill("tenyearbenxi")
 	{
+		frequency = Compulsory;
 		events << CardUsed << DamageCaused << PreCardUsed;
 		view_as_skill = new TenyearBenxiVS;
 	}

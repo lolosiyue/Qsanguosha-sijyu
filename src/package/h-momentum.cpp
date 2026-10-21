@@ -972,6 +972,7 @@ class HHuangjinSymbol : public TriggerSkillV2 {
 public:
     HHuangjinSymbol() : TriggerSkillV2("heg_huangjinsymbol") {
         events << PreHpLost;
+        frequency = Compulsory;
         view_as_skill = new HHongfaSlash("heg_huangjinsymbol");
         attached_lord_skill = true;
     }
