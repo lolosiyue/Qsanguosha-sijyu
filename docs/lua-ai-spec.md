@@ -766,6 +766,19 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   `AI_INSTRUCTION_LIMIT` 先以兩倍預算重跑一次，仍失敗就放棄作答：出牌階段為 Pass，其他題用呼叫端的預設值，
   並記錄 `Isolated AI fault contained`。unhandled 與 unsupported 照常交給 SmartAI。
 
+超限診斷會在 instruction hook 首次耗盡預算、Lua stack 尚未展開時輸出
+`[AI_LIMIT]` 與最多 32 層 `[AI_LIMIT_STACK]`（檔案、行號、函式，不輸出參數或 locals）。
+決策附帶 decision ID、viewer、kind、reason、budget scale；event／初始化超限另標示
+`callback=event_or_initialization`。同一次預算的巢狀 `pcall` 不重複輸出堆疊。
+
+設定程序環境 `QSAN_AI_DIAGNOSTICS=1` 可取得 `[AI_PHASE_BEGIN]`／`[AI_PHASE_END]`
+及 `elapsed_ms`：`make_request`、`choice_projection`、`decision_context`、`answer_route`、
+`isolated_with_retry`、`isolated_attempt`、`push_request`、`lua_callback`、`parse_result_gc`、
+`instruction_retry`、`vm_rebuild`、`vm_shutdown`、`vm_initialize`。未啟用時只輸出至少
+1000 ms 的階段結束；超限堆疊始終輸出。階段有包含關係，不能將所有 elapsed 相加；
+`make_request` 尚未填入 choice reason，以 decision ID 對照後續記錄。這些僅為觀測，
+不更改預算、重試、fallback 或遊戲結果，也不提供 wall-clock timeout。
+
 #### 15.2.1 AIWorldView
 
 模式／身份 hook 與 Room 身份明示服務的介面與相容界線見

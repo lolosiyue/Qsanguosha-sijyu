@@ -16,6 +16,7 @@
 #include <QMetaEnum>
 #include <QRegularExpression>
 #include <QSet>
+#include <QScopedValueRollback>
 
 #include <cmath>
 #include <limits>
@@ -23,6 +24,34 @@
 namespace {
 
 thread_local AiLuaRuntime *currentAiRuntime = nullptr;
+thread_local const AIRequest *currentAiDecision = nullptr;
+thread_local int currentAiBudgetScale = 1;
+
+// Read the live stack before luaL_error unwinds it. Do not inspect locals or
+// arguments, and finish all C++ temporaries before the hook raises a Lua error.
+void logInstructionLimit(lua_State *state)
+{
+    if (currentAiDecision) {
+        qWarning().noquote() << "[AI_LIMIT] decision=" << currentAiDecision->decisionId
+            << "player=" << currentAiDecision->viewerObjectName
+            << "kind=" << int(currentAiDecision->kind)
+            << "reason=" << currentAiDecision->choiceOptions.reason
+            << "budget_scale=" << currentAiBudgetScale;
+    } else {
+        qWarning() << "[AI_LIMIT] callback=event_or_initialization";
+    }
+    lua_Debug frame;
+    for (int level = 0; level < 32; ++level) {
+        if (!lua_getstack(state, level, &frame)) return;
+        if (lua_getinfo(state, "nSl", &frame))
+            qWarning().noquote() << "[AI_LIMIT_STACK] frame=" << level
+                << frame.short_src << ":" << frame.currentline
+                << (frame.name ? frame.name : "?")
+                << "defined=" << frame.linedefined;
+    }
+    if (lua_getstack(state, 32, &frame))
+        qWarning() << "[AI_LIMIT_STACK] truncated after 32 frames";
+}
 
 const size_t AiSoftMemoryLimit = 64u * 1024u * 1024u;
 const size_t AiHardMemoryLimit = 128u * 1024u * 1024u;
@@ -921,6 +950,23 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, b
     lua_settop(state, top);
 }
 
+AiDecisionPhase::AiDecisionPhase(const AIRequest &request, const char *phase, int budgetScale)
+    : m_label(QStringLiteral("decision=%1 player=%2 kind=%3 reason=%4 phase=%5 budget_scale=%6")
+        .arg(request.decisionId).arg(request.viewerObjectName).arg(int(request.kind))
+        .arg(request.choiceOptions.reason).arg(QString::fromLatin1(phase)).arg(budgetScale)),
+      m_enabled(qEnvironmentVariableIntValue("QSAN_AI_DIAGNOSTICS") == 1)
+{
+    m_timer.start();
+    if (m_enabled) qInfo().noquote() << "[AI_PHASE_BEGIN]" << m_label;
+}
+
+AiDecisionPhase::~AiDecisionPhase()
+{
+    const qint64 elapsed = m_timer.elapsed();
+    if (m_enabled || elapsed >= 1000)
+        qInfo().noquote() << "[AI_PHASE_END]" << m_label << "elapsed_ms=" << elapsed;
+}
+
 AiRouteRegistry::AiRouteRegistry()
     : m_frozen(false)
 {
@@ -1053,14 +1099,18 @@ void AiLuaRuntime::commitPreparedRng(GameRng &prepared) noexcept
 
 qint64 AiLuaRuntime::scaledInstructionBudget() const
 {
-    // Planning and event views grow with the table, so the budget does too: one
-    // base budget per 8 alive players. Counting instructions keeps this deterministic.
+    // Planning and event views grow with the table, so the budget does too. Above 8
+    // alive players decisions measured up to about 5M instructions per alive player,
+    // so each gets half a base budget. Counting instructions keeps this deterministic.
     const int alive = m_room ? m_room->alivePlayerCount() : 0;
-    return m_instructionBudget * qMax(1, alive / 8);
+    if (alive > 8)
+        return m_instructionBudget * alive / 2;
+    return m_instructionBudget;
 }
 
 AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
 {
+    AiDecisionPhase attemptPhase(request, "isolated_attempt", budgetScale);
     AIResult result;
     result.decisionId = request.decisionId;
     result.stateRevision = request.stateRevision;
@@ -1071,19 +1121,29 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
     {
         LuaRuntime::Binding luaBinding(m_lua);
         ExecutionBinding executionBinding(*this);
+        QScopedValueRollback<const AIRequest *> decisionScope(currentAiDecision, &request);
+        QScopedValueRollback<int> scaleScope(currentAiBudgetScale, budgetScale);
         lua_State *state = m_lua.state();
         lua_getglobal(state, "ai_decide");
         if (!lua_isfunction(state, -1)) {
             lua_pop(state, 1);
             return result;
         }
-        pushRequest(state, request);
+        {
+            AiDecisionPhase phase(request, "push_request", budgetScale);
+            pushRequest(state, request);
+        }
         m_instructionsRemaining = scaledInstructionBudget() * qMax(1, budgetScale);
         m_instructionLimitExceeded = false;
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         LuaRuntime::LuaInvocationScope invocation(m_lua);
-        const int status = lua_pcall(state, 1, 1, 0);
+        int status;
+        {
+            AiDecisionPhase phase(request, "lua_callback", budgetScale);
+            status = lua_pcall(state, 1, 1, 0);
+        }
         lua_sethook(state, nullptr, 0, 0);
+        AiDecisionPhase resultPhase(request, "parse_result_gc", budgetScale);
         if (status != 0) {
             result.errorCode = m_instructionLimitExceeded
                 ? QStringLiteral("AI_INSTRUCTION_LIMIT")
@@ -1116,9 +1176,18 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
         }
     }
     if (rebuild) {
-        shutdown();
+        AiDecisionPhase rebuildPhase(request, "vm_rebuild", budgetScale);
+        {
+            AiDecisionPhase phase(request, "vm_shutdown", budgetScale);
+            shutdown();
+        }
         QString error;
-        if (!initialize(&error))
+        bool initialized;
+        {
+            AiDecisionPhase phase(request, "vm_initialize", budgetScale);
+            initialized = initialize(&error);
+        }
+        if (!initialized)
             qWarning().noquote() << "Unable to rebuild AI Lua runtime:" << error;
     }
     return result;
@@ -1336,6 +1405,9 @@ void AiLuaRuntime::luaInstructionHook(lua_State *state, lua_Debug *debug)
         return;
     runtime->m_instructionsRemaining -= 1000;
     if (runtime->m_instructionsRemaining <= 0) {
+        // Nested pcall handlers can catch the error; report the original stack once.
+        if (!runtime->m_instructionLimitExceeded)
+            logInstructionLimit(state);
         runtime->m_instructionLimitExceeded = true;
         luaL_error(state, "AI instruction limit exceeded");
     }

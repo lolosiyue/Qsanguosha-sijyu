@@ -1532,6 +1532,7 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
                                              Card::HandlingMethod method) const
 {
     AIRequest request = makeRequestHeader(player, kind, reason, pattern, prompt, method);
+    AiDecisionPhase requestPhase(request, "make_request");
     // --ai off selects the native fallback. It must not build the quadratic
     // isolated snapshot or allow an isolated Lua handler to override that AI.
     if (!Config.EnableAI && (!player || !m_room.externalAgent(player->objectName())))
@@ -2147,6 +2148,7 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     AIRequest request = makeRequest(player, kind, CardUseStruct::CARD_USE_REASON_UNKNOWN,
                                     QString(), QString(), Card::MethodNone);
     request.choiceOptions = options;
+    AiDecisionPhase choicePhase(request, "choice_projection");
     // These questions reveal their offered cards to this viewer. CardChosen is
     // deliberately excluded: another player's hidden hand is count-only.
     if (kind == AIRequest::Discard || kind == AIRequest::AmazingGrace
@@ -2318,6 +2320,7 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
                                       const QString &callbackName, const LegacyAnswer &legacy,
                                       AIResult &result, bool *fromIsolated) const
 {
+    AiDecisionPhase answerPhase(request, "answer_route");
     if (fromIsolated)
         *fromIsolated = false;
     if (!player || !player->getAI()) return false;
@@ -2385,13 +2388,16 @@ AIResult AiDecisionCoordinator::decideIsolatedContained(ServerPlayer *player,
                                                         const AIRequest &request,
                                                         bool &faultContained) const
 {
+    AiDecisionPhase decisionPhase(request, "isolated_with_retry");
     faultContained = false;
     AiLuaRuntime &ai = m_room.roomRuntime()->ai();
     AIResult result = ai.decideIsolated(request);
     if (result.errorCode.isEmpty() || m_room.alivePlayerCount() <= AiLargeRoomAlive)
         return result;
-    if (result.errorCode == QStringLiteral("AI_INSTRUCTION_LIMIT"))
+    if (result.errorCode == QStringLiteral("AI_INSTRUCTION_LIMIT")) {
+        AiDecisionPhase retryPhase(request, "instruction_retry", 2);
         result = ai.decideIsolated(request, 2);
+    }
     if (!result.errorCode.isEmpty()) {
         faultContained = true;
         qWarning().noquote() << "Isolated AI fault contained:" << player->objectName()
@@ -2404,6 +2410,7 @@ AIResult AiDecisionCoordinator::decideIsolatedContained(ServerPlayer *player,
 void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
                                                    AIRequest &request) const
 {
+    AiDecisionPhase contextPhase(request, "decision_context");
     if (!viewer || (!Config.EnableAI && !m_room.externalAgent(viewer->objectName()))) return;
     EngineRuntimeContextScope scope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);

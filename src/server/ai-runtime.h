@@ -6,10 +6,25 @@
 #include "lua-runtime.h"
 
 #include <QHash>
+#include <QElapsedTimer>
 
 class Room;
 class RoomManagedState;
 struct lua_Debug;
+
+// Request identity is copied so return-value moves cannot erase diagnostic labels.
+// QSAN_AI_DIAGNOSTICS=1 logs begin/end; otherwise only phases >= 1 second log.
+class AiDecisionPhase
+{
+public:
+    AiDecisionPhase(const AIRequest &request, const char *phase, int budgetScale = 1);
+    ~AiDecisionPhase();
+
+private:
+    QString m_label;
+    QElapsedTimer m_timer;
+    bool m_enabled;
+};
 
 enum AiRoute {
     AiRouteLegacyDirect,
