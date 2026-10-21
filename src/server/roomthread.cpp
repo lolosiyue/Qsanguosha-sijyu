@@ -1876,8 +1876,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         quint64 recordGeneration;
         const QString recordName = v2->objectName();
         const auto candidates = recordOwners.candidates(room, recordPlayers, recordName, recordGeneration);
-        if (candidates.isEmpty()) {
-            // No seat holds this global skill. Record once for the event target.
+        if (candidates.isEmpty() || (target && !allowedSources && v2->isGlobal() && v2->recordsOncePerEvent())) {
+            // No seat holds this global skill, or its record reads only the event.
+            // Record once for the event target; a targetless or source-scoped
+            // dispatch keeps the per-holder records.
             if (target && v2->isGlobal() && !v2->isEquipSkill()) {
                 SkillContext recordCtx;
                 recordCtx.skill_name = v2->objectName();

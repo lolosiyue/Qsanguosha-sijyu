@@ -56,7 +56,8 @@ public:
     }
     static void projectCurrent(Room *room)
     {
-        if (!room) return;
+        // Every receipt write projects at once, so with no receipts every projected value is already empty.
+        if (!room || room->getTag("YinAllowances").toList().isEmpty()) return;
         const QVariantMap scope = room->historyScopes();
         project(room, scope.value("turn_id").toLongLong(), scope.value("phase_id").toLongLong());
     }

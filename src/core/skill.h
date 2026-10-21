@@ -626,6 +626,10 @@ public:
                                         QList<SkillContext> &) const { return false; }
     virtual bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &) const { return false; }
     virtual bool usesEventPriority() const { return false; }
+    // A global skill whose record reads only the event, not its holder, records
+    // once per dispatch instead of once per holder instance.
+    bool recordsOncePerEvent() const { return m_recordOnce; }
+    void setRecordOnce(bool once) { m_recordOnce = once; }
     virtual ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const { return ctx.owner; }
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
@@ -669,6 +673,7 @@ public:
 
 protected:
     int m_baseAmount;
+    bool m_recordOnce = false;
 };
 
 class RetrialSkill : public TriggerSkill

@@ -34,6 +34,7 @@ public:
 	void setViewAsSkill(ViewAsSkill *view_as_skill);
 	void setGlobal(bool global);
 	void setRule(bool rule);
+	void setRecordOnce(bool once);
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);

@@ -2515,6 +2515,18 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
     bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
     {
+        // With no edict source, pile or attached copy the sync below changes nothing.
+        if (room->getTag("HImperialEdictSources").toList().isEmpty()) {
+            bool pending = false;
+            for (ServerPlayer *player : room->getAllPlayers(true)) {
+                if (!player->getPile("ImperialEdict").isEmpty()
+                    || !player->getSkillInstanceIds("heg_imperialedictattach").isEmpty()) {
+                    pending = true;
+                    break;
+                }
+            }
+            if (!pending) return true;
+        }
         if (room->getTag("HImperialEdictSyncing").toBool()) return true;
         room->setTag("HImperialEdictSyncing", true);
         const auto restore = qScopeGuard([&] { room->removeTag("HImperialEdictSyncing"); });

@@ -113,6 +113,7 @@ function sgs.CreateTriggerSkillV2(spec)
 		end
 	end
 	if type(spec.global)=="boolean" then skill:setGlobal(spec.global) end
+	if spec.record_once then skill:setRecordOnce(true) end
 	if spec.on_cost then skill.on_cost = spec.on_cost end
 	if spec.on_pay then skill.on_pay = spec.on_pay end
 	if spec.on_effect then skill.on_effect = spec.on_effect end
