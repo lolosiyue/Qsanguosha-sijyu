@@ -131,6 +131,27 @@ The branch is recorded with `Recorder(..., true)` and a Replay V2 header with
 `takeover:true`. It is always written to a new file; the source replay is never
 overwritten.
 
+### Headless takeover (Lua edit loop)
+
+```
+QSanguosha --headless --takeover <replay>.snapshots/turn_NNN_turn.json [--takeover-seat SGSn] --games 1 --headless-log out.txt
+```
+
+Each headless game restores the turn snapshot in a new Room, whose Lua VMs
+re-read `extensions/` and `lua/ai/` from disk. Editing a skill and running the
+command again therefore replays the same position under the new code: mode and
+gameplay seed come from the snapshot and the restore reinstates the gameplay
+and AI RNG, every seat is SmartAI (the selected seat stays a robot), so two
+runs of unchanged code are meant to produce logs that can be diffed directly. `--takeover-seat` defaults to the snapshot's
+current player; it only satisfies the seat binding. `--game-mode` is ignored.
+
+The ordinary takeover limits apply: turn boundaries only, ordinary modes only,
+and every skill and general named in the snapshot must still exist. Lua source
+is not fingerprinted, but a changed takeover-state provider name or version
+rejects the restore. A rejected snapshot or a failed restore logs `ERROR` and
+exits with code 1. The command reads the turn snapshot JSON directly; it is not
+the diagnostic-bundle loader described below.
+
 ## Bug diagnostic bundle
 
 The Replay control bar can export a currently open text replay with a verified

@@ -32,6 +32,7 @@
 #include "server.h"
 #include "engine.h"
 #include "engine-bootstrap.h"
+#include "game-snapshot.h"
 #include "audio.h"
 #include <QSurfaceFormat>
 #include <QQuickWindow>
@@ -678,6 +679,28 @@ int main(int argc, char *argv[]) {
             Server::forcedGeneral = args.at(forceIdx + 1);
         Server::writeHeadlessLog(QString("[AUTOTEST] forced general: main='%1' deputy='%2' owner='%3'")
             .arg(Server::forcedHeadlessGeneral, Server::forcedHeadlessGeneral2, Server::forcedGeneral));
+        // Lua dev loop: restore a turn snapshot under freshly loaded Lua; the snapshot fixes mode and RNG.
+        const int takeoverIdx = args.indexOf("--takeover");
+        if (takeoverIdx >= 0 && takeoverIdx + 1 < args.size()) {
+            const QString snapshotPath = args.at(takeoverIdx + 1);
+            const GameSnapshot snapshot(snapshotPath);
+            const GlobalSnapshot state = snapshot.getState();
+            if (!snapshot.getError().isEmpty() || state.players.isEmpty()) {
+                Server::writeHeadlessLog(QString("ERROR: Cannot load takeover snapshot '%1': %2")
+                    .arg(snapshotPath, snapshot.getError()));
+                return 1;
+            }
+            Config.GameMode = Sanguosha->getGameMode(state.gameMode);
+            Server::headlessTakeover.takeover = true;
+            Server::headlessTakeover.takeoverSnapshotPath = snapshotPath;
+            const int seatIdx = args.indexOf("--takeover-seat");
+            Server::headlessTakeover.takeoverSeatName = seatIdx >= 0 && seatIdx + 1 < args.size()
+                ? args.at(seatIdx + 1) : state.currentPlayer;
+            bool seedOk = false;
+            const quint64 seed = state.gameplayRng.seed.toULongLong(&seedOk);
+            if (seedOk)
+                Server::headlessTakeover.seed = seed;
+        }
         Server *server = new Server(qApp);
         qDebug() << ">>> Headless Mode: Starting stress test with"
                  << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";

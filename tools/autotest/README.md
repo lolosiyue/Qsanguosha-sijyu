@@ -391,6 +391,7 @@ QML 疊層／video object 全部為 0。
 | `--force-general <名>` | qsanguosha_server.exe／QSanguosha.exe `--headless` | 開局 (選將完成後) 把房主換成該武將, 無房主時換主公; 任何模式生效; stdout `[AUTOTEST] force general <seat> <名>` |
 | `--test-general <名>` | QSanguosha.exe | 自動選將 (FreeChoose; 1v1 用 x0) |
 | `--test-general2 <名>` | QSanguosha.exe | 雙將模式自動選副將 |
+| `--headless --takeover <turn_NNN_turn.json> [--takeover-seat SGSn]` | QSanguosha.exe | 每局在新 Room 還原該回合快照 (Lua 重新從磁碟載入), 改技能後重跑同一局面; 模式與種子取自快照, 全座位 SmartAI; 見 [replay-v2](../../docs/replay-v2.md#headless-takeover-lua-edit-loop) |
 | `--describe-skills --report <json>` | qsanguosha_skill_scenario.exe | 全部技能的描述與定義中繼資料 (頻率、主公／轉換／限定旗標、使用範圍、擁有者), 供 `tools/skill-text-audit.py` |
 | `--auto-robots` | QSanguosha.exe | owner 進房自動填 AI 並開局 |
 | `--window-geometry=WxH+X+Y` | QSanguosha.exe | 固定主視窗大小與位置, 關閉時不寫回 config.ini |

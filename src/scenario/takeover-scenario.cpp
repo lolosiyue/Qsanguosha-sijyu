@@ -577,8 +577,10 @@ bool TakeoverRule::restore(Room *room) const
         restorePlayer(room, scenario, scenario->runtimePlayer(seatName), *playerSnapshot);
         // The selected seat is the newly connected human, even when the
         // historical seat was controlled by a robot.  Keep the runtime
-        // connection state authoritative for request routing.
-        if (seatName == scenario->selectedSeat())
+        // connection state authoritative for request routing.  A headless
+        // takeover has no human: every seat stays a robot.
+        if (seatName == scenario->selectedSeat()
+            && room->property("to_test").toString() != QLatin1String("headless"))
             scenario->runtimePlayer(seatName)->setState(QStringLiteral("online"));
         else
             scenario->runtimePlayer(seatName)->setState(QStringLiteral("robot"));

@@ -2882,6 +2882,7 @@ int Server::headlessGameLimit = 10000;
 QString Server::forcedHeadlessGeneral;
 QString Server::forcedHeadlessGeneral2;
 QString Server::forcedGeneral;
+GameSessionConfig Server::headlessTakeover;
 bool Server::s_hasGameSeed = false;
 quint64 Server::s_gameSeedBase = 0;
 static QString s_headlessLogFile;
@@ -2984,12 +2985,26 @@ void Server::startHeadlessGame()
     gameCount++;
     Server::writeHeadlessLog(QString(">>> Starting headless game %1 <<<").arg(gameCount));
 
-    const GameSessionConfig sessionConfig = gameSessionConfig(quint64(gameCount - 1));
+    GameSessionConfig sessionConfig = gameSessionConfig(quint64(gameCount - 1));
+    if (headlessTakeover.takeover) {
+        sessionConfig.takeover = true;
+        sessionConfig.takeoverSnapshotPath = headlessTakeover.takeoverSnapshotPath;
+        sessionConfig.takeoverSeatName = headlessTakeover.takeoverSeatName;
+        sessionConfig.seed = headlessTakeover.seed;
+        Server::writeHeadlessLog(QString("[AUTOTEST] takeover snapshot: %1 seat: %2")
+            .arg(sessionConfig.takeoverSnapshotPath, sessionConfig.takeoverSeatName));
+    }
     Server::writeHeadlessLog(QString("[AUTOTEST] Game Seed: %1").arg(sessionConfig.seed));
     Room *room = new Room(this, mode, sessionConfig);
     if (!room->hasLuaRuntime()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
+        return;
+    }
+    if (!room->isTakeoverReady()) {
+        Server::writeHeadlessLog(QString("ERROR: Game %1 takeover rejected: %2").arg(gameCount).arg(room->takeoverError()));
+        delete room;
+        qApp->exit(1);
         return;
     }
 
@@ -3018,6 +3033,21 @@ void Server::startHeadlessGame()
         if (!roomPtr || !roomPtr->isRunning())
             finishFailure();
     });
+    // A takeover restore failure throws GameFinished without game_over. Wait for
+    // RoomThread without blocking main (see Family C below), then stop the run.
+    connect(room, &Room::takeover_failed, this, [this, roomPtr, currentGameCount](const QString &reason) {
+        Server::writeHeadlessLog(QString("ERROR: Game %1 takeover failed: %2").arg(currentGameCount).arg(reason));
+        QTimer *pollTimer = new QTimer(this);
+        connect(pollTimer, &QTimer::timeout, this, [roomPtr, pollTimer]() {
+            RoomThread *rt = roomPtr ? roomPtr->getThread() : nullptr;
+            if (rt && rt->isRunning())
+                return;
+            pollTimer->stop();
+            pollTimer->deleteLater();
+            qApp->exit(1);
+        });
+        pollTimer->start(100);
+    }, Qt::QueuedConnection);
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 

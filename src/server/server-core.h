@@ -46,6 +46,9 @@ public:
     static QString forcedHeadlessGeneral2;
     // Acceptance runs (--force-general): the room owner, else the lord, plays this general in every mode.
     static QString forcedGeneral;
+    // Headless takeover (--takeover <turn snapshot>): every game restores this snapshot in a fresh Room,
+    // so its Lua is re-read from disk. Only takeover, takeoverSnapshotPath, takeoverSeatName and seed are used.
+    static GameSessionConfig headlessTakeover;
     static bool configureGameSeed(const QString &seedText, QString *error = nullptr);
 
     void broadcast(const QString &msg);
