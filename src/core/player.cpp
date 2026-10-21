@@ -1393,7 +1393,8 @@ QList<SkillInstanceRef> Player::viewAsEquipSources(const QString &equip_name) co
     foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
         if (!skill) continue;
         const QString skillName = skill->objectName();
-        if (!hasSkill(skillName)
+        // hasSkill would answer false anyway; skip its name parsing for unheld skills.
+        if (!m_skillInstances.contains(skillName) || !hasSkill(skillName)
             || !skill->viewAsEquip(this).split(",").contains(equip_name)) continue;
         for (int id : getValidSkillInstanceIds(skillName))
             sources << SkillInstanceRef(objectName(), SkillInstanceKey(skillName, id));

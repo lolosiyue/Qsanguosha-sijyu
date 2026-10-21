@@ -48,7 +48,7 @@ public:
         if (!target)
             return CorrectSkillResult::noEffect();
         foreach (const Player *p, target->getAliveSiblings()){
-            if (p->hasWeapon("SixSwords", target) && p->isFriendWith(target))
+            if (p->isFriendWith(target) && p->hasWeapon("SixSwords", target))
                 return CorrectSkillResult::useAmount(context.currentAmount);
         }
 

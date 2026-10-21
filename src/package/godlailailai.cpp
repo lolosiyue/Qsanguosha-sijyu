@@ -1837,10 +1837,13 @@ public:
         const auto camp = [](const Player *player) {
             return player->getRole() == "lord" ? QString("loyalist") : player->getRole();
         };
+        // Every distance query asks this of each seat: test the camps before the
+        // equipment lookup, which also walks the view-as-equip skills.
+        const QString toCamp = camp(to);
+        if (toCamp == "renegade" || toCamp == camp(from)) return CorrectSkillResult::noEffect();
         int count = 0;
         for (const Player *owner : from->getAliveSiblings(true))
-            if (owner != to && owner->hasDefensiveHorse(objectName()) && camp(owner) != "renegade"
-                && camp(owner) == camp(to) && camp(owner) != camp(from)) ++count;
+            if (owner != to && camp(owner) == toCamp && owner->hasDefensiveHorse(objectName())) ++count;
         return count > 0 ? CorrectSkillResult::useAmount(count * context.getCurrentAmount()) : CorrectSkillResult::noEffect();
     }
 };
