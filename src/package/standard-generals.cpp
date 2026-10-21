@@ -2567,39 +2567,25 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        // Targets are offered in order; the first accepted one starts this invocation.
+        ctx.targets.clear();
+        // Confirm every recipient before the framework starts target effects.
         const QList<ServerPlayer *> tos = ctx.original_data->value<CardUseStruct>().to;
-        for (int index = 0; index < tos.length(); ++index) {
-            if (!ctx.owner->isAlive()) break;
-            if (ctx.owner->askForSkillInvoke(this, QVariant::fromValue(tos.at(index)))) {
-                ctx.extra_data = index;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *callback, SkillContext &ctx) const override
-    {
-        ctx.manual_effect = true;
-        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        const int first = ctx.extra_data.toInt();
-        for (int index = first; index < use.to.size(); ++index) {
-            ServerPlayer *target = use.to.at(index);
+        for (ServerPlayer *target : tos) {
             if (!ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) break;
             if (!target->isAlive()) continue;
-            if (index > first && !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) continue;
-            skillEffect(event, room, callback, ctx, target);
+            if (ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target)))
+                ctx.targets << target;
         }
-        return false;
+        return !ctx.targets.isEmpty();
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card || !use.to.contains(target)) return false;
+        if (!player || !player->isAlive() || !isSourceAvailable(room, ctx)
+            || !use.card || !use.to.contains(target)) return false;
         room->broadcastSkillInvoke(objectName());
         target->addMark("tieji");
         room->addPlayerMark(target, "@skill_invalidity");
@@ -5761,39 +5747,25 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        // Targets are offered in order; the first accepted one starts this invocation.
+        ctx.targets.clear();
+        // Confirm every recipient before the framework starts target effects.
         const QList<ServerPlayer *> tos = ctx.original_data->value<CardUseStruct>().to;
-        for (int index = 0; index < tos.length(); ++index) {
-            if (!ctx.owner->isAlive()) break;
-            if (ctx.owner->askForSkillInvoke(this, QVariant::fromValue(tos.at(index)))) {
-                ctx.extra_data = index;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *callback, SkillContext &ctx) const override
-    {
-        ctx.manual_effect = true;
-        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        const int first = ctx.extra_data.toInt();
-        for (int index = first; index < use.to.size(); ++index) {
-            ServerPlayer *target = use.to.at(index);
+        for (ServerPlayer *target : tos) {
             if (!ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) break;
             if (!target->isAlive()) continue;
-            if (index > first && !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) continue;
-            skillEffect(event, room, callback, ctx, target);
+            if (ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target)))
+                ctx.targets << target;
         }
-        return false;
+        return !ctx.targets.isEmpty();
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card || !use.to.contains(target)) return false;
+        if (!player || !player->isAlive() || !isSourceAvailable(room, ctx)
+            || !use.card || !use.to.contains(target)) return false;
         room->broadcastSkillInvoke(objectName());
         const bool flagged = target->hasFlag("NosTiejiTarget");
         target->setFlags("NosTiejiTarget");
