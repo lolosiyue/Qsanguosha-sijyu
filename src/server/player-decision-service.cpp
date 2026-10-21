@@ -668,6 +668,10 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             }
         }
     }
+    // A disabled id is an earlier pick of the same loop. Accepting it again puts one
+    // card in a move several times (an isolated Luochong answer did); treat it as no pick.
+    if (card_id >= 0 && disabled_ids.contains(card_id))
+        card_id = -1;
     if (card_id == -1 && (choose_hidden_hand || !can_cancel)) {
         // Resolve card backs within the hand only, including optional/repeated picks.
         const QString candidate_flags = choose_hidden_hand ? QStringLiteral("h") : flags_copy;
