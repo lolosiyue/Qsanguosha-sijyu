@@ -96,7 +96,10 @@ ControllerRouter::ControllerRouter(ControllerService *service, QObject *parent)
     connect(service, &ControllerService::deviceInput, this, [this](const QString &control, int value, quint64 epoch) {
         trace(QStringLiteral("hardware"), {{"control", control}, {"value", value}, {"epoch", QString::number(epoch)}});
     });
+    // argv storage is gone by the time exit-time events reach the filter.
+    isControllerOnlyRun();
     qApp->installEventFilter(this);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this]() { qApp->removeEventFilter(this); });
     auto *observer = new QTimer(this);
     observer->setInterval(100);
     connect(observer, &QTimer::timeout, this, &ControllerRouter::observe);
@@ -104,9 +107,15 @@ ControllerRouter::ControllerRouter(ControllerService *service, QObject *parent)
     startDiagnostics();
 }
 
+ControllerRouter::~ControllerRouter()
+{
+    if (qApp) qApp->removeEventFilter(this);
+}
+
 bool ControllerRouter::isControllerOnlyRun()
 {
-    return !argument(QStringLiteral("--controller-virtual-input")).isEmpty();
+    static const bool controllerOnly = !argument(QStringLiteral("--controller-virtual-input")).isEmpty();
+    return controllerOnly;
 }
 
 bool ControllerRouter::hasConnectedController()
@@ -390,6 +399,7 @@ void ControllerRouter::dispatch(ControllerAction action, quint64 epoch, bool rep
 
 bool ControllerRouter::eventFilter(QObject *, QEvent *event)
 {
+    if (!qApp || QCoreApplication::closingDown()) return false;
     if (isControllerOnlyRun() && event->spontaneous()
         && (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease
             || event->type() == QEvent::Wheel || event->type() == QEvent::TouchBegin

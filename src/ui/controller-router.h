@@ -18,6 +18,7 @@ class ControllerRouter final : public QObject
     Q_OBJECT
 public:
     ControllerRouter(ControllerService *service, QObject *parent);
+    ~ControllerRouter() override;
     static bool isControllerOnlyRun();
     static bool hasConnectedController();
 private:
