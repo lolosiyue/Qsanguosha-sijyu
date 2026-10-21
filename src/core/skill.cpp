@@ -1467,37 +1467,96 @@ bool CorrectSkillGate::setAtoms(const QStringList &atoms)
 {
     static const QHash<QString, Kind> kinds = {
         {"mark", Mark}, {"flag", Flag}, {"pile", Pile}, {"skill", OwnsSkill},
-        {"card_skill", CardSkill}, {"card_flag", CardFlag}};
+        {"tag", Tag}, {"property", Property}, {"trick", Trick},
+        {"mark_prefix", MarkPrefix}, {"mark_suffix", MarkSuffix},
+        {"card_skill", CardSkill}, {"card_flag", CardFlag}, {"card_tip", CardTip}};
+    static const QHash<QString, Slot> slotNames = {
+        {"{primary}", SlotPrimary}, {"{secondary}", SlotSecondary}, {"{card_id}", SlotCardId}};
     QList<Atom> parsed;
     for (const QString &text : atoms) {
         const int colon = text.indexOf(':');
         QString head = text.left(colon);
         Atom atom;
-        atom.secondary = head.startsWith("secondary.");
-        if (atom.secondary) head = head.mid(10);
+        atom.scope = ScopePrimary;
+        if (head.startsWith("secondary.")) {
+            atom.scope = ScopeSecondary;
+            head = head.mid(10);
+        } else if (head.startsWith("any.")) {
+            atom.scope = ScopeAny;
+            head = head.mid(4);
+        }
         atom.name = text.mid(colon + 1);
         if (colon <= 0 || atom.name.isEmpty() || !kinds.contains(head)) return false;
         atom.kind = kinds.value(head);
-        if (atom.secondary && (atom.kind == CardSkill || atom.kind == CardFlag)) return false;
+        if (atom.scope != ScopePrimary && atom.kind >= CardSkill) return false;
+        atom.slot = SlotNone;
+        const int open = atom.name.indexOf('{');
+        if (open >= 0) {
+            const int close = atom.name.indexOf('}', open);
+            if (close < 0 || !slotNames.contains(atom.name.mid(open, close - open + 1))) return false;
+            atom.slot = slotNames.value(atom.name.mid(open, close - open + 1));
+            atom.tail = atom.name.mid(close + 1);
+            atom.name = atom.name.left(open);
+            if (atom.tail.contains('{') || atom.kind == Property) return false;
+        }
+        atom.property = atom.name.toUtf8();
         parsed << atom;
     }
     m_atoms = parsed;
     return true;
 }
 
+bool CorrectSkillGate::playerHolds(const Atom &atom, const Player *player, const QString &name)
+{
+    switch (atom.kind) {
+    case Mark: return player->getMark(name) != 0;
+    case Flag: return player->hasFlag(name);
+    case Pile: return !player->getPile(name).isEmpty();
+    // Ownership without validity: hasSkill() implies it and stays out of InvaliditySkill callbacks.
+    case OwnsSkill: return player->ownsSkill(name);
+    case Tag: return player->getTag(name).isValid();
+    case Property: return player->property(atom.property.constData()).toBool();
+    case Trick: return player->containsTrick(name);
+    case MarkPrefix:
+    case MarkSuffix:
+        for (const QString &mark : player->getMarkNames()) {
+            if ((atom.kind == MarkPrefix ? mark.startsWith(name) : mark.endsWith(name))
+                && player->getMark(mark) != 0) return true;
+        }
+        return false;
+    default: return false;
+    }
+}
+
 bool CorrectSkillGate::mayApply(const Player *primary, const Player *secondary, const Card *card) const
 {
     if (m_atoms.isEmpty()) return true;
     for (const Atom &atom : m_atoms) {
-        const Player *player = atom.secondary ? secondary : primary;
+        QString expanded;
+        if (atom.slot != SlotNone) {
+            const Player *slotPlayer = atom.slot == SlotPrimary ? primary
+                : atom.slot == SlotSecondary ? secondary : nullptr;
+            if (atom.slot == SlotCardId ? !card : !slotPlayer) continue;
+            expanded = atom.name + (slotPlayer ? slotPlayer->objectName()
+                                               : QString::number(card->getEffectiveId())) + atom.tail;
+        }
+        const QString &name = atom.slot == SlotNone ? atom.name : expanded;
         switch (atom.kind) {
-        case Mark: if (player && player->getMark(atom.name) != 0) return true; break;
-        case Flag: if (player && player->hasFlag(atom.name)) return true; break;
-        case Pile: if (player && !player->getPile(atom.name).isEmpty()) return true; break;
-        // Ownership without validity: hasSkill() implies it and stays out of InvaliditySkill callbacks.
-        case OwnsSkill: if (player && player->ownsSkill(atom.name)) return true; break;
-        case CardSkill: if (card && card->getSkillNames().contains(atom.name)) return true; break;
-        case CardFlag: if (card && card->hasFlag(atom.name)) return true; break;
+        case CardSkill: if (card && card->getSkillNames().contains(name)) return true; break;
+        case CardFlag: if (card && card->hasFlag(name)) return true; break;
+        case CardTip: if (card && card->hasTip(name)) return true; break;
+        default:
+            if (atom.scope == ScopeAny) {
+                const Player *anchor = primary ? primary : secondary;
+                if (!anchor) break;
+                QList<const Player *> seats = anchor->getSiblings(true);
+                if (seats.isEmpty()) seats << anchor; // Unparented: getSiblings() omits self.
+                for (const Player *player : seats)
+                    if (playerHolds(atom, player, name)) return true;
+            } else {
+                const Player *player = atom.scope == ScopeSecondary ? secondary : primary;
+                if (player && playerHolds(atom, player, name)) return true;
+            }
         }
     }
     return false;

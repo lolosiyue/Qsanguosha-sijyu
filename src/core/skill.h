@@ -154,18 +154,29 @@ Q_DECLARE_METATYPE(CorrectSkillContext)
 class CorrectSkillGate
 {
 public:
-    // Atom text: "[secondary.]mark|flag|pile|skill:<name>" or "card_skill|card_flag:<name>".
+    // Atom text: "[secondary.|any.]<player kind>:<name>" or "card_skill|card_flag|card_tip:<name>".
+    // Player kinds: mark, flag, pile, skill (owned), tag (valid value), property (toBool),
+    // trick (judging area), mark_prefix / mark_suffix (some non-zero mark matches).
+    // "any." tests every seat, dead ones included. One "{primary}", "{secondary}" or
+    // "{card_id}" in <name> is replaced per query; the atom fails while it is null.
     bool setAtoms(const QStringList &atoms);
     bool isEmpty() const { return m_atoms.isEmpty(); }
     bool mayApply(const Player *primary, const Player *secondary, const Card *card) const;
 
 private:
-    enum Kind { Mark, Flag, Pile, OwnsSkill, CardSkill, CardFlag };
+    enum Kind { Mark, Flag, Pile, OwnsSkill, Tag, Property, Trick, MarkPrefix, MarkSuffix,
+                CardSkill, CardFlag, CardTip };
+    enum Scope { ScopePrimary, ScopeSecondary, ScopeAny };
+    enum Slot { SlotNone, SlotPrimary, SlotSecondary, SlotCardId };
     struct Atom {
         Kind kind;
-        bool secondary;
-        QString name;
+        Scope scope;
+        Slot slot;
+        QString name; // Text before the slot, or the whole name without one.
+        QString tail; // Text after the slot.
+        QByteArray property;
     };
+    static bool playerHolds(const Atom &atom, const Player *player, const QString &name);
     QList<Atom> m_atoms;
 };
 
