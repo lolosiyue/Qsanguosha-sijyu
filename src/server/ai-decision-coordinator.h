@@ -194,6 +194,8 @@ private:
     // Basic prototype rules per player object name, paired with the cached board.
     QHash<QString, QJsonObject> prototypeRules() const;
     QHash<QString, QJsonObject> buildPrototypeRules() const;
+    // Each alive player's distance to each alive lord, paired with the cached board.
+    QMap<QString, QMap<QString, int>> lordDistances() const;
     AIWorldView projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
                                  bool compactPolicy, bool eventOnly) const;
 
@@ -213,6 +215,9 @@ private:
     mutable bool m_prototypeRulesValid = false;
     mutable quint64 m_prototypeRulesStamp = 0;
     mutable QHash<QString, QJsonObject> m_prototypeRules;
+    mutable bool m_lordDistancesValid = false;
+    mutable quint64 m_lordDistancesStamp = 0;
+    mutable QMap<QString, QMap<QString, int>> m_lordDistances;
     // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
     mutable bool m_distanceCacheValid = false;
     mutable quint64 m_distanceRevision = 0;

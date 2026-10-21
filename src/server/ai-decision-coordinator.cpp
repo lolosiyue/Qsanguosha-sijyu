@@ -975,6 +975,27 @@ QHash<QString, QJsonObject> AiDecisionCoordinator::prototypeRules() const
     return rules;
 }
 
+QMap<QString, QMap<QString, int>> AiDecisionCoordinator::lordDistances() const
+{
+    if (m_lordDistancesValid && m_lordDistancesStamp == m_publicBoardStamp && publicBoardCurrent())
+        return m_lordDistances;
+    m_lordDistancesValid = false;
+    const quint64 stamp = m_publicBoardStamp;
+    QMap<QString, QMap<QString, int>> rows;
+    const auto alive = m_room.getAlivePlayers();
+    for (ServerPlayer *lord : alive) {
+        if (!lord->isLord()) continue;
+        for (ServerPlayer *player : alive)
+            if (player != lord) rows[player->objectName()].insert(lord->objectName(), player->distanceTo(lord));
+    }
+    if (stamp == m_publicBoardStamp && publicBoardCurrent()) {
+        m_lordDistances = rows;
+        m_lordDistancesStamp = stamp;
+        m_lordDistancesValid = true;
+    }
+    return rows;
+}
+
 QHash<QString, QJsonObject> AiDecisionCoordinator::buildPrototypeRules() const
 {
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
@@ -1444,7 +1465,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     const quint64 distanceRevision = m_room.roomRuntime()->stateRevision();
     const quint64 skillGeneration = SkillSet::generation();
     if (eventOnly) {
-        world.distanceScope = QStringLiteral("none");
+        // Events skip the matrix, but the identity game process reads every known
+        // rebel's distance to the lord; without it each such event failed its hook.
+        world.distanceScope = QStringLiteral("lord");
+        world.distances = lordDistances();
     } else if (compactPolicy) {
         // Isolated decisions need viewer-relative geometry. Keep both directions:
         // distance modifiers can be asymmetric. Other pairs remain explicitly absent.
