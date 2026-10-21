@@ -159,6 +159,17 @@ trigger 從技能依賴的最上游事件開始：技能查「本次傷害是否
 - test override 只涵蓋上表 `type`；其他詢問（棄牌、AG、遺計、觀星等）由 SmartAI 回答。
 - SmartAI 沒有 Lua AI 的新技能不會發動；要測技能本身時以 `script` 指定答案。
 
+## skill-text-audit.py — 技能描述與定義比對 (靜態)
+
+`tools/skill-text-audit.py` 執行 `qsanguosha_skill_scenario --describe-skills`，把描述開頭標籤（锁定技、限定技、觉醒技、主公技、转换技、使命技、隐匿技）與定義的頻率／旗標比對，並把已宣告 LimitScope 的技能與描述中的「出牌阶段限／每回合限／每轮限」比對。舊式技能在回呼內自行計次，靜態無法比對使用次數。
+
+```powershell
+python tools\skill-text-audit.py                      # 預設 release\qsanguosha_skill_scenario.exe
+python tools\skill-text-audit.py --skills skills.json # 用既有 dump
+```
+
+輸出 `artifacts/skill-text-audit/report.json` 與 `summary.md`（`-o` 可改）。結果是待人工確認的候選，不是判定：執行期改變頻率的技能、共用描述的變體可能合理不一致。隱藏與無擁有者技能（裝備、輔助技）只檢查「描述宣稱、定義缺少」一個方向。不新增案例或 fixture。
+
 ## general_acceptance.py — 單一武將驗收 (技能情境 + UI + 全模式 + 各平台)
 
 把同一個武將串過每個驗證層。遊戲階段由 server `--force-general` 把武將交給房主
@@ -380,6 +391,7 @@ QML 疊層／video object 全部為 0。
 | `--force-general <名>` | qsanguosha_server.exe／QSanguosha.exe `--headless` | 開局 (選將完成後) 把房主換成該武將, 無房主時換主公; 任何模式生效; stdout `[AUTOTEST] force general <seat> <名>` |
 | `--test-general <名>` | QSanguosha.exe | 自動選將 (FreeChoose; 1v1 用 x0) |
 | `--test-general2 <名>` | QSanguosha.exe | 雙將模式自動選副將 |
+| `--describe-skills --report <json>` | qsanguosha_skill_scenario.exe | 全部技能的描述與定義中繼資料 (頻率、主公／轉換／限定旗標、使用範圍、擁有者), 供 `tools/skill-text-audit.py` |
 | `--auto-robots` | QSanguosha.exe | owner 進房自動填 AI 並開局 |
 | `--window-geometry=WxH+X+Y` | QSanguosha.exe | 固定主視窗大小與位置, 關閉時不寫回 config.ini |
 | `--mute` | QSanguosha.exe | 使用靜音音訊後端 (BGM/音效全關, 不改設定的音量) |

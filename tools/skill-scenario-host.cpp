@@ -20,6 +20,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaEnum>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTimer>
@@ -496,6 +497,37 @@ int describeGeneral(const QString &name, const QString &reportPath)
     return writeJson(reportPath, info) ? 0 : 1;
 }
 
+// Prints every registered skill's text with the metadata its text claims (frequency
+// tags, lord/change/limited flags, usage scope); the input of tools/skill-text-audit.py.
+int describeSkills(const QString &reportPath)
+{
+    QHash<QString, QStringList> owners;
+    for (const General *general : Sanguosha->getAllGenerals())
+        for (const Skill *skill : general->getSkillList())
+            owners[skill->objectName()] << general->objectName();
+    const QMetaEnum frequencies = QMetaEnum::fromType<Skill::Frequency>();
+    const QMetaEnum scopes = QMetaEnum::fromType<Skill::LimitScope>();
+    QStringList names = Sanguosha->getSkillNames();
+    names.sort();
+    QVariantList skills;
+    for (const QString &name : names) {
+        const Skill *skill = Sanguosha->getSkill(name);
+        if (!skill)
+            continue;
+        skills << QVariantMap{
+            {"name", name}, {"translation", Sanguosha->translate(name)},
+            {"description", Sanguosha->translate(":" + name)},
+            {"visible", skill->isVisible()}, {"class", skill->metaObject()->className()},
+            {"frequency", QString::fromLatin1(frequencies.valueToKey(skill->getFrequency()))},
+            {"limit_mark", skill->getLimitMark()},
+            {"limit_scope", QString::fromLatin1(scopes.valueToKey(skill->getLimitScope()))},
+            {"lord", skill->isLordSkill()}, {"limited", skill->isLimitedSkill()},
+            {"change", skill->isChangeSkill()}, {"hide", skill->isHideSkill()},
+            {"shiming", skill->isShiMingSkill()}, {"owners", owners.value(name)}};
+    }
+    return writeJson(reportPath, {{"skills", skills}}) ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -506,21 +538,23 @@ int main(int argc, char **argv)
     const QString reportPath = optionValue(args, QStringLiteral("--report"));
     const int timeoutSeconds = optionValue(args, QStringLiteral("--timeout")).toInt();
     const QString describe = optionValue(args, QStringLiteral("--describe-general"));
+    const bool describeAll = args.contains(QStringLiteral("--describe-skills"));
     bool seedOk = false;
     const quint64 seed = optionValue(args, QStringLiteral("--seed")).toULongLong(&seedOk);
-    if (reportPath.isEmpty() || (describe.isEmpty() && (casePath.isEmpty() || !seedOk))) {
+    if (reportPath.isEmpty() || (describe.isEmpty() && !describeAll && (casePath.isEmpty() || !seedOk))) {
         fprintf(stderr, "usage: qsanguosha_skill_scenario --case <case.json> --report <report.json> "
                         "--seed <n> [--timeout <seconds>]\n"
-                        "       qsanguosha_skill_scenario --describe-general <name> --report <info.json>\n");
+                        "       qsanguosha_skill_scenario --describe-general <name> --report <info.json>\n"
+                        "       qsanguosha_skill_scenario --describe-skills --report <skills.json>\n");
         return 64;
     }
-    if (!describe.isEmpty()) {
+    if (!describe.isEmpty() || describeAll) {
         QString error;
         if (!QSanRuntimePaths::resolve(args, &error) || !EngineBootstrap::initialize(false, &error)) {
             fprintf(stderr, "%s\n", qPrintable(error));
             return 1;
         }
-        const int result = describeGeneral(describe, reportPath);
+        const int result = describeAll ? describeSkills(reportPath) : describeGeneral(describe, reportPath);
         EngineBootstrap::shutdown();
         return result;
     }
