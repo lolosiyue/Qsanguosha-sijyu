@@ -2379,7 +2379,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		const bool equipment = v2->isEquipSkill();
 		// Hidden global rule/record callbacks are not player skill invocations. They keep
 		// cost/effect and every context state, but skip the six skill observer events.
-		const bool silentRule = globalRule && v2->isGlobal() && !v2->isVisible();
+		// So is a visible global skill run for a seat with no instance or equipment of it:
+		// history does not record it as skill_invoked either, and in 50p these
+		// per-seat callbacks multiplied every card move by 6 full observer dispatches.
+		const bool sourcelessRule = !equipment && !selected_ctx->activationRef.isValid()
+			&& !selected_ctx->physicalEquipSource.isValid() && !v2->acceptsRemovalEvent(triggerEvent, data);
+		const bool silentRule = globalRule && v2->isGlobal() && (!v2->isVisible() || sourcelessRule);
 		const SkillInstanceRef selectedSource = selected_ctx->activationRef;
         // Keep the admitted source immutable across cost/interceptor callbacks.
         const SkillContext sourceContext = *selected_ctx;
