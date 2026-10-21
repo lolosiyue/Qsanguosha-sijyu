@@ -1001,8 +1001,8 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         }
     }
 
-    QVariant decisionData = "triggerOrder:" + reason + ":" + result;
-    m_eventDispatcher.dispatch(ChoiceMade, player, decisionData);
+    // No ChoiceMade here: ChoiceMade skills that tie would ask for their own
+    // order again and recurse until the RoomThread stack overflows.
     return result;
 }
 
