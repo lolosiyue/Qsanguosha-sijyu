@@ -1538,7 +1538,7 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     if (!Config.EnableAI && (!player || !m_room.externalAgent(player->objectName())))
         return request;
     // Build the request from a read-only board snapshot; within one revision, evaluate matching distance, attack-range, and target-modifier queries once.
-    TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
+    TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); }, &m_targetModCarry);
     // Temporary 10P diagnosis: bracket request construction, which AI_PROBE excludes.
     const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1";
     QElapsedTimer lagTimer;
@@ -2167,7 +2167,7 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
     // same held-card view, but no printed-card evaluation.
     if ((kind == AIRequest::AmazingGrace || kind == AIRequest::Guanxing) && player
         && (Config.EnableAI || m_room.externalAgent(player->objectName()))) {
-        TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
+        TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); }, &m_targetModCarry);
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
         LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
         int projectionBudget = 16384;

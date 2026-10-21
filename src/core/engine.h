@@ -82,8 +82,14 @@ private:
 // TargetModSkillQueryScope replay bypasses it.
 class TargetModMemoScope final {
 public:
+    // Distance and attack-range answers kept between scopes of one owner while its
+    // revision is unchanged. They are keyed by players only; card-keyed answers are not kept.
+    struct Carry {
+        QHash<QString, int> values;
+        quint64 revision = 0;
+    };
     TargetModMemoScope();
-    explicit TargetModMemoScope(std::function<quint64()> revision);
+    explicit TargetModMemoScope(std::function<quint64()> revision, Carry *carry = nullptr);
     ~TargetModMemoScope();
 private:
     friend class Engine;
@@ -93,6 +99,7 @@ private:
     QHash<QString, int> m_values;
     std::function<quint64()> m_revision;
     quint64 m_seenRevision = 0;
+    Carry *m_carry = nullptr;
     TargetModMemoScope *m_previous;
     static thread_local TargetModMemoScope *s_current;
 };

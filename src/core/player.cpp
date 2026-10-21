@@ -777,9 +777,25 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 		return hasSkill(skill_name,include_lose);
 	}else{
 		// A held skill with HolderSharesLordSkills (帷帝、圣尊) lends the lord's lord skills.
-		for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
-			const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
-			if (holder && holder->property("HolderSharesLordSkills").toBool() && hasSkill(it.key())) {
+		// The property is fixed per definition, so only the held names need a rescan, and
+		// only when the skill set changes: inMyAttackRange asks this of every sibling.
+		QStringList holders;
+		{
+			QMutexLocker locker(&m_skillCacheMutex);
+			const quint64 generation = SkillSet::generation();
+			if (m_lordShareGeneration != generation) {
+				m_lordShareHolders.clear();
+				for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+					const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+					if (holder && holder->property("HolderSharesLordSkills").toBool())
+						m_lordShareHolders << it.key();
+				}
+				m_lordShareGeneration = generation;
+			}
+			holders = m_lordShareHolders;
+		}
+		for (const QString &holder : holders) {
+			if (hasSkill(holder)) {
 				foreach(const Player *player, getAliveSiblings()){
 					if (player->isLord()&&player->hasLordSkill(skill_name,true))
 						return true;
@@ -3405,6 +3421,7 @@ void Player::copyFrom(Player *p)
     general_pile_open = QMap<QString, QStringList>(p->general_pile_open);
     m_skillInstances = p->m_skillInstances;
     m_nextSkillInstanceIds = p->m_nextSkillInstanceIds;
+    m_lordShareGeneration = 0;
     acquired_skills = QStringList(p->acquired_skills);
     flags = QSet<QString>(p->flags);
     history = QHash<QString, int>(p->history);

@@ -60,14 +60,27 @@ thread_local TargetModMemoScope *TargetModMemoScope::s_current = nullptr;
 
 TargetModMemoScope::TargetModMemoScope() : m_previous(s_current) { s_current = this; }
 
-TargetModMemoScope::TargetModMemoScope(std::function<quint64()> revision)
-    : m_revision(std::move(revision)), m_previous(s_current)
+TargetModMemoScope::TargetModMemoScope(std::function<quint64()> revision, Carry *carry)
+    : m_revision(std::move(revision)), m_carry(m_revision ? carry : nullptr), m_previous(s_current)
 {
     if (m_revision) m_seenRevision = m_revision();
+    if (m_carry && m_carry->revision == m_seenRevision) m_values = m_carry->values;
     s_current = this;
 }
 
-TargetModMemoScope::~TargetModMemoScope() { s_current = m_previous; }
+TargetModMemoScope::~TargetModMemoScope()
+{
+    s_current = m_previous;
+    if (!m_carry) return;
+    // A revision change inside this scope already cleared m_values for the new revision.
+    m_carry->values.clear();
+    m_carry->revision = m_revision();
+    if (m_carry->revision != m_seenRevision) return;
+    for (auto it = m_values.cbegin(); it != m_values.cend(); ++it) {
+        if (it.key().startsWith(QLatin1String("distance|")) || it.key().startsWith(QLatin1String("range|")))
+            m_carry->values.insert(it.key(), it.value());
+    }
+}
 
 TargetModMemoScope *TargetModMemoScope::active()
 {
@@ -3314,7 +3327,10 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
     int correct = 0;
     if (trace) trace.note(QStringLiteral("aggregate base"), 0);
-    foreach (const DistanceSkill *skill, getDistanceSkills()) {
+    // Same holder filter as isProhibited: a seat with no instance adds nothing.
+    const QList<const DistanceSkill *> distanceSkills = trace ? getDistanceSkills()
+        : skillsHeldInRoom<DistanceSkill, DistanceSkillV2>(getDistanceSkills(), from ? from : to);
+    foreach (const DistanceSkill *skill, distanceSkills) {
         AiProbe::ScopedProbe iterProbe(AiProbe::Slot_distIter);
         const DistanceSkillV2 *v2 = dynamic_cast<const DistanceSkillV2 *>(skill);
         if (!v2) {
@@ -3356,7 +3372,9 @@ int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCa
 
     int ex = fixed ? -1 : 0;
     if (trace) trace.note(QStringLiteral("aggregate base"), fixed ? -1 : 0);
-    foreach (const MaxCardsSkill *skill, getMaxCardsSkills()) {
+    const QList<const MaxCardsSkill *> maxCardsSkills = trace ? getMaxCardsSkills()
+        : skillsHeldInRoom<MaxCardsSkill, MaxCardsSkillV2>(getMaxCardsSkills(), target);
+    foreach (const MaxCardsSkill *skill, maxCardsSkills) {
         const MaxCardsSkillV2 *v2 = dynamic_cast<const MaxCardsSkillV2 *>(skill);
         if (!v2) {
             if (fixed) {
@@ -3692,7 +3710,9 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
 
     int extra = fixed ? -1 : 0;
     if (trace) trace.note(QStringLiteral("aggregate base"), fixed ? -1 : 0);
-    foreach (const AttackRangeSkill *skill, getAttackRangeSkills()) {
+    const QList<const AttackRangeSkill *> attackRangeSkills = trace ? getAttackRangeSkills()
+        : skillsHeldInRoom<AttackRangeSkill, AttackRangeSkillV2>(getAttackRangeSkills(), target);
+    foreach (const AttackRangeSkill *skill, attackRangeSkills) {
         const AttackRangeSkillV2 *v2 = dynamic_cast<const AttackRangeSkillV2 *>(skill);
         if (!v2) {
             if (fixed) {

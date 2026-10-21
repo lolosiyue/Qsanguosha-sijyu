@@ -574,6 +574,9 @@ protected:
     bool general2_showed;
     mutable QMutex m_skillCacheMutex;
     mutable QMap<QString, bool> m_skillValidityCache;
+    // Held skills with HolderSharesLordSkills, rebuilt when SkillSet::generation() changes.
+    mutable quint64 m_lordShareGeneration = 0;
+    mutable QStringList m_lordShareHolders;
 
     // Authoritative multi-instance skill container (the only source of truth).
     // m_skillInstances[skillName][instanceID] = SkillInstance

@@ -2,6 +2,7 @@
 #define AI_DECISION_COORDINATOR_H
 
 #include "ai.h"
+#include "engine.h"
 
 #include <QHash>
 #include <QMap>
@@ -219,6 +220,9 @@ private:
     mutable QList<ServerPlayer *> m_distancePlayers;
     mutable QList<const DistanceSkill *> m_distanceSkills;
     mutable QMap<QString, QMap<QString, int>> m_worldDistances;
+    // Same-revision distance/attack-range answers shared by consecutive requests,
+    // e.g. every seat asked in one nullification or peach round.
+    mutable TargetModMemoScope::Carry m_targetModCarry;
 };
 
 #endif
