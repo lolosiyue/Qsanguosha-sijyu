@@ -363,7 +363,8 @@ public:
     DdzCombatModifier() : TargetModSkillV2("#ddz-combat-modifier", "Slash") { setHolderSelector(CorrectSkill_System); }
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (!ctx.primary) return CorrectSkillResult::noEffect();
+        if (!ctx.primary || (ctx.modType != TargetModSkill::Residue && ctx.modType != TargetModSkill::ExtraTarget))
+            return CorrectSkillResult::noEffect();
         const Weapon *weapon = ctx.primary->hasWeapon("ddz_jingubang")
             ? Sanguosha->findChild<const Weapon *>("ddz_jingubang") : nullptr;
         if (ctx.modType == TargetModSkill::Residue) {

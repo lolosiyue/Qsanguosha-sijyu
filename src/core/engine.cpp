@@ -2820,6 +2820,71 @@ using CorrectSkillHolderList = QVarLengthArray<const Player *, 2>;
 CorrectSkillHolderList correctSkillHolders(const Player *primary, const Player *secondary,
                                            CorrectSkillHolderSelector selector);
 
+// Names of the skills held by any seat in player's room, dead seats included.
+// This set changes only a few times per turn but is queried thousands of times
+// per AI decision; cache it by skill-set generation and rebuild only on change.
+const QSet<QString> &roomOwnedSkillNames(const Player *player)
+{
+    static thread_local quint64 s_ownedGen = 0;
+    static thread_local const QObject *s_ownedRoom = nullptr;
+    static thread_local QSet<QString> s_ownedNames;
+
+    const QObject *room = player ? player->parent() : nullptr;
+    const quint64 gen = SkillSet::generation();
+    if (gen != s_ownedGen || room != s_ownedRoom) {
+        AiProbe::ScopedProbe rebuildProbe(AiProbe::Slot_limitOwnerRebuild);
+        s_ownedNames.clear();
+        if (player) {
+            foreach (const Player *p, player->getSiblings(true)) {
+                if (!p) continue;
+                foreach (const Skill *owned, p->getSkillList(true, false))
+                    if (owned) s_ownedNames.insert(owned->objectName());
+            }
+        }
+        s_ownedGen = gen;
+        s_ownedRoom = room;
+    }
+    return s_ownedNames;
+}
+
+// A holder-selected V2 correction or prohibition yields results only through
+// instances its holders own, and every holder is a seat of anchor's room. When
+// no seat holds it, skipping it leaves the query result unchanged. System skills
+// and V1 callbacks have no holder contract and are always evaluated.
+template <typename T>
+bool heldByNoSeat(const T *v2, const Player *anchor)
+{
+    return v2 && v2->getHolderSelector() != CorrectSkill_System
+        && anchor && anchor->parent()
+        && !roomOwnedSkillNames(anchor).contains(v2->objectName());
+}
+
+// all without the skills heldByNoSeat drops. Rule queries scan hundreds of such
+// skills each, so keep the filtered list until the skill set, the room or the
+// definition list changes. Callers iterate their own implicitly shared copy, so
+// a rebuild by a nested query cannot invalidate an outer loop.
+template <typename T, typename V2>
+QList<const T *> skillsHeldInRoom(const QList<const T *> &all, const Player *anchor)
+{
+    if (!anchor || !anchor->parent()) return all;
+    static thread_local quint64 s_gen = 0;
+    static thread_local const QObject *s_room = nullptr;
+    static thread_local QList<const T *> s_all; // Holds the source buffer, so its address stays unique.
+    static thread_local QList<const T *> s_held;
+
+    const quint64 gen = SkillSet::generation();
+    if (gen != s_gen || anchor->parent() != s_room || all.constData() != s_all.constData()
+        || all.size() != s_all.size()) {
+        s_held.clear();
+        for (const T *skill : all)
+            if (!heldByNoSeat(dynamic_cast<const V2 *>(skill), anchor)) s_held << skill;
+        s_gen = gen;
+        s_room = anchor->parent();
+        s_all = all;
+    }
+    return s_held;
+}
+
 bool evaluateProhibitSkill(const ProhibitSkillV2 *skill, const Player *from, const Player *to,
                           const Card *card, const QList<const Player *> &others,
                           CorrectionTrace *trace = nullptr)
@@ -2887,12 +2952,19 @@ const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, con
     }
 
     const ProhibitSkill *ret = nullptr;
-    foreach (const ProhibitSkill*skill, getProhibitSkills()) {
+    const Player *anchor = from ? from : to;
+    const QList<const ProhibitSkill *> prohibitSkills = trace ? getProhibitSkills()
+        : skillsHeldInRoom<ProhibitSkill, ProhibitSkillV2>(getProhibitSkills(), anchor);
+    foreach (const ProhibitSkill*skill, prohibitSkills) {
         if (!from && !skill->property("supportsSourceLessProhibition").toBool()) {
             if (trace) trace.skipped(skill, CorrectionTrace::tr("source-less prohibition unsupported"));
             continue;
         }
         const auto *v2 = dynamic_cast<const ProhibitSkillV2 *>(skill);
+        if (trace && heldByNoSeat(v2, anchor)) {
+            trace.skipped(skill, CorrectionTrace::tr("no seat holds this skill"));
+            continue;
+        }
         bool prohibited;
         if (v2) {
             prohibited = evaluateProhibitSkill(v2, from, to, card, others, &trace);
@@ -2965,31 +3037,10 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
     // decision spent 33.8 seconds on #OLJieQianxiLimit although nobody had it.
     // Every such skill is attached to a general, including # helpers through
     // SourceHelper. Use getSiblings(true): dead players may retain enabling marks.
-    //
-    // This set changes only a few times per turn but is queried thousands of times
-    // per AI decision; cache it by skill-set generation and rebuild only on change.
-    static thread_local quint64 s_ownedGen = 0;
-    static thread_local const QObject *s_ownedRoom = nullptr;
-    static thread_local QSet<QString> s_ownedNames;
-
-    const QObject *room = player ? player->parent() : nullptr;
-    const quint64 gen = SkillSet::generation();
-    if (gen != s_ownedGen || room != s_ownedRoom) {
-        AiProbe::ScopedProbe rebuildProbe(AiProbe::Slot_limitOwnerRebuild);
-        s_ownedNames.clear();
-        if (player) {
-            foreach (const Player *p, player->getSiblings(true)) {
-                if (!p) continue;
-                foreach (const Skill *owned, p->getSkillList(true, false))
-                    if (owned) s_ownedNames.insert(owned->objectName());
-            }
-        }
-        s_ownedGen = gen;
-        s_ownedRoom = room;
-    }
-    auto ownedByAnyone = [](const QString &skillName) {
+    const QSet<QString> &ownedNames = roomOwnedSkillNames(player);
+    auto ownedByAnyone = [&ownedNames](const QString &skillName) {
         AiProbe::ScopedProbe probe(AiProbe::Slot_limitOwnerFilter);
-        return s_ownedNames.contains(skillName);
+        return ownedNames.contains(skillName);
     };
     // With QSAN_LIMIT_FILTER_VERIFY=1, evaluate every skill as before and log
     // any skill that the filter would skip but that actually matches.
@@ -3438,6 +3489,8 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         locked = true;
     }
 
+    const QList<const TargetModSkill *> targetModSkills = trace ? getTargetModSkills()
+        : skillsHeldInRoom<TargetModSkill, TargetModSkillV2>(getTargetModSkills(), from);
     int x = 0;
     if (trace) trace.note(QStringLiteral("aggregate base"), 0);
 	QStringList subcardNames;
@@ -3448,7 +3501,11 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 		}
 	}
     if (type == TargetModSkill::Residue) {
-        foreach (const TargetModSkill*skill, getTargetModSkills()) {
+        foreach (const TargetModSkill*skill, targetModSkills) {
+            if (trace && heldByNoSeat(dynamic_cast<const TargetModSkillV2 *>(skill), from)) {
+                trace.skipped(skill, CorrectionTrace::tr("no seat holds this skill"));
+                continue;
+            }
 			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
                 if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
                 continue;
@@ -3471,7 +3528,11 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
             } else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
         }
     } else if (type == TargetModSkill::DistanceLimit) {
-        foreach (const TargetModSkill*skill, getTargetModSkills()) {
+        foreach (const TargetModSkill*skill, targetModSkills) {
+            if (trace && heldByNoSeat(dynamic_cast<const TargetModSkillV2 *>(skill), from)) {
+                trace.skipped(skill, CorrectionTrace::tr("no seat holds this skill"));
+                continue;
+            }
 			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
                 if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
                 continue;
@@ -3494,7 +3555,11 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
             } else if (trace) trace.skipped(skill, CorrectionTrace::tr("card pattern mismatch"));
         }
     } else if (type == TargetModSkill::ExtraTarget) {
-        foreach (const TargetModSkill*skill, getTargetModSkills()) {
+        foreach (const TargetModSkill*skill, targetModSkills) {
+            if (trace && heldByNoSeat(dynamic_cast<const TargetModSkillV2 *>(skill), from)) {
+                trace.skipped(skill, CorrectionTrace::tr("no seat holds this skill"));
+                continue;
+            }
 			if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
                 if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
                 continue;
@@ -3534,6 +3599,8 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
         locked = true;
     }
 
+    const QList<const TargetModSkill *> targetModSkills = trace ? getTargetModSkills()
+        : skillsHeldInRoom<TargetModSkill, TargetModSkillV2>(getTargetModSkills(), from);
     QStringList subcardNames;
     if (card->isVirtualCard()){
         foreach (const Card*e, from->getEquips()){
@@ -3541,7 +3608,11 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
                 subcardNames << e->objectName();
         }
     }
-    foreach (const TargetModSkill*skill, getTargetModSkills()) {
+    foreach (const TargetModSkill*skill, targetModSkills) {
+        if (trace && heldByNoSeat(dynamic_cast<const TargetModSkillV2 *>(skill), from)) {
+            trace.skipped(skill, CorrectionTrace::tr("no seat holds this skill"));
+            continue;
+        }
         if (!subcardNames.isEmpty() && subcardNames.contains(skill->objectName())) {
             if (trace) trace.skipped(skill, CorrectionTrace::tr("equipment consumed as subcard"));
             continue;

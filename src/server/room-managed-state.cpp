@@ -15,6 +15,7 @@
 #include "engine.h"
 #include "request-coordinator.h"
 #include "skill-runtime-coordinator.h"
+#include "skill-set-generation.h"
 #include <QDataStream>
 #include <QIODevice>
 #include <QPointer>
@@ -1243,6 +1244,8 @@ bool RoomManagedState::publish(Candidate &&candidate, QString *error)
         // pure derived cache without emitting skill/mark/HP signals.
         player->m_skillValidityCache.clear();
     }
+    // Swapped skill instances must also invalidate room-wide holder caches.
+    SkillSet::bump();
     if(m_running) m_room.tag.swap(data.native->rawRoomTags);
     else m_room.tag.swap(data.native->roomTags);
     if(m_running) publishRunning(*data.native);

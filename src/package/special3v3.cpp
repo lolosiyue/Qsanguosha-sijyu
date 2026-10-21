@@ -683,7 +683,7 @@ public:
     }
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return ctx.primary && ctx.primary->hasWeapon("vscrossbow") && ctx.modType == TargetModSkill::Residue
+        return ctx.modType == TargetModSkill::Residue && ctx.primary && ctx.primary->hasWeapon("vscrossbow")
             ? CorrectSkillResult::useAmount(ctx.currentAmount) : CorrectSkillResult::noEffect();
     }
 };
