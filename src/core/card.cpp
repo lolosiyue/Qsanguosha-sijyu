@@ -965,6 +965,12 @@ static bool showRequiredTargetModSkills(Room *room, const CardUseStruct &use)
 
 void Card::onUse(Room*room, CardUseStruct &card_use) const
 {
+    onUseWithLogTargets(room, card_use, nullptr);
+}
+
+void Card::onUseWithLogTargets(Room *room, CardUseStruct &card_use,
+                              const QList<ServerPlayer *> *logTargets) const
+{
 	const bool deferredHegemonyCost = Config.EnableHegemony
 		&& card_use.activationRef.isValid() && card_use.card->isVirtualCard()
 		&& !card_use.isAcceptedSkillEffectCard() && card_use.card->needsDeferredHegemonyReveal();
@@ -984,8 +990,11 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 	const auto sendUseLog = [&]() {
 		LogMessage log;
 		log.from = card_use.from;
-		if (!card_use.card->targetFixed()||card_use.to.length()>1||!card_use.to.contains(card_use.from))
-			log.to = card_use.to;
+		// A V2 action may already have consumed its effect targets. Its public
+		// use still names the accepted recipients without restoring those effects.
+		const QList<ServerPlayer *> &displayTargets = logTargets ? *logTargets : card_use.to;
+		if (!card_use.card->targetFixed()||displayTargets.length()>1||!displayTargets.contains(card_use.from))
+			log.to = displayTargets;
 		log.type = "#UseCard";
 		foreach (const Card*c, card_use.card->change_cards) {
 			if(c->isVirtualCard(true)){
@@ -1460,16 +1469,25 @@ bool ActiveSkillCard::targetsFeasible(const QList<const Player *> &targets, cons
 void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 {
     const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    QList<ServerPlayer *> logTargets;
+    bool targetsHandled = false;
     // The callback may apply manual effects before CardUsed can honor this flag.
     if (activeSkill && card_use.skillExecutionID > 0 && !card_use.skipSkillEffect) {
+        logTargets = card_use.to;
+        room->sortByActionOrder(logTargets);
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
         ServerPlayer *acceptedInvoker = context.invoker;
-        if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect)
+        if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect) {
             card_use.to.clear();
+            targetsHandled = true;
+        }
         restoreSkillExecutionIdentity(room, card_use.skillExecutionID, context, acceptedInvoker);
         room->setSkillExecutionContext(card_use.skillExecutionID, context);
     }
-    SkillCard::onUse(room, card_use);
+    if (targetsHandled)
+        onUseWithLogTargets(room, card_use, &logTargets);
+    else
+        SkillCard::onUse(room, card_use);
 }
 
 void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const

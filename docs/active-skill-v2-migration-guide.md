@@ -15,6 +15,7 @@
 - 新 V2 查詢與 `createCard()` 必須無副作用。
 - 不用 Room Tag 保存 execution-local 資料。
 - 舊 AI、日誌、翻譯、history key、response pattern 必須逐項審核。
+- 通用 `ActiveSkillCard` 的 `effect()` 返回 `FinishSkill` 或使用 `manual_effect` 時，執行用目標仍須清空；`#UseCard` 戰報另外保留已接受的選定目標，不恢復效果遍歷、不改支付順序，也不公開隱藏的材料牌。
 - 舊 AI `@SkillCard` 可保留原具名類別及 metaobject，constructor 須提供精確技能名；伺服器會為命中 V2 的零實例 SkillCard 選取有效來源並走既有 `resolveActiveSkillRequest()` 重建，多來源沿用實例選擇。`historyKey()` 只控制計次，不參與技能解析。效果生成的普通牌不因 `skillName` 被當成另一次主動發動。
 - 遇到混合 `validate/onUse` 時人工拆分，不要求橋接層猜測。
 
