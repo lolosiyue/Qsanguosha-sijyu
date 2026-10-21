@@ -53,6 +53,34 @@ void logInstructionLimit(lua_State *state)
         qWarning() << "[AI_LIMIT_STACK] truncated after 32 frames";
 }
 
+// Error codes alone hide the Lua message. Log each distinct message once per
+// thread: one bad event handler otherwise repeats for every observer seat.
+void logLuaErrorOnce(const char *code, lua_State *state)
+{
+    QString message;
+    if (lua_type(state, -1) == LUA_TSTRING) {
+        message = QString::fromUtf8(lua_tostring(state, -1));
+    } else if (lua_istable(state, -1)) {
+        // Raw reads only: a __tostring or __index here would run outside any pcall.
+        for (const char *field : {"key", "reason"}) {
+            lua_pushstring(state, field);
+            lua_rawget(state, -2);
+            if (lua_type(state, -1) == LUA_TSTRING)
+                message += QString::fromLatin1(field) + '=' + QString::fromUtf8(lua_tostring(state, -1)) + ' ';
+            lua_pop(state, 1);
+        }
+        message = QStringLiteral("table ") + message.trimmed();
+    } else {
+        message = QString::fromLatin1(luaL_typename(state, -1));
+    }
+    message = message.left(400);
+    static thread_local QSet<QString> reported;
+    const QString key = QString::fromLatin1(code) + ' ' + message;
+    if (reported.size() >= 256 || reported.contains(key)) return;
+    reported.insert(key);
+    qWarning().noquote() << "[AI_LUA_ERROR]" << code << message;
+}
+
 const size_t AiSoftMemoryLimit = 64u * 1024u * 1024u;
 const size_t AiHardMemoryLimit = 128u * 1024u * 1024u;
 const size_t AiMaxResultStringBytes = 64u * 1024u;
@@ -1149,6 +1177,8 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
                 ? QStringLiteral("AI_INSTRUCTION_LIMIT")
                 : status == LUA_ERRMEM ? QStringLiteral("AI_MEMORY_LIMIT")
                                        : QStringLiteral("AI_RUNTIME_ERROR");
+            if (!m_instructionLimitExceeded && status != LUA_ERRMEM)
+                logLuaErrorOnce("AI_RUNTIME_ERROR", state);
             lua_pop(state, 1);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else {
@@ -1234,6 +1264,8 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
             failure = m_instructionLimitExceeded ? QStringLiteral("AI_EVENT_INSTRUCTION_LIMIT")
                 : status == LUA_ERRMEM ? QStringLiteral("AI_EVENT_MEMORY_LIMIT")
                                       : QStringLiteral("AI_EVENT_RUNTIME_ERROR");
+            if (status != 0 && !m_instructionLimitExceeded && status != LUA_ERRMEM)
+                logLuaErrorOnce("AI_EVENT_RUNTIME_ERROR", state);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else if (!parseIntentionDeltas(state, world, deltas)) {
             failure = QStringLiteral("AI_EVENT_INVALID_RESULT");
@@ -1300,6 +1332,9 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
     lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
     const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
     lua_sethook(state, nullptr, 0, 0);
+    // A rejected preparation returns its reason string instead of raising.
+    if ((status != 0 && !m_instructionLimitExceeded) || (status == 0 && !lua_istable(state, -1)))
+        logLuaErrorOnce("AI_EVENT_MODE_ERROR", state);
     bool accepted = false;
     if (status == 0 && lua_istable(state, -1) && !m_instructionLimitExceeded) {
         if (m_room && m_room->roomRuntime()
@@ -1311,6 +1346,7 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
             // Stack is commit, prepared token. Commit contains no policy callbacks
             // or loops, and cannot time out after replacing a successfully staged mind.
             const int commitStatus = LuaRuntime::protectedCall(state, 1, 1, 0);
+            if (commitStatus != 0 || !lua_isnil(state, -1)) logLuaErrorOnce("AI_EVENT_MODE_ERROR", state);
             accepted = commitStatus == 0 && lua_isnil(state, -1);
         }
     }
