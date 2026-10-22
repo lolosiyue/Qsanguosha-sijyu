@@ -1399,22 +1399,10 @@ public:
     bool usesEventPriority() const override { return true; }
     HYiguiShow() : TriggerSkillV2("#heg_yigui-show")
     {
-        events << GeneralShowed << EventSkillInvoking;
+        events << GeneralShowed;
         global = true;
         frequency = Compulsory;
         m_baseAmount = 2;
-    }
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }

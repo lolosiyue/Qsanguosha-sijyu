@@ -1463,7 +1463,7 @@ public:
 class Shouxi : public TriggerSkillV2
 {
 public:
-    Shouxi(const QString &name = "shouxi") : TriggerSkillV2(name) { events << TargetConfirmed << EventSkillInvoking; }
+    Shouxi(const QString &name = "shouxi") : TriggerSkillV2(name) { events << TargetConfirmed; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (event != TargetConfirmed) return {};
@@ -1507,13 +1507,9 @@ public:
         commitDeclaration(room, ctx);
         return true;
     }
-    void record(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // The accepted declaration remains spent even when its whole effect is cancelled.
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) commitDeclaration(room, accepted);
-    }
+    // The accepted declaration remains spent even when its whole effect is cancelled.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { commitDeclaration(room, ctx); }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         room->broadcastSkillInvoke(objectName());

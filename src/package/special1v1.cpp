@@ -380,25 +380,14 @@ public:
 class CangjiInstall : public TriggerSkillV2
 {
 public:
-    CangjiInstall() : TriggerSkillV2("#cangji-install") { events << EventSkillInvoking << Debut; global = true; frequency = Compulsory; }
+    CangjiInstall() : TriggerSkillV2("#cangji-install") { events << Debut; global = true; frequency = Compulsory; }
     int getPriority(TriggerEvent) const override { return 5; }
     bool usesEventPriority() const override { return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.skill_name == objectName()) {
-                // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
-                if (!pay(accepted.current_event, room, accepted.invoker, accepted)) accepted.is_canceled = true;
-                data.setValue(accepted);
-            }
-            return true;
-        }
-        return true;
-    }
+    // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
+    void payBypassed(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (!pay(event, room, ctx.invoker, ctx)) ctx.is_canceled = true; }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
     {
-        if (event == EventSkillInvoking) return true;
         if (!player || !player->isAlive()) return true;
         const QVariantMap receipts = player->property("cangji_receipts").toMap();
         for (auto it = receipts.cbegin(); it != receipts.cend(); ++it) {

@@ -538,22 +538,12 @@ public:
 
 	MobileMouZongshi() : TriggerSkillV2("mobilemouzongshi")
 	{
-		events << Damaged << EventSkillInvoking;
+		events << Damaged;
         frequency = Compulsory;
 	}
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Custom; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) return {};
         const DamageStruct damage = data.value<DamageStruct>();
         return player && player->isAlive() && player->hasSkill(objectName()) && damage.from && damage.from->isAlive()
             ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -614,14 +604,8 @@ public:
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
     }
 
-    MobileMouWansha() : TriggerSkillV2("mobilemouwansha") { events << Dying << EventSkillInvoking; global = true; }
+    MobileMouWansha() : TriggerSkillV2("mobilemouwansha") { events << Dying; global = true; }
     LimitScope getLimitScope() const override { return Limit_Round; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) { const SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.skill_name == objectName() && accepted.activationRef.key.skillName == objectName()) addUsage(accepted); }
-        return false;
-    }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
         TriggerList result; if (event != Dying || !data.value<DyingStruct>().who) return result;
@@ -1447,13 +1431,11 @@ public:
 class MobileMouXingshang : public TriggerSkillV2
 {
 public:
-    MobileMouXingshang() : TriggerSkillV2("mobilemouxingshang") { events << Damaged << Death << EventSkillInvoking; global = true; frequency = Compulsory; view_as_skill = new MobileMouXingshangvs; }
+    MobileMouXingshang() : TriggerSkillV2("mobilemouxingshang") { events << Damaged << Death; global = true; frequency = Compulsory; view_as_skill = new MobileMouXingshangvs; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool isUsable(const SkillContext &ctx) const override { return ctx.choice == "death" || TriggerSkillV2::isUsable(ctx); }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     { ctx.initiator = ctx.owner; ctx.invoker = ctx.owner; ctx.choice = ctx.current_event == Death ? "death" : "damage"; return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    { if (event == EventSkillInvoking) { const SkillContext accepted = data.value<SkillContext>(); if (accepted.bypass_cost && !accepted.use_card && accepted.choice == "damage" && accepted.skill_name == objectName() && accepted.activationRef.key.skillName == objectName()) addUsage(accepted); } return false; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &data) const override
     {
         TriggerList result;
@@ -1462,6 +1444,7 @@ public:
         return result;
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (ctx.choice == "death") return true; if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (ctx.choice == "damage") addUsage(ctx); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *actor, SkillContext &ctx) const override { ctx.manual_effect = true; return skillEffect(event, room, actor, ctx, ctx.invoker); }
     bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     { const int count = qMin(2 * getEffectiveAmount(ctx), 9 - target->getMark("&mobilemouxingshang_song")); if (count > 0) target->gainMark("&mobilemouxingshang_song", count); return false; }
@@ -2374,10 +2357,8 @@ public:
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
     }
 
-    MobileMouDujiang() : TriggerSkillV2("mobilemoudujiang") { events << EventPhaseStart << EventSkillInvoking; frequency = Wake; waked_skills = "mobilemouduojing"; }
+    MobileMouDujiang() : TriggerSkillV2("mobilemoudujiang") { events << EventPhaseStart; frequency = Wake; waked_skills = "mobilemouduojing"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    { if (event == EventSkillInvoking) { const SkillContext accepted = data.value<SkillContext>(); if (accepted.bypass_cost && accepted.skill_name == objectName() && accepted.activationRef.key.skillName == objectName()) addUsage(accepted); } return false; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *actor, QVariant &) const override
     { return event == EventPhaseStart && actor && actor->isAlive() && actor->getPhase() == Player::Start && actor->hasSkill(objectName()) && (actor->getHujia() >= 3 || actor->canWake(objectName())) ? TriggerList{{actor, {objectName()}}} : TriggerList(); }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { ctx.targets << ctx.invoker; return true; }
@@ -2441,17 +2422,8 @@ public:
 
 	MobileMouXiayuan() : TriggerSkillV2("mobilemouxiayuan")
 	{
-		events << Damaged << EventSkillInvoking;
+		events << Damaged;
 	}
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Round; }
     QStringList payable(ServerPlayer *player) const
     {
@@ -2476,9 +2448,8 @@ public:
             || damage.value("absorbed").toInt() <= 0 || damage.value("armor_after").toInt() != 0) return 0;
         return qMax(0, damage.value("armor_before").toInt());
     }
-    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking) return {};
         TriggerList result;
         if (!player || player->isDead() || depletedArmor(room, player) <= 0) return result;
         for (ServerPlayer *owner : room->getOtherPlayers(player))
@@ -3337,7 +3308,7 @@ public:
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
     }
 
-    MobileMouZhiji() : TriggerSkillV2("mobilemouzhiji") { events << EventPhaseStart << EventSkillInvoking; frequency = Wake; }
+    MobileMouZhiji() : TriggerSkillV2("mobilemouzhiji") { events << EventPhaseStart; frequency = Wake; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     int selectedCount(Room *room, ServerPlayer *player) const
     {
@@ -3353,8 +3324,6 @@ public:
         }
         return targets.size();
     }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    { if (event == EventSkillInvoking) { const SkillContext accepted = data.value<SkillContext>(); if (accepted.bypass_cost && accepted.skill_name == objectName() && accepted.activationRef.key.skillName == objectName()) addUsage(accepted); } return false; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &) const override
     { return event == EventPhaseStart && actor && actor->isAlive() && actor->getPhase() == Player::Start && actor->hasSkill(objectName()) && (actor->canWake(objectName()) || selectedCount(room, actor) >= 4) ? TriggerList{{actor, {objectName()}}} : TriggerList(); }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { ctx.targets << ctx.invoker; return true; }
@@ -3653,23 +3622,13 @@ public:
 
 	MobileMouMingzhe() : TriggerSkillV2("mobilemoumingzhe")
 	{
-		events << CardsMoveOneTime << EventSkillInvoking;
+		events << CardsMoveOneTime;
 		frequency = Compulsory;
 	}
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Round; }
     int getMaxUsageLimit(const SkillContext &) const override { return 2; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) return {};
         const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
         return player && player->isAlive() && player->hasSkill(objectName()) && !player->hasFlag("CurrentPlayer")
             && move.from == player && (move.from_places.contains(Player::PlaceHand) || move.from_places.contains(Player::PlaceEquip))

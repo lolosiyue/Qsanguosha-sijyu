@@ -2767,7 +2767,7 @@ public:
 class YHChouxi : public TriggerSkillV2
 {
 public:
-    YHChouxi() : TriggerSkillV2("yhchouxi") { events << Dying << EventSkillInvoking; frequency = Compulsory; }
+    YHChouxi() : TriggerSkillV2("yhchouxi") { events << Dying; frequency = Compulsory; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -2784,12 +2784,7 @@ public:
         if (!used.contains(ctx.choice)) used << ctx.choice;
         ctx.owner->setSkillInstanceStateValue(ctx.activationRef.key.skillName, ctx.activationRef.key.instanceID, "dying_players", used);
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef) commit(accepted);
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { commit(ctx); }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         const ServerPlayer *dying = ctx.original_data->value<DyingStruct>().who;
@@ -3277,7 +3272,7 @@ public:
 class YHSiku : public TriggerSkillV2
 {
 public:
-    YHSiku() : TriggerSkillV2("yhsiku") { events << Death << EventSkillInvoking; frequency = Limited; limit_mark = "@yhsikuMark"; }
+    YHSiku() : TriggerSkillV2("yhsiku") { events << Death; frequency = Limited; limit_mark = "@yhsikuMark"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -3297,12 +3292,6 @@ public:
             if (isUsable(candidate)) result[player] << SkillInstanceUtils::formatName(objectName(), id);
         }
         return result;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -5350,7 +5339,7 @@ public:
 class YHYange : public TriggerSkillV2
 {
 public:
-    YHYange() : TriggerSkillV2("yhyange") { events << CardFinished << EventSkillInvoking; }
+    YHYange() : TriggerSkillV2("yhyange") { events << CardFinished; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
 
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -5372,12 +5361,6 @@ public:
             if (isUsable(candidate)) result[player] << SkillInstanceUtils::formatName(objectName(), id);
         }
         return result;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {

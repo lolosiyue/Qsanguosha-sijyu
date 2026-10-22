@@ -158,8 +158,6 @@ public:
 		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
 			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
 			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
 		room->setPlayerMark(ctx.owner, "@xiangshuMark", 0);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
@@ -2943,7 +2941,7 @@ class Zhihu : public TriggerSkillV2
 public:
 	Zhihu(): TriggerSkillV2("zhihu")
 	{
-		events << Damage << EventSkillInvoking;
+		events << Damage;
 		frequency = Compulsory;
 		m_baseAmount = 2;
 	}
@@ -2951,20 +2949,9 @@ public:
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 2; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DamageStruct damage = data.value<DamageStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this)
 			&& damage.from == player && damage.to != player) result[player] << objectName();
@@ -3000,7 +2987,7 @@ class SecondZhihu : public TriggerSkillV2
 public:
 	SecondZhihu(): TriggerSkillV2("secondzhihu")
 	{
-		events << Damage << EventSkillInvoking;
+		events << Damage;
 		frequency = Compulsory;
 		m_baseAmount = 1;
 	}
@@ -3008,20 +2995,9 @@ public:
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 3; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DamageStruct damage = data.value<DamageStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this)
 			&& damage.from == player && damage.to != player) result[player] << objectName();
@@ -3653,26 +3629,15 @@ class Suoliang : public TriggerSkillV2
 public:
 	Suoliang(): TriggerSkillV2("suoliang")
 	{
-		events << Damage << EventSkillInvoking;
+		events << Damage;
 		m_baseAmount = 5;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DamageStruct damage = data.value<DamageStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this)
 			&& damage.from == player && damage.to && damage.to != player && damage.to->isAlive()
@@ -4418,7 +4383,6 @@ public:
 		if (event != EventSkillInvoking) return;
 		const SkillContext active = ctx.original_data->value<SkillContext>();
 		if (active.activationRef != ctx.activationRef) return;
-		if (active.bypass_cost) addUsage(active);
 		if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
@@ -4640,24 +4604,13 @@ public:
 class TenyearDeshao : public TriggerSkillV2
 {
 public:
-	TenyearDeshao(): TriggerSkillV2("tenyeardeshao") { events << TargetConfirmed << EventSkillInvoking; m_baseAmount = 1; }
+	TenyearDeshao(): TriggerSkillV2("tenyeardeshao") { events << TargetConfirmed; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 2; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this) && use.card
 			&& !use.card->isKindOf("SkillCard") && use.card->isBlack() && use.to.contains(player)
@@ -4899,18 +4852,9 @@ public:
 class Shejian : public TriggerSkillV2
 {
 public:
-	Shejian(): TriggerSkillV2("shejian") { events << TargetConfirmed << EventSkillInvoking; m_baseAmount = 1; }
+	Shejian(): TriggerSkillV2("shejian") { events << TargetConfirmed; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 2; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-			&& active.activationRef.key.skillName == ctx.activationRef.key.skillName
-			&& active.activationRef.key.instanceID == ctx.activationRef.key.instanceID && active.bypass_cost) addUsage(active);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
@@ -4971,17 +4915,8 @@ public:
 class Yusui : public TriggerSkillV2
 {
 public:
-	Yusui(): TriggerSkillV2("yusui") { events << TargetConfirmed << EventSkillInvoking; m_baseAmount = 1; }
+	Yusui(): TriggerSkillV2("yusui") { events << TargetConfirmed; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-			&& active.activationRef.key.skillName == ctx.activationRef.key.skillName
-			&& active.activationRef.key.instanceID == ctx.activationRef.key.instanceID && active.bypass_cost) addUsage(active);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
@@ -5403,17 +5338,11 @@ public:
 class Wanggui : public TriggerSkillV2
 {
 public:
-	Wanggui(): TriggerSkillV2("wanggui") { events << Damage << Damaged << EventSkillInvoking; m_baseAmount = 1; }
+	Wanggui(): TriggerSkillV2("wanggui") { events << Damage << Damaged; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	bool isUsable(const SkillContext &ctx) const override
 	{
 		return ctx.current_event == Damaged || Skill::isUsable(ctx);
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost && active.choice == "damage") addUsage(active);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
 	{
@@ -5446,6 +5375,7 @@ public:
 		}
 		return true;
 	}
+	void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (ctx.choice == "damage") addUsage(ctx); }
 	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		room->broadcastSkillInvoke(this, ctx.choice == "damage" ? 1 : 2);
@@ -5463,17 +5393,8 @@ public:
 class Xibing : public TriggerSkillV2
 {
 public:
-	Xibing(): TriggerSkillV2("xibing") { events << TargetSpecified << EventSkillInvoking; m_baseAmount = 1; }
+	Xibing(): TriggerSkillV2("xibing") { events << TargetSpecified; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-			&& active.activationRef.key.skillName == ctx.activationRef.key.skillName
-			&& active.activationRef.key.instanceID == ctx.activationRef.key.instanceID && active.bypass_cost) addUsage(active);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -5543,14 +5464,8 @@ public:
 class Zhente : public TriggerSkillV2
 {
 public:
-	Zhente(): TriggerSkillV2("zhente") { events << TargetConfirmed << EventSkillInvoking; m_baseAmount = 1; }
+	Zhente(): TriggerSkillV2("zhente") { events << TargetConfirmed; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -7518,14 +7433,8 @@ public:
 class Jinjin : public TriggerSkillV2
 {
 public:
-	Jinjin(): TriggerSkillV2("jinjin") { events << Damage << Damaged << EventSkillInvoking; m_baseAmount = 1; }
+	Jinjin(): TriggerSkillV2("jinjin") { events << Damage << Damaged; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
 	{
 		return (event == Damage || event == Damaged) && room->hasCurrent() && player && player->isAlive() && player->hasSkill(this)
@@ -7589,26 +7498,15 @@ class Xieshou : public TriggerSkillV2
 public:
 	Xieshou(): TriggerSkillV2("xieshou")
 	{
-		events << Damaged << EventSkillInvoking;
+		events << Damaged;
 		m_baseAmount = 1;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		if (!player || !player->isAlive() || data.value<DamageStruct>().to != player) return result;
 		foreach (ServerPlayer *owner, room->getAlivePlayers())
 			if (owner->hasSkill(this) && owner->distanceTo(player) <= 2) result[owner] << objectName();
@@ -7660,27 +7558,16 @@ class Qingyan : public TriggerSkillV2
 public:
 	Qingyan(): TriggerSkillV2("qingyan")
 	{
-		events << TargetConfirmed << EventSkillInvoking;
+		events << TargetConfirmed;
 		m_baseAmount = 1;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 3; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this) && use.card
 			&& use.card->isBlack() && !use.card->isKindOf("SkillCard") && use.from && use.from != player
@@ -8352,7 +8239,7 @@ class Wangzu : public TriggerSkillV2
 public:
 	Wangzu(): TriggerSkillV2("wangzu")
 	{
-		events << DamageInflicted << EventSkillInvoking;
+		events << DamageInflicted;
 		m_baseAmount = 1;
 	}
 
@@ -8366,20 +8253,9 @@ public:
 		return count;
 	}
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DamageStruct damage = data.value<DamageStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this) && damage.to == player
 			&& damage.from && damage.from != player && player->canDiscard(player, "h")) result[player] << objectName();
@@ -8879,7 +8755,7 @@ class Liunian : public TriggerSkillV2
 public:
 	Liunian(): TriggerSkillV2("liunian")
 	{
-		events << EventPhaseChanging << EventSkillInvoking;
+		events << EventPhaseChanging;
 		frequency = Compulsory;
 		m_baseAmount = 1;
 	}
@@ -8903,12 +8779,6 @@ public:
 		const QString value = QString::number(stage(ctx));
 		if (!stages.contains(value)) stages << value;
 		ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "used_stages", stages);
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
 	{
@@ -9115,7 +8985,6 @@ public:
 		if (event != EventSkillInvoking) return;
 		const SkillContext active = ctx.original_data->value<SkillContext>();
 		if (active.activationRef != ctx.activationRef) return;
-		if (active.bypass_cost) addUsage(active);
 		room->setPlayerMark(ctx.owner, objectName(), 1);
 	}
 
@@ -12216,14 +12085,8 @@ public:
 class Cangchu : public TriggerSkillV2
 {
 public:
-	Cangchu(): TriggerSkillV2("cangchu") { events << GameStart << CardsMoveOneTime << EventSkillInvoking; frequency = Compulsory; m_baseAmount = 1; }
+	Cangchu(): TriggerSkillV2("cangchu") { events << GameStart << CardsMoveOneTime; frequency = Compulsory; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost && active.choice == "gain") addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -12251,6 +12114,7 @@ public:
 		}
 		return true;
 	}
+	void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (ctx.choice == "gain") addUsage(ctx); }
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
 		ctx.owner->peiyin(this);
@@ -14771,15 +14635,8 @@ public:
 class Shangjue : public TriggerSkillV2
 {
 public:
-	Shangjue(): TriggerSkillV2("shangjue") { events << Dying << EventSkillInvoking; frequency = Wake; waked_skills = "kunli"; m_baseAmount = 1; }
+	Shangjue(): TriggerSkillV2("shangjue") { events << Dying; frequency = Wake; waked_skills = "kunli"; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Game; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext accepted = ctx.original_data->value<SkillContext>();
-		if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
@@ -14830,15 +14687,8 @@ public:
 class Kunli : public TriggerSkillV2
 {
 public:
-	Kunli(): TriggerSkillV2("kunli") { events << Dying << EventSkillInvoking; frequency = Wake; m_baseAmount = 1; }
+	Kunli(): TriggerSkillV2("kunli") { events << Dying; frequency = Wake; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Game; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext accepted = ctx.original_data->value<SkillContext>();
-		if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
@@ -15935,17 +15785,8 @@ public:
 class Yisuan : public TriggerSkillV2
 {
 public:
-	Yisuan(): TriggerSkillV2("yisuan") { events << CardsMoveOneTime << EventSkillInvoking; setPhaseName("Play"); m_baseAmount = 1; }
+	Yisuan(): TriggerSkillV2("yisuan") { events << CardsMoveOneTime; setPhaseName("Play"); m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Phase; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-			&& active.activationRef.key.skillName == ctx.activationRef.key.skillName
-			&& active.activationRef.key.instanceID == ctx.activationRef.key.instanceID && active.bypass_cost) addUsage(active);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
@@ -17774,17 +17615,11 @@ class Shizhao : public TriggerSkillV2
 public:
 	Shizhao(): TriggerSkillV2("shizhao")
 	{
-		events << CardsMoveOneTime << EventSkillInvoking;
+		events << CardsMoveOneTime;
 		frequency = Compulsory;
 		m_baseAmount = 1;
 	}
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -18520,7 +18355,7 @@ class SpLiewei : public TriggerSkillV2
 public:
 	SpLiewei(): TriggerSkillV2("spliewei")
 	{
-		events << Dying << EventSkillInvoking;
+		events << Dying;
 		frequency = Frequent;
 		m_baseAmount = 1;
 	}
@@ -18528,20 +18363,9 @@ public:
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &ctx) const override { return ctx.owner ? qMax(0, ctx.owner->getHp()) : 0; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DyingStruct dying = data.value<DyingStruct>();
 		if (!room->hasCurrent() || !dying.damage || !dying.damage->from) return result;
 		ServerPlayer *owner = dying.damage->from;
@@ -19757,14 +19581,8 @@ public:
 class Tingxian : public TriggerSkillV2
 {
 public:
-	Tingxian(): TriggerSkillV2("tingxian") { events << TargetSpecified << EventSkillInvoking; m_baseAmount = 1; }
+	Tingxian(): TriggerSkillV2("tingxian") { events << TargetSpecified; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -20485,15 +20303,8 @@ public:
 class Chaofeng : public TriggerSkillV2
 {
 public:
-	Chaofeng(const QString &name): TriggerSkillV2(name) { events << DamageCaused << EventSkillInvoking; setPhaseName("Play"); m_baseAmount = 1; }
+	Chaofeng(const QString &name): TriggerSkillV2(name) { events << DamageCaused; setPhaseName("Play"); m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Phase; }
-
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext accepted = ctx.original_data->value<SkillContext>();
-		if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
 	{
@@ -20747,17 +20558,11 @@ public:
 class Tianze : public TriggerSkillV2
 {
 public:
-	Tianze(): TriggerSkillV2("tianze") { events << FinishJudge << CardFinished << EventSkillInvoking; m_baseAmount = 1; }
+	Tianze(): TriggerSkillV2("tianze") { events << FinishJudge << CardFinished; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	bool isUsable(const SkillContext &ctx) const override
 	{
 		return ctx.choice == "judge" || TriggerSkillV2::isUsable(ctx);
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost && active.choice == "damage") addUsage(active);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -20799,6 +20604,7 @@ public:
 		room->throwCard(id, objectName(), ctx.owner);
 		return true;
 	}
+	void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (ctx.choice == "damage") addUsage(ctx); }
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
 		if (ctx.choice == "judge") {
@@ -20815,14 +20621,8 @@ public:
 class Difa : public TriggerSkillV2
 {
 public:
-	Difa(): TriggerSkillV2("difa") { events << CardsMoveOneTime << EventSkillInvoking; m_baseAmount = 1; }
+	Difa(): TriggerSkillV2("difa") { events << CardsMoveOneTime; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	static QStringList eligible(ServerPlayer *owner, const CardsMoveOneTimeStruct &move)
 	{
 		QStringList result;
@@ -21098,26 +20898,15 @@ class Yinyi : public TriggerSkillV2
 public:
 	Yinyi(): TriggerSkillV2("yinyi")
 	{
-		events << DamageInflicted << EventSkillInvoking;
+		events << DamageInflicted;
 		frequency = Compulsory;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DamageStruct damage = data.value<DamageStruct>();
 		if (room->hasCurrent() && player && player->isAlive() && player->hasSkill(this) && damage.to == player
 			&& damage.from && damage.from != player && damage.nature == DamageStruct::Normal
@@ -22176,7 +21965,7 @@ class TenyearYingbing : public TriggerSkillV2
 public:
 	TenyearYingbing(): TriggerSkillV2("tenyearyingbing")
 	{
-		events << TargetSpecified << EventSkillInvoking << EventPhaseChanging << TurnStart;
+		events << TargetSpecified << EventPhaseChanging << TurnStart;
 		frequency = Compulsory;
 		global = true;
 		m_baseAmount = 2;
@@ -22203,12 +21992,6 @@ public:
 			foreach (const SkillInstance &instance, owner->getSkillInstances())
 				if (instance.skillName == objectName()) owner->removeSkillInstanceStateValue(objectName(), instance.instanceID, "turn_targets");
 		return true;
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
 	}
 	bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
 		QList<SkillContext> &contexts) const override
@@ -24009,26 +23792,15 @@ class Zhongjie : public TriggerSkillV2
 public:
 	Zhongjie(): TriggerSkillV2("zhongjie")
 	{
-		events << Dying << EventSkillInvoking;
+		events << Dying;
 		m_baseAmount = 1;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Round; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		const DyingStruct dying = data.value<DyingStruct>();
 		if (player && player->isAlive() && player->hasSkill(this) && dying.who && dying.who->isAlive()
 			&& dying.hplost) result[player] << objectName();
@@ -25514,14 +25286,8 @@ public:
 class TenyearLiying : public TriggerSkillV2
 {
 public:
-	TenyearLiying(): TriggerSkillV2("tenyearliying") { events << CardsMoveOneTime << EventSkillInvoking; m_baseAmount = 1; }
+	TenyearLiying(): TriggerSkillV2("tenyearliying") { events << CardsMoveOneTime; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	static QList<int> remainingCards(ServerPlayer *owner, const CardsMoveOneTimeStruct &move)
 	{
 		QList<int> result;
@@ -26244,7 +26010,7 @@ class Shiyuan : public TriggerSkillV2
 public:
 	Shiyuan(): TriggerSkillV2("shiyuan")
 	{
-		events << TargetConfirmed << EventSkillInvoking << EventPhaseChanging << TurnStart;
+		events << TargetConfirmed << EventPhaseChanging << TurnStart;
 		frequency = Compulsory;
 		global = true;
 		m_baseAmount = 1;
@@ -26286,12 +26052,6 @@ public:
 			foreach (const SkillInstance &instance, owner->getSkillInstances())
 				if (instance.skillName == objectName()) owner->removeSkillInstanceStateValue(objectName(), instance.instanceID, "turn_buckets");
 		return true;
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -30138,7 +29898,7 @@ public:
 class TenyearJinjie : public TriggerSkillV2
 {
 public:
-	TenyearJinjie(): TriggerSkillV2("tenyearjinjie") { events << Dying << EventSkillInvoking; m_baseAmount = 1; }
+	TenyearJinjie(): TriggerSkillV2("tenyearjinjie") { events << Dying; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Custom; }
 	int usageCount(const SkillContext &ctx) const
 	{
@@ -30180,12 +29940,6 @@ public:
 			filter.insert("watermark", page.value("watermark"));
 			filter.insert("after", page.value("next_after"));
 		}
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
 	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
@@ -31323,7 +31077,7 @@ class Anjing : public TriggerSkillV2
 public:
 	Anjing(): TriggerSkillV2("anjing")
 	{
-		events << Damage << EventSkillInvoking << EventAcquireSkill << EventLoseSkill;
+		events << Damage << EventAcquireSkill << EventLoseSkill;
 		global = true;
 		m_baseAmount = 1;
 	}
@@ -31351,12 +31105,6 @@ public:
 		ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "invocations", count + 1);
 		synchronize(room, ctx.owner);
 	}
-	void record(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) commit(room, active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -31381,6 +31129,7 @@ public:
 		commit(room, ctx);
 		return true;
 	}
+	void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override { commit(room, ctx); }
 	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		ctx.manual_effect = true;
@@ -32370,7 +32119,6 @@ public:
 		if (event != EventSkillInvoking) return;
 		SkillContext active = ctx.original_data->value<SkillContext>();
 		if (active.activationRef != ctx.activationRef) return;
-		if (active.bypass_cost) addUsage(active);
 		// A nested round change must not refund an unrelated round's quota.
 		active.extra_data = room->historyScopes().value("round_id");
 		*ctx.original_data = QVariant::fromValue(active);
@@ -32855,14 +32603,8 @@ public:
 class Shuhe : public TriggerSkillV2
 {
 public:
-	Shuhe(): TriggerSkillV2("shuhe") { events << CardUsed << EventSkillInvoking; m_baseAmount = 1; }
+	Shuhe(): TriggerSkillV2("shuhe") { events << CardUsed; m_baseAmount = 1; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -34916,7 +34658,7 @@ class ThZhijie : public TriggerSkillV2
 public:
 	ThZhijie(): TriggerSkillV2("th_zhijie")
 	{
-		events << Damage << EventSkillInvoking << EventPhaseChanging << TurnStart << EventAcquireSkill << EventLoseSkill;
+		events << Damage << EventPhaseChanging << TurnStart << EventAcquireSkill << EventLoseSkill;
 		frequency = Compulsory;
 		global = true;
 		m_baseAmount = 1;
@@ -34958,13 +34700,6 @@ public:
 		synchronize(room, ctx.owner);
 	}
 
-	void record(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef == ctx.activationRef && active.bypass_cost) commit(room, active);
-	}
-
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
@@ -34986,6 +34721,7 @@ public:
 		commit(room, ctx);
 		return true;
 	}
+	void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override { commit(room, ctx); }
 
 	bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
@@ -35468,7 +35204,7 @@ class ThZhuguo : public TriggerSkillV2
 public:
 	ThZhuguo(): TriggerSkillV2("thzhuguo")
 	{
-		events << CardsMoveOneTime << SwappedPile << EventSkillInvoking;
+		events << CardsMoveOneTime << SwappedPile;
 		frequency = Compulsory;
 		m_baseAmount = 2;
 	}
@@ -35476,20 +35212,9 @@ public:
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	int getMaxUsageLimit(const SkillContext &) const override { return 3; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		if (!player || !player->isAlive() || !player->hasSkill(this)) return result;
 		if (event == CardsMoveOneTime) {
 			const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
@@ -37263,27 +36988,16 @@ class Gangu : public TriggerSkillV2
 public:
 	Gangu(): TriggerSkillV2("gangu")
 	{
-		events << HpLost << EventSkillInvoking;
+		events << HpLost;
 		frequency = Compulsory;
 		m_baseAmount = 1;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking) return;
-		const SkillContext active = ctx.original_data->value<SkillContext>();
-		if (active.activationRef.ownerObjectName != ctx.activationRef.ownerObjectName
-			|| active.activationRef.key.skillName != ctx.activationRef.key.skillName
-			|| active.activationRef.key.instanceID != ctx.activationRef.key.instanceID) return;
-		// Accepted invocations consume quota even when payment or effects are bypassed.
-		if (active.bypass_cost) addUsage(active);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
 		TriggerList result;
-		if (event == EventSkillInvoking) return result;
 		if (!player || !player->isAlive()) return result;
 		foreach (ServerPlayer *owner, room->getOtherPlayers(player))
 			if (owner->isAlive() && owner->hasSkill(this)) result[owner] << objectName();

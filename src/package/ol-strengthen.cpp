@@ -150,7 +150,7 @@ public:
 class OLHujiaDraw : public TriggerSkillV2
 {
 public:
-    OLHujiaDraw() : TriggerSkillV2("#olhujia$") { events << CardUsed << CardResponded << EventSkillInvoking; }
+    OLHujiaDraw() : TriggerSkillV2("#olhujia$") { events << CardUsed << CardResponded; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.invoker; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
@@ -158,12 +158,6 @@ public:
         // The Wei responder makes the choice; quota and provenance belong to the selected lord's helper instance.
         ctx.initiator = ctx.invoker;
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        if (active.bypass_cost && active.activationRef == ctx.activationRef) addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -588,7 +582,6 @@ public:
         if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
             && active.activationRef.key.skillName == ctx.activationRef.key.skillName
             && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID) {
-            if (active.bypass_cost) addUsage(active);
             if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
         }
     }
@@ -2102,7 +2095,6 @@ public:
         const SkillContext active = ctx.original_data->value<SkillContext>();
         if (active.activationRef == ctx.activationRef) {
             // The display token is a projection; the accepted instance owns the game quota.
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, limit_mark, 0);
         }
     }
@@ -2387,7 +2379,6 @@ public:
         if (event == EventSkillInvoking) {
             const SkillContext active = data.value<SkillContext>();
             if (active.skill_name == objectName() && active.activationRef.isValid()) {
-                if (active.bypass_cost) addUsage(active);
                 if (active.owner) room->removePlayerMark(active.owner, "@olwulieMark");
             }
         }
@@ -2436,6 +2427,7 @@ public:
         room->loseHp(HpLostStruct(ctx.invoker, ctx.targets.length(), objectName(), ctx.invoker));
         return true;
     }
+    void payBypassed(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override { if (event != DamageInflicted) addUsage(ctx); }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const int amount = getEffectiveAmount(ctx);
@@ -2653,7 +2645,6 @@ public:
         const SkillContext active = ctx.original_data->value<SkillContext>();
         if (active.activationRef == ctx.activationRef) {
             // The display token is a projection; the accepted instance owns the game quota.
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, objectName(), 1);
         }
     }
@@ -3707,7 +3698,6 @@ public:
         if (event != EventSkillInvoking) return;
         const SkillContext active = ctx.original_data->value<SkillContext>();
         if (active.activationRef == ctx.activationRef) {
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, objectName(), 1);
         }
     }
@@ -4068,7 +4058,6 @@ public:
         if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
             && active.activationRef.key.skillName == ctx.activationRef.key.skillName
             && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID) {
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, objectName(), 1);
         }
     }
@@ -5750,7 +5739,7 @@ public:
 class OLGuzheng : public TriggerSkillV2
 {
 public:
-    OLGuzheng() : TriggerSkillV2("olguzheng") { events << CardsMoveOneTime << EventSkillInvoking; }
+    OLGuzheng() : TriggerSkillV2("olguzheng") { events << CardsMoveOneTime; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     {
@@ -5769,16 +5758,6 @@ public:
                 && room->getCardPlace(move.card_ids.at(i)) == Player::DiscardPile) ids << move.card_ids.at(i);
         }
         return ids;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        // Waiving payment never waives the quota, including an intercepted/skipped effect.
-        if (active.bypass_cost && active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-            && active.activationRef.key.skillName == ctx.activationRef.key.skillName
-            && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID)
-            addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -6374,7 +6353,6 @@ public:
         if (event != EventSkillInvoking) return;
         const SkillContext active = ctx.original_data->value<SkillContext>();
         if (active.activationRef == ctx.activationRef) {
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, objectName(), 1);
         }
     }
@@ -6794,7 +6772,6 @@ public:
         if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
             && active.activationRef.key.skillName == ctx.activationRef.key.skillName
             && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID) {
-            if (active.bypass_cost) addUsage(active);
             if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
         }
     }
@@ -7207,7 +7184,7 @@ public:
 class OLZongshi : public TriggerSkillV2
 {
 public:
-    OLZongshi() : TriggerSkillV2("olzongshi") { events << DamageCaused << EventSkillInvoking; frequency = Compulsory; }
+    OLZongshi() : TriggerSkillV2("olzongshi") { events << DamageCaused; frequency = Compulsory; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     {
@@ -7234,16 +7211,6 @@ public:
         const QString kingdom = ctx.extra_data.toMap().value("kingdom", damage.from ? damage.from->getKingdom() : QString()).toString();
         if (!kingdom.isEmpty() && !kingdoms.contains(kingdom)) kingdoms << kingdom;
         holder->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "kingdoms", kingdoms);
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        // Waiving payment never waives the quota, including an intercepted/skipped effect.
-        if (active.bypass_cost && active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-            && active.activationRef.key.skillName == ctx.activationRef.key.skillName
-            && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID)
-            addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
@@ -7880,7 +7847,7 @@ public:
 class OLZenhui : public TriggerSkillV2
 {
 public:
-    OLZenhui() : TriggerSkillV2("olzenhui") { events << TargetSpecifying << EventSkillInvoking << EventPhaseChanging; }
+    OLZenhui() : TriggerSkillV2("olzenhui") { events << TargetSpecifying << EventPhaseChanging; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     QStringList usedOptions(const SkillContext &ctx) const
     {
@@ -7916,10 +7883,7 @@ public:
     }
     void record(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (event == EventSkillInvoking) {
-            const SkillContext accepted = ctx.original_data->value<SkillContext>();
-            if (accepted.activationRef == ctx.activationRef && accepted.skill_name == objectName() && accepted.bypass_cost) addUsage(accepted);
-        } else if (event == EventPhaseChanging && player == ctx.owner && ctx.original_data->value<PhaseChangeStruct>().from == Player::Play) {
+        if (event == EventPhaseChanging && player == ctx.owner && ctx.original_data->value<PhaseChangeStruct>().from == Player::Play) {
             const auto &ref = ctx.activationRef;
             QVariantMap states = ctx.owner->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "used_options").toMap();
             foreach (const QString &phase, states.keys()) if (finishedOLPlayPhase(room, phase, player)) states.remove(phase);

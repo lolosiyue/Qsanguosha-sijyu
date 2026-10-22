@@ -1655,7 +1655,7 @@ JinYishiCard::JinYishiCard()
 class JinYishi : public TriggerSkillV2
 {
 public:
-    JinYishi() : TriggerSkillV2("jinyishi") { events << CardsMoveOneTime << EventSkillInvoking; }
+    JinYishi() : TriggerSkillV2("jinyishi") { events << CardsMoveOneTime; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     {
@@ -1670,12 +1670,6 @@ public:
             if (move.from_places.value(i) == Player::PlaceHand && room->getCardPlace(move.card_ids.at(i)) == Player::DiscardPile)
                 ids << move.card_ids.at(i);
         return ids;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        if (active.bypass_cost && active.activationRef == ctx.activationRef) addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -1833,18 +1827,12 @@ public:
 class JinYimie : public TriggerSkillV2
 {
 public:
-    JinYimie() : TriggerSkillV2("jinyimie") { events << DamageCaused << EventSkillInvoking; }
+    JinYimie() : TriggerSkillV2("jinyimie") { events << DamageCaused; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     {
         ctx.invoker = ctx.initiator = ctx.owner;
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        if (active.bypass_cost && active.activationRef == ctx.activationRef) addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -3115,7 +3103,7 @@ class JinZhaoranEffect : public TriggerSkillV2
 public:
     JinZhaoranEffect() : TriggerSkillV2("#jinzhaoran-effect")
     {
-        events << CardsMoveOneTime << EventSkillInvoking << EventPhaseChanging;
+        events << CardsMoveOneTime << EventPhaseChanging;
         global = true;
         frequency = Compulsory;
     }
@@ -3162,10 +3150,7 @@ public:
     bool prepareSource(Room *room, SkillContext &ctx) const override { return isSourceAvailable(room, ctx) && isUsable(ctx); }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *phaseActor, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.skill_name == objectName() && active.bypass_cost && !active.activationRef.isValid()) addUsage(active);
-        } else if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().from == Player::Play) {
+        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().from == Player::Play) {
             foreach (ServerPlayer *player, room->getAllPlayers(true)) {
                 QVariantList receipts = player->getTag("jinzhaoran_effects").toList();
                 for (int i = receipts.length() - 1; i >= 0; --i)
@@ -3454,7 +3439,6 @@ public:
         if (active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
             && active.activationRef.key.skillName == ctx.activationRef.key.skillName
             && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID) {
-            if (active.bypass_cost) addUsage(active);
             room->setPlayerMark(ctx.owner, objectName(), 1);
         }
     }
@@ -3594,7 +3578,7 @@ class JinZhongyun : public TriggerSkillV2
 public:
     JinZhongyun() : TriggerSkillV2("jinzhongyun")
     {
-        events << Damaged << HpRecover << CardsMoveOneTime << EventSkillInvoking;
+        events << Damaged << HpRecover << CardsMoveOneTime;
         frequency = Compulsory;
     }
     bool prepareSource(Room *room, SkillContext &ctx) const override
@@ -3627,16 +3611,6 @@ public:
             if (!used.contains(turn)) used << turn;
             holder->setSkillInstanceStateValue(ref.key.skillName,ref.key.instanceID,quotaKey(ctx),used);
         }
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext active = ctx.original_data->value<SkillContext>();
-        // Waiving payment never waives the quota, including an intercepted/skipped effect.
-        if (active.bypass_cost && active.activationRef.ownerObjectName == ctx.activationRef.ownerObjectName
-            && active.activationRef.key.skillName == ctx.activationRef.key.skillName
-            && active.activationRef.key.instanceID == ctx.activationRef.key.instanceID)
-            addUsage(active);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -3858,7 +3832,7 @@ class JinQimeiEffect : public TriggerSkillV2
 public:
     JinQimeiEffect() : TriggerSkillV2("#jinqimei-effect")
     {
-        events << EventPhaseStart << HpChanged << Death << CardsMoveOneTime << EventSkillInvoking;
+        events << EventPhaseStart << HpChanged << Death << CardsMoveOneTime;
         global = true;
         frequency = Compulsory;
     }
@@ -3900,11 +3874,6 @@ public:
     }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.skill_name == objectName() && active.bypass_cost && isSourceAvailable(room, active)) commitQuota(room, active);
-            return true;
-        }
         if (!player || !((event == EventPhaseStart && player->getPhase() == Player::RoundStart)
             || (event == Death && data.value<DeathStruct>().who == player))) return true;
         QVariantList kept, expired;
@@ -3973,6 +3942,7 @@ public:
         return false;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override { return commitQuota(room, ctx); }
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override { if (isSourceAvailable(room, ctx)) commitQuota(room, ctx); }
     bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const int amount = getEffectiveAmount(ctx);
@@ -4570,7 +4540,6 @@ public:
         if (event == EventSkillInvoking) {
             const SkillContext active = data.value<SkillContext>();
             if (active.skill_name == objectName() && active.activationRef.isValid()) {
-                if (active.bypass_cost) addUsage(active);
                 if (active.owner) room->setPlayerMark(active.owner, "&jinxiongshu_num_lun", qMax(0, paidCount(active)));
             }
         }

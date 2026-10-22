@@ -1577,22 +1577,10 @@ class Zhiri : public TriggerSkillV2
 public:
     Zhiri() : TriggerSkillV2("zhiri")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         global = true;
         frequency = Wake;
         waked_skills = "xintan";
-    }
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -1929,18 +1917,12 @@ class FanghunDraw : public TriggerSkillV2
 {
 public:
     FanghunDraw(const QString &family) : TriggerSkillV2("#" + family), family(family)
-    { events << EventSkillInvoking << CardResponded << CardFinished << MarkChanged; global = true; frequency = Compulsory; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    { events << CardResponded << CardFinished << MarkChanged; global = true; frequency = Compulsory; }
+    // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
+    void payBypassed(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (!pay(event, room, ctx.invoker, ctx)) ctx.is_canceled = true; }
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.skill_name == objectName()) {
-                // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
-                if (!pay(accepted.current_event, room, accepted.invoker, accepted)) accepted.is_canceled = true;
-                data.setValue(accepted);
-            }
-            return true;
-        }
         if (event == MarkChanged && player && family == "fanghun") {
             const MarkStruct mark = data.value<MarkStruct>();
             if (mark.name == "&meiying" && mark.gain < 0) player->addMark("meiying", -mark.gain);
@@ -1949,7 +1931,6 @@ public:
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data, QList<SkillContext> &contexts) const override
     {
-        if (event == EventSkillInvoking) return true;
         if (event == MarkChanged || (event == CardResponded && data.value<CardResponseStruct>().m_isUse)) return true;
         const Card *card = event == CardResponded ? data.value<CardResponseStruct>().m_card : data.value<CardUseStruct>().card;
         if (!card) return true;
@@ -2011,22 +1992,10 @@ class Fuhan : public TriggerSkillV2
 public:
     Fuhan() : TriggerSkillV2("fuhan")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         global = true;
         frequency = Limited;
         limit_mark = "@fuhanMark";
-    }
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -2127,7 +2096,7 @@ class OLFuhan : public TriggerSkillV2
 public:
     OLFuhan() : TriggerSkillV2("olfuhan")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         global = true;
         frequency = Limited;
         limit_mark = "@olfuhanMark";
@@ -2136,18 +2105,6 @@ public:
     static int bounded(int n)
     {
         return qMax(2, qMin(8, n));
-    }
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -2321,22 +2278,10 @@ class Xushen : public TriggerSkillV2
 public:
     Xushen() : TriggerSkillV2("xushen")
     {
-        events << QuitDying << EventSkillInvoking;
+        events << QuitDying;
         global = true;
         frequency = Limited;
         limit_mark = "@xushenMark";
-    }
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -2814,25 +2759,18 @@ public:
 class TunchuEffect : public TriggerSkillV2
 {
 public:
-    TunchuEffect() : TriggerSkillV2("#tunchu-effect") { events << EventSkillInvoking << AfterDrawNCards << EventPhaseChanging; global = true; frequency = Compulsory; }
+    TunchuEffect() : TriggerSkillV2("#tunchu-effect") { events << AfterDrawNCards << EventPhaseChanging; global = true; frequency = Compulsory; }
+    // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
+    void payBypassed(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (!pay(event, room, ctx.invoker, ctx)) ctx.is_canceled = true; }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.skill_name == objectName()) {
-                // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
-                if (!pay(accepted.current_event, room, accepted.invoker, accepted)) accepted.is_canceled = true;
-                data.setValue(accepted);
-            }
-            return true;
-        }
         if (event == EventPhaseChanging && player && data.value<PhaseChangeStruct>().to == Player::NotActive)
             room->setPlayerProperty(player, "tunchu_receipts", QVariantMap());
         return true;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
     {
-        if (event == EventSkillInvoking) return true;
         if (event != AfterDrawNCards || !player || !player->isAlive() || data.value<DrawStruct>().reason != "draw_phase") return true;
         const QVariantMap receipts = player->property("tunchu_receipts").toMap();
         for (auto it = receipts.cbegin(); it != receipts.cend(); ++it) {
@@ -3207,22 +3145,10 @@ class Wuji : public TriggerSkillV2
 public:
 	Wuji() : TriggerSkillV2("wuji")
 	{
-		events << EventPhaseStart << EventSkillInvoking;
+		events << EventPhaseStart;
         global = true;
 		frequency = Wake;
 	}
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
 	LimitScope getLimitScope() const override { return Limit_Game; }
 
@@ -3405,22 +3331,10 @@ class NewWuji : public TriggerSkillV2
 public:
 	NewWuji() : TriggerSkillV2("newwuji")
 	{
-		events << EventPhaseStart << EventSkillInvoking;
+		events << EventPhaseStart;
         global = true;
 		frequency = Wake;
 	}
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
 	LimitScope getLimitScope() const override { return Limit_Game; }
 
@@ -3735,7 +3649,7 @@ class Juyi : public TriggerSkillV2
 public:
 	Juyi(const QString &name = "juyi") : TriggerSkillV2(name)
 	{
-		events << EventPhaseStart << EventSkillInvoking;
+		events << EventPhaseStart;
         global = true;
 		frequency = Wake;
 		waked_skills = name == "xiaoxin_juyi" ? "benghuai,xiaoxin_weizhong" : "benghuai,weizhong";
@@ -3745,18 +3659,6 @@ public:
 	{
 		return zhugedan->isWounded() && zhugedan->getMaxHp() > zhugedan->aliveCount();
 	}
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
 	LimitScope getLimitScope() const override { return Limit_Game; }
 
@@ -4135,7 +4037,7 @@ public:
 class XiaoxinShenxian : public Shenxian
 {
 public:
-    XiaoxinShenxian() : Shenxian("xiaoxin_shenxian") { events << EventSkillInvoking; }
+    XiaoxinShenxian() : Shenxian("xiaoxin_shenxian") {}
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     { return event == CardsMoveOneTime ? Shenxian::triggerable(event, room, player, data) : TriggerList(); }
@@ -4143,12 +4045,6 @@ public:
     { return isUsable(ctx) && Shenxian::cost(event, room, player, ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 };
 
 QiangwuCard::QiangwuCard()
@@ -4409,7 +4305,7 @@ class Danji : public TriggerSkillV2
 public:
 	Danji() : TriggerSkillV2("danji")
 	{ // What a silly skill!
-		events << EventPhaseStart << EventSkillInvoking;
+		events << EventPhaseStart;
         global = true;
 		frequency = Wake;
 	}
@@ -4420,18 +4316,6 @@ public:
 		ServerPlayer *the_lord = room->getLord();
 		return the_lord && (the_lord->getGeneralName().contains("caocao") || the_lord->getGeneral2Name().contains("caocao"));
 	}
-
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment consumes the same exact source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
 
@@ -5321,24 +5205,14 @@ class SpZhenwei : public TriggerSkillV2
 {
 public:
     SpZhenwei() : TriggerSkillV2("spzhenwei")
-    { events << EventSkillInvoking << TargetConfirming << EventPhaseChanging; global = true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.skill_name == objectName() && accepted.choice == "return") {
-                // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
-                if (!pay(accepted.current_event, room, accepted.invoker, accepted)) accepted.is_canceled = true;
-                data.setValue(accepted);
-            }
-            return true;
-        }
-        return true;
-    }
+    { events << TargetConfirming << EventPhaseChanging; global = true; }
+    // Retiring an accepted receipt is bookkeeping, never a bypassable resource cost.
+    void payBypassed(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (ctx.choice == "return" && !pay(event, room, ctx.invoker, ctx)) ctx.is_canceled = true; }
+    bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return true; }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data,
                                 QList<SkillContext> &contexts) const override
     {
-        if (event == EventSkillInvoking) return true;
         if (event != EventPhaseChanging) return false;
         if (data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
         for (ServerPlayer *target : room->getAlivePlayers()) {
@@ -7403,6 +7277,8 @@ public:
     { return event == CardFinished || (isUsable(ctx) && room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)); }
     bool pay(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (event == CardFinished) return true; if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
+    void payBypassed(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (event != CardFinished) addUsage(ctx); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == Damaged) {
@@ -7660,6 +7536,8 @@ public:
         addUsage(ctx);
         if (!ids.isEmpty()) room->throwCard(ids, objectName(), ctx.owner); return true;
     }
+    void payBypassed(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (event != CardFinished) addUsage(ctx); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const auto use = ctx.original_data->value<CardUseStruct>();

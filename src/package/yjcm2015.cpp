@@ -132,7 +132,7 @@ public:
 class Xingshuai : public TriggerSkillV2
 {
 public:
-    Xingshuai() : TriggerSkillV2("xingshuai$") { events << EventSkillInvoking << Dying; global = true; limit_mark = "@xingshuaiMark"; frequency = Limited; }
+    Xingshuai() : TriggerSkillV2("xingshuai$") { events << Dying; global = true; limit_mark = "@xingshuaiMark"; frequency = Limited; }
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
     {
         QStringList result;
@@ -151,26 +151,18 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
+        if (!isUsable(ctx)) return false;
         addUsage(ctx);
         if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
         return true;
+    }
+    // The limit mark is part of the payment, so a waived payment still removes it.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        addUsage(ctx);
+        if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -2503,7 +2495,7 @@ class Yaoming : public TriggerSkillV2
 public:
     Yaoming() : TriggerSkillV2("yaoming")
     {
-        events << EventSkillInvoking << Damage << Damaged; global = true;
+        events << Damage << Damaged; global = true;
     }
 
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
@@ -2524,27 +2516,8 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {

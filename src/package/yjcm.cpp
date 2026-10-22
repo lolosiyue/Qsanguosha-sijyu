@@ -1304,7 +1304,7 @@ public:
 class Zili : public TriggerSkillV2
 {
 public:
-    Zili() : TriggerSkillV2("zili") { events << EventSkillInvoking << EventPhaseStart; global = true; frequency = Wake; }
+    Zili() : TriggerSkillV2("zili") { events << EventPhaseStart; global = true; frequency = Wake; }
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
     {
         QStringList result;
@@ -1323,27 +1323,11 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-        room->setPlayerMark(ctx.owner, objectName(), 1);
-    }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    { if (!isUsable(ctx)) return false; addUsage(ctx); room->setPlayerMark(ctx.owner, objectName(), 1); return true; }
+    // The awakened mark is part of the payment, so a waived payment still sets it.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { addUsage(ctx); room->setPlayerMark(ctx.owner, objectName(), 1); }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -2527,7 +2511,7 @@ class NosZhonghuiWake : public TriggerSkillV2
 public:
     NosZhonghuiWake(const QString &name, bool first) : TriggerSkillV2(name), firstWake(first)
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         global = true;
         frequency = Wake;
         waked_skills = first ? "nosyexin" : "nospaiyi";
@@ -2554,25 +2538,6 @@ public:
         const bool ready = firstWake ? player->getEquips().size() >= 3 : player->getPile("nospower").size() >= 4;
         return ready || player->canWake(objectName()) ? TriggerList{{player, usableEntries(player, data)}} : TriggerList();
     }
-    void commit(SkillContext &ctx) const
-    {
-        QVariantMap metadata = ctx.extra_data.toMap();
-        if (metadata.value("committed").toBool()) return;
-        metadata.insert("committed", true);
-        ctx.extra_data = metadata;
-        addUsage(ctx);
-        ctx.owner->getRoom()->setPlayerMark(ctx.owner, objectName(), 1);
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext ctx = data.value<SkillContext>();
-        if (ctx.activationRef.key.skillName == objectName() && parseSkillName(ctx.skill_name) == objectName()) {
-            commit(ctx);
-            data = QVariant::fromValue(ctx);
-        }
-        return true;
-    }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !isUsable(ctx)) return false;
@@ -2591,8 +2556,11 @@ public:
         ctx.extra_data = QVariantMap{{"remove", removals}};
         return true;
     }
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commit(ctx); return true; }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) return false; addUsage(ctx); room->setPlayerMark(ctx.owner, objectName(), 1); return true; }
+    // The awakened mark is part of the payment, so a waived payment still sets it.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { addUsage(ctx); room->setPlayerMark(ctx.owner, objectName(), 1); }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (!target->isAlive() || getEffectiveAmount(ctx) <= 0) return false;

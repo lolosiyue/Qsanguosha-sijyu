@@ -1534,24 +1534,8 @@ public:
 class HQuanji : public TriggerSkillV2
 {
 public:
-    HQuanji() : TriggerSkillV2("heg_quanji") { events << Damage << Damaged << EventSkillInvoking; global = true; }
+    HQuanji() : TriggerSkillV2("heg_quanji") { events << Damage << Damaged; global = true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
-    void commit(SkillContext &ctx) const
-    {
-        QVariantMap receipt = ctx.interceptor_data.value(objectName());
-        if (!ctx.owner || receipt.value("committed").toBool()) return;
-        receipt.insert("committed", true);
-        ctx.interceptor_data.insert(objectName(), receipt);
-        addUsage(ctx);
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking && data.canConvert<SkillContext>()) {
-            SkillContext ctx = data.value<SkillContext>();
-            if (ctx.activationRef.key.skillName == objectName()) { commit(ctx); data = QVariant::fromValue(ctx); }
-        }
-        return true;
-    }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         return (event == Damage || event == Damaged) && player && player->isAlive() && player->hasSkill(objectName())
@@ -1560,9 +1544,9 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { return isUsable(ctx) && ctx.owner->askForSkillInvoke(this); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commit(ctx); return true; }
+    { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { commit(ctx); ctx.targets = {ctx.owner}; return false; }
+    { ctx.targets = {ctx.owner}; return false; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const int count = getEffectiveAmount(ctx);
@@ -2877,22 +2861,17 @@ class HSuzhi : public TriggerSkillV2
 {
 public:
     HSuzhi() : TriggerSkillV2("heg_suzhi")
-    { events << DamageCaused << CardUsed << CardsMoveBatch << EventPhaseChanging << EventPhaseStart << EventSkillInvoking; frequency = Compulsory; global = true; }
+    { events << DamageCaused << CardUsed << CardsMoveBatch << EventPhaseChanging << EventPhaseStart; frequency = Compulsory; global = true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 3; }
-    void commit(SkillContext &ctx) const
+    // The end-of-turn grant does not count against the per-turn limit.
+    void countUsage(const SkillContext &ctx) const
     {
-        QVariantMap receipt = ctx.interceptor_data.value(objectName());
-        if (receipt.value("committed").toBool()) return;
         if (ctx.original_data && ctx.original_data->canConvert<PhaseChangeStruct>()) return;
-        receipt.insert("committed", true); ctx.interceptor_data.insert(objectName(), receipt); addUsage(ctx);
+        addUsage(ctx);
     }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking && data.canConvert<SkillContext>()) {
-            SkillContext ctx = data.value<SkillContext>();
-            if (ctx.activationRef.key.skillName == objectName()) { commit(ctx); data = QVariant::fromValue(ctx); }
-        }
         if (event == EventPhaseStart && player && player->getPhase() == Player::RoundStart) {
             const QList<int> ids = ListS2I(player->getTag("HSuzhiGrantedFankui").toStringList());
             player->removeTag("HSuzhiGrantedFankui");
@@ -2920,16 +2899,15 @@ public:
         } else if (event == EventPhaseChanging) matches = data.value<PhaseChangeStruct>().to == Player::NotActive;
         return matches ? TriggerList{{player, lordExUsableEntries(this, room, player)}} : TriggerList();
     }
-    bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
-        ctx.interceptor_data.insert(objectName(), {{"counts", event != EventPhaseChanging}, {"committed", false}});
         return ctx.owner->isSkillInstanceEffectAvailable(objectName(), ctx.instanceID) || ctx.owner->askForSkillInvoke(this, *ctx.original_data);
     }
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (!isUsable(ctx)) return false; commit(ctx); return true; }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (!isUsable(ctx)) return false; countUsage(ctx); return true; }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { countUsage(ctx); }
     bool effect(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        commit(ctx);
         if (event == DamageCaused) ctx.targets = {ctx.original_data->value<DamageStruct>().to};
         else if (event == CardsMoveBatch) {
             for (const QVariant &value : ctx.original_data->toList()) {
@@ -4846,22 +4824,8 @@ public:
 class HTongling : public TriggerSkillV2
 {
 public:
-    HTongling() : TriggerSkillV2("heg_tongling") { events << Damage << EventSkillInvoking; global = true; }
+    HTongling() : TriggerSkillV2("heg_tongling") { events << Damage; global = true; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
-    void commit(SkillContext &ctx) const
-    {
-        QVariantMap receipt = ctx.interceptor_data.value(objectName());
-        if (receipt.value("committed").toBool()) return;
-        receipt.insert("committed", true); ctx.interceptor_data.insert(objectName(), receipt); addUsage(ctx);
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking && data.canConvert<SkillContext>()) {
-            SkillContext ctx = data.value<SkillContext>();
-            if (ctx.activationRef.key.skillName == objectName()) { commit(ctx); data = QVariant::fromValue(ctx); }
-        }
-        return true;
-    }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != Damage || !player || !player->isAlive() || !player->hasSkill(objectName())
@@ -4884,8 +4848,7 @@ public:
         if (!target) return false;
         ctx.targets = {target}; return true;
     }
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (!isUsable(ctx)) return false; commit(ctx); return true; }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { commit(ctx); return false; }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (ctx.choice == "draw") { target->drawCards(2 * getEffectiveAmount(ctx), objectName()); return false; }

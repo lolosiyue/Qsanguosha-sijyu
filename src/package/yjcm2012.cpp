@@ -539,7 +539,7 @@ public:
 class Fuli : public TriggerSkillV2
 {
 public:
-    Fuli() : TriggerSkillV2("fuli") { events << EventSkillInvoking << AskForPeaches; global = true; frequency = Limited; limit_mark = "@laoji"; }
+    Fuli() : TriggerSkillV2("fuli") { events << AskForPeaches; global = true; frequency = Limited; limit_mark = "@laoji"; }
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
     {
         QStringList result;
@@ -558,26 +558,18 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
+        if (!isUsable(ctx)) return false;
         addUsage(ctx);
         if (ctx.owner->getMark("@laoji") > 0) room->removePlayerMark(ctx.owner, "@laoji");
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
         return true;
+    }
+    // The limit mark is part of the payment, so a waived payment still removes it.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        addUsage(ctx);
+        if (ctx.owner->getMark("@laoji") > 0) room->removePlayerMark(ctx.owner, "@laoji");
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override

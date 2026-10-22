@@ -563,7 +563,7 @@ public:
 class Fenxin : public TriggerSkillV2
 {
 public:
-    Fenxin() : TriggerSkillV2("fenxin") { events << BeforeGameOverJudge << EventSkillInvoking; frequency = Limited; limit_mark = "@burnheart"; }
+    Fenxin() : TriggerSkillV2("fenxin") { events << BeforeGameOverJudge; frequency = Limited; limit_mark = "@burnheart"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -587,13 +587,6 @@ public:
         target->setFlags("FenxinTarget");
         ctx.preferredTarget = target;
         return ctx.owner->askForSkillInvoke(objectName() + "$-1", QVariant::fromValue(target));
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -738,7 +731,7 @@ public:
 class Cangni : public TriggerSkillV2
 {
 public:
-    Cangni() : TriggerSkillV2("cangni") { events << EventPhaseStart << CardsMoveOneTime << EventSkillInvoking; }
+    Cangni() : TriggerSkillV2("cangni") { events << EventPhaseStart << CardsMoveOneTime; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -773,13 +766,6 @@ public:
         else return false;
         ctx.targets = {current}; return true;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.choice == "get" && accepted.activationRef == ctx.activationRef
-            && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (ctx.choice != "get") return true;
@@ -787,6 +773,8 @@ public:
         addUsage(ctx);
         return true;
     }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (ctx.choice == "get") addUsage(ctx); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!room || !ctx.owner) return false;

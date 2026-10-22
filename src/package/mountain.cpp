@@ -543,7 +543,7 @@ class Zaoxian : public TriggerSkillV2
 public:
     Zaoxian(const QString &name = "zaoxian") : TriggerSkillV2(name)
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "jixi";
     }
@@ -563,12 +563,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 
@@ -690,7 +684,7 @@ class Hunzi : public TriggerSkillV2
 public:
     Hunzi(const QString &name = "hunzi") : TriggerSkillV2(name)
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
 		waked_skills = name == "xiaoxin_hunzi" ? "xiaoxin_yingzi,xiaoxin_yinghun" : "nosyingzi,yinghun";
     }
@@ -710,12 +704,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 
@@ -993,7 +981,7 @@ class Zhiji : public TriggerSkillV2
 public:
     Zhiji(const QString &name = "zhiji") : TriggerSkillV2(name)
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
 		waked_skills = "guanxing";
     }
@@ -1013,12 +1001,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 
@@ -1624,7 +1606,7 @@ class Ruoyu : public TriggerSkillV2
 public:
     Ruoyu() : TriggerSkillV2("ruoyu$")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
 		waked_skills = "jijiang";
     }
@@ -1644,12 +1626,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 
@@ -2063,7 +2039,7 @@ class Baiyin : public TriggerSkillV2
 public:
     Baiyin() : TriggerSkillV2("baiyin")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "jilve";
     }
@@ -2083,12 +2059,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 
@@ -2759,7 +2729,7 @@ class MobileRenjie : public TriggerSkillV2
 public:
     MobileRenjie() : TriggerSkillV2("mobilerenjie")
     {
-        events << ChoiceMade << CardAsked << CardUsed << TrickCardCanceling << CardOnEffect << CardFinished << TurnBroken << EventSkillInvoking;
+        events << ChoiceMade << CardAsked << CardUsed << TrickCardCanceling << CardOnEffect << CardFinished << TurnBroken;
         frequency = Compulsory;
     }
     LimitScope getLimitScope() const override { return Limit_Round; }
@@ -2775,11 +2745,6 @@ public:
         ServerPlayer *owner = ctx.owner;
         ServerPlayer *actor = ctx.invoker;
         if (!owner || !actor) return;
-        if (event == EventSkillInvoking) {
-            const SkillContext accepted = ctx.original_data->value<SkillContext>();
-            if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-            return;
-        }
         QVariantMap state = owner->getSkillInstanceState(objectName(), ctx.instanceID);
         QVariantList asks = state.value("asks").toList();
         QVariantList tricks = state.value("tricks").toList();
@@ -2913,7 +2878,7 @@ public:
 class MobileLianpo : public TriggerSkillV2
 {
 public:
-    MobileLianpo() : TriggerSkillV2("mobilelianpo") { events << Death << EventSkillInvoking; }
+    MobileLianpo() : TriggerSkillV2("mobilelianpo") { events << Death; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
     {
@@ -2934,12 +2899,6 @@ public:
         const SkillInstanceRef ref = getUsageRef(ctx);
         ServerPlayer *holder = ctx.owner ? ctx.owner->getRoom()->findPlayerByObjectName(ref.ownerObjectName, true) : nullptr;
         if (holder) holder->removeSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "extra_turn_used");
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     static QStringList choicesFor(ServerPlayer *player, int instanceId)
     {
@@ -3089,7 +3048,7 @@ class MobileBaiyin : public TriggerSkillV2
 public:
     MobileBaiyin() : TriggerSkillV2("mobilebaiyin")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "mobilejilve";
     }
@@ -3109,12 +3068,6 @@ public:
         return result;
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 

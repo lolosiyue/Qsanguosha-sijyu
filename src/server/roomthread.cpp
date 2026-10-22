@@ -2436,7 +2436,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			continue;
 		}
 
-		if (!selected_ctx->bypass_cost) {
+		const bool paymentBypassed = selected_ctx->bypass_cost;
+		if (!paymentBypassed) {
 			selected_ctx->current_event = EventSkillPay;
 			ctx_data = QVariant::fromValue(*selected_ctx);
 			if (!silentRule) trigger(EventSkillPay, room, skill_owner, ctx_data);
@@ -2516,6 +2517,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             } catch (...) {
             }
         });
+        if (paymentBypassed) {
+            // Waiving payment never waives the quota of this accepted invocation.
+            if (!invokeAuthorCallback([&]() { v2->payBypassed(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            checkTriggerDispatchAbort();
+            restoreIdentity();
+            selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
+        }
         selected_ctx->current_event = EventSkillInvoking;
         ctx_data = QVariant::fromValue(*selected_ctx);
         invocationStarted = true;

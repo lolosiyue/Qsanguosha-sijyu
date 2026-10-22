@@ -2148,6 +2148,8 @@ public:
     }
 
     LimitScope getLimitScope() const override { return Limit_Phase; }
+    // The quota is spent in cost() when the extra slash is used; pay() never charged it.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
 
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {

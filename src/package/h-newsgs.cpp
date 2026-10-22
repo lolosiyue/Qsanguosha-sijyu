@@ -240,7 +240,7 @@ void newsgsExpireGrants(TriggerEvent event, Room *room, ServerPlayer *actor, con
 class HWanggui : public TriggerSkillV2
 {
 public:
-    HWanggui() : TriggerSkillV2("heg_wanggui") { events << Damage << Damaged << EventSkillInvoking; }
+    HWanggui() : TriggerSkillV2("heg_wanggui") { events << Damage << Damaged; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -285,12 +285,6 @@ public:
         return !ctx.targets.isEmpty();
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         // Reserve the exact instance before any effect interception or nested callbacks.
@@ -466,7 +460,7 @@ private:
 class HZhente : public TriggerSkillV2
 {
 public:
-    HZhente() : TriggerSkillV2("heg_zhente") { events << TargetConfirmed << EventSkillInvoking; }
+    HZhente() : TriggerSkillV2("heg_zhente") { events << TargetConfirmed; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -489,12 +483,6 @@ public:
         return ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from));
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         // Reserve the exact instance before any effect interception or nested callbacks.
@@ -660,7 +648,7 @@ public:
 class HQiao : public TriggerSkillV2
 {
 public:
-    HQiao() : TriggerSkillV2("heg_qiao") { events << TargetConfirmed << EventSkillInvoking; }
+    HQiao() : TriggerSkillV2("heg_qiao") { events << TargetConfirmed; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -680,12 +668,6 @@ public:
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (!use.from) return false;
         return ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from));
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -728,7 +710,7 @@ public:
 class HChengshang : public TriggerSkillV2
 {
 public:
-    HChengshang() : TriggerSkillV2("heg_chengshang") { events << CardFinished << EventSkillInvoking; }
+    HChengshang() : TriggerSkillV2("heg_chengshang") { events << CardFinished; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
@@ -748,12 +730,6 @@ public:
     }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { return isUsable(ctx) && ctx.owner->askForSkillInvoke(this, *ctx.original_data); }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -866,7 +842,7 @@ public:
 
     HShejian() : TriggerSkillV2("heg_shejian")
     {
-        events << TargetConfirmed << EventSkillInvoking;
+        events << TargetConfirmed;
     }
     LimitScope getLimitScope() const override { return Limit_None; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -909,13 +885,6 @@ public:
         }
 
         return false;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -965,7 +934,7 @@ public:
 
     HYusui() : TriggerSkillV2("heg_yusui")
     {
-        events << TargetConfirmed << EventSkillInvoking;
+        events << TargetConfirmed;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -991,13 +960,6 @@ public:
         room->broadcastSkillInvoke(objectName(), player);
         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), use.from->objectName());
         return true;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -2142,7 +2104,7 @@ public:
 
     HGuizhu() : TriggerSkillV2("heg_guizhu")
     {
-        events << Dying << EventSkillInvoking;
+        events << Dying;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -2162,13 +2124,6 @@ public:
             return true;
         }
         return false;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -2572,7 +2527,7 @@ public:
 
     HAnyong() : TriggerSkillV2("heg_anyong")
     {
-        events << DamageCaused << EventSkillInvoking;
+        events << DamageCaused;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -2608,13 +2563,6 @@ public:
         }
 
         return false;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -3042,7 +2990,7 @@ public:
 class HDeshao : public TriggerSkillV2
 {
 public:
-    HDeshao() : TriggerSkillV2("heg_deshao") { events << TargetSpecified << EventSkillInvoking; }
+    HDeshao() : TriggerSkillV2("heg_deshao") { events << TargetSpecified; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -3066,12 +3014,6 @@ public:
         ServerPlayer *target = ctx.original_data->value<CardUseStruct>().from;
         if (!isUsable(ctx) || !target || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) return false;
         ctx.targets = {target}; return true;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
@@ -3281,7 +3223,7 @@ public:
 
     HYouyan() : TriggerSkillV2("heg_youyan")
     {
-        events << CardsMoveBatch << EventSkillInvoking;
+        events << CardsMoveBatch;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -3334,13 +3276,6 @@ public:
         }
         if (seen != ids || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         ctx.extra_data = suits; ctx.targets = {ctx.owner}; return true;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -3548,7 +3483,7 @@ public:
 
     HQingshi() : TriggerSkillV2("heg_qingshi")
     {
-        events << TargetSpecified << CardUsed << CardResponded << GeneralShown << EventPhaseStart << EventSkillInvoking;
+        events << TargetSpecified << CardUsed << CardResponded << GeneralShown << EventPhaseStart;
     }
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -3604,12 +3539,6 @@ public:
         return false;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
@@ -3721,7 +3650,7 @@ public:
 class HTujue : public TriggerSkillV2
 {
 public:
-    HTujue() : TriggerSkillV2("heg_tujue") { events << AskForPeaches << EventSkillInvoking; frequency = Limited; limit_mark = "@impasse"; }
+    HTujue() : TriggerSkillV2("heg_tujue") { events << AskForPeaches; frequency = Limited; limit_mark = "@impasse"; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -3741,14 +3670,8 @@ public:
         ctx.extra_data = QVariantMap{{"recipient", target->objectName()}, {"cards", ids}, {"count", qMin(ids.size(), qsizetype(3))}};
         return !ids.isEmpty();
     }
-    void record(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            addUsage(accepted); room->setPlayerMark(ctx.owner, limit_mark, 0);
-        }
-    }
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { addUsage(ctx); room->setPlayerMark(ctx.owner, limit_mark, 0); }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
@@ -3916,7 +3839,7 @@ public:
 
     HYaner() : TriggerSkillV2("heg_yaner")
     {
-        events << CardsMoveBatch << EventSkillInvoking;
+        events << CardsMoveBatch;
         frequency = Frequent;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -3949,13 +3872,6 @@ public:
         }
         if (!other || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(other))) return false;
         ctx.targets = {other, ctx.owner}; room->sortByActionOrder(ctx.targets); return true;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override

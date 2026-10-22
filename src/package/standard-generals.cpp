@@ -2247,26 +2247,12 @@ class Tishen : public TriggerSkillV2
 public:
     Tishen() : TriggerSkillV2("tishen")
     {
-        events << EventPhaseStart << EventSkillInvoking;
-        global = true;
+        events << EventPhaseStart;
         frequency = Limited;
         limit_mark = "@substitute";
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
-
-    bool recordEvent(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
-    {
-        if (triggerEvent == EventSkillInvoking) {
-            SkillContext active = data.value<SkillContext>();
-            if (active.activationRef.key.skillName == objectName() && !active.use_card) {
-                commitAccepted(active);
-                data = QVariant::fromValue(active);
-            }
-            return true;
-        }
-        return true;
-    }
 
     TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -2285,14 +2271,13 @@ public:
     {
         // Each copy owns a game quota; the public token remains a presentation hint.
         if (!isUsable(ctx)) return false;
-        commitAccepted(ctx);
+        addUsage(ctx);
         if (ctx.owner->getMark("@substitute") > 0) room->removePlayerMark(ctx.owner, "@substitute");
         return true;
     }
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        commitAccepted(ctx);
         if (!ctx.extra_data.isValid()) ctx.extra_data = recoverNum(ctx.owner);
         ctx.manual_effect = true;
         return skillEffect(event, room, player, ctx, ctx.owner);
@@ -2321,14 +2306,6 @@ public:
     }
 
 private:
-    void commitAccepted(SkillContext &ctx) const
-    {
-        QVariantMap receipt = ctx.interceptor_data.value("tishen_quota");
-        if (receipt.value("committed").toBool()) return;
-        receipt.insert("committed", true);
-        ctx.interceptor_data.insert("tishen_quota", receipt);
-        addUsage(ctx);
-    }
     static int recoverNum(ServerPlayer *player)
     {
         if (!player) return 0;
@@ -3021,6 +2998,8 @@ public:
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
+    // effect() consumes the quota itself, so a waived payment owes nothing.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -3528,6 +3507,8 @@ public:
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
+    // effect() consumes the quota itself, so a waived payment owes nothing.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
@@ -3678,6 +3659,8 @@ public:
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
+    // The nested FenweiViewAsSkill declaration commits the quota through the core.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
     {

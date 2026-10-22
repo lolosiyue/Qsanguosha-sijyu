@@ -568,7 +568,7 @@ class MTFuyi : public TriggerSkillV2
 public:
     MTFuyi() : TriggerSkillV2("mtfuyi")
     {
-        events << Death << EventSkillInvoking;
+        events << Death;
         frequency = Wake;
         waked_skills = "#mtfuyi,#mtfuyi-turn";
     }
@@ -579,18 +579,8 @@ public:
         return death.damage && death.damage->from && death.damage->from == player;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (event != Death) return {};
@@ -1525,20 +1515,10 @@ public:
 class MTFeiren : public TriggerSkillV2
 {
 public:
-    MTFeiren() : TriggerSkillV2("mtfeiren") { events << CardFinished << EventSkillInvoking; view_as_skill = new MTFeirenVS; }
+    MTFeiren() : TriggerSkillV2("mtfeiren") { events << CardFinished; view_as_skill = new MTFeirenVS; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != CardFinished) return {};
@@ -1794,7 +1774,7 @@ class MTFengshang : public TriggerSkillV2
 public:
     MTFengshang() : TriggerSkillV2("mtfengshang")
     {
-        events << CardFinished << EventSkillInvoking;
+        events << CardFinished;
         waked_skills = "#mtfengshang";
     }
 
@@ -1807,18 +1787,8 @@ public:
             if (player->getKingdom() == ctx.owner->getKingdom()) ++count;
         return count;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != CardFinished) return {};
@@ -1875,7 +1845,7 @@ class MTJiawei : public TriggerSkillV2
 public:
     MTJiawei() : TriggerSkillV2("mtjiawei$")
     {
-        events << CardUsed << EventSkillInvoking;
+        events << CardUsed;
     }
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -1891,18 +1861,8 @@ public:
     }
 
     // The liege's card use triggers the lord; the liege decides whether to hand it over.
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != CardUsed) return {};
@@ -2784,23 +2744,13 @@ class MTWenqi : public TriggerSkillV2
 public:
     MTWenqi() : TriggerSkillV2("mtwenqi")
     {
-        events << Damaged << EventSkillInvoking;
+        events << Damaged;
         frequency = Compulsory;
     }
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != Damaged) return {};
@@ -3568,7 +3518,7 @@ public:
 class MTFeiyan : public TriggerSkillV2
 {
 public:
-    MTFeiyan() : TriggerSkillV2("mtfeiyan") { events << TargetSpecified << EventSkillInvoking; waked_skills = "#mtfeiyan"; }
+    MTFeiyan() : TriggerSkillV2("mtfeiyan") { events << TargetSpecified; waked_skills = "#mtfeiyan"; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     static ServerPlayer *eligible(ServerPlayer *player, const QVariant &data)
     {
@@ -3579,18 +3529,8 @@ public:
         return target != player && target->isAlive() && player->getEquips().size() <= target->getEquips().size()
             ? target : nullptr;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (event != TargetSpecified) return {};
@@ -4050,7 +3990,7 @@ class MTHongya : public TriggerSkillV2
 public:
     MTHongya() : TriggerSkillV2("mthongya")
     {
-        events << CardsMoveOneTime << EventSkillInvoking;
+        events << CardsMoveOneTime;
     }
 
     LimitScope getLimitScope() const override { return Limit_Phase; }
@@ -4064,18 +4004,8 @@ public:
         return targets;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event != CardsMoveOneTime) return {};
@@ -4481,20 +4411,10 @@ class MTChunzu : public TriggerSkillV2
 {
 public:
     MTChunzu() : TriggerSkillV2("mtchunzu")
-    { events << BuryVictim << EventSkillInvoking; frequency = Limited; waked_skills = "#mtchunzu"; }
+    { events << BuryVictim; frequency = Limited; waked_skills = "#mtchunzu"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
         if (event != BuryVictim) return {};
@@ -4774,22 +4694,12 @@ public:
 class MTJijing : public TriggerSkillV2
 {
 public:
-    MTJijing() : TriggerSkillV2("mtjijing") { events << EventPhaseStart << EventSkillInvoking; }
+    MTJijing() : TriggerSkillV2("mtjijing") { events << EventPhaseStart; }
     LimitScope getLimitScope() const override { return Limit_Round; }
     int getMaxUsageLimit(const SkillContext &ctx) const override
     { return ctx.owner && ctx.owner->hasSkill("mtbiancai") && ctx.owner->getKingdom() == "shu" ? 2 : 1; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else {
-                accepted.is_canceled = true;
-                *ctx.original_data = QVariant::fromValue(accepted);
-            }
-        }
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         if (event != EventPhaseStart) return {};
@@ -5526,7 +5436,7 @@ class MTZhanhua : public TriggerSkillV2
 {
 public:
     MTZhanhua() : TriggerSkillV2("mtzhanhua")
-    { events << DamageCaused << EventPhaseStart << Dying << EventSkillInvoking; global = true; }
+    { events << DamageCaused << EventPhaseStart << Dying; global = true; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent event) const override
@@ -5555,19 +5465,8 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.bypass_cost && accepted.owner && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName()
-            && accepted.activationRef.ownerObjectName == accepted.owner->objectName()
-            && accepted.activationRef.key.instanceID == accepted.instanceID) {
-            if (isUsable(accepted)) addUsage(accepted);
-            else { accepted.is_canceled = true; data = QVariant::fromValue(accepted); }
-        }
-        return true;
-    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
     // Peaks are game facts, including before this instance was acquired. Old journals without a baseline are unknown.
     static QVariantMap peaks(Room *room, ServerPlayer *player)
     {

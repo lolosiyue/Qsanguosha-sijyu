@@ -208,7 +208,7 @@ class Huanxing : public TriggerSkillV2
 public:
     Huanxing() : TriggerSkillV2("inovation_huanxing")
     {
-        events << EventSkillInvoking << CardUsed << EventPhaseEnd << TurnStart << TrickCardCanceling << SlashProceed << Death;
+        events << CardUsed << EventPhaseEnd << TurnStart << TrickCardCanceling << SlashProceed << Death;
         global = true;
     }
     bool pay(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -216,6 +216,11 @@ public:
         if (event != CardUsed) return true;
         if (!ctx.owner || ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "used").toBool()) return false;
         ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "used", true); return true;
+    }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (ctx.owner && ctx.choice == "activate")
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "used", true);
     }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
@@ -225,13 +230,6 @@ public:
     }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName() && active.owner && active.choice == "activate")
-                active.owner->setSkillInstanceStateValue(objectName(), active.activationRef.key.instanceID, "used", true);
-            return false;
-        }
-
         if (!actor) return false;
         if (event == TurnStart)
             for (int id : actor->getSkillInstanceIds(objectName()))
@@ -640,15 +638,7 @@ public:
 class Xiyuan : public TriggerSkillV2
 {
 public:
-    Xiyuan() : TriggerSkillV2("xiyuan") { events << EventSkillInvoking << Death; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Xiyuan() : TriggerSkillV2("xiyuan") { events << Death; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -681,25 +671,20 @@ class Chengmeng : public TriggerSkillV2
 {
 public:
     Chengmeng() : TriggerSkillV2("chengmeng")
-    { frequency = Club; club_name = "yanjubu"; events << EventSkillInvoking << CardsMoveOneTime << TurnStart; }
+    { frequency = Club; club_name = "yanjubu"; events << CardsMoveOneTime << TurnStart; }
     bool pay(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         Q_UNUSED(event);
         if (!ctx.owner || ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "used").toBool()) return false;
         ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "used", true); return true;
     }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (ctx.owner) ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "used", true); }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
     { return ctx.owner && !ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "used").toBool(); }
     bool recordEvent(TriggerEvent event, Room *, ServerPlayer *actor, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName() && active.owner)
-                active.owner->setSkillInstanceStateValue(objectName(), active.activationRef.key.instanceID, "used", true);
-            return false;
-        }
-
         if (event == TurnStart && actor)
             for (int id : actor->getSkillInstanceIds(objectName()))
                 actor->setSkillInstanceStateValue(objectName(), id, "used", false);
@@ -819,16 +804,8 @@ public:
 class Zhena : public TriggerSkillV2
 {
 public:
-    Zhena() : TriggerSkillV2("inovation_Zhena") { events << EventSkillInvoking << DamageCaused; }
+    Zhena() : TriggerSkillV2("inovation_Zhena") { events << DamageCaused; }
     int getPriority(TriggerEvent) const override { return -2; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -1118,17 +1095,9 @@ public:
     Daolu() : TriggerSkillV2("inovation_Daolu")
     {
         frequency = Wake;
-        events << EventSkillInvoking << AskForPeachesDone;
+        events << AskForPeachesDone;
     }
 
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -1607,15 +1576,7 @@ public:
 class Chengzhang : public TriggerSkillV2
 {
 public:
-    Chengzhang() : TriggerSkillV2("inovation_SE_Chengzhang") { frequency = Wake; events << EventSkillInvoking << EventPhaseStart; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Chengzhang() : TriggerSkillV2("inovation_SE_Chengzhang") { frequency = Wake; events << EventPhaseStart; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -2962,15 +2923,7 @@ public:
 class Jianjin : public TriggerSkillV2
 {
 public:
-    Jianjin() : TriggerSkillV2("jianjin") { events << EventSkillInvoking << EventPhaseStart << EventPhaseEnd << Damaged; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Jianjin() : TriggerSkillV2("jianjin") { events << EventPhaseStart << EventPhaseEnd << Damaged; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
@@ -3242,15 +3195,7 @@ public:
 class Zhinian : public TriggerSkillV2
 {
 public:
-    Zhinian() : TriggerSkillV2("zhinian") { frequency = Wake; events << EventSkillInvoking << AskForPeachesDone; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Zhinian() : TriggerSkillV2("zhinian") { frequency = Wake; events << AskForPeachesDone; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -3746,15 +3691,7 @@ public:
 class Xiwang : public TriggerSkillV2
 {
 public:
-    Xiwang() : TriggerSkillV2("xiwang") { events << EventSkillInvoking << EventPhaseStart; frequency = Wake; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Xiwang() : TriggerSkillV2("xiwang") { events << EventPhaseStart; frequency = Wake; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -4527,15 +4464,7 @@ public:
 class Jicheng : public TriggerSkillV2
 {
 public:
-    Jicheng() : TriggerSkillV2("jicheng") { events << EventSkillInvoking << EventPhaseStart; frequency = Wake; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext active = data.value<SkillContext>();
-            if (active.bypass_cost && active.skill_name == objectName() && active.activationRef.key.skillName == objectName()) addUsage(active);
-        }
-        return false;
-    }
+    Jicheng() : TriggerSkillV2("jicheng") { events << EventPhaseStart; frequency = Wake; }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }

@@ -1950,21 +1950,10 @@ public:
 class HBuyi : public TriggerSkillV2
 {
 public:
-    HBuyi() : TriggerSkillV2("heg_buyi") { events << QuitDying << EventSkillInvoking;
+    HBuyi() : TriggerSkillV2("heg_buyi") { events << QuitDying;
         global = true; }
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override { return 3; }
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override

@@ -584,7 +584,7 @@ public:
 	Kegou() : TriggerSkillV2("kegou")
 	{
 		frequency = Wake;
-		events << EventPhaseStart << EventSkillInvoking;
+		events << EventPhaseStart;
 	}
 
 	LimitScope getLimitScope() const override { return Limit_Game; }
@@ -611,12 +611,6 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { return ctx.owner && isUsable(ctx) && wakeable(room, ctx.owner); }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override

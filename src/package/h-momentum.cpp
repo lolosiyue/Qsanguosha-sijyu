@@ -166,23 +166,12 @@ public:
 class HGuixiu : public TriggerSkillV2 {
 public:
     HGuixiu() : TriggerSkillV2("heg_guixiu") {
-        events << GeneralShown << GeneralRemoved << EventPhaseStart << EventLoseSkill << EventSkillInvoking;
+        events << GeneralShown << GeneralRemoved << EventPhaseStart << EventLoseSkill;
         global = true;
         frequency = Limited;
         limit_mark = "@heg_guixiu";
         view_as_skill = new HGuixiuVS;
         m_baseAmount = 2;
-    }
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Config.EnableHegemony ? Limit_None : Limit_Game; }
@@ -241,6 +230,9 @@ public:
             if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
         }
         return true;
+    }
+    void payBypassed(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override {
+        if (!Config.EnableHegemony && event == EventPhaseStart) addUsage(ctx);
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (acceptsRemovalEvent(event, *ctx.original_data)) room->recover(ctx.owner, RecoverStruct(objectName(), ctx.owner));
@@ -674,23 +666,12 @@ public:
 class HBaoling : public TriggerSkillV2 {
 public:
     HBaoling() : TriggerSkillV2("heg_baoling") {
-        events << EventPhaseEnd << EventSkillInvoking;
+        events << EventPhaseEnd;
         global = true;
         frequency = Compulsory;
         relate_to_place = "head";
         waked_skills = "benghuai";
         m_baseAmount = 3;
-    }
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
     }
 
     LimitScope getLimitScope() const override { return Config.EnableHegemony ? Limit_None : Limit_Game; }

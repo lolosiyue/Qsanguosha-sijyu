@@ -651,6 +651,8 @@ public:
                       SkillContext &ctx) const;
     virtual bool pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                      SkillContext &ctx) const;
+    // Runs instead of pay() when bypass_cost waived it; consumes the quota pay() would.
+    virtual void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const { addUsage(ctx); }
     virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                         SkillContext &ctx) const;
     virtual bool effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,

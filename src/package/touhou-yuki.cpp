@@ -123,7 +123,7 @@ class ThErchong : public TriggerSkillV2
 public:
     ThErchong() : TriggerSkillV2("therchong")
     {
-        events << PreCardUsed << EventPhaseStart << EventPhaseChanging << EventSkillInvoking;
+        events << PreCardUsed << EventPhaseStart << EventPhaseChanging;
         frequency = Wake;
         waked_skills = "thhuanfa,ikzhuji";
     }
@@ -152,15 +152,6 @@ public:
             }
         }
         return false;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data)
-            return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost)
-            addUsage(accepted);
     }
 
     // Wakes at the end of the second such turn.

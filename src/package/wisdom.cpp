@@ -1035,7 +1035,7 @@ public:
 class Jiehuo : public TriggerSkillV2
 {
 public:
-    Jiehuo() : TriggerSkillV2("jiehuo") { events << CardFinished << EventSkillInvoking; frequency = Wake; waked_skills = "shien"; }
+    Jiehuo() : TriggerSkillV2("jiehuo") { events << CardFinished; frequency = Wake; waked_skills = "shien"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -1047,12 +1047,6 @@ public:
             if (isUsable(ctx)) result[player] << SkillInstanceUtils::formatName(objectName(), id);
         }
         return result;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { ctx.targets = {ctx.owner}; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }

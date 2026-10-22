@@ -1780,7 +1780,6 @@ public:
         if (event != EventSkillInvoking) return false;
         const SkillContext accepted = data.value<SkillContext>();
         if (accepted.activationRef.key.skillName != objectName()) return false;
-        if (accepted.bypass_cost) addUsage(accepted);
         if (accepted.owner) room->removePlayerMark(accepted.owner, limit_mark);
         return false;
     }
@@ -1883,7 +1882,7 @@ public:
 class HZhuidu : public TriggerSkillV2
 {
 public:
-    HZhuidu() : TriggerSkillV2("heg_zhuidu") { events << DamageCaused << EventSkillInvoking; }
+    HZhuidu() : TriggerSkillV2("heg_zhuidu") { events << DamageCaused; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Phase; }
@@ -1916,14 +1915,6 @@ public:
             addUsage(ctx); room->throwCard(card, ctx.owner, ctx.owner); return true;
         }
         addUsage(ctx); return true;
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.activationRef.key.skillName == objectName()) addUsage(accepted);
-        }
-        return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
@@ -1973,7 +1964,6 @@ public:
         if (event != EventSkillInvoking) return false;
         const SkillContext accepted = data.value<SkillContext>();
         if (accepted.activationRef.key.skillName != objectName()) return false;
-        if (accepted.bypass_cost) addUsage(accepted);
         if (accepted.owner) room->removePlayerMark(accepted.owner, limit_mark);
         return false;
     }
@@ -2151,7 +2141,7 @@ class HQuanjiaCompulsory : public TriggerSkillV2
 {
 public:
     HQuanjiaCompulsory() : TriggerSkillV2("#heg_quanjia-compulsory")
-    { events << GeneralShowed << EventSkillInvoking; frequency = Compulsory; relate_to_place = "deputy"; }
+    { events << GeneralShowed; frequency = Compulsory; relate_to_place = "deputy"; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Game; }
@@ -2170,14 +2160,6 @@ public:
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.activationRef.key.skillName == objectName()) addUsage(accepted);
-        }
-        return false;
-    }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (getEffectiveAmount(ctx) <= 0) return false;
@@ -2592,7 +2574,7 @@ public:
 class HQizhi : public TriggerSkillV2
 {
 public:
-    HQizhi() : TriggerSkillV2("heg_qizhi") { events << TargetSpecified << EventSkillInvoking; }
+    HQizhi() : TriggerSkillV2("heg_qizhi") { events << TargetSpecified; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -2620,12 +2602,6 @@ public:
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const int amount = getEffectiveAmount(ctx);
@@ -2833,7 +2809,7 @@ public:
 class HDanshou : public TriggerSkillV2
 {
 public:
-    HDanshou() : TriggerSkillV2("heg_danshou") { events << EventPhaseStart << EventSkillInvoking; }
+    HDanshou() : TriggerSkillV2("heg_danshou") { events << EventPhaseStart; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Round; }
@@ -2855,12 +2831,6 @@ public:
         if (ids.isEmpty()) return false;
         ctx.extra_data = QVariantMap{{"cards", ids}, {"discarded", ids.size()}};
         ctx.targets = {ctx.owner}; return true;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -3466,7 +3436,7 @@ public:
 class HQianzheng : public TriggerSkillV2
 {
 public:
-    HQianzheng() : TriggerSkillV2("heg_qianzheng") { events << TargetConfirmed << EventSkillInvoking; }
+    HQianzheng() : TriggerSkillV2("heg_qianzheng") { events << TargetConfirmed; }
     int getPriority(TriggerEvent) const override { return 3; }
     bool usesEventPriority() const override { return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -3509,14 +3479,6 @@ public:
         // Payment moves the materials; the draw remains an interceptable recipient effect.
         room->recastCardsWithDraw(ctx.owner, ids, 0, objectName());
         return true;
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event == EventSkillInvoking) {
-            const SkillContext accepted = data.value<SkillContext>();
-            if (accepted.bypass_cost && accepted.activationRef.key.skillName == objectName()) addUsage(accepted);
-        }
-        return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {

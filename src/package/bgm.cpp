@@ -425,6 +425,9 @@ public:
         return true;
     }
 
+    // The quota is consumed in effect(), which still runs after a bypassed pay.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
+
     bool effect(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == EventPhaseStart && ctx.activationRef.isValid()) addUsage(ctx);

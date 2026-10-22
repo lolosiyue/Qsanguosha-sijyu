@@ -466,7 +466,7 @@ public:
 class DdzCibei : public TriggerSkillV2
 {
 public:
-    DdzCibei() : TriggerSkillV2("ddzcibei") { events << DamageCaused << EventPhaseChanging << TurnBroken << EventSkillInvoking; m_baseAmount = 5; }
+    DdzCibei() : TriggerSkillV2("ddzcibei") { events << DamageCaused << EventPhaseChanging << TurnBroken; m_baseAmount = 5; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
     {
@@ -494,13 +494,6 @@ public:
     }
     void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == EventSkillInvoking && ctx.original_data) {
-            const SkillContext accepted = ctx.original_data->value<SkillContext>();
-            if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-                && parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
-            return;
-        }
-
         if (event == TurnBroken || (event == EventPhaseChanging && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive))
             resetUsage(ctx);
     }
@@ -642,7 +635,7 @@ Jingubang::Jingubang(Suit suit, int number)
 class Longgong : public TriggerSkillV2
 {
 public:
-    Longgong() : TriggerSkillV2("longgong") { events << DamageInflicted << EventSkillInvoking; }
+    Longgong() : TriggerSkillV2("longgong") { events << DamageInflicted; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -652,13 +645,6 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
     {
         return owner && isUsable(ctx) && owner->askForSkillInvoke(objectName() + "$-1", *ctx.original_data);
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
     }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
@@ -2702,7 +2688,7 @@ public:
 class Huiwan : public TriggerSkillV2
 {
 public:
-    Huiwan() : TriggerSkillV2("huiwan") { events << DrawNCards << EventPhaseChanging << TurnBroken << EventSkillInvoking; }
+    Huiwan() : TriggerSkillV2("huiwan") { events << DrawNCards << EventPhaseChanging << TurnBroken; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
     {
@@ -2731,13 +2717,6 @@ public:
     }
     void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == EventSkillInvoking && ctx.original_data) {
-            const SkillContext accepted = ctx.original_data->value<SkillContext>();
-            if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-                && parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
-            return;
-        }
-
         if (event == TurnBroken || (event == EventPhaseChanging && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive)) resetUsage(ctx);
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
@@ -3339,6 +3318,8 @@ public:
         if (!source || !source->isAlive() || room->getCardOwner(id) != source || !owner->canDiscard(source, id)) return false;
         return source != owner || ddzDiscard(room, owner, owner, id, objectName());
     }
+    // The quota is committed conditionally in effectTarget, which still runs after a bypassed pay.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override {}
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (event == ConfirmDamage) {
@@ -3611,7 +3592,7 @@ public:
 class Shigong : public TriggerSkillV2
 {
 public:
-    Shigong() : TriggerSkillV2("shigong") { events << CardFinished << PreCardUsed << EventSkillInvoking << CardResponded << PostCardResponded; frequency = Compulsory; global = true; }
+    Shigong() : TriggerSkillV2("shigong") { events << CardFinished << PreCardUsed << CardResponded << PostCardResponded; frequency = Compulsory; global = true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     { return TriggerSkillV2::prepareSource(room, ctx) && (!ctx.activationRef.isValid() || isUsable(ctx)); }
@@ -3697,13 +3678,6 @@ public:
         ctx.targets << owner;
         return true;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
-    }
     bool pay(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == CardFinished || event == PostCardResponded) return true;
@@ -3711,6 +3685,8 @@ public:
         addUsage(ctx);
         return true;
     }
+    void payBypassed(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (event != CardFinished && event != PostCardResponded) addUsage(ctx); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == CardFinished || event == PostCardResponded) {
@@ -4180,7 +4156,7 @@ public:
 class Maodie : public TriggerSkillV2
 {
 public:
-    Maodie() : TriggerSkillV2("maodie") { events << CardFinished << CardUsed << EventPhaseChanging << TurnBroken << EventSkillInvoking; frequency = Compulsory; global = true; }
+    Maodie() : TriggerSkillV2("maodie") { events << CardFinished << CardUsed << EventPhaseChanging << TurnBroken; frequency = Compulsory; global = true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     int getMaxUsageLimit(const SkillContext &) const override { return 2; }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *eventPlayer, QVariant &data) const override
@@ -4234,13 +4210,6 @@ public:
         ctx.targets << target;
         return true;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.choice == "obtain" && accepted.activationRef == ctx.activationRef
-            && parseSkillName(accepted.skill_name) == objectName()) addUsage(accepted);
-    }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (ctx.choice != "obtain") return true;
@@ -4248,6 +4217,8 @@ public:
         addUsage(ctx);
         return true;
     }
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (ctx.choice == "obtain") addUsage(ctx); }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (ctx.choice == "receive") {

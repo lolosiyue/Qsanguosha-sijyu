@@ -179,7 +179,6 @@ class WakeSkill : public TriggerSkillV2
 public:
     explicit WakeSkill(const QString &name) : TriggerSkillV2(name)
     {
-        events << EventSkillInvoking;
         frequency = Wake;
     }
 
@@ -205,13 +204,6 @@ public:
             }
         }
         return result;
-    }
-
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
 
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { return isUsable(ctx); }

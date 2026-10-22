@@ -213,7 +213,7 @@ class Fuyin : public TriggerSkillV2
 public:
     Fuyin() : TriggerSkillV2("fuyin")
     {
-        events << TargetConfirmed << EventSkillInvoking;
+        events << TargetConfirmed;
         frequency = Compulsory;
     }
     LimitScope getLimitScope() const override { return Limit_Turn; }
@@ -222,12 +222,6 @@ public:
     { ctx.targets = QList<ServerPlayer *>() << ctx.owner; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -563,7 +557,7 @@ class Poshi : public TriggerSkillV2
 public:
     Poshi() : TriggerSkillV2("poshi")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "huairou";
     }
@@ -589,12 +583,6 @@ public:
     { ctx.targets = QList<ServerPlayer *>() << ctx.owner; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -924,7 +912,7 @@ class Hongju : public TriggerSkillV2
 public:
     Hongju() : TriggerSkillV2("hongju")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         view_as_skill = new HongjuVS;
         waked_skills = "qingce";
@@ -953,12 +941,6 @@ public:
     { ctx.targets = QList<ServerPlayer *>() << ctx.owner; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -1407,7 +1389,7 @@ class OLHongju : public TriggerSkillV2
 public:
     OLHongju() : TriggerSkillV2("olhongju")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         view_as_skill = new OLHongjuVS;
         waked_skills = "olqingce";
@@ -1433,12 +1415,6 @@ public:
     { ctx.targets = QList<ServerPlayer *>() << ctx.owner; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -1688,7 +1664,7 @@ class MobileHongju : public TriggerSkillV2
 public:
     MobileHongju() : TriggerSkillV2("mobilehongju")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         view_as_skill = new MobileHongjuVS;
         waked_skills = "qingce";
@@ -1714,12 +1690,6 @@ public:
     { ctx.targets = QList<ServerPlayer *>() << ctx.owner; return isUsable(ctx); }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
 
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override

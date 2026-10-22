@@ -240,16 +240,13 @@ public:
 class MobileQingjian : public TriggerSkillV2
 {
 public:
-    MobileQingjian() : TriggerSkillV2("mobileqingjian") { global=true; events << CardsMoveOneTime << EventPhaseChanging << EventSkillInvoking << TurnBroken; view_as_skill=new MobileQingjianVS; }
+    MobileQingjian() : TriggerSkillV2("mobileqingjian") { global=true; events << CardsMoveOneTime << EventPhaseChanging << TurnBroken; view_as_skill=new MobileQingjianVS; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool prepareSource(Room *room,SkillContext &ctx) const override
     { return TriggerSkillV2::prepareSource(room,ctx) && (!ctx.activationRef.isValid() || isUsable(ctx)); }
     bool recordEvent(TriggerEvent event,Room *room,ServerPlayer *,QVariant &data) const override
     {
-        if(event==EventSkillInvoking) {
-            const SkillContext accepted=data.value<SkillContext>();
-            if(accepted.bypass_cost && accepted.skill_name==objectName() && accepted.executionID==0 && accepted.activationRef.isValid() && accepted.activationRef.key.skillName==objectName()) addUsage(accepted);
-        } else if(event==TurnBroken || (event==EventPhaseChanging && data.value<PhaseChangeStruct>().to==Player::NotActive)) {
+        if(event==TurnBroken || (event==EventPhaseChanging && data.value<PhaseChangeStruct>().to==Player::NotActive)) {
             QVariantList kept,due=room->getTag("MobileQingjianDue").toList();
             for(const QVariant &value:room->getTag("MobileQingjianReceipts").toList()) {
                 if(value.toMap().value("turn")==room->historyScopes().value("turn_id")) due << value; else kept << value;
@@ -286,6 +283,7 @@ public:
     }
     bool pay(TriggerEvent event,Room *,ServerPlayer *,SkillContext &ctx) const override
     { if(event==EventPhaseChanging || event==TurnBroken) return true; if(!isUsable(ctx)) return false; addUsage(ctx); return true; }
+    void payBypassed(TriggerEvent event,Room *,ServerPlayer *,SkillContext &ctx) const override { if(event!=EventPhaseChanging && event!=TurnBroken) addUsage(ctx); }
     bool effectTarget(TriggerEvent event,Room *room,ServerPlayer *actor,SkillContext &ctx,ServerPlayer *target) const override
     {
         if(getEffectiveAmount(ctx)<=0) return false;
@@ -626,26 +624,16 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileNiepan() : TriggerSkillV2("mobileniepan")
     {
-        events << AskForPeaches << EventSkillInvoking;
+        events << AskForPeaches;
         frequency = Limited;
         limit_mark = "@mobileniepanMark";
         m_baseAmount = 3;
         view_as_skill = new MobileNiepanVS;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) return {};
         const DyingStruct dying = data.value<DyingStruct>();
         return player && player->isAlive() && player->hasSkill(objectName()) && dying.who == player
             && player->getHp() <= 0 ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -1558,24 +1546,14 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileZhiji() : TriggerSkillV2("mobilezhiji")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "tenyearguanxing";
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->getPhase() == Player::Start
             && player->hasSkill(objectName()) && (player->isKongcheng() || player->canWake(objectName()))
             ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -1629,24 +1607,14 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileHunzi() : TriggerSkillV2("mobilehunzi")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
 		waked_skills = "yingzi,yinghun";
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->getPhase() == Player::Start
             && player->hasSkill(objectName()) && (player->getHp() <= 2 || player->canWake(objectName()))
             ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -2349,7 +2317,7 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileFuli() : TriggerSkillV2("mobilefuli")
     {
-        events << AskForPeaches << EventSkillInvoking;
+        events << AskForPeaches;
         frequency = Limited;
         limit_mark = "@mobilefuliMark";
     }
@@ -2362,19 +2330,9 @@ public:
         return kingdom_set.size();
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Game; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->hasSkill(objectName())
             && data.value<DyingStruct>().who == player
             ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -2873,17 +2831,8 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileChengzhang() : TriggerSkillV2("mobilechengzhang")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart;
         frequency = Wake;
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
     }
     LimitScope getLimitScope() const override { return Limit_Game; }
     int damageTotal(Room *room, ServerPlayer *owner) const
@@ -2910,9 +2859,8 @@ public:
         }
         return total;
     }
-    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->getPhase() == Player::Start && player->hasSkill(objectName())
             && (player->canWake(objectName()) || damageTotal(room, player) >= 7)
             ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -4282,7 +4230,7 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileZhuikong() : TriggerSkillV2("mobilezhuikong")
     {
-        events << EventPhaseStart << EventPhaseChanging << Death << EventSkillInvoking;
+        events << EventPhaseStart << EventPhaseChanging << Death;
     }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -4296,19 +4244,9 @@ public:
         return false;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Round; }
-    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventSkillInvoking) return {};
         TriggerList result;
         if (!player || player->isDead() || player->getPhase() != Player::RoundStart) return result;
         for (ServerPlayer *owner : room->getOtherPlayers(player))
@@ -5781,22 +5719,12 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileQingxi() : TriggerSkillV2("mobileqingxi")
     {
-        events << DamageCaused << EventSkillInvoking;
+        events << DamageCaused;
     }
 
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        // Active entries commit their own quota; only this exact trigger's bypass path remains.
-        if (accepted.executionID == 0 && accepted.bypass_cost && accepted.activationRef == ctx.activationRef
-            && accepted.sourceRef == ctx.sourceRef && parseSkillName(accepted.skill_name) == objectName())
-            addUsage(accepted);
-    }
     LimitScope getLimitScope() const override { return Limit_Turn; }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (event == EventSkillInvoking) return {};
         const DamageStruct damage = data.value<DamageStruct>();
         return player && player->isAlive() && player->hasSkill(objectName()) && player->hasTurn()
             && damage.to && damage.to != player ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -6357,7 +6285,6 @@ public:
         const SkillContext accepted = ctx.original_data->value<SkillContext>();
         if (accepted.executionID != 0 || parseSkillName(accepted.skill_name) != objectName()
             || accepted.sourceRef != ctx.sourceRef || accepted.activationRef != ctx.activationRef) return;
-        if (accepted.bypass_cost) addUsage(accepted);
         room->setPlayerMark(ctx.owner, objectName(), 1); // Presentation; the exact instance quota is authoritative.
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override

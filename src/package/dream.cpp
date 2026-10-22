@@ -2257,14 +2257,8 @@ public:
 class IfHaitian : public TriggerSkillV2
 {
 public:
-    IfHaitian() : TriggerSkillV2("ifhantian") { events << TargetConfirmed << TargetSpecified << EventSkillInvoking; }
+    IfHaitian() : TriggerSkillV2("ifhantian") { events << TargetConfirmed << TargetSpecified; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-    }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -2583,19 +2577,13 @@ class IfTianmin : public TriggerSkillV2
 {
 public:
     IfTianmin() : TriggerSkillV2("iftianmin")
-    { events << Dying << EventSkillInvoking; limit_mark = "@iftianmin"; frequency = Limited; }
+    { events << Dying; limit_mark = "@iftianmin"; frequency = Limited; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     static bool neverKilled(Room *room, const ServerPlayer *player)
     {
         if (!player) return false;
         const QVariantMap history = room->queryHistoryFacts({{"kind", "death"}, {"from", player->objectName()}, {"limit", 1}});
         return history.value("complete").toBool() && history.value("items").toList().isEmpty();
-    }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {

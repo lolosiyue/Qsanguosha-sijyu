@@ -700,7 +700,7 @@ public:
 class Lijun : public TriggerSkillV2
 {
 public:
-    Lijun(const QString &name) : TriggerSkillV2(name + "$") { events << CardFinished << EventSkillInvoking; }
+    Lijun(const QString &name) : TriggerSkillV2(name + "$") { events << CardFinished; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     static QList<int> materials(Room *room, const Card *card)
     {
@@ -725,12 +725,6 @@ public:
         return result;
     }
     ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.invoker; }
-    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (event != EventSkillInvoking || !ctx.original_data) return;
-        const SkillContext accepted = ctx.original_data->value<SkillContext>();
-        if (accepted.bypass_cost && accepted.activationRef == ctx.activationRef) addUsage(accepted);
-    }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx) || !room->askForPlayerChosen(ctx.invoker, {ctx.owner}, objectName(), "@" + objectName() + "-give", true)) return false;

@@ -330,7 +330,7 @@ class Yizu : public TriggerSkillV2
 public:
     Yizu() : TriggerSkillV2("yizu")
     {
-        events << EventSkillInvoking << TargetConfirmed; global = true;
+        events << TargetConfirmed; global = true;
         frequency = Compulsory;
     }
 
@@ -352,27 +352,8 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -692,7 +673,7 @@ class Diezhang : public TriggerSkillV2
 public:
     Diezhang() : TriggerSkillV2("diezhang")
     {
-        events << CardOffset << EventSkillInvoking;
+        events << CardOffset;
 		change_skill = true;
 		global = true;
     }
@@ -781,18 +762,10 @@ public:
         return true;
     }
 
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.isValid() && accepted.activationRef.key.skillName == objectName()
-            && accepted.bypass_cost
-            && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()
-            && !commitAccepted(accepted))
-            accepted.is_canceled = true;
-        data = QVariant::fromValue(accepted);
-        return true;
-    }
+    // Custom bookkeeping is not the core's quota: a waived payment still commits the branch,
+    // and a stale branch cancels the effect.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!commitAccepted(ctx)) ctx.is_canceled = true; }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -875,7 +848,7 @@ class Duanwan : public TriggerSkillV2
 public:
     Duanwan() : TriggerSkillV2("duanwan")
     {
-        events << EventSkillInvoking << AskForPeaches;
+        events << AskForPeaches;
         frequency = Limited;
         limit_mark = "@duanwan";
         global = true;
@@ -899,30 +872,18 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt.insert("quota_committed", true);
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-        if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
-    }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
-        commitAccepted(room, ctx);
+        addUsage(ctx);
+        if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
         return true;
     }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    // The limit mark is part of the payment, so a waived payment still removes it.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
+        addUsage(ctx);
+        if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {

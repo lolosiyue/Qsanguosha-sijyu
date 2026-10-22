@@ -1048,20 +1048,9 @@ public:
 class HJizhao : public TriggerSkillV2 {
 public:
     HJizhao() : TriggerSkillV2("heg_jizhao")
-    { events << AskForPeaches << EventSkillInvoking;
+    { events << AskForPeaches;
         global = true; frequency = Limited; limit_mark = "@heg_jizhao"; }
     bool canPreshow() const override { return false; }
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
-    { return event == EventSkillInvoking; }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return false;
-        const SkillContext accepted = data.value<SkillContext>();
-        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
-        if (accepted.bypass_cost && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
-        return true;
-    }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override

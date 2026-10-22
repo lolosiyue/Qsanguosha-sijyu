@@ -466,7 +466,7 @@ class Jingqiao : public TriggerSkillV2
 public:
     Jingqiao() : TriggerSkillV2("jingqiao")
     {
-        events << EventSkillInvoking << CardsMoveOneTime; global = true;
+        events << CardsMoveOneTime; global = true;
         frequency = Compulsory;
     }
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
@@ -487,27 +487,8 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     QStringList availableAreas(const SkillContext &ctx) const
     {
@@ -637,7 +618,7 @@ class Duchi : public TriggerSkillV2
 public:
 	Duchi() :TriggerSkillV2("duchi")
 	{
-		events << EventSkillInvoking << TargetConfirmed; global = true;
+		events << TargetConfirmed; global = true;
 	}
     QStringList usableEntries(ServerPlayer *player, QVariant &data) const
     {
@@ -657,27 +638,8 @@ public:
         }
         return result;
     }
-    void commitAccepted(Room *room, SkillContext &ctx) const
-    {
-        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
-        QVariantMap receipt = ctx.extra_data.toMap();
-        receipt["quota_committed"] = true;
-        ctx.extra_data = receipt;
-        addUsage(ctx);
-
-    }
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { if (!isUsable(ctx)) return false; commitAccepted(room, ctx); return true; }
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            commitAccepted(room, accepted);
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
 	LimitScope getLimitScope() const override { return Limit_Turn; }
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{

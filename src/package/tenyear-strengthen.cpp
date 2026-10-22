@@ -2716,7 +2716,7 @@ class TenyearFuli : public TriggerSkillV2
 public:
 	TenyearFuli() : TriggerSkillV2("tenyearfuli")
 	{
-		events << AskForPeaches << EventSkillInvoking;
+		events << AskForPeaches;
 		global = true;
 		frequency = Limited;
 		limit_mark = "@tenyearfuliMark";
@@ -2726,11 +2726,8 @@ public:
 
     bool commitQuota(Room *room, SkillContext &ctx) const
     {
-        const QString receipt = "tenyearfuli_quota";
-        if (ctx.interceptor_data.value(receipt).value("committed").toBool()) return true;
         if (!isUsable(ctx)) return false;
         // Reserve the exact copy before mark notifications can start a nested dying request.
-        ctx.interceptor_data.insert(receipt, QVariantMap{{"committed", true}});
         addUsage(ctx);
         int remaining = 0;
         for (int id : ctx.owner->getSkillInstanceIds(objectName())) {
@@ -2746,19 +2743,9 @@ public:
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { return commitQuota(room, ctx); }
 
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext accepted = data.value<SkillContext>();
-        if (accepted.bypass_cost && accepted.owner && accepted.activationRef.isValid()
-            && accepted.activationRef.key.skillName == objectName()
-            && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
-            // Bypassing resource payment never grants another use of a limited skill.
-            if (!commitQuota(room, accepted)) accepted.is_canceled = true;
-            data = QVariant::fromValue(accepted);
-        }
-        return true;
-    }
+    // Bypassing resource payment never grants another use of a limited skill.
+    void payBypassed(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    { if (!commitQuota(room, ctx)) ctx.is_canceled = true; }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -3505,7 +3492,7 @@ public:
 class TenyearYaoming : public TriggerSkillV2
 {
 public:
-    TenyearYaoming() : TriggerSkillV2("tenyearyaoming") { events << Damage << Damaged << EventSkillInvoking; global = true; }
+    TenyearYaoming() : TriggerSkillV2("tenyearyaoming") { events << Damage << Damaged; global = true; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     QString branch(const ServerPlayer *owner, const ServerPlayer *target) const
     {
@@ -3552,34 +3539,16 @@ public:
         // The dispatcher supplies the exact candidate copy before any invocation prompt.
         return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
     }
-    bool commitQuota(SkillContext &ctx) const
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        const QString key = objectName() + "_quota";
-        if (ctx.interceptor_data.value(key).value("committed").toBool()) return true;
         if (!isUsable(ctx)) return false;
-        // Commit before Invoking/Effect callbacks can re-enter this exact copy.
-        ctx.interceptor_data.insert(key, QVariantMap{{"committed", true}});
         addUsage(ctx);
         return true;
     }
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { return commitQuota(ctx); }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (isUsable(ctx)) addUsage(ctx); else ctx.is_canceled = true; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event != EventSkillInvoking) return true;
-        SkillContext active = data.value<SkillContext>();
-        if (active.bypass_cost && active.owner && active.activationRef.isValid()
-            && active.activationRef.key.skillName == objectName()
-            && active.activationRef.ownerObjectName == active.owner->objectName()
-            && active.activationRef.key.instanceID == active.instanceID) {
-            if (!commitQuota(active)) active.is_canceled = true;
-            data = QVariant::fromValue(active);
-        }
-        return true;
-    }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
-    {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->hasSkill(objectName())
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
@@ -3623,7 +3592,7 @@ class TenyearDanshou : public TriggerSkillV2
 {
 public:
     TenyearDanshou() : TriggerSkillV2("tenyeardanshou")
-    { events << TargetConfirmed << EventPhaseStart << EventSkillInvoking; global = true; }
+    { events << TargetConfirmed << EventPhaseStart; global = true; }
     LimitScope getLimitScope() const override { return Limit_Turn; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
@@ -3647,32 +3616,9 @@ public:
             filter["watermark"] = page.value("watermark"); filter["after"] = page.value("next_after");
         }
     }
-    bool commitDraw(SkillContext &ctx) const
-    {
-        if (ctx.choice != "draw") return isUsable(ctx);
-        const QString key = objectName() + "_quota";
-        if (ctx.interceptor_data.value(key).value("committed").toBool()) return true;
-        if (!isUsable(ctx)) return false;
-        ctx.interceptor_data.insert(key, QVariantMap{{"committed", true}});
-        addUsage(ctx);
-        return true;
-    }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
-    {
-        if (event != EventSkillInvoking) return true;
-        SkillContext active = data.value<SkillContext>();
-        if (active.bypass_cost && active.owner && active.activationRef.isValid()
-            && active.activationRef.key.skillName == objectName()
-            && active.activationRef.ownerObjectName == active.owner->objectName()
-            && active.activationRef.key.instanceID == active.instanceID) {
-            if (!commitDraw(active)) active.is_canceled = true;
-            data = QVariant::fromValue(active);
-        }
-        return true;
-    }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (!player || !player->isAlive() || event == EventSkillInvoking) return {};
+        if (!player || !player->isAlive()) return {};
         if (event == TargetConfirmed) {
             const CardUseStruct use = data.value<CardUseStruct>();
             return player->hasSkill(objectName()) && use.to.contains(player) && use.card
@@ -3725,7 +3671,10 @@ public:
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
-        if (ctx.choice == "draw") return commitDraw(ctx);
+        if (ctx.choice == "draw") {
+            addUsage(ctx);
+            return true;
+        }
         ServerPlayer *payer = ctx.owner;
         if (!payer) return false;
         DummyCard discard;
@@ -3738,6 +3687,9 @@ public:
         }
         return tenyearPayDiscard(room, payer, objectName(), discard.getSubcards());
     }
+    // Only the draw branch spends the turn quota; an unusable copy is still cancelled for both branches.
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!isUsable(ctx)) ctx.is_canceled = true; else if (ctx.choice == "draw") addUsage(ctx); }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const int amount = getEffectiveAmount(ctx);
@@ -6743,7 +6695,7 @@ class TenyearJiezhong : public TriggerSkillV2
 {
 public:
     TenyearJiezhong() : TriggerSkillV2("tenyearjiezhong")
-    { events << EventPhaseStart << EventSkillInvoking; global = true; frequency = Limited; limit_mark = "@tenyearjiezhongMark"; }
+    { events << EventPhaseStart; global = true; frequency = Limited; limit_mark = "@tenyearjiezhongMark"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     static SkillContext quotaContext(ServerPlayer *owner, int id)
     {
@@ -6775,33 +6727,17 @@ public:
     }
     bool commitQuota(SkillContext &ctx) const
     {
-        const QString key = objectName() + "_quota";
-        if (ctx.interceptor_data.value(key).value("committed").toBool()) return true;
         if (!isUsable(ctx)) return false;
-        // Commit before Invoking/Effect callbacks can re-enter this exact copy.
-        ctx.interceptor_data.insert(key, QVariantMap{{"committed", true}});
         addUsage(ctx);
         syncDisplay(ctx.owner->getRoom(), ctx.owner);
         return true;
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { return commitQuota(ctx); }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!commitQuota(ctx)) ctx.is_canceled = true; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event != EventSkillInvoking) return true;
-        SkillContext active = data.value<SkillContext>();
-        if (active.bypass_cost && active.owner && active.activationRef.isValid()
-            && active.activationRef.key.skillName == objectName()
-            && active.activationRef.ownerObjectName == active.owner->objectName()
-            && active.activationRef.key.instanceID == active.instanceID) {
-            if (!commitQuota(active)) active.is_canceled = true;
-            data = QVariant::fromValue(active);
-        }
-        return true;
-    }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
-    {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Play
             && player->getMaxHp() > player->getHandcardNum() ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
@@ -8424,7 +8360,7 @@ class TenyearQianxin : public TriggerSkillV2
 {
 public:
     TenyearQianxin() : TriggerSkillV2("tenyearqianxin")
-    { events << Damage << EventSkillInvoking; global = true; frequency = Wake; waked_skills = "tenyearjianyan"; }
+    { events << Damage; global = true; frequency = Wake; waked_skills = "tenyearjianyan"; }
     LimitScope getLimitScope() const override { return Limit_Game; }
     bool prepareSource(Room *room, SkillContext &ctx) const override
     {
@@ -8433,13 +8369,10 @@ public:
     }
     bool commitQuota(SkillContext &ctx) const
     {
-        const QString key = objectName() + "_quota";
-        if (ctx.interceptor_data.value(key).value("committed").toBool()) return true;
         if (!isUsable(ctx)) return false;
         const bool forced = !ctx.owner->isWounded();
         if (forced && ctx.owner->getTag(objectName() + "_SKILLCANWAKE").toStringList().isEmpty()) return false;
         // Commit before Invoking/Effect callbacks can re-enter this exact copy.
-        ctx.interceptor_data.insert(key, QVariantMap{{"committed", true}});
         addUsage(ctx);
         // canWake consumes its permission and logs; do so only after quota reservation.
         if (forced) ctx.owner->canWake(objectName());
@@ -8448,22 +8381,10 @@ public:
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { return commitQuota(ctx); }
-    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    void payBypassed(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    { if (!commitQuota(ctx)) ctx.is_canceled = true; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event != EventSkillInvoking) return true;
-        SkillContext active = data.value<SkillContext>();
-        if (active.bypass_cost && active.owner && active.activationRef.isValid()
-            && active.activationRef.key.skillName == objectName()
-            && active.activationRef.ownerObjectName == active.owner->objectName()
-            && active.activationRef.key.instanceID == active.instanceID) {
-            if (!commitQuota(active)) active.is_canceled = true;
-            data = QVariant::fromValue(active);
-        }
-        return true;
-    }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
-    {
-        if (event == EventSkillInvoking) return {};
         return player && player->isAlive() && player->hasSkill(objectName())
             && (player->isWounded() || !player->getTag(objectName() + "_SKILLCANWAKE").toStringList().isEmpty())
             ? TriggerList{{player, {objectName()}}} : TriggerList();
