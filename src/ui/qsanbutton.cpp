@@ -581,12 +581,13 @@ void QSanInvokeSkillButton::paint(QPainter *painter, const QStyleOptionGraphicsI
         QString generalName = "";
 
         foreach (const Player* p, Self->getSiblings()) {
+            const QString lender = p->lordSkillLender();
             const General* general = p->getGeneral();
             if (general->hasSkill(engskillname)) {
                 generalName = general->objectName();
                 break;
             } else {
-                if (general->hasSkill("weidi") && Self->isLord() && Self->hasSkill(engskillname)) {
+                if (!lender.isEmpty() && general->hasSkill(lender) && Self->isLord() && Self->hasSkill(engskillname)) {
                     generalName = general->objectName();
                     break;
                 }
@@ -602,7 +603,7 @@ void QSanInvokeSkillButton::paint(QPainter *painter, const QStyleOptionGraphicsI
                     generalName = general2->objectName();
                     break;
                 } else {
-                    if (general2->hasSkill("weidi") && Self->isLord() && Self->hasSkill(engskillname)) {
+                    if (!lender.isEmpty() && general2->hasSkill(lender) && Self->isLord() && Self->hasSkill(engskillname)) {
                         generalName = general2->objectName();
                         break;
                     }

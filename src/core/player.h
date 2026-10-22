@@ -455,9 +455,13 @@ public:
     }*/
     bool isLocked(const Card *card, bool isHandcard = false) const;
 
+    // Held HolderSharesLordSkills skill (帷帝、圣尊) through which a non-lord uses the lord's lord skills.
+    QString lordSkillLender() const;
+    // Skill name to voice and log for lord skill `skill_name`: the lender when there is one.
+    QString lordSkillVoice(const QString &skill_name) const;
     bool isWeidi() const
     {
-		return role!="lord"&&hasSkill("weidi");
+		return !lordSkillLender().isEmpty();
     }
 
     void setCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason = "", bool single_turn = false);
@@ -577,6 +581,7 @@ protected:
     // Held skills with HolderSharesLordSkills, rebuilt when SkillSet::generation() changes.
     mutable quint64 m_lordShareGeneration = 0;
     mutable QStringList m_lordShareHolders;
+    QStringList lordShareHolders() const;
 
     // Authoritative multi-instance skill container (the only source of truth).
     // m_skillInstances[skillName][instanceID] = SkillInstance

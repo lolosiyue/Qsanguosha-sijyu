@@ -252,9 +252,9 @@ using namespace QSanProtocol;
 
 namespace {
 QVariantMap shownCardsHistory(Room &room, ServerPlayer *player, const QList<int> &ids,
-    const QList<ServerPlayer *> &viewers, bool allHand)
+    const QList<ServerPlayer *> &viewers, bool allHand, const CardMoveReason &reason = CardMoveReason())
 {
-    QVariantMap data = room.historyCause(CardMoveReason());
+    QVariantMap data = room.historyCause(reason);
     data.insert(QStringLiteral("player"), player->objectName());
     data.insert(QStringLiteral("all_hand"), allHand);
     QVariantList cards;
@@ -535,6 +535,19 @@ QVariantMap Room::queryHistoryMoves(const QVariantMap &filter) const
 QVariantMap Room::queryActualDamage(const QVariantMap &filter) const
 {
 	return m_damageResolution->queryActualDamage(filter);
+}
+
+int Room::hasActualDamage(QVariantMap filter) const
+{
+    // Every actual_damage fact has a committed component, so one item suffices.
+    filter.insert(QStringLiteral("limit"), 1);
+    const QVariantMap page = queryActualDamage(filter);
+    if (!page.value(QStringLiteral("items")).toList().isEmpty()) return 1;
+    // from/to are explicit damage fields. Only owner or skill filters depend
+    // on the source attribution that unrelated records may lack.
+    const bool attributed = (!filter.contains(QStringLiteral("skill_owner")) && !filter.contains(QStringLiteral("skill_name")))
+        || page.value(QStringLiteral("attribution_complete")).toBool();
+    return page.value(QStringLiteral("complete")).toBool() && attributed ? 0 : -1;
 }
 
 QVariantMap Room::queryCardHistory(const Player *player, const QString &scope,
@@ -4824,8 +4837,22 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 	else moveId = --_m_lastMovementId;
 	//Q_ASSERT(_m_lastMovementId >= 0);
 	if (players.isEmpty()) players = getPlayers();
+	// A public move is identical for every recipient; build it once.
+	JsonArray publicArg;
+	if (visible) {
+		publicArg << moveId;
+		for (int i = 0; i < moves.length(); i++){
+			CardsMoveStruct recipientMove = moves[i];
+			recipientMove.open = true;
+			publicArg << recipientMove.toVariant();
+		}
+	}
 	foreach(ServerPlayer*player, players){
 		if (player->isOffline()) continue;
+		if (visible) {
+			doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, publicArg);
+			continue;
+		}
 		JsonArray arg;
 		arg << moveId;
 		for (int i = 0; i < moves.length(); i++){
@@ -6440,7 +6467,7 @@ QList<ServerPlayer*> Room::getLieges(const QString&kingdom, ServerPlayer*lord) c
 {
 	QList<ServerPlayer*> lieges;
 	foreach(ServerPlayer*p, getAllPlayers()){
-		if (p != lord&&p->getKingdom() == kingdom)
+		if (p != lord&&p->hasLordSkillKingdom(kingdom, lord))
 			lieges << p;
 	}
 	return lieges;
@@ -6597,12 +6624,12 @@ void Room::showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer, 
 	showCard(player, QList<int>()<<card_id, only_viewer, self_can_see);
 }
 
-void Room::showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players)
+void Room::showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players, const QString &reason)
 {
-	showCard(player, QList<int>()<<card_id, players);
+	showCard(player, QList<int>()<<card_id, players, reason);
 }
 
-void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players)
+void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players, const QString &reason)
 {
 	foreach(int card_id, card_ids){
 		if (getCardOwner(card_id) != player)
@@ -6621,7 +6648,9 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 
 	if(players.isEmpty()) players = getPlayers();
 	// Freeze the delivered values before ShowCards callbacks can move or transform them.
-	const QVariantMap shown = shownCardsHistory(*this, player, card_ids, players, false);
+	const CardMoveReason showReason = reason.isEmpty() ? CardMoveReason()
+		: CardMoveReason(CardMoveReason::S_REASON_SHOW, player->objectName(), reason, QString());
+	const QVariantMap shown = shownCardsHistory(*this, player, card_ids, players, false, showReason);
 	ResolutionHistoryEventGuard showHistory(m_resolutionHistory, QStringLiteral("show_cards"),
 	    shown, historyRecordingEnabled());
 	m_notifier->showCard(player->objectName(), cardIds, players);

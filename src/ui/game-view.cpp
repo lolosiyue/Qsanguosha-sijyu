@@ -62,15 +62,23 @@ protected:
             return;
         // Keep premultiplied alpha within [0, a] so translucent edges do not overflow.
         QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
-        for (int y = 0; y < image.height(); ++y) {
-            QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
-            for (int x = 0; x < image.width(); ++x) {
-                const QRgb pixel = line[x];
-                const int a = qAlpha(pixel);
-                if (m_grayscale) {
+        const int width = image.width();
+        const int height = image.height();
+        if (m_grayscale) {
+            for (int y = 0; y < height; ++y) {
+                QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < width; ++x) {
+                    const QRgb pixel = line[x];
                     const int luma = (qRed(pixel) * 77 + qGreen(pixel) * 150 + qBlue(pixel) * 29) >> 8;
-                    line[x] = qRgba(luma, luma, luma, a);
-                } else {
+                    line[x] = qRgba(luma, luma, luma, qAlpha(pixel));
+                }
+            }
+        } else {
+            for (int y = 0; y < height; ++y) {
+                QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < width; ++x) {
+                    const QRgb pixel = line[x];
+                    const int a = qAlpha(pixel);
                     const auto stretch = [a](int c) {
                         return qBound(0, (c * 2 - a) * kHighContrastPercent / 200 + a / 2, a);
                     };

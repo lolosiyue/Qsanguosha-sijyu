@@ -2094,7 +2094,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
 						skillName = baseName;
 						QString orderedTargets;
-						if (v2->isEquipSkill())
+						if (v2->isEquipSkill() || skill.contains("->"))
 							skillName = TriggerSkillV2::parseSkillName(skill, nullptr, &orderedTargets,
 								&multiplier, &instanceId);
                         // Removal callbacks belong to the public event definition, never a
@@ -2175,6 +2175,45 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                             // Accepted continuation leaves authorize only their response prompt.
                             if (room->isAcceptedViewAsEffect(ref)) continue;
 							QString key = skillInstanceRuntimeKey(p, skillName, resolvedId);
+							if (!orderedTargets.isEmpty()) {
+								// "name->a+b": one invocation per target, so declining one keeps the rest.
+								// Unlike equipment, targets are independent: resolving one consumes only it.
+								const QStringList targets = orderedTargets.split('+', Qt::SkipEmptyParts);
+								for (int i = 0; i < targets.size(); ++i) {
+                                    triggerDispatchStep(triggerEvent, p, v2->objectName());
+									if (consumedEquipmentTargets.value(key).contains(targets.at(i))) continue;
+									ServerPlayer *effectTarget = room->findPlayerByObjectName(targets.at(i), true);
+									if (!effectTarget) continue;
+									SkillContext ctx;
+									ctx.skill_name = skillName + "->" + targets.at(i) + '&' + QString::number(i + 1);
+									ctx.owner = p;
+									ctx.invoker = target;
+									ctx.instanceID = resolvedId;
+									if (!removalSource) ctx.activationRef = ref;
+									ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
+									if (ctx.activationRef.isValid() && !ctx.sourceRef.isValid()) continue;
+									bool amountOk = false;
+									ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
+									if (!amountOk) ctx.amount = v2->getBaseAmount();
+									ctx.targets << effectTarget;
+									ctx.preferredTarget = effectTarget;
+									ctx.preferredTargetSeat = effectTarget->getSeat();
+									ctx.trigger_count = triggerCounts.value(key);
+									ctx.original_data = &data;
+									ctx.current_event = triggerEvent;
+                                    bool prepared = false;
+                                    invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
+                                                 [&] { prepared = v2->prepareSource(room, ctx); });
+                                    if (prepared) appendContext(ctx);
+									equipmentTargetPrefixes.insert(p->objectName() + '|' + ctx.skill_name,
+										QStringList{targets.at(i)});
+                                    Skill::Frequency frequency = Skill::NotFrequent;
+                                    invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
+                                                 [&] { frequency = v2->getFrequency(p); });
+                                    if (frequency == Skill::Compulsory && p->hasShownSkill(v2)) break;
+								}
+								continue;
+							}
 							int currentTriggerCount = triggerCounts.value(key, 0);
 							int effectiveMultiplier = qMax(multiplier, maxMultipliers.value(key, 0));
 							if (currentTriggerCount >= effectiveMultiplier)
@@ -2299,7 +2338,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// a concealed general source still requires its owner's reveal consent.
 		for (const SkillContext &ctx : skillContexts) {
 			const TriggerSkill *skill = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name));
-			if (skill && skill->isGlobal()
+			const auto *ruleSkill = qobject_cast<const TriggerSkillV2 *>(skill);
+			if (skill && (skill->isGlobal() || (ruleSkill && ruleSkill->resolvesAsRule()))
 				&& !room->isGeneralHiddenForSkill(ctx.activationRef)) {
 				name = SkillInstanceUtils::formatName(ctx.skill_name, ctx.instanceID);
 				if (ctx.owner != chooser) name += ':' + ctx.owner->objectName();
@@ -2384,7 +2424,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// per-seat callbacks multiplied every card move by 6 full observer dispatches.
 		const bool sourcelessRule = !equipment && !selected_ctx->activationRef.isValid()
 			&& !selected_ctx->physicalEquipSource.isValid() && !v2->acceptsRemovalEvent(triggerEvent, data);
-		const bool silentRule = globalRule && v2->isGlobal() && (!v2->isVisible() || sourcelessRule);
+		const bool silentRule = globalRule && (v2->isGlobal() || v2->resolvesAsRule())
+			&& (!v2->isVisible() || sourcelessRule);
 		const SkillInstanceRef selectedSource = selected_ctx->activationRef;
         // Keep the admitted source immutable across cost/interceptor callbacks.
         const SkillContext sourceContext = *selected_ctx;
@@ -2400,7 +2441,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             consumedContextTargets[orderedKey] << contextTargetPrefixes.value(orderedKey + '|' + selected_ctx->skill_name);
             selected_ctx->skill_name = skillName;
         }
-		if (equipment) {
+		if (equipment || selected_ctx->skill_name.contains("->")) {
 			consumedEquipmentTargets[key] << equipmentTargetPrefixes.value(
 				skill_owner->objectName() + '|' + selected_ctx->skill_name);
 			// UI choices include an ordered target; callbacks use the definition ID.
@@ -2421,6 +2462,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		restoreIdentity();
         selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 		if (!do_cost) {
+			// A declined invocation also declines this event's remaining repeats.
+			triggerCounts[key] = qMax(triggerCounts.value(key, 0), sourceContext.multiplier);
 			skillHistory.finish(QStringLiteral("cancelled"));
 			continue;
 		}
@@ -2926,17 +2969,19 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		reclaimCompletedTurn();
 	// Only completed effects may settle work objectives. This is outside
 	// dispatchTrigger's catch/pop cleanup; gameOver throws GameFinished.
-	if (room->isWorkSession()) {
+	if (room->isWorkSession() && (triggerEvent == CardFinished || triggerEvent == DamageComplete
+		|| triggerEvent == GameReady || triggerEvent == EventPhaseStart
+		|| triggerEvent == EventPhaseEnd || triggerEvent == EventPhaseProceeding || outerTurn)) {
 		bool enclosingEffect = false;
 		for (const auto &event : event_stack) {
 			// Turn/phase drivers enclose user actions; other nested effects must
 			// return to their caller before a goal is allowed to terminate play.
-			if (event.event() != TurnStart && event.event() != EventPhaseProceeding)
+			if (event.event() != TurnStart && event.event() != EventPhaseProceeding) {
 				enclosingEffect = true;
+				break;
+			}
 		}
-		if (!enclosingEffect && (triggerEvent == CardFinished || triggerEvent == DamageComplete
-			|| triggerEvent == GameReady || triggerEvent == EventPhaseStart
-			|| triggerEvent == EventPhaseEnd || triggerEvent == EventPhaseProceeding || outerTurn))
+		if (!enclosingEffect)
 			room->evaluateWorkObjectives();
 	}
     checkTriggerDispatchAbort();
@@ -3059,7 +3104,7 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 		m_playerUiStateDirty = true;
 		markDistanceCacheDirty();
 	}
-	if (syncsHandLimit(triggerEvent)) {
+	if (syncsHandLimit(triggerEvent) && ServerPlayer::handMaxObserved(room)) {
 		foreach (ServerPlayer *player, room->getAlivePlayers())
 			player->broadcastHandMax();
 	}
@@ -3093,9 +3138,10 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
             if (m_triggerSkillTraits.value(ts).v2 && usesV2EventPriority(ts)) {
                 if (!invokeAuthorCallback([&]() {
                     QList<TriggerSkill *> group;
+                    const int priority = ts->getPriority(triggerEvent);
                     for (TriggerSkill *candidate : skill_table[triggerEvent]) {
                         if (m_triggerSkillTraits.value(candidate).v2 && usesV2EventPriority(candidate)
-                            && candidate->getPriority(triggerEvent) == ts->getPriority(triggerEvent)
+                            && candidate->getPriority(triggerEvent) == priority
                             && (candidate == ts || !triggered.contains(candidate))) {
                             group << candidate;
                             triggered << candidate;

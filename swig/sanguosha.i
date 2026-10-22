@@ -2528,8 +2528,8 @@ public:
 	int getShimingStatus(const SkillInstanceRef &ref) const;
     void showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
-    void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());
-    void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>());
+    void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>(), const QString &reason = QString());
+    void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>(), const QString &reason = QString());
     void showAllCards(ServerPlayer*player, ServerPlayer*to);
     void showAllCards(ServerPlayer*player, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void retrial(const Card*card, ServerPlayer*player, JudgeStruct*judge, const char*skill_name, bool exchange = false);

@@ -252,10 +252,13 @@ void ClientPlayer::removeHandIds(const QList<int> &card_ids)
     ClientCardMemory::Ids visible;
     for (const Card *card : getKnownCards())
         if (card->hasFlag("visible")) visible.push_back(card->getId());
+    bool concealedSwept = false;
     for (int id : card_ids) {
         if (id < Card::S_UNKNOWN_CARD_ID) continue;
         handcard_num = qMax(0, handcard_num - 1);
         if (id == Card::S_UNKNOWN_CARD_ID) {
+            if (concealedSwept) continue;
+            concealedSwept = true;
             // Keep public cards exact; remembered concealed cards may have left.
             for (const Card *card : Player::getHandcards()) {
                 if (card && !card->hasFlag("visible"))

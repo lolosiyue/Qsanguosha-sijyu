@@ -3062,9 +3062,10 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
                                        && qgetenv("QSAN_LIMIT_FILTER_VERIFY") != "0";
 
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()) {
+        const QList<const CardLimitSkill*> limitSkills = getCardLimitSkills();
         foreach (int id, card->getSubcards()) {
             const Card*c = Sanguosha->getCard(id);
-            foreach (const CardLimitSkill*skill, getCardLimitSkills()) {
+            foreach (const CardLimitSkill*skill, limitSkills) {
                 const bool ownedHere = ownedByAnyone(skill->objectName());
                 if (!ownedHere && !s_filterVerify) continue;
                 if (skill->limitList(player,c).contains(method_name)){
@@ -3512,9 +3513,10 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
     int x = 0;
     if (trace) trace.note(QStringLiteral("aggregate base"), 0);
 	QStringList subcardNames;
-	if (card->isVirtualCard()){
+	const QList<int> subcards = card->isVirtualCard() ? card->getSubcards() : QList<int>();
+	if (!subcards.isEmpty()){
         foreach (const Card*e, from->getEquips()){
-            if (card->getSubcards().contains(e->getId()))
+            if (subcards.contains(e->getId()))
 				subcardNames << e->objectName();
 		}
 	}
@@ -3620,9 +3622,10 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
     const QList<const TargetModSkill *> targetModSkills = trace ? getTargetModSkills()
         : skillsHeldInRoom<TargetModSkill, TargetModSkillV2>(getTargetModSkills(), from);
     QStringList subcardNames;
-    if (card->isVirtualCard()){
+    const QList<int> subcards = card->isVirtualCard() ? card->getSubcards() : QList<int>();
+    if (!subcards.isEmpty()){
         foreach (const Card*e, from->getEquips()){
-            if (card->getSubcards().contains(e->getId()))
+            if (subcards.contains(e->getId()))
                 subcardNames << e->objectName();
         }
     }

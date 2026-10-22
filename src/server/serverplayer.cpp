@@ -262,26 +262,27 @@ void ServerPlayer::refreshUIState(bool force)
     room->notifyPlayerUIState(this, state);
 }
 
-void ServerPlayer::broadcastHandMax()
+bool ServerPlayer::handMaxObserved(Room *room)
 {
-    if (!room || !isAlive()) return;
     // Native headless games have no frontend to consume this pre-trigger
     // presentation query. Keep every actual rules/AI getMaxCards() query and
     // the ordinary UI rebuilds unchanged. Restrict this to the headless test
     // entry: network rooms must retain their cached reconnect projection.
-    if (room->property("to_test").toString() == QLatin1String("headless")) {
-        static const QMetaMethod readySignal = QMetaMethod::fromSignal(&ServerPlayer::message_ready);
-        bool observed = false;
-        for (const ServerPlayer *receiver : room->getAllPlayers(true)) {
-            // Match sendProtocolMessage's existing notification-consumer gate;
-            // a replay recorder or test/wire signal observer still needs it.
-            if (receiver->recordBuffer || receiver->isSignalConnected(readySignal)) {
-                observed = true;
-                break;
-            }
-        }
-        if (!observed) return;
+    if (room->property("to_test").toString() != QLatin1String("headless"))
+        return true;
+    static const QMetaMethod readySignal = QMetaMethod::fromSignal(&ServerPlayer::message_ready);
+    for (const ServerPlayer *receiver : room->getAllPlayers(true)) {
+        // Match sendProtocolMessage's existing notification-consumer gate;
+        // a replay recorder or test/wire signal observer still needs it.
+        if (receiver->recordBuffer || receiver->isSignalConnected(readySignal))
+            return true;
     }
+    return false;
+}
+
+void ServerPlayer::broadcastHandMax()
+{
+    if (!room || !isAlive()) return;
     const int handMax = getMaxCards();
     if (handMax == m_uiState.handMax) return;
     m_uiState.handMax = handMax;

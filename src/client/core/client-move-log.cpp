@@ -16,6 +16,7 @@ constexpr int PlaceTable = 7;
 constexpr int UnknownCardId = -1;
 
 constexpr int ReasonPut = 0x0A;
+constexpr int ReasonGive = 0x17;
 constexpr int ReasonExclusive = 0x68;
 constexpr int ReasonTurnover = 0x18;
 constexpr int ReasonPreview = 0x38;
@@ -136,6 +137,8 @@ QList<ClientLogRecord> synthesizeGetCardLogs(const QVariantMap &move)
     const int reason = reasonCode(move);
     const bool unknown = hasUnknown(ids);
     const bool hasFrom = !fromPlayer.isEmpty();
+    // Match the GUI's give wording while retaining each observer's visible cards.
+    const bool isGive = reason == ReasonGive && hasFrom && fromPlayer != toPlayer;
 
     if (toPlace == PlaceHand) {
         if (fromPlace == DrawPile) {
@@ -156,11 +159,13 @@ QList<ClientLogRecord> synthesizeGetCardLogs(const QVariantMap &move)
             if (fromPlayer == toPlayer && fromPlace == PlaceEquip) {
                 logs.append(record(QStringLiteral("$GotCardBack"), toPlayer, {}, cardString));
             } else if (unknown) {
-                logs.append(record(QStringLiteral("#MoveNCards"), fromPlayer, {toPlayer},
+                logs.append(record(isGive ? QStringLiteral("#GiveNCards")
+                                          : QStringLiteral("#MoveNCards"), fromPlayer, {toPlayer},
                                    QString(), count));
             } else {
-                logs.append(record(QStringLiteral("$MoveCard"), fromPlayer, {toPlayer},
-                                   cardString));
+                logs.append(record(isGive ? QStringLiteral("$GiveCards")
+                                          : QStringLiteral("$MoveCard"), fromPlayer, {toPlayer},
+                                   cardString, count));
             }
         }
     } else if (toPlace == PlaceSpecial) {
@@ -199,11 +204,13 @@ QList<ClientLogRecord> synthesizeGetCardLogs(const QVariantMap &move)
     if (toPlace == PlaceEquip) {
         if (hasFrom && fromPlayer != toPlayer) {
             if (unknown) {
-                logs.append(record(QStringLiteral("#MoveNCards"), fromPlayer, {toPlayer},
+                logs.append(record(isGive ? QStringLiteral("#GiveNCards")
+                                          : QStringLiteral("#MoveNCards"), fromPlayer, {toPlayer},
                                    QString(), count));
             } else {
-                logs.append(record(QStringLiteral("$MoveCard"), fromPlayer, {toPlayer},
-                                   cardString));
+                logs.append(record(isGive ? QStringLiteral("$GiveCards")
+                                          : QStringLiteral("$MoveCard"), fromPlayer, {toPlayer},
+                                   cardString, count));
             }
         }
         logs.append(record(QStringLiteral("#Install"), toPlayer, {}, cardString));

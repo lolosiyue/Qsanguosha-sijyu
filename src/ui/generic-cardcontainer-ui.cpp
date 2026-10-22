@@ -2278,12 +2278,13 @@ void PlayerCardContainer::setFloatingArea(QRect rect)
 
 void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
 {
+    const QMap<int, int> display_slots = (m_player != nullptr && !equips.isEmpty())
+        ? getEquipDisplaySlotsById(m_player, _m_layout) : QMap<int, int>();
     foreach (CardItem *equip, equips) {
         const Card *card = equip->getCard();
 
         int index = getEquipPrimarySlot(card, m_player);
         if (m_player != nullptr && card != nullptr) {
-            QMap<int, int> display_slots = getEquipDisplaySlotsById(m_player, _m_layout);
             if (display_slots.contains(card->getEffectiveId()))
                 index = display_slots.value(card->getEffectiveId());
         }

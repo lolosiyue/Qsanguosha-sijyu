@@ -195,6 +195,27 @@ static bool isSkillButtonVisible(const Skill *skill, const Player *player)
     return pattern == response || pattern == response + QLatin1Char('!');
 }
 
+// Mirrors the server's unnamed phase scope: the phase of whoever is acting.
+static QString actingPhaseClearSuffix(const Player *self)
+{
+    QList<const Player *> players{self};
+    foreach (const Player *p, self->getAliveSiblings())
+        players << p;
+    foreach (const Player *p, players) {
+        switch (p->getPhase()) {
+        case Player::RoundStart: return "-RoundStartClear";
+        case Player::Start: return "-StartClear";
+        case Player::Judge: return "-JudgeClear";
+        case Player::Draw: return "-DrawClear";
+        case Player::Play: return "-PlayClear";
+        case Player::Discard: return "-DiscardClear";
+        case Player::Finish: return "-FinishClear";
+        default: break;
+        }
+    }
+    return "-Clear";
+}
+
 static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPlayer *activePlayer,
     CardUseStruct::CardUseReason reason, const QString &pattern)
 {
@@ -240,7 +261,7 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
         case Skill::Limit_Round: suffix = "_lun"; break;
         case Skill::Limit_Phase:
             suffix = activeSkill->getPhaseName().isEmpty()
-                ? "-PhaseClear" : "-" + activeSkill->getPhaseName() + "Clear";
+                ? actingPhaseClearSuffix(activePlayer) : "-" + activeSkill->getPhaseName() + "Clear";
             break;
         case Skill::Limit_Game: suffix = "_game"; break;
         default: break;
@@ -3533,6 +3554,9 @@ void RoomScene::keepLoseCardLog(const CardsMoveStruct&move)
 
 void RoomScene::keepGetCardLog(const CardsMoveStruct&move)
 {
+	// Give moves name the giver without changing card visibility or move order.
+	const bool isGive = move.reason.m_reason==CardMoveReason::S_REASON_GIVE
+		&&move.from&&move.from!=move.to;
 	if(move.to_place==Player::PlaceHand){
 		if(move.from_place==Player::DrawPile){
 			/*if(move.card_ids.contains(Card::S_UNKNOWN_CARD_ID))
@@ -3556,8 +3580,8 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct&move)
 				log_box->appendLog("$GotCardBack",move.to_player_name,QStringList(),ListI2S(move.card_ids).join("+"));
 			}else{
 				if(move.card_ids.contains(Card::S_UNKNOWN_CARD_ID))
-					log_box->appendLog("#MoveNCards",move.from_player_name,QStringList()<<move.to_player_name,"",QString::number(move.card_ids.length()));
-				else log_box->appendLog("$MoveCard",move.from_player_name,QStringList()<<move.to_player_name,ListI2S(move.card_ids).join("+"));
+					log_box->appendLog(isGive?"#GiveNCards":"#MoveNCards",move.from_player_name,QStringList()<<move.to_player_name,"",QString::number(move.card_ids.length()));
+				else log_box->appendLog(isGive?"$GiveCards":"$MoveCard",move.from_player_name,QStringList()<<move.to_player_name,ListI2S(move.card_ids).join("+"),QString::number(move.card_ids.length()));
 			}
 		}
 	}else if(move.to_place==Player::PlaceSpecial){
@@ -3584,8 +3608,8 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct&move)
 	}
 	if(move.to_place==Player::PlaceEquip){
 		if(move.from&&move.from!=move.to){
-			if(move.card_ids.contains(Card::S_UNKNOWN_CARD_ID)) log_box->appendLog("#MoveNCards",move.from_player_name,QStringList()<<move.to_player_name,"",QString::number(move.card_ids.length()));
-			else log_box->appendLog("$MoveCard",move.from_player_name,QStringList()<<move.to_player_name,ListI2S(move.card_ids).join("+"));
+			if(move.card_ids.contains(Card::S_UNKNOWN_CARD_ID)) log_box->appendLog(isGive?"#GiveNCards":"#MoveNCards",move.from_player_name,QStringList()<<move.to_player_name,"",QString::number(move.card_ids.length()));
+			else log_box->appendLog(isGive?"$GiveCards":"$MoveCard",move.from_player_name,QStringList()<<move.to_player_name,ListI2S(move.card_ids).join("+"),QString::number(move.card_ids.length()));
 		}
 		log_box->appendLog("#Install",move.to_player_name,QStringList(),ListI2S(move.card_ids).join("+"));
 	}

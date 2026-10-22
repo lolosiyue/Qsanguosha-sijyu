@@ -610,6 +610,27 @@ QString limitScopeName(Skill::LimitScope scope)
     return QStringLiteral("none");
 }
 
+// Mirrors the server's unnamed phase scope: the phase of whoever is acting.
+QString actingPhaseClearSuffix(const Player *self)
+{
+    QList<const Player *> players{self};
+    foreach (const Player *p, self->getAliveSiblings())
+        players << p;
+    foreach (const Player *p, players) {
+        switch (p->getPhase()) {
+        case Player::RoundStart: return QStringLiteral("-RoundStartClear");
+        case Player::Start: return QStringLiteral("-StartClear");
+        case Player::Judge: return QStringLiteral("-JudgeClear");
+        case Player::Draw: return QStringLiteral("-DrawClear");
+        case Player::Play: return QStringLiteral("-PlayClear");
+        case Player::Discard: return QStringLiteral("-DiscardClear");
+        case Player::Finish: return QStringLiteral("-FinishClear");
+        default: break;
+        }
+    }
+    return QStringLiteral("-Clear");
+}
+
 // Committed usage only. This reads the projected mark the Room already sent;
 // a preview never adds one, so opening a skill cannot spend a use.
 int committedUsage(const Skill *skill, const QString &name, int instanceId, const Scene &scene)
@@ -620,7 +641,7 @@ int committedUsage(const Skill *skill, const QString &name, int instanceId, cons
     case Skill::Limit_Round: suffix = QStringLiteral("_lun"); break;
     case Skill::Limit_Phase:
         suffix = skill->getPhaseName().isEmpty()
-            ? QStringLiteral("-PhaseClear")
+            ? actingPhaseClearSuffix(scene.players.self())
             : QStringLiteral("-") + skill->getPhaseName() + QStringLiteral("Clear");
         break;
     case Skill::Limit_Game: suffix = QStringLiteral("_game"); break;

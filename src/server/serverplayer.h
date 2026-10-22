@@ -311,6 +311,8 @@ public:
     Q_INVOKABLE void refreshUIState(bool force = false);
     // Old trigger entry broadcast the handMax property before skills ran.
     // Deferred UI rebuilds leave that number stale until the turn unwinds.
+    // Callers gate the whole sweep with handMaxObserved(room) once.
+    static bool handMaxObserved(Room *room);
     void broadcastHandMax();
     void refreshSkillDescriptionState();
 

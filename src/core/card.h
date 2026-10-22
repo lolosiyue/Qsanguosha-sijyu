@@ -253,6 +253,8 @@ public:
 protected:
     // Shared completion keeps custom onUse paths safe when a hook interrupts.
     static void finishCardUse(Room *room, CardUseStruct &use);
+    static void sendUseLog(Room *room, const CardUseStruct &use,
+                           const QList<ServerPlayer *> *logTargets = nullptr);
     // Completed V2 actions retain accepted targets for logs, not effect traversal.
     void onUseWithLogTargets(Room *room, CardUseStruct &card_use,
                              const QList<ServerPlayer *> *logTargets) const;

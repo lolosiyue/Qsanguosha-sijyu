@@ -124,13 +124,12 @@ int Player::getLostHp() const
 
 bool Player::isWounded() const
 {
-	if (getKingdom() == "wu"){
-		foreach(const Player *p, getAliveSiblings()){
-			if (p->hasFlag("CurrentPlayer") && p->hasLordSkill("guiming"))
-				return true;
-		}
+    if (hp < 0 || hp < max_hp) return true;
+	foreach(const Player *p, getAliveSiblings()){
+		if (p->hasFlag("CurrentPlayer") && p->hasLordSkill("guiming") && hasLordSkillKingdom("wu", p))
+			return true;
 	}
-    return hp < 0 || hp < max_hp;
+    return false;
 }
 
 General::Gender Player::getGender() const
@@ -351,16 +350,14 @@ bool Player::inMyAttackRange(const Player *other, int distance_fix, bool chengwu
 	if (other->property("inMyAttackRangeKingdoms").toString().contains(getKingdom()))
 		return true;
 
-	if (getKingdom() == "wu"){
-		foreach(const Player *p, getAliveSiblings()){
-			if (p->hasLordSkill("zhaofu") && p->distanceTo(other) == 1)
-				return true;
-		}
+	foreach(const Player *p, getAliveSiblings()){
+		if (p->hasLordSkill("zhaofu") && hasLordSkillKingdom("wu", p) && p->distanceTo(other) == 1)
+			return true;
 	}
 
     if (chengwu && hasLordSkill("jinchengwu")){
         foreach(const Player *p, getAliveSiblings()){
-            if (p->getKingdom() == "jin" && p->inMyAttackRange(other, distance_fix, false))
+            if (p->hasLordSkillKingdom("jin", this) && p->inMyAttackRange(other, distance_fix, false))
                 return true;
         }
     }
@@ -777,24 +774,7 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 		return hasSkill(skill_name,include_lose);
 	}else{
 		// A held skill with HolderSharesLordSkills (帷帝、圣尊) lends the lord's lord skills.
-		// The property is fixed per definition, so only the held names need a rescan, and
-		// only when the skill set changes: inMyAttackRange asks this of every sibling.
-		QStringList holders;
-		{
-			QMutexLocker locker(&m_skillCacheMutex);
-			const quint64 generation = SkillSet::generation();
-			if (m_lordShareGeneration != generation) {
-				m_lordShareHolders.clear();
-				for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
-					const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
-					if (holder && holder->property("HolderSharesLordSkills").toBool())
-						m_lordShareHolders << it.key();
-				}
-				m_lordShareGeneration = generation;
-			}
-			holders = m_lordShareHolders;
-		}
-		for (const QString &holder : holders) {
+		for (const QString &holder : lordShareHolders()) {
 			if (hasSkill(holder)) {
 				foreach(const Player *player, getAliveSiblings()){
 					if (player->isLord()&&player->hasLordSkill(skill_name,true))
@@ -810,6 +790,38 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 bool Player::hasLordSkill(const Skill *skill, bool include_lose) const
 {
     return skill&&hasLordSkill(skill->objectName(), include_lose);
+}
+
+QStringList Player::lordShareHolders() const
+{
+    // The property is fixed per definition, so only the held names need a rescan, and
+    // only when the skill set changes: inMyAttackRange asks hasLordSkill of every sibling.
+    QMutexLocker locker(&m_skillCacheMutex);
+    const quint64 generation = SkillSet::generation();
+    if (m_lordShareGeneration != generation) {
+        m_lordShareHolders.clear();
+        for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+            const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+            if (holder && holder->property("HolderSharesLordSkills").toBool())
+                m_lordShareHolders << it.key();
+        }
+        m_lordShareGeneration = generation;
+    }
+    return m_lordShareHolders;
+}
+
+QString Player::lordSkillLender() const
+{
+    if (role == "lord") return QString();
+    for (const QString &holder : lordShareHolders())
+        if (hasSkill(holder)) return holder;
+    return QString();
+}
+
+QString Player::lordSkillVoice(const QString &skill_name) const
+{
+    const QString lender = lordSkillLender();
+    return lender.isEmpty() ? skill_name : lender;
 }
 
 bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
@@ -3349,12 +3361,17 @@ bool Player::isCardLimited(const Card *card, Card::HandlingMethod method, bool i
 {
     if (method == Card::MethodNone) return false;
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()){
-        foreach(int card_id, card->getSubcards()){
-            const Card *c = Sanguosha->getCard(card_id);
-            foreach(QString pattern, card_limitation[method]){
-				pattern.chop(2);
+        QStringList patterns = card_limitation.value(method);
+        if (!patterns.isEmpty()) {
+            for (QString &pattern : patterns) {
+                pattern.chop(2);
                 if (isHandcard) pattern.replace("hand", ".");
-                if (Sanguosha->matchExpPattern(pattern,this, c)) return true;
+            }
+            foreach(int card_id, card->getSubcards()){
+                const Card *c = Sanguosha->getCard(card_id);
+                foreach(const QString &pattern, patterns){
+                    if (Sanguosha->matchExpPattern(pattern,this, c)) return true;
+                }
             }
         }
     } else {
@@ -3806,8 +3823,9 @@ bool Player::canSeeHandcard(const Player *player) const
         if (mark.startsWith("HandcardVisible_ALL") && player->getMark(mark) > 0)
             return true;
     }
+    const QString visiblePrefix = "HandcardVisible_" + player->objectName();
     foreach(QString mark, getMarkNames()){
-        if (mark.startsWith("HandcardVisible_" + player->objectName()) && getMark(mark) > 0)
+        if (mark.startsWith(visiblePrefix) && getMark(mark) > 0)
             return true;
     }
     return false;

@@ -76,9 +76,11 @@ void CardItem::setCard(const Card *card)
         m_virtualCardBlack = card->isBlack();
         setObjectName(card->objectName());
         QString description;
-        for (int i = 0; i < Sanguosha->getCardCount(); ++i) {
+        const QString cardName = card->objectName();
+        const int cardCount = Sanguosha->getCardCount();
+        for (int i = 0; i < cardCount; ++i) {
             const Card *engineCard = Sanguosha->getEngineCard(i);
-            if (engineCard != nullptr && engineCard->objectName() == card->objectName()) {
+            if (engineCard != nullptr && engineCard->objectName() == cardName) {
                 description = engineCard->getDescription();
                 break;
             }

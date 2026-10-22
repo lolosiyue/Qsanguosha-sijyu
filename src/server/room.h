@@ -166,6 +166,8 @@ public:
     QVariantMap queryHistoryFacts(const QVariantMap &filter) const;
     QVariantMap queryHistoryMoves(const QVariantMap &filter) const;
     QVariantMap queryActualDamage(const QVariantMap &filter) const;
+    // 1 when matching actual damage exists, 0 when history proves none, -1 when unknown.
+    int hasActualDamage(QVariantMap filter) const;
     // Read-only projections of the same journal; no package-owned history or counters.
     QVariantMap queryCardHistory(const Player *player, const QString &scope = QStringLiteral("turn"),
         const QString &className = QString(), bool responses = false, bool playOnly = false) const;
@@ -435,8 +437,8 @@ public:
 
     void showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
-    void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());
-    void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>());
+    void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>(), const QString &reason = QString());
+    void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>(), const QString &reason = QString());
     void showVirtualCard(ServerPlayer *player, const Card *card, ServerPlayer *target = nullptr);
     void showAllCards(ServerPlayer*player, ServerPlayer*to);
     void showAllCards(ServerPlayer*player, QList<ServerPlayer*> players = QList<ServerPlayer*>());

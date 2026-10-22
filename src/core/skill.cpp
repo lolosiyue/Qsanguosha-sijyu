@@ -2108,6 +2108,23 @@ void Skill::resetUsage(const SkillContext &ctx) const
     if (room) room->setPlayerMark(holder, key, 0);
 }
 
+// An unnamed phase scope counts the phase in progress, under the suffix the
+// game rule clears when that phase ends; outside any phase it is per turn.
+static QString currentPhaseClearSuffix(const Room *room)
+{
+    const ServerPlayer *current = room ? room->getCurrent() : nullptr;
+    switch (current ? current->getPhase() : Player::NotActive) {
+    case Player::RoundStart: return "-RoundStartClear";
+    case Player::Start: return "-StartClear";
+    case Player::Judge: return "-JudgeClear";
+    case Player::Draw: return "-DrawClear";
+    case Player::Play: return "-PlayClear";
+    case Player::Discard: return "-DiscardClear";
+    case Player::Finish: return "-FinishClear";
+    default: return "-Clear";
+    }
+}
+
 void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 {
     if (!owner) return;
@@ -2123,18 +2140,18 @@ void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
         return;
     }
 
+    Room *room = owner->getRoom();
     QString suffix;
     switch (scope) {
     case Limit_Turn: suffix = "-Clear"; break;
     case Limit_Round: suffix = "_lun"; break;
     case Limit_Phase:
-        suffix = m_phaseName.isEmpty() ? "-PhaseClear" : "-" + m_phaseName + "Clear";
+        suffix = m_phaseName.isEmpty() ? currentPhaseClearSuffix(room) : "-" + m_phaseName + "Clear";
         break;
     case Limit_Game: suffix = "_game"; break;
     default: return;
     }
     const QString key = SkillInstanceUtils::formatUsageMarkKey(objectName(), 0, suffix);
-    Room *room = owner->getRoom();
     if (room && !key.isEmpty()) room->setPlayerMark(owner, key, 0);
 }
 
@@ -2194,7 +2211,12 @@ QString Skill::getUsageTagKey(const SkillContext &ctx) const
     case Limit_Turn: suffix = "-Clear"; break;
     case Limit_Round: suffix = "_lun"; break;
     case Limit_Phase:
-        suffix = m_phaseName.isEmpty() ? "-PhaseClear" : "-" + m_phaseName + "Clear";
+        if (m_phaseName.isEmpty()) {
+            const ServerPlayer *player = ctx.owner ? ctx.owner : ctx.invoker ? ctx.invoker : ctx.initiator;
+            suffix = currentPhaseClearSuffix(player ? player->getRoom() : nullptr);
+        } else {
+            suffix = "-" + m_phaseName + "Clear";
+        }
         break;
     case Limit_Game: suffix = "_game"; break;
     default: return QString();

@@ -968,6 +968,31 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
     onUseWithLogTargets(room, card_use, nullptr);
 }
 
+void Card::sendUseLog(Room *room, const CardUseStruct &use,
+                      const QList<ServerPlayer *> *logTargets)
+{
+	LogMessage log;
+	log.from = use.from;
+	// A V2 action may already have consumed its effect targets. Its public
+	// use still names the accepted recipients without restoring those effects.
+	const QList<ServerPlayer *> &displayTargets = logTargets ? *logTargets : use.to;
+	if (!use.card->targetFixed()||displayTargets.length()>1||!displayTargets.contains(use.from))
+		log.to = displayTargets;
+	log.type = "#UseCard";
+	foreach (const Card*c, use.card->change_cards) {
+		if(c->isVirtualCard(true)){
+			log.card_str = c->toString(c->getTypeId()<1&&!c->willThrow());
+			room->sendLog(log);
+		}
+	}
+	log.card_str = use.card->toString(use.card->getTypeId()<1&&!use.card->willThrow());
+	// The generic V2 proxy's wire class cannot identify its owning skill.
+	// Carry the authoritative name separately for every log presentation.
+	if (qobject_cast<const ActiveSkillCard *>(use.card->getRealCard()))
+		log.arg = use.card->getSkillName();
+	room->sendLog(log);
+}
+
 void Card::onUseWithLogTargets(Room *room, CardUseStruct &card_use,
                               const QList<ServerPlayer *> *logTargets) const
 {
@@ -987,29 +1012,7 @@ void Card::onUseWithLogTargets(Room *room, CardUseStruct &card_use,
 	room->getThread()->trigger(PreCardUsed, room, card_use.from, data);
 	card_use = data.value<CardUseStruct>();
 
-	const auto sendUseLog = [&]() {
-		LogMessage log;
-		log.from = card_use.from;
-		// A V2 action may already have consumed its effect targets. Its public
-		// use still names the accepted recipients without restoring those effects.
-		const QList<ServerPlayer *> &displayTargets = logTargets ? *logTargets : card_use.to;
-		if (!card_use.card->targetFixed()||displayTargets.length()>1||!displayTargets.contains(card_use.from))
-			log.to = displayTargets;
-		log.type = "#UseCard";
-		foreach (const Card*c, card_use.card->change_cards) {
-			if(c->isVirtualCard(true)){
-				log.card_str = c->toString(c->getTypeId()<1&&!c->willThrow());
-				room->sendLog(log);
-			}
-		}
-		log.card_str = card_use.card->toString(card_use.card->getTypeId()<1&&!card_use.card->willThrow());
-		// The generic V2 proxy's wire class cannot identify its owning skill.
-		// Carry the authoritative name separately for every log presentation.
-		if (qobject_cast<const ActiveSkillCard *>(card_use.card->getRealCard()))
-			log.arg = card_use.card->getSkillName();
-		room->sendLog(log);
-	};
-	if (!deferredHegemonyCost) sendUseLog();
+	if (!deferredHegemonyCost) sendUseLog(room, card_use, logTargets);
 
 	const bool originalThrowCost = Config.EnableHegemony
 		&& card_use.card->getTypeId() == TypeSkill && card_use.card->willThrow()
@@ -1078,7 +1081,7 @@ void Card::onUseWithLogTargets(Room *room, CardUseStruct &card_use,
 		}
 		prepareUseTargets(room, card_use);
 		room->sortByActionOrder(card_use.to);
-		sendUseLog();
+		sendUseLog(room, card_use, logTargets);
 	}
 
 	data = QVariant::fromValue(card_use);
@@ -1477,9 +1480,15 @@ void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
         room->sortByActionOrder(logTargets);
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
         ServerPlayer *acceptedInvoker = context.invoker;
+        context.updated_targets.clear();
         if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect) {
             card_use.to.clear();
             targetsHandled = true;
+        } else if (!context.updated_targets.isEmpty()) {
+            // As for ordinary conversions, effect() may name the recipients it dispatches to.
+            card_use.to = context.updated_targets;
+            room->sortByActionOrder(card_use.to);
+            context.targets = card_use.to;
         }
         restoreSkillExecutionIdentity(room, card_use.skillExecutionID, context, acceptedInvoker);
         room->setSkillExecutionContext(card_use.skillExecutionID, context);
@@ -1500,8 +1509,16 @@ void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *
     SkillContext context = room->getSkillExecutionContext(room->getTag("UseHistory" + toString())
         .value<CardUseStruct>().skillExecutionID);
     ServerPlayer *acceptedInvoker = context.invoker;
+    // onUse sorted targets by action order; the group keeps the accepted
+    // selection order, with targets added after acceptance appended.
+    QList<ServerPlayer *> remaining = targets;
+    QList<ServerPlayer *> ordered;
+    foreach (ServerPlayer *target, context.targets) {
+        if (remaining.removeOne(target)) ordered << target;
+    }
+    ordered << remaining;
     QList<ServerPlayer *> effectiveTargets;
-    foreach (ServerPlayer *target, targets) {
+    foreach (ServerPlayer *target, ordered) {
         if (target && target->isAlive()) effectiveTargets << target;
     }
     if (!effectiveTargets.isEmpty())

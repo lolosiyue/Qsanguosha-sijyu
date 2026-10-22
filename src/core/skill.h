@@ -637,6 +637,10 @@ public:
     // once per dispatch instead of once per holder instance.
     bool recordsOncePerEvent() const { return m_recordOnce; }
     void setRecordOnce(bool once) { m_recordOnce = once; }
+    // A holder-registered skill whose contexts resolve as rule timing, as a global
+    // rule does: no trigger order choice and, if hidden or sourceless, no skill observer events.
+    bool resolvesAsRule() const { return m_ruleResolution; }
+    void setRuleResolution(bool rule) { m_ruleResolution = rule; }
     virtual ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const { return ctx.owner; }
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
@@ -683,6 +687,7 @@ public:
 protected:
     int m_baseAmount;
     bool m_recordOnce = false;
+    bool m_ruleResolution = false;
 };
 
 class RetrialSkill : public TriggerSkill
