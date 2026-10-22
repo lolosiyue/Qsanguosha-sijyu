@@ -1,7 +1,7 @@
 """Bounded, side-effect-free hierarchy over complete native action tickets.
 
-No engine queries or inferred legal completions. Skill-owned stage orders must
-match the explicitly supported one-card fixed-output contract. Only the final
+No engine queries or inferred legal completions. Complete concrete zero/one-card
+conversion tickets supply every material, output and target branch. Only the final
 result crosses submit; all provider calls reuse the room's adapter and game ID.
 """
 import copy
@@ -90,40 +90,61 @@ class Plan:
                 root.append(('Use ' + card['objectName'] + ' card ' + str(c['cardId'])
                              + '. ' + effects[card['objectName']], branch))
 
+        def reference_key(ref):
+            if (not isinstance(ref, dict)
+                    or not isinstance(ref.get('ownerObjectName'), str) or not ref['ownerObjectName']
+                    or not isinstance(ref.get('skillName'), str) or not ref['skillName']
+                    or type(ref.get('instanceID')) is not int or ref['instanceID'] <= 0):
+                raise p.DecisionError('invalid_conversion_reference')
+            return ref['ownerObjectName'], ref['skillName'], ref['instanceID']
+
         families = {}
         ticket_ids = set()
         for c in q['cardConversions']:
             if not c['available']:
                 continue
-            if (c['selectionStages'] != ['material', 'output', 'targets']
-                    or c.get('costCount', 0) != 0 or len(c['subcardIds']) != 1
+            if (c.get('costCount', 0) != 0 or len(c['subcardIds']) > 1
                     or not c['activationQuotaAvailable'] or not c['sourceQuotaAvailable']):
                 raise Unsupported('staged_conversion_contract_unknown')
-            ref = c['activationRef']
-            # This prototype deliberately has one skill contract, not universal V2 support.
-            if ref['skillName'] != 'wusheng' or ref['ownerObjectName'] != q['viewerObjectName']:
-                raise Unsupported('staged_skill_unsupported')
+            ref, source = c['activationRef'], c['sourceRef']
+            activation_key, source_key = reference_key(ref), reference_key(source)
+            if activation_key[0] != q['viewerObjectName']:
+                raise Unsupported('staged_conversion_owner_unknown')
             if c['conversionId'] in ticket_ids:
                 raise p.DecisionError('duplicate_conversion_ticket')
             ticket_ids.add(c['conversionId'])
-            material = c['subcardIds'][0]
-            if material not in own:
-                raise p.DecisionError('conversion_material_not_owned')
+            material = tuple(c['subcardIds'])
+            if any(card_id not in own for card_id in material):
+                raise Unsupported('staged_conversion_material_unknown')
             spec = {k: c[k] for k in ('name', 'suit', 'number', 'conversionId', 'subcardIds')}
             spec['skillName'] = ref['skillName']
-            context = {'skill': ref['skillName'], 'material': [material]}
+            family_context = {'skill': ref['skillName'], 'activationRef': ref, 'sourceRef': source}
+            context = dict(family_context, material=list(material))
             target = targets(c, c['name'], {'cardSpec': spec}, context)
             if target:
-                output = node('output', context, [(c['name'] + '. ' + effects[c['name']], target)])
-                family = (ref['skillName'], ref['instanceID'])
-                families.setdefault(family, []).append((
-                    'Material ' + str(material) + ': ' + own[material]['objectName']
-                    + ', suit ' + str(own[material]['suit']) + ', number '
-                    + str(own[material]['number']), output))
-        for (skill, instance), branches in families.items():
-            root.append(('Use ' + skill + ' instance ' + str(instance)
-                         + ': red material becomes Slash.',
-                         node('material', {'skill': skill}, branches)))
+                # Preserve the complete activation and root source, including borrowed
+                # owners. Equal materials may expose several already-authorized outputs.
+                family = families.setdefault((activation_key, source_key),
+                                             {'context': family_context, 'materials': {}})
+                outputs = family['materials'].setdefault(material, [])
+                outputs.append((c['name'] + ', suit ' + str(c['suit'])
+                                + ', number ' + str(c['number']) + '. ' + effects[c['name']], target))
+        for (activation, source), family in families.items():
+            branches = []
+            for material, outputs in family['materials'].items():
+                context = dict(family['context'], material=list(material))
+                output = node('output', context, outputs)
+                description = 'No material cards'
+                if material:
+                    card_id = material[0]
+                    card = own[card_id]
+                    description = ('Material ' + str(card_id) + ': ' + card['objectName']
+                                   + ', suit ' + str(card['suit']) + ', number ' + str(card['number']))
+                branches.append((description, output))
+            root.append(('Use ' + activation[1] + ' instance ' + str(activation[2])
+                         + ' owned by ' + activation[0] + '; source ' + source[0] + '/'
+                         + source[1] + '/' + str(source[2]),
+                         node('material', family['context'], branches)))
         self.root = node('action', {}, root)
         # Preflight every reachable stage before the first paid call. A large
         # later branch cannot silently disappear after a material has been chosen.
@@ -168,7 +189,7 @@ class Plan:
             self.visits += 1
             options = current.options(bool(history) and self.backs < MAX_BACK)
             # A single continuation after choosing a family is mechanically forced.
-            # The output of Wusheng is fixed; it never costs a separate API call.
+            # A material or output with one continuation needs no provider call.
             if current is not self.root and len(current.branches) == 1:
                 choice = 'pick_0'
             elif not current.branches:

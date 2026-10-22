@@ -40,20 +40,24 @@ prompts, until the room's first native Activate ticket. That ticket begins norma
 hybrid routing; subsequent supported flat and staged decisions can use JEV.
 This opening policy avoids paid setup choices changing the validated opening.
 
-The bounded staged prototype supports standard **Wusheng** during Activate/UseCard:
-choose the skill, then its native-legal red material, the fixed Slash output,
-and a complete native target group. Printed cards can use card-then-target stages
-when their combined flat list exceeds 255 options or the input limit. Every
-reachable stage is checked against the 255-option/16KB limits before any call;
-no legal branch is truncated. Unknown effects, other skills, declarations with
-a different order, incomplete conversions or target projections remain SmartAI.
-Response-accessible hand piles and physical/virtual equipment conversion sources
-are outside this first contract and explicitly make coverage incomplete.
+The bounded staged planner supports complete native zero/one-card conversion
+tickets during Activate/UseCard, without per-skill stage declarations or a skill
+name whitelist. It groups the exact activation and root-source references, then
+material cards, produced cards and complete native target groups. Equal materials
+can expose multiple ticketed outputs; no extra legal combinations are inferred.
+Printed cards can use card-then-target stages when their combined flat list exceeds
+255 options or the input limit. Every reachable stage is checked against the
+255-option/16KB limits before any call; no legal branch is truncated. Native
+`stagedActionsComplete` additionally excludes declarations, parameterized costs,
+skill-card proxies, mismatched produced subcards and incomplete conversion targets.
+Unknown effects, incomplete conversions or targets, and materials outside the
+projected hand/equipment remain SmartAI. Unprojected skill actions and
+physical/virtual equipment conversion sources retain their existing coverage gates.
 
 Planning submits only one final action against the original decision and revision.
-Stages consume no cards or skill quota. Without Back, standard Wusheng needs at most
-three provider calls (family, material, targets); its fixed output is automatic. Singleton
-continuations are automatic. Back is limited to two, and all visits/calls to eight;
+Stages consume no cards or skill quota. The family, material, output and targets
+stages are shared across supported conversions. Singleton continuations are
+automatic; a fixed output needs no provider call. Back is limited to two, and all visits/calls to eight;
 the existing native 30-second decision deadline still applies to the entire plan.
 Cancel passes the optional original decision. Bound exhaustion requests SmartAI.
 Disconnect/reconnect invalidates an outstanding bounded plan. All stages use the

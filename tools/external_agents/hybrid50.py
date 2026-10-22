@@ -24,10 +24,10 @@ import staged50 as staged
 
 LIMIT = 255
 POLICY = {
-    'version': 3, 'all_seats': 50, 'sole_complete_choice': 'local_forced',
+    'version': 4, 'all_seats': 50, 'sole_complete_choice': 'local_forced',
     'native_projection': 'explicit LocalDecisions; JEV and CardChosen retain full view',
     'jev': ['complete known printed-card Activate/UseCard',
-            'native-complete staged Wusheng and printed-card Activate/UseCard',
+            'native-complete staged concrete conversions and printed-card Activate/UseCard',
             'complete PlayerChosen/PlayersChosen with at least 8 options'],
     'local': ['simple decisions', 'unsupported skill conversions', 'unknown card effects',
               'incomplete native candidates', 'over 255 options in a stage',

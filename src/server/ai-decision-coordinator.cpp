@@ -1716,11 +1716,11 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             enumerated = false;
             continue;
         }
-        const QStringList stages = skill->aiConversionStages();
-        if (skill->getN() != 1 || skill->declaresCardName()
-            || stages != QStringList({"material", "output", "targets"}))
-            staged = false;
         const int cost = skill->getN();
+        // External staging groups complete tickets; it does not drive skill selection.
+        // Declarations and parameterized costs still need a richer native projection.
+        if (cost < 0 || cost > 1 || skill->declaresCardName())
+            staged = false;
         const bool parameterized = cost >= 2 && skill->hasIndependentAIConversion();
         if (cost < 0 || cost > 8 || (cost > 1 && !parameterized)) {
             enumerated = false;
@@ -1776,6 +1776,8 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
                 const_cast<Card *>(produced)->deleteLater();
                 continue;
             }
+            if (produced->getTypeId() == Card::TypeSkill || produced->getSubcards() != selection)
+                staged = false;
             AICardConversionView view;
             view.conversionId = request.cardConversions.size() + 1;
             view.name = produced->objectName();
@@ -1788,7 +1790,6 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.activationQuotaAvailable = action.activationQuotaAvailable;
             view.sourceQuotaAvailable = action.sourceQuotaAvailable;
             view.subcardIds = selection;
-            view.selectionStages = stages;
             view.costCount = parameterized ? cost : 0;
             view.eligibleSubcardIds = eligible;
             // An "@@skill" prompt asks for that skill's product, which canActivate and
@@ -1806,6 +1807,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.targetFixed = candidate.targetFixed;
             view.feasibleWithNoTarget = candidate.feasibleWithNoTarget;
             view.completeCoverage = candidate.completeCoverage;
+            if (!view.completeCoverage) staged = false;
             view.legalTargets = candidate.legalTargets;
             view.maxVotes = candidate.maxVotes;
             view.extraTargetKnown = candidate.extraTargetKnown;

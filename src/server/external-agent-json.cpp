@@ -119,7 +119,6 @@ QJsonValue json(const AICardConversionView &v) {
         {"costCount", json(v.costCount)},
         {"eligibleSubcardIds", json(v.eligibleSubcardIds)},
         {"subcardIds", json(v.subcardIds)},
-        {"selectionStages", json(v.selectionStages)},
         {"available", json(v.available)},
         {"matchesResponsePattern", json(v.matchesResponsePattern)},
         {"legacyStringKey", json(v.legacyStringKey)},

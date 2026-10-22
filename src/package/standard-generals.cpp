@@ -1890,8 +1890,6 @@ private:
 class Wusheng : public ViewAsSkillV2 {
 public:
     explicit Wusheng(const QString &name = "wusheng") : ViewAsSkillV2(name, 1) { setResponseOrUse(true); }
-    QStringList aiConversionStages() const override
-    { return {"material", "output", "targets"}; }
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         if (!request.initiator) return false;
@@ -2355,10 +2353,6 @@ public:
     {
         response_or_use = true;
     }
-
-    // The request fixes the output; the selected material retains its face.
-    QStringList aiConversionStages() const override
-    { return {"material", "output", "targets"}; }
 
     bool canActivate(const ActiveSkillRequest &request) const override
     {
