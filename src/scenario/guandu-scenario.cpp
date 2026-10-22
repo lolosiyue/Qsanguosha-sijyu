@@ -30,7 +30,7 @@ public:
     GreatYiji() : NosYiji()
     {
         setObjectName("greatyiji");
-        n = 3;
+        m_baseAmount = 3;
     }
 };
 

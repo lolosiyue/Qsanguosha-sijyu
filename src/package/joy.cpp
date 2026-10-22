@@ -373,7 +373,6 @@ public:
             || ctx.original_data->value<CardUseStruct>().to.isEmpty()
             || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         ctx.extra_data = ctx.owner->getOffensiveHorse()->getEffectiveId();
-        ctx.targets << ctx.owner;
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -384,14 +383,15 @@ public:
         room->throwCard(id, objectName(), ctx.owner);
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        ServerPlayer *target = ctx.owner;
         if (!ctx.original_data) return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (!use.card || use.to.isEmpty()) return false;
         use.to.clear();
         *ctx.original_data = QVariant::fromValue(use);
-        target->obtainCard(use.card);
+        room->obtainCard(target, use.card, objectName());
         return false;
     }
 };
@@ -611,18 +611,17 @@ public:
         if (!ctx.invoker || !ctx.invoker->isAlive()) return FinishSkill;
         if (ctx.use_card && ctx.use_card->getTypeId() != Card::TypeSkill) return ContinueEffects;
         if (ctx.choice.isEmpty() && ctx.use_card) ctx.choice = ctx.use_card->getTag("FiveLinesMode").toString();
+        Room *room = ctx.invoker->getRoom();
         ctx.manual_effect = true;
-        if (ctx.choice == "kurou") skillEffect(ctx, ctx.invoker);
+        if (ctx.choice == "kurou") ctx.invoker->drawCards(2 * getEffectiveAmount(ctx), objectName());
         else if (ctx.choice == "jieyin") {
-            skillEffect(ctx, ctx.invoker);
+            room->recover(ctx.invoker, RecoverStruct(objectName(), ctx.invoker, getEffectiveAmount(ctx)));
             for (ServerPlayer *target : ctx.targets) skillEffect(ctx, target);
         } else if (ctx.choice == "rende") {
             for (ServerPlayer *target : ctx.targets) skillEffect(ctx, target);
             const int old = ctx.extra_data.toMap().value("given").toInt();
-            if (old < 2 && old + ctx.use_card->subcardsLength() >= 2) {
-                ctx.choice = "recover";
-                skillEffect(ctx, ctx.invoker);
-            }
+            if (old < 2 && old + ctx.use_card->subcardsLength() >= 2 && ctx.invoker->isAlive())
+                room->recover(ctx.invoker, RecoverStruct(objectName(), ctx.invoker, getEffectiveAmount(ctx)));
         }
         return FinishSkill;
     }
@@ -636,7 +635,6 @@ public:
             room->obtainCard(target, ctx.use_card,
                 CardMoveReason(CardMoveReason::S_REASON_GIVE, ctx.initiator->objectName(), target->objectName(), objectName(), ""), false);
         }
-        else if (ctx.choice == "kurou") target->drawCards(2 * getEffectiveAmount(ctx), objectName());
         else room->recover(target, RecoverStruct(objectName(), ctx.invoker, getEffectiveAmount(ctx)));
         return ContinueEffects;
     }
@@ -667,11 +665,11 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.original_data || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.targets << ctx.invoker;
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
+        ServerPlayer *target = ctx.owner;
         if (target && target->isAlive()) target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }

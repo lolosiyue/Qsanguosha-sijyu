@@ -480,11 +480,12 @@ FireAttack::FireAttack(Card::Suit suit, int number)
 
 bool FireAttack::isAvailable(const Player *player) const
 {
+    if (!SingleTargetTrick::isAvailable(player)) return false;
     QList<const Player *> targets = player->getAliveSiblings();
 	targets << player;
 	foreach (const Player *p, targets) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -503,7 +504,7 @@ void FireAttack::onEffect(CardEffectStruct &effect) const
         return;
 
     const Card *card = room->askForCardShow(effect.to, effect.from, objectName());
-    room->showCard(effect.to, card->getEffectiveId());
+    room->showCard(effect.to, card->getEffectiveId(), QList<ServerPlayer *>(), objectName());
 
     QString suit_str = card->getSuitString();
     QString suit_str_png = suit_str;
@@ -604,9 +605,10 @@ SupplyShortage::SupplyShortage(Card::Suit suit, int number)
 
 bool SupplyShortage::isAvailable(const Player *player) const
 {
+	if (!DelayedTrick::isAvailable(player)) return false;
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return DelayedTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }

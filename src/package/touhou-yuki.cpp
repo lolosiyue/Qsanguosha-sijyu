@@ -252,12 +252,12 @@ public:
         if (!payer->handCards().contains(given))
             return ContinueEffects;
         room->giveCard(payer, target, ctx.use_card, objectName(), true);
-        if (!source->isAlive() || !target->isAlive() || target->isNude())
+        if (!source->isAlive() || !target->isAlive() || !source->canGet(target, "he"))
             return ContinueEffects;
-        const int id = room->askForCardChosen(source, target, "he", objectName());
-        if (id < 0)
+        const int id = room->askForCardChosen(source, target, "he", objectName(), false, Card::MethodGet);
+        if (id < 0 || !source->canGet(target, id))
             return ContinueEffects;
-        CardMoveReason extraction(CardMoveReason::S_REASON_EXTRACTION, source->objectName());
+        CardMoveReason extraction(CardMoveReason::S_REASON_EXTRACTION, source->objectName(), target->objectName(), objectName(), QString());
         room->obtainCard(source, Sanguosha->getCard(id), extraction, room->getCardPlace(id) != Player::PlaceHand);
         QList<ServerPlayer *> receivers = room->getOtherPlayers(target);
         receivers.removeOne(source);
@@ -284,7 +284,7 @@ public:
         const CardUseStruct &use = move.reason.m_useStruct;
         if (move.to_place != Player::DiscardPile || !move.from_places.contains(Player::PlaceTable)
             || (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_USE
-            || !use.card || !use.from || use.from == player || use.from->getKingdom() != "yuki"
+            || !use.card || !use.from || use.from == player || !use.from->hasLordSkillKingdom("yuki", player)
             || use.card->getSuit() != Card::Heart || use.card->getTypeId() != Card::TypeBasic)
             return TriggerList();
         foreach (int id, move.card_ids)
@@ -311,7 +311,7 @@ public:
         if (ids.isEmpty())
             return false;
         DummyCard dummy(ids);
-        room->obtainCard(ctx.owner, &dummy);
+        room->obtainCard(ctx.owner, &dummy, objectName());
         return false;
     }
 };
@@ -642,7 +642,7 @@ public:
                 return false;
             room->setCardFlag(card, "-thzhancao");
             const QList<int> materials = card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getEffectiveId()};
-            owner->obtainCard(card);
+            room->obtainCard(owner, card, objectName());
             QList<int> intercepted;
             foreach (int id, materials)
                 if (move.card_ids.contains(id) && room->getCardOwner(id) == owner)
@@ -1064,14 +1064,17 @@ public:
 
 // ---------------------------------------------------------------- yuki008
 
-class ThZiyun : public ProhibitSkill
+class ThZiyun : public ProhibitSkillV2
 {
 public:
-    ThZiyun() : ProhibitSkill("thziyun") { frequency = Compulsory; }
+    ThZiyun() : ProhibitSkillV2("thziyun") { frequency = Compulsory; }
 
-    bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const override
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
-        return to && card && to->hasSkill(objectName()) && (card->isKindOf("SupplyShortage") || card->isKindOf("Lightning"));
+        // Secondary selects the target; Engine has already checked this skill instance.
+        const Player *to = context.holder;
+        const Card *card = context.card;
+        return to && card && (card->isKindOf("SupplyShortage") || card->isKindOf("Lightning"));
     }
 };
 
@@ -1843,7 +1846,7 @@ public:
                         available << id;
                 if (!available.isEmpty()) {
                     DummyCard dummy(available);
-                    room->obtainCard(owner, &dummy);
+                    room->obtainCard(owner, &dummy, objectName());
                 }
             }
             return false;
@@ -1855,7 +1858,7 @@ public:
         move.removeCardIds(ids);
         *ctx.original_data = QVariant::fromValue(move);
         DummyCard dummy(ids);
-        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, owner->objectName(), objectName(), QString());
+        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, owner->objectName(), move.from->objectName(), objectName(), QString());
         room->obtainCard(owner, &dummy, reason, false);
         return false;
     }
@@ -2404,7 +2407,7 @@ public:
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         const Player *lord = attachedParentOwner(request, "thfuyue");
-        return lord && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator->getKingdom() == "yuki"
+        return lord && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator->hasLordSkillKingdom("yuki", lord)
             && !request.initiator->isKongcheng() && lord->getHp() == 1 && !lord->isKongcheng();
     }
 

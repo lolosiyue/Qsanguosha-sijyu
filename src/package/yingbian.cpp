@@ -58,7 +58,7 @@ void Chuqibuyi::onEffect(CardEffectStruct &effect) const
     Room *room = effect.from->getRoom();
 
     int hand_id = room->askForCardChosen(effect.from, effect.to, "h", objectName());
-    room->showCard(effect.to, hand_id);
+    room->showCard(effect.to, hand_id, QList<ServerPlayer *>(), objectName());
 
     if (Sanguosha->getCard(hand_id)->getSuit() != getSuit())
         room->damage(DamageStruct(this, effect.from, effect.to));
@@ -103,9 +103,10 @@ Zhujinqiyuan::Zhujinqiyuan(Suit suit, int number)
 
 bool Zhujinqiyuan::isAvailable(const Player *player) const
 {
+	if (!SingleTargetTrick::isAvailable(player)) return false;
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -130,10 +131,11 @@ void Zhujinqiyuan::onEffect(CardEffectStruct &effect) const
             int id2 = room->askForCardChosen(effect.from, effect.to, "hej", "zhujinqiyuan", false, Card::MethodDiscard);
             room->throwCard(id2, room->getCardPlace(id2) == Player::PlaceDelayedTrick ? nullptr : effect.to, effect.from);
         }
-        if (effect.from->isAlive() && effect.to->isAlive() && !effect.to->isAllNude()) {
-            int id1 = room->askForCardChosen(effect.from, effect.to, "hej", "zhujinqiyuan");
-            CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName());
-            room->obtainCard(effect.from, Sanguosha->getCard(id1), reason, room->getCardPlace(id1) != Player::PlaceHand);
+        if (effect.from->isAlive() && effect.to->isAlive() && effect.from->canGet(effect.to, "hej")) {
+            int id1 = room->askForCardChosen(effect.from, effect.to, "hej", "zhujinqiyuan", false, Card::MethodGet);
+            CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName(), effect.to->objectName(), "zhujinqiyuan", QString());
+            if (effect.from->canGet(effect.to, id1))
+                room->obtainCard(effect.from, Sanguosha->getCard(id1), reason, room->getCardPlace(id1) != Player::PlaceHand);
         }
     } else {
         int distance = effect.from->distanceTo(effect.to);
@@ -141,16 +143,18 @@ void Zhujinqiyuan::onEffect(CardEffectStruct &effect) const
 
         Card::HandlingMethod method = Card::MethodDiscard;
         if (distance == 1)
-            method = Card::MethodNone;
+            method = Card::MethodGet;
         if (method == Card::MethodDiscard && !effect.from->canDiscard(effect.to, "hje")) return;
+        if (method == Card::MethodGet && !effect.from->canGet(effect.to, "hej")) return;
 
         int id = room->askForCardChosen(effect.from, effect.to, "hej", "zhujinqiyuan", false, method);
 
         if (method == Card::MethodDiscard)
             room->throwCard(id, room->getCardPlace(id) == Player::PlaceDelayedTrick ? nullptr : effect.to, effect.from);
         else {
-            CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName());
-            room->obtainCard(effect.from, Sanguosha->getCard(id), reason, room->getCardPlace(id) != Player::PlaceHand);
+            CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName(), effect.to->objectName(), "zhujinqiyuan", QString());
+            if (effect.from->canGet(effect.to, id))
+                room->obtainCard(effect.from, Sanguosha->getCard(id), reason, room->getCardPlace(id) != Player::PlaceHand);
         }
     }
 }

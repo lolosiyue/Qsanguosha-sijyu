@@ -831,7 +831,7 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 ### 選擇階段（Selection Phase）
 
 - 玩家通過 `askForTriggerOrder` 選擇
-- `askForTriggerOrder` 用於同一時機的武將技能排序（例如受到傷害後的 `yiji`、`jieming`）。global 規則／記錄／清理回呼在一般與裝備事件分組中均自動進入原有 cost／effect 流程，不因未宣告 `Compulsory` 而加入排序選單；暗將來源仍保留亮將同意。
+- `askForTriggerOrder` 用於同一時機的武將技能排序（例如受到傷害後的 `yiji`、`jieming`）。global 規則／記錄／清理回呼在一般與裝備事件分組中均自動進入原有 cost／effect 流程，不因未宣告 `Compulsory` 而加入排序選單；暗將來源仍保留亮將同意。非 global 的 C++ 技能可呼叫 `setRuleResolution(true)` 取得同樣的規則結算（仍只隨持有者註冊；隱藏或無來源的 context 也略過技能觀察事件），例如裸衣已生效後的 `#luoyi` receipt。
 - 名稱格式：`skillName*multiplier#instanceId`
 - 實例定位透過玩家層 `Player::findSkillInstance(skillName, instanceID)`（非 Engine 技能查找）；`Engine::getTriggerSkill(name, instanceId)` 的 instanceId 參數僅為相容保留（見上節）
 
@@ -1370,6 +1370,12 @@ force_extra_skill = sgs.CreateTriggerSkill{
 - 同一技能被多個攔截者修改時，取所有設定的最大值
 
 multiplier 用法見上；`trigger_count` 由框架在重檢時注入，可用來限制手動觸發的次數。
+
+**拒絕即結束**：任一次 `cost`／`on_cost` 返回 false，框架即消耗該技能實例本次事件剩餘的倍數次數。因此 `*N` 只用於每次相同的重複發動（如每 1 點傷害）；逐目標發動改用下方的有序目標語法。
+
+### 逐目標觸發（有序目標語法）
+
+`can_trigger`／`triggerable()` 可返回 `"skillName->a+b+c"`（以 `+` 串接角色 objectName；實例寫作 `skillName->a+b#instanceId`），裝備技與一般 V2 技能皆適用。框架為每個目標建立一個 context，`ctx.targets = {target}`、`ctx.preferredTarget = target`；拒絕某目標只跳過該目標；一般技能的各目標互相獨立，可依任意順序處理，結算一個只消耗該目標（裝備技則沿用「選較後的目標視為放棄較前的目標」）；已亮出的鎖定技每輪只提供第一個未處理的目標。`cost` 讀 `ctx.preferredTarget`，不需再自行加入 `ctx.targets`。
 
 ### 注意事項
 

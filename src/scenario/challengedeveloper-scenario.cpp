@@ -952,15 +952,18 @@ public:
     }
 };
 
-class DevSaichePro : public ProhibitSkill
+class DevSaichePro : public ProhibitSkillV2
 {
 public:
-    DevSaichePro() : ProhibitSkill("#dev_saiche")
+    DevSaichePro() : ProhibitSkillV2("#dev_saiche")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
+        const Player *from = context.from, *to = context.to;
+        const Card *card = context.card;
         return from->getMark("dev_saiche-Clear") > 0 && !card->isKindOf("SkillCard") && from->distanceTo(to) > 1;
     }
 };

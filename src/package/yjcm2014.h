@@ -44,7 +44,7 @@ public:
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override;
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override;
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override;
 
 protected:
     QString jianying;

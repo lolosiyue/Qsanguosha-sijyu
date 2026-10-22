@@ -175,6 +175,12 @@ bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternat
 		foreach (const Term &term, alternative.places) {
 			const bool positive = term.negated;
 			const QString &place = term.text;
+			QString pilePlace;
+			QList<const Player *> pileOwners;
+			if (place.startsWith("%")) {
+				pilePlace = place.mid(1);
+				pileOwners = player->getAliveSiblings();
+			}
 			foreach (int id, card->getSubcards()) {
 				checkpoint = positive;
 				if (place == "equipped"){
@@ -184,9 +190,8 @@ bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternat
 					if(player->handCards().contains(id))
 						checkpoint = !positive;
 				}else if (place.startsWith("%")) {
-					QString place2 = place.mid(1);
-					foreach(const Player *as, player->getAliveSiblings()){
-						if (as->getPile(place2).contains(id)) {
+					foreach(const Player *as, pileOwners){
+						if (as->getPile(pilePlace).contains(id)) {
 							checkpoint = !positive;
 							break;
 						}

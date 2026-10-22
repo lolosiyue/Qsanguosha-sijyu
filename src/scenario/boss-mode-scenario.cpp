@@ -246,16 +246,18 @@ public:
     }
 };
 
-class Duduan : public ProhibitSkill
+class Duduan : public ProhibitSkillV2
 {
 public:
-    Duduan() :ProhibitSkill("duduan")
+    Duduan() :ProhibitSkillV2("duduan")
     {
     }
 
-    bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
-        return card->isKindOf("DelayedTrick")&&to->hasSkill(objectName());
+        // Secondary selects the target; Engine has already checked this skill instance.
+        const Card *card = context.card;
+        return card->isKindOf("DelayedTrick");
     }
 };
 

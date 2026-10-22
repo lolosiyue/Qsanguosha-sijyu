@@ -518,9 +518,10 @@ void Meirenji::onEffect(CardEffectStruct &effect) const
     Room*room = effect.to->getRoom();
     foreach (ServerPlayer*p, room->getAllPlayers()) {
         if (effect.to->isDead() || effect.to->isKongcheng()) break;
-        if (p->isDead() || !p->isFemale()) continue;
-        int id = room->askForCardChosen(p, effect.to, "h", objectName());
-        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, p->objectName());
+        if (p->isDead() || !p->isFemale() || !p->canGet(effect.to, "h")) continue;
+        int id = room->askForCardChosen(p, effect.to, "h", objectName(), false, Card::MethodGet);
+        if (!p->canGet(effect.to, id)) continue;
+        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, p->objectName(), effect.to->objectName(), objectName(), QString());
         room->obtainCard(p, Sanguosha->getCard(id), reason, false);
         if (p->isAlive() && effect.from->isAlive() && !p->isKongcheng()) {
             const Card*card = room->askForCard(p, ".|.|.|hand!", "@__meirenji-give:" + effect.from->objectName(), QVariant::fromValue(effect.from), Card::MethodNone);
@@ -693,9 +694,7 @@ public:
         const qint64 turn = room->historyScopes().value("turn_id").toLongLong();
         if (turn <= 0) return {};
         // The printed condition is damage dealt during this turn, not damage received during the round.
-        const QVariantMap damage = room->queryActualDamage({{"turn_id", turn}, {"from", player->objectName()}, {"limit", 1}});
-        if (!damage.value("complete").toBool() || !damage.value("attribution_complete").toBool()
-            || !damage.value("items").toList().isEmpty()) return {};
+        if (room->hasActualDamage({{"turn_id", turn}, {"from", player->objectName()}}) != 0) return {};
         TriggerList result;
         for (ServerPlayer *owner : room->getOtherPlayers(player)) if (owner->hasTreasure(objectName())) result[owner] << objectName();
         return result;
@@ -1041,7 +1040,7 @@ public:
         QList<int> ids = slash->isVirtualCard() ? slash->getSubcards() : QList<int>{slash->getEffectiveId()};
         QList<int> obtainable;
         for (int id : ids) if (id >= 0 && (room->getCardPlace(id) == Player::PlaceTable || room->getCardPlace(id) == Player::DiscardPile)) obtainable << id;
-        if (!obtainable.isEmpty()) { DummyCard cards(obtainable); room->obtainCard(target, &cards); }
+        if (!obtainable.isEmpty()) { DummyCard cards(obtainable); room->obtainCard(target, &cards, objectName()); }
         if (target->isAlive()) {
             target->drawCards(getEffectiveAmount(ctx), objectName());
             // This is an applied Slash allowance; it remains after the weapon leaves play.
@@ -1147,7 +1146,7 @@ public:
         const int id = ctx.extra_data.toInt();
         if (!owner->handCards().contains(id)) return false;
         const QString name = Sanguosha->getCard(id)->objectName();
-        room->showCard(owner, id);
+        room->showCard(owner, id, QList<ServerPlayer *>(), objectName());
         ctx.extra_data = name;
         return true;
     }

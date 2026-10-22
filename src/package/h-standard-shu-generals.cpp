@@ -44,6 +44,15 @@ bool invokeHegemonySkill(const TriggerSkill *skill, Room *room, ServerPlayer *ow
     return true;
 }
 
+// Each recorded slash target is its own invocation, so declining one keeps the rest.
+TriggerList slashTargetTrigger(const QString &skill, ServerPlayer *player, const QVariant &data)
+{
+    const CardUseStruct use = data.value<CardUseStruct>();
+    if (!ownsHegemonySkill(player, skill) || !use.card || !use.card->isKindOf("Slash")) return {};
+    const QStringList targets = use.card->getTag(skill + "_targets").toStringList();
+    return targets.isEmpty() ? TriggerList() : TriggerList{{player, {skill + "->" + targets.join("+")}}};
+}
+
 bool hasShouyue(const Player *player)
 {
     const Player *lord = player ? player->getLord() : nullptr;
@@ -313,21 +322,14 @@ public:
     }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        const CardUseStruct use = data.value<CardUseStruct>();
-        if (!ownsHegemonySkill(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
-        const int count = use.card->getTag(objectName() + "_targets").toStringList().size();
-        return count > 0 ? TriggerList{{player, {objectName() + "*" + QString::number(count)}}} : TriggerList();
+        return slashTargetTrigger(objectName(), player, data);
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.original_data) return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card) return false;
-        const QStringList targets = use.card->getTag(objectName() + "_targets").toStringList();
-        if (ctx.trigger_count < 0 || ctx.trigger_count >= targets.size()) return false;
-        ServerPlayer *target = room->findPlayerByObjectName(targets.at(ctx.trigger_count));
-        if (!target || !target->isAlive() || !use.to.contains(target)) return false;
-        ctx.targets = {target};
+        ServerPlayer *target = ctx.preferredTarget;
+        if (!use.card || !target || !target->isAlive() || !use.to.contains(target)) return false;
         return invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target));
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
@@ -428,22 +430,15 @@ public:
     }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        const CardUseStruct use = data.value<CardUseStruct>();
-        if (!ownsHegemonySkill(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
-        const int count = use.card->getTag(objectName() + "_targets").toStringList().size();
-        return count > 0 ? TriggerList{{player, {objectName() + "*" + QString::number(count)}}} : TriggerList();
+        return slashTargetTrigger(objectName(), player, data);
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.original_data) return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card) return false;
-        const QStringList targets = use.card->getTag(objectName() + "_targets").toStringList();
-        if (ctx.trigger_count < 0 || ctx.trigger_count >= targets.size()) return false;
-        ServerPlayer *target = room->findPlayerByObjectName(targets.at(ctx.trigger_count));
-        if (!target || !target->isAlive() || !use.to.contains(target)) return false;
+        ServerPlayer *target = ctx.preferredTarget;
+        if (!use.card || !target || !target->isAlive() || !use.to.contains(target)) return false;
         if (target->getHp() < ctx.owner->getHp()) return false;
-        ctx.targets = {target};
         return invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target));
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
@@ -627,7 +622,7 @@ public:
         if (available) {
             DummyCard card(move.card_ids);
             room->broadcastSkillInvoke(objectName(), 2, ctx.owner);
-            ctx.owner->obtainCard(&card);
+            room->obtainCard(ctx.owner, &card, objectName());
         }
         return false;
     }

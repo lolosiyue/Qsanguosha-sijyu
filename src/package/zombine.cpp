@@ -51,18 +51,22 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (ctx.original_data)
+            if (ServerPlayer *to = ctx.original_data->value<DamageStruct>().to) ctx.targets = {to};
+        return true;
+    }
+
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
+        ctx.manual_effect = true;
         if (!ctx.owner || !ctx.original_data) return false;
         SkillContext damage = ctx;
-        damage.choice = "damage";
         damage.extra_data = false;
-        skillEffect(event, room, player, damage, ctx.original_data->value<DamageStruct>().to);
-        if (damage.extra_data.toBool() && ctx.owner->isAlive() && ctx.owner->getHp() > 1) {
-            SkillContext loss = ctx;
-            loss.choice = "losehp";
-            skillEffect(event, room, player, loss, ctx.owner);
-        }
+        for (ServerPlayer *to : ctx.targets) skillEffect(event, room, player, damage, to);
+        if (damage.extra_data.toBool() && ctx.owner->isAlive() && ctx.owner->getHp() > 1)
+            room->loseHp(HpLostStruct(ctx.owner, getEffectiveAmount(ctx), objectName(), ctx.owner));
         return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
@@ -70,21 +74,18 @@ public:
         if (!target || !target->isAlive()) return false;
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
-        if (ctx.choice == "losehp") room->loseHp(HpLostStruct(target, amount, objectName(), ctx.owner));
-        else {
-            DamageStruct damage = ctx.original_data->value<DamageStruct>();
-            LogMessage log;
-            log.type = "#Xunmeng";
-            log.from = ctx.owner;
-            log.to << target;
-            log.arg = QString::number(damage.damage);
-            damage.damage += amount;
-            log.arg2 = QString::number(damage.damage);
-            room->sendLog(log);
-            // Commit before HP loss can enter a nested dying window.
-            ctx.original_data->setValue(damage);
-            ctx.extra_data = true;
-        }
+        DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        LogMessage log;
+        log.type = "#Xunmeng";
+        log.from = ctx.owner;
+        log.to << target;
+        log.arg = QString::number(damage.damage);
+        damage.damage += amount;
+        log.arg2 = QString::number(damage.damage);
+        room->sendLog(log);
+        // Commit before HP loss can enter a nested dying window.
+        ctx.original_data->setValue(damage);
+        ctx.extra_data = true;
         return false;
     }
 };
@@ -122,9 +123,10 @@ public:
     }
 
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ctx.targets = {ctx.owner}; return ctx.owner != nullptr; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    { return ctx.owner != nullptr; }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        ServerPlayer *target = ctx.owner;
         if (!target || !target->isAlive() || !ctx.owner) return false;
         const int count = getNumDiff(ctx.owner) * getEffectiveAmount(ctx);
         if (count > 0) {
@@ -210,30 +212,17 @@ public:
             owner->setSkillInstanceStateValue(name, id, "pending", pending + gained);
             refreshMark(room, owner);
         } else if (event == EventPhaseStart) {
-            const int ready = owner->getSkillInstanceStateValue(name, id, "round_ready", 0).toInt();
-            if (ready <= 0) return false;
-            // Snapshot only. A canceled target effect must keep the marks.
-            ctx.extra_data = ready;
-            ctx.targets = {owner};
+            const int want = owner->getSkillInstanceStateValue(name, id, "round_ready", 0).toInt();
+            if (want <= 0 || !owner->isAlive()) return false;
+            const int current = owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
+            const int consumed = qMin(want, current);
+            if (consumed <= 0) return false;
+            owner->setSkillInstanceStateValue(name, id, "pending", current - consumed);
+            owner->setSkillInstanceStateValue(name, id, "round_ready", 0);
+            refreshMark(room, owner);
+            const int draw = consumed * 3 * getEffectiveAmount(ctx);
+            if (draw > 0) owner->drawCards(draw, objectName());
         }
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        if (!target || !target->isAlive() || !ctx.owner || !ctx.activationRef.isValid()) return false;
-        const int want = ctx.extra_data.toInt();
-        if (want <= 0) return false;
-        const QString name = ctx.activationRef.key.skillName;
-        const int id = ctx.activationRef.key.instanceID;
-        const int current = ctx.owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
-        const int consumed = qMin(want, current);
-        if (consumed <= 0) return false;
-        // Marks added while this target effect was being intercepted stay on the instance.
-        ctx.owner->setSkillInstanceStateValue(name, id, "pending", current - consumed);
-        ctx.owner->setSkillInstanceStateValue(name, id, "round_ready", 0);
-        refreshMark(room, ctx.owner);
-        const int draw = consumed * 3 * getEffectiveAmount(ctx);
-        if (draw > 0) target->drawCards(draw, objectName());
         return false;
     }
 };

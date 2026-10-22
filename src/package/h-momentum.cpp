@@ -384,7 +384,7 @@ public:
             *ctx.original_data = QVariant::fromValue(move);
         }
         DummyCard card(ids);
-        room->obtainCard(target, &card);
+        room->obtainCard(target, &card, objectName());
         return false;
     }
 };
@@ -638,7 +638,7 @@ public:
         if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Draw
             || (!player->isKongcheng() && (Config.EnableHegemony ? player->getHp() != 1 : player->getHp() > 1))) return {};
         for (ServerPlayer *p : room->getOtherPlayers(player))
-            if (!p->isAllNude()) return TriggerList{{player, QStringList{objectName()}}};
+            if (player->canGet(p, "hej")) return TriggerList{{player, QStringList{objectName()}}};
         return {};
     }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override {
@@ -647,17 +647,17 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
         room->setPlayerMark(ctx.owner, "HengzhengUsed", 1);
         // Replacement draw must return true after all V2 target effects complete.
-        ctx.manual_effect = true;
         for (ServerPlayer *p : room->getOtherPlayers(ctx.owner)) {
             if (!ctx.owner->isAlive()) break;
-            if (!p->isAllNude()) skillEffect(event, room, player, ctx, p);
+            if (ctx.owner->canGet(p, "hej")) skillEffect(event, room, player, ctx, p);
         }
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
-        if (!target->isAllNude() && ctx.owner->isAlive()) {
-            const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName());
-            room->obtainCard(ctx.owner, id, false);
+        if (ctx.owner->isAlive() && ctx.owner->canGet(target, "hej")) {
+            const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodGet);
+            if (!ctx.owner->canGet(target, id)) return false;
+            room->obtainCard(ctx.owner, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), QString()), false);
         }
         return false;
     }
@@ -849,7 +849,7 @@ public:
         const Player *owner = lord(request);
         if (!owner || owner->getPile("heavenly_army").isEmpty()) return false;
         if (Config.EnableHegemony ? (!request.initiator->hasShownOneGeneral() || !owner->isFriendWith(request.initiator))
-                                 : owner->getKingdom() != request.initiator->getKingdom()) return false;
+                                 : !request.initiator->hasLordSkillKingdom(owner->getKingdom(), owner)) return false;
         return request.reason == CardUseStruct::CARD_USE_REASON_PLAY ? Slash::IsAvailable(request.initiator) : request.pattern == "slash";
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override {
@@ -885,7 +885,7 @@ public:
             && (!Config.EnableHegemony || !room->isGeneralHiddenForSkill(root));
         for (ServerPlayer *p : room->getAllPlayers(true)) {
             const bool friendly = Config.EnableHegemony ? p->isFriendWith(ctx.owner)
-                : p->getKingdom() == ctx.owner->getKingdom();
+                : p->hasLordSkillKingdom(ctx.owner->getKingdom(), ctx.owner);
             const QString grantName = Config.EnableHegemony ? "heg_huangjinsymbol" : "heg_hongfa_slash";
             if (enabled && p->isAlive() && friendly) room->attachSkillToPlayer(p, grantName, root);
             else {
@@ -1033,13 +1033,13 @@ public:
         Room *room = ctx.invoker->getRoom();
         for (ServerPlayer *p : room->getAlivePlayers())
             for (const Card *card : p->getEquips())
-                if (Sanguosha->getCard(card->getEffectiveId())->isKindOf("PeaceSpell")) {
-                    room->obtainCard(ctx.invoker, card, true);
+                if (Sanguosha->getCard(card->getEffectiveId())->isKindOf("PeaceSpell") && ctx.invoker->canGet(p, card->getEffectiveId())) {
+                    room->obtainCard(ctx.invoker, card, objectName(), true);
                     return ContinueEffects;
                 }
         for (int id : room->getDiscardPile())
             if (Sanguosha->getCard(id)->isKindOf("PeaceSpell")) {
-                room->obtainCard(ctx.invoker, id, true);
+                room->obtainCard(ctx.invoker, id, objectName(), true);
                 break;
             }
         return ContinueEffects;
@@ -1214,9 +1214,9 @@ public:
             player->setFlags("-peacespell_throwing");
             if (Config.EnableHegemony) {
                 player->drawCards(2, objectName());
-                if (player->isAlive() && player->getHp() > 1) room->loseHp(player);
+                if (player->isAlive() && player->getHp() > 1) room->loseHp(HpLostStruct(player, 1, objectName(), player));
             } else {
-                room->loseHp(player);
+                room->loseHp(HpLostStruct(player, 1, objectName(), player));
                 if (player->isAlive()) player->drawCards(2);
             }
         }

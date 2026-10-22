@@ -465,7 +465,7 @@ public:
         source->removeTag("ThXumeiDummy");
         if (target && !gain.isEmpty()) {
             DummyCard dummy(gain);
-            room->obtainCard(target, &dummy);
+            room->obtainCard(target, &dummy, objectName());
         }
         QList<int> rest;
         foreach (int id, ids)
@@ -663,7 +663,7 @@ public:
         move.removeCardIds(weapons);
         *ctx.original_data = QVariant::fromValue(move);
         DummyCard dummy(weapons);
-        room->obtainCard(player, &dummy);
+        room->obtainCard(player, &dummy, QString("thsilian"));
         return false;
     }
 };
@@ -976,7 +976,7 @@ public:
         if (!target || !target->isAlive() || ids.isEmpty())
             return false;
         DummyCard dummy(ids);
-        room->obtainCard(target, &dummy);
+        room->obtainCard(target, &dummy, objectName());
         QList<int> equips;
         foreach (int id, ids) {
             const Card *card = Sanguosha->getCard(id);
@@ -1163,15 +1163,15 @@ public:
         if (target != player && player->isAlive() && player->isWounded()) {
             QList<ServerPlayer *> victims;
             foreach (ServerPlayer *p, room->getOtherPlayers(player))
-                if (!p->isKongcheng())
+                if (player->canGet(p, "h"))
                     victims << p;
             ServerPlayer *victim = victims.isEmpty()
                 ? nullptr
                 : room->askForPlayerChosen(player, victims, objectName(), "@thweide", true);
             if (victim) {
-                const int id = room->askForCardChosen(player, victim, "h", objectName());
-                if (id >= 0)
-                    room->obtainCard(player, id, false);
+                const int id = room->askForCardChosen(player, victim, "h", objectName(), false, Card::MethodGet);
+                if (id >= 0 && player->canGet(victim, id))
+                    room->obtainCard(player, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, player->objectName(), victim->objectName(), objectName(), QString()), false);
             }
         }
         return true;
@@ -1214,7 +1214,7 @@ public:
                 id = hand;
         if (id < 0 || !source->isAlive())
             return FinishSkill;
-        room->showCard(source, id);
+        room->showCard(source, id, QList<ServerPlayer *>(), objectName());
         const Card *card = Sanguosha->getCard(id);
         const Card *used = nullptr;
         if (card->isAvailable(source))
@@ -1339,7 +1339,7 @@ public:
         if (room->getCardOwner(id) != source || room->getCardPlace(id) != Player::PlaceHand)
             return ContinueEffects;
         const Card *peach = Sanguosha->getCard(id);
-        room->showCard(source, id);
+        room->showCard(source, id, QList<ServerPlayer *>(), objectName());
         const Card *slash = nullptr;
         if (target->canSlash(source, nullptr, false)) {
             const QString pattern = "Slash|^" + peach->getSuitString();

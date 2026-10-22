@@ -26,7 +26,7 @@ bool ownsCard(const Player *self, const Card *card)
 bool hasLieges(const Player *lord, const QString &kingdom)
 {
     foreach (const Player *p, lord->getAliveSiblings())
-        if (p->getKingdom() == kingdom)
+        if (p->hasLordSkillKingdom(kingdom, lord))
             return true;
     return false;
 }
@@ -166,11 +166,12 @@ public:
     {
         TriggerList result;
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!player || use.from != player || !player->isAlive() || player->getKingdom() != "yuki" || !use.card
+        if (!player || use.from != player || !player->isAlive() || !use.card
             || !use.card->isKindOf("Peach") || !use.to.contains(player))
             return result;
         foreach (ServerPlayer *lord, room->getOtherPlayers(player))
-            if (lord->hasLordSkill(objectName()) && player->getHp() > qMax(0, lord->getHp()))
+            if (lord->hasLordSkill(objectName()) && player->getHp() > qMax(0, lord->getHp())
+                && player->hasLordSkillKingdom("yuki", lord))
                 result[lord] << objectName();
         return result;
     }
@@ -310,19 +311,7 @@ bool dealtDamageThisTurn(Room *room, const ServerPlayer *player)
     const QVariant turn = room->historyScopes().value("turn_id");
     if (turn.toLongLong() == 0)
         return false;
-    QVariantMap filter{{"turn_id", turn}, {"from", player->objectName()}};
-    for (;;) {
-        const QVariantMap page = room->queryActualDamage(filter);
-        if (!page.value("complete").toBool() || !page.value("attribution_complete").toBool())
-            return false;
-        foreach (const QVariant &entry, page.value("items").toList())
-            if (entry.toMap().value("data").toMap().value("amount").toInt() > 0)
-                return true;
-        if (!page.value("has_more").toBool())
-            return false;
-        filter.insert("after", page.value("next_after"));
-        filter.insert("watermark", page.value("watermark"));
-    }
+    return room->hasActualDamage({{"turn_id", turn}, {"from", player->objectName()}}) == 1;
 }
 
 // A 杀 at any distance against a turn player who dealt damage this turn.
@@ -453,7 +442,7 @@ public:
             revealed.removeOne(hit);
             ServerPlayer *target = room->askForPlayerChosen(source, room->getAlivePlayers(), objectName(), "@ikxingyu-give");
             if (target && room->getCardPlace(hit) == Player::PlaceTable)
-                room->obtainCard(target, hit);
+                room->obtainCard(target, hit, objectName());
             else if (room->getCardPlace(hit) == Player::PlaceTable)
                 revealed << hit;
         }
@@ -516,7 +505,7 @@ public:
         ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         if (target && target->isAlive() && onTable(room, damage.card))
-            room->obtainCard(target, damage.card);
+            room->obtainCard(target, damage.card, objectName());
         return false;
     }
 };
@@ -643,15 +632,12 @@ public:
     }
 };
 
-// One trigger per point of damage taken.
+// One invocation per point of damage taken.
 TriggerList perDamagePoint(const QString &skill, ServerPlayer *player, const DamageStruct &damage)
 {
     if (!player || damage.to != player || !player->isAlive() || !player->hasSkill(skill))
         return TriggerList();
-    QStringList times;
-    for (int i = 0; i < damage.damage; ++i)
-        times << skill;
-    return TriggerList{{player, times}};
+    return TriggerList{{player, {skill + "*" + QString::number(damage.damage)}}};
 }
 
 class IkHuanji : public TriggerSkillV2
@@ -662,7 +648,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const DamageStruct damage = data.value<DamageStruct>();
-        if (!damage.from || damage.from->isAllNude())
+        if (!damage.from || !player || !player->canGet(damage.from, "hej"))
             return TriggerList();
         return perDamagePoint(objectName(), player, damage);
     }
@@ -670,22 +656,22 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
-        if (!from || from->isAllNude() || !ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(from)))
+        if (!from || !ctx.owner->canGet(from, "hej") || !ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(from)))
             return false;
         room->broadcastSkillInvoke(objectName());
+        ctx.targets = {from};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
     {
-        ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
-        if (!from || from->isAllNude())
+        if (!ctx.owner->canGet(from, "hej"))
             return false;
-        const int id = room->askForCardChosen(ctx.owner, from, "hej", objectName());
-        if (id < 0)
+        const int id = room->askForCardChosen(ctx.owner, from, "hej", objectName(), false, Card::MethodGet);
+        if (id < 0 || !ctx.owner->canGet(from, id))
             return false;
         room->obtainCard(ctx.owner, Sanguosha->getCard(id),
-                         CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName()),
+                         CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), from->objectName(), objectName(), QString()),
                          room->getCardPlace(id) != Player::PlaceHand);
         return false;
     }
@@ -796,7 +782,7 @@ bool fieldMoveSource(Room *room, ServerPlayer *mover, ServerPlayer *from, QList<
     foreach (const Card *c, from->getJudgingArea()) {
         bool ok = false;
         foreach (ServerPlayer *op, room->getOtherPlayers(from))
-            if (!mover->isProhibited(op, c) && !op->containsTrick(c->objectName()) && op->hasJudgeArea())
+            if (from->canMove(from, c->getEffectiveId()) && mover->canMove(from, c->getEffectiveId()) && !mover->isProhibited(op, c) && !op->containsTrick(c->objectName()) && op->hasJudgeArea())
                 ok = true;
         any = any || ok;
         if (!ok && disabled)
@@ -805,7 +791,7 @@ bool fieldMoveSource(Room *room, ServerPlayer *mover, ServerPlayer *from, QList<
     foreach (const Card *c, from->getEquips()) {
         const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
         bool ok = false;
-        if (equip)
+        if (equip && from->canMove(from, c->getEffectiveId()) && mover->canMove(from, c->getEffectiveId()))
             foreach (ServerPlayer *op, room->getOtherPlayers(from))
                 if (!op->getEquip(equip->location()) && op->hasEquipArea(equip->location()))
                     ok = true;
@@ -859,8 +845,8 @@ public:
         QList<int> disabled;
         if (!fieldMoveSource(room, player, from, &disabled))
             return false;
-        const int id = room->askForCardChosen(player, from, "ej", objectName(), false, Card::MethodNone, disabled);
-        if (id < 0 || disabled.contains(id))
+        const int id = room->askForCardChosen(player, from, "ej", objectName(), false, Card::MethodMove, disabled);
+        if (id < 0 || disabled.contains(id) || !from->canMove(from, id) || !player->canMove(from, id))
             return false;
         const Card *card = Sanguosha->getCard(id);
         const Player::Place place = room->getCardPlace(id);

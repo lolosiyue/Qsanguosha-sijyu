@@ -33,7 +33,7 @@ inline bool inDiscardPile(Room *room, const Card *card)
 }
 
 // Mark suffix the game rule clears when the current phase ends ("each phase once").
-// Skill::Limit_Phase without a phase name uses "-PhaseClear", which nothing clears.
+// Skill::Limit_Phase without a phase name derives the same suffix.
 inline QString currentPhaseClearSuffix(Room *room)
 {
     const ServerPlayer *current = room ? room->getCurrent() : nullptr;

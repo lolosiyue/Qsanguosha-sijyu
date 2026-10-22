@@ -303,12 +303,14 @@ public:
     }
 };
 
-class HHalberdProhibit : public ProhibitSkill {
+class HHalberdProhibit : public ProhibitSkillV2 {
 public:
-    HHalberdProhibit() : ProhibitSkill("heg_halberd-prohibit") {}
+    HHalberdProhibit() : ProhibitSkillV2("heg_halberd-prohibit") { setHolderSelector(CorrectSkill_System); }
 
-    bool isProhibited(const Player *from, const Player *to, const Card *card,
-                      const QList<const Player *> &others) const override {
+    bool isProhibited(const ProhibitSkillContext &context) const override {
+        const Player *from = context.from, *to = context.to;
+        const Card *card = context.card;
+        const QList<const Player *> &others = context.otherTargets;
         if (!from || !to || !from->hasFlag("HalberdSlashFilter") || !card || !card->isKindOf("Slash"))
             return false;
         if (!from->hasWeapon("Halberd", to)) return true;
@@ -351,17 +353,13 @@ public:
         return true;
     }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
-        if (ctx.choice == "draw") {
-            if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), "transfer");
-            return ContinueEffects;
-        }
         Room *room = ctx.invoker->getRoom();
         const int id = ctx.extra_data.isValid() ? ctx.extra_data.toInt() : ctx.physicalEquipSource.cardId();
         if (room->getCardOwner(id) != ctx.invoker || room->getCardPlace(id) != Player::PlaceEquip) return ContinueEffects;
         const bool draw = target->hasShownOneGeneral();
         room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
             ctx.invoker->objectName(), target->objectName(), "transfer", QString()), true);
-        if (draw) { ctx.choice = "draw"; skillEffect(ctx, ctx.invoker); }
+        if (draw && ctx.invoker->isAlive()) ctx.invoker->drawCards(getEffectiveAmount(ctx), "transfer");
         return ContinueEffects;
     }
 };
@@ -509,11 +507,8 @@ public:
         return list;
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
-        ctx.manual_effect = true;
-        return skillEffect(event, room, player, ctx, ctx.owner);
-    }
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *actor) const override {
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        ServerPlayer *actor = ctx.owner;
         if (event == DrawNCards) {
             DrawStruct draw = ctx.original_data->value<DrawStruct>();
             draw.num += getEffectiveAmount(ctx);
@@ -574,18 +569,17 @@ void HDrowning::onEffect(CardEffectStruct &effect) const{
 }
 
 bool HDrowning::isAvailable(const Player *player) const{
-    bool canUse = false;
+    if (!TrickCard::isAvailable(player))
+        return false;
     QList<const Player *> players = player->getAliveSiblings();
     foreach (const Player *p, players) {
-        if (player->isProhibited(p, this))
-            continue;
         if (!p->hasEquip())
             continue;
-        canUse = true;
-        break;
+        if (player->isProhibited(p, this))
+            continue;
+        return true;
     }
-
-    return canUse && TrickCard::isAvailable(player);
+    return false;
 }
 
 HBurningCamps::HBurningCamps(Card::Suit suit, int number, bool is_transferable)
@@ -676,13 +670,16 @@ void HLureTiger::onEffect(CardEffectStruct &effect) const{
     if (effect.from) effect.from->setFlags("LureTigerUser");
 }
 
-class HLureTigerProhibit : public ProhibitSkill {
+class HLureTigerProhibit : public ProhibitSkillV2 {
 public:
-    HLureTigerProhibit() : ProhibitSkill("#heg_lure_tiger-prohibit") {
+    HLureTigerProhibit() : ProhibitSkillV2("#heg_lure_tiger-prohibit") {
+        setHolderSelector(CorrectSkill_System);
         setProperty("supportsSourceLessProhibition", true);
     }
 
-    virtual bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const{
+    bool isProhibited(const ProhibitSkillContext &context) const override {
+        const Player *to = context.to;
+        const Card *card = context.card;
         return to && card && to->isRemoved() && card->getTypeId() != Card::TypeSkill;
     }
 };
@@ -1026,6 +1023,8 @@ HImperialOrder::HImperialOrder(Suit suit, int number)
 }
 
 bool HImperialOrder::isAvailable(const Player *player) const{
+    if (!TrickCard::isAvailable(player))
+        return false;
     bool invoke = !player->hasShownOneGeneral();
     if (!invoke) {
         foreach (const Player *p, player->getAliveSiblings()) {
@@ -1035,7 +1034,7 @@ bool HImperialOrder::isAvailable(const Player *player) const{
             }
         }
     }
-    return invoke && TrickCard::isAvailable(player);
+    return invoke;
 }
 
 void HImperialOrder::onUse(Room *room, CardUseStruct &card_use) const{
@@ -1100,7 +1099,7 @@ void HImperialOrder::onEffect(CardEffectStruct &effect) const{
                 effect.to->drawCards(1, objectName());
         }
     } else {
-        room->loseHp(effect.to);
+        room->loseHp(HpLostStruct(effect.to, 1, objectName(), effect.from));
     }
 }
 
@@ -1129,17 +1128,13 @@ public:
         return true;
     }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
-        if (ctx.choice == "draw") {
-            if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), "transfer");
-            return ContinueEffects;
-        }
         Room *room = ctx.invoker->getRoom();
         const int id = ctx.extra_data.isValid() ? ctx.extra_data.toInt() : ctx.physicalEquipSource.cardId();
         if (room->getCardOwner(id) != ctx.invoker || room->getCardPlace(id) != Player::PlaceEquip) return ContinueEffects;
         const bool draw = target->hasShownOneGeneral();
         room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
             ctx.invoker->objectName(), target->objectName(), "transfer", QString()), true);
-        if (draw) { ctx.choice = "draw"; skillEffect(ctx, ctx.invoker); }
+        if (draw && ctx.invoker->isAlive()) ctx.invoker->drawCards(getEffectiveAmount(ctx), "transfer");
         return ContinueEffects;
     }
 };

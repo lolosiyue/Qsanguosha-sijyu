@@ -117,7 +117,7 @@ public:
     Chengxiang();
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override;
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
 
 protected:
     int total_point;

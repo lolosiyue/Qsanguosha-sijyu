@@ -33,7 +33,7 @@ public:
         ServerPlayer *zhangliao = ctx.owner;
         QList<ServerPlayer *> targets;
         foreach (ServerPlayer *p, room->getOtherPlayers(zhangliao)) {
-            if (p->getHandcardNum() > zhangliao->getHandcardNum())
+            if (p->getHandcardNum() > zhangliao->getHandcardNum() && zhangliao->canGet(p, "h"))
                 targets << p;
         }
 
@@ -52,9 +52,9 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (target->isKongcheng()) return false;
-        int id = room->askForCardChosen(ctx.owner, target, "h", objectName());
-        if (id >= 0) {
+        if (!ctx.owner->canGet(target, "h")) return false;
+        int id = room->askForCardChosen(ctx.owner, target, "h", objectName(), false, Card::MethodGet);
+        if (id >= 0 && ctx.owner->canGet(target, id)) {
             CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), "");
             room->obtainCard(ctx.owner, Sanguosha->getCard(id), reason, false);
         }
@@ -194,7 +194,7 @@ public:
         DummyCard cards(player->handCards());
         for (const Card *card : player->getEquips()) cards.addSubcard(card);
         if (cards.subcardsLength() > 0) {
-            CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, ctx.owner->objectName());
+            CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, ctx.owner->objectName(), objectName(), QString());
             room->obtainCard(ctx.owner, &cards, reason, false);
         }
         return false;
@@ -586,7 +586,7 @@ public:
         DummyCard cards;
         for (int id : ListV2I(ctx.extra_data.toList()))
             if (room->getCardPlace(id) == Player::DiscardPile) cards.addSubcard(id);
-        if (cards.subcardsLength() > 0) ctx.owner->obtainCard(&cards);
+        if (cards.subcardsLength() > 0) room->obtainCard(ctx.owner, &cards, objectName());
         return false;
     }
 };
@@ -1143,9 +1143,10 @@ Drowning::Drowning(Suit suit, int number)
 
 bool Drowning::isAvailable(const Player *player) const
 {
+	if (!SingleTargetTrick::isAvailable(player)) return false;
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }

@@ -453,7 +453,7 @@ public:
                     && room->getCardPlace(id) == Player::PlaceHand && cardColor(Sanguosha->getCard(id)) == color
                     && source->canGet(holder, id)) cards.addSubcard(id);
             }
-            if (cards.subcardsLength() > 0) room->obtainCard(target, &cards, true);
+            if (cards.subcardsLength() > 0) room->obtainCard(target, &cards, objectName(), true);
             return false;
         }
         room->doAnimate(1, source->objectName(), target->objectName());
@@ -481,7 +481,7 @@ public:
             owners.insert(QString::number(id), target->objectName());
             state.insert("shown_owners", owners);
             ctx.extra_data = state;
-            room->showCard(target, id);
+            room->showCard(target, id, QList<ServerPlayer *>(), objectName());
         }
         return false;
     }

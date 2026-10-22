@@ -4,17 +4,15 @@
 #include "skill.h"
 #include "card.h"
 
-// Guanxing and Yizhi share observation rules while retaining their own sources.
+// Shared observation behavior; mode-specific modifiers belong to their own skills.
 class Guanxing : public TriggerSkillV2 {
 public:
     explicit Guanxing(const QString &name = "guanxing");
     bool canPreshow() const override;
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override;
-    void record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override;
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
 };
 
@@ -51,9 +49,6 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
     bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
-
-protected:
-    int n;
 };
 class NosRendeCard : public SkillCard
 {
@@ -313,7 +308,6 @@ public:
     Q_INVOKABLE MobileTongjiCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onUse(Room *room, CardUseStruct &card_use) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 

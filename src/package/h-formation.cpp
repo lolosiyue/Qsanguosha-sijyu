@@ -256,7 +256,7 @@ public:
     {
         const int id = ctx.extra_data.toInt();
         if (ctx.owner && target->isAlive() && ctx.owner->getPile("field").contains(id))
-            room->obtainCard(target, id);
+            room->obtainCard(target, id, objectName());
         return false;
     }
 };
@@ -566,7 +566,6 @@ public:
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        ctx.manual_effect = true;
         if (ctx.owner && ctx.invoker && ctx.invoker->isAlive()) skillEffect(ctx.current_event, ctx.invoker->getRoom(), ctx.invoker, ctx, ctx.owner);
         return false;
     }
@@ -591,8 +590,7 @@ public:
         const QVariant phase = room->historyScopes().value("phase_id");
         if (phase.toLongLong() == 0) return {};
         // Historical damage predates acquiring this skill too; a missing page is not zero damage.
-        const QVariantMap result = room->queryActualDamage({{"phase_id", phase}, {"from", player->objectName()}, {"limit", 1}});
-        if (!result.value("complete").toBool() || !result.value("items").toList().isEmpty()) return {};
+        if (room->hasActualDamage({{"phase_id", phase}, {"from", player->objectName()}}) != 0) return {};
         return {{player, {objectName()}}};
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -639,7 +637,7 @@ public:
 
 class HShangyi : public ViewAsSkillV2 {
 public:
-    HShangyi() : ViewAsSkillV2("heg_shangyi") {}
+    HShangyi() : ViewAsSkillV2("heg_shangyi") { setPhaseName("Play"); }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     bool canActivate(const ActiveSkillRequest &request) const override
     { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
@@ -1022,10 +1020,10 @@ public:
             if (!card->isKindOf("DragonPhoenix")) continue;
             if (event == CardsMoveOneTime) {
                 if (room->getCardPlace(id) == Player::DiscardPile || (room->getCardPlace(id) == Player::PlaceEquip
-                    && room->getCardOwner(id) != ctx.owner)) ctx.owner->obtainCard(card);
+                    && room->getCardOwner(id) != ctx.owner && ctx.owner->canGet(room->getCardOwner(id), id))) room->obtainCard(ctx.owner, card, objectName());
             } else if (room->getCardOwner(id) == ctx.owner
                        && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)) {
-                room->showCard(ctx.owner, id);
+                room->showCard(ctx.owner, id, QList<ServerPlayer *>(), objectName());
                 // Keep all parallel move metadata aligned; no shared removal flag.
                 move.removeCardIds({id});
                 *ctx.original_data = QVariant::fromValue(move);
@@ -1036,6 +1034,58 @@ public:
             break;
         }
         return false;
+    }
+};
+
+class HYizhi : public Guanxing {
+public:
+    HYizhi() : Guanxing("heg_yizhi")
+    {
+        events << EventSkillPay << EventSkillEffect;
+        frequency = Compulsory;
+        relate_to_place = "deputy";
+    }
+
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != EventSkillEffect) return false;
+        SkillContext observation = data.value<SkillContext>();
+        if (Config.EnableHegemony && ownsHegemonySkill(player, objectName())
+            && observation.owner == player && observation.skill_name == "guanxing"
+            && player->hasShownSkill("guanxing") && player->hasShownSkill(objectName())) {
+            observation.setModifiedAmount(getEffectiveAmount(observation));
+            data = QVariant::fromValue(observation);
+        }
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event == EventPhaseStart) {
+            // Existing Guanxing owns the observation; Yizhi only enhances it.
+            if (Config.EnableHegemony && player && player->hasSkill("guanxing")
+                && !player->getValidSkillInstanceIds("guanxing").isEmpty()) return {};
+            return Guanxing::triggerable(event, room, player, data);
+        }
+        if (event != EventSkillPay || !Config.EnableHegemony || !ownsHegemonySkill(player, objectName())
+            || player->hasShownSkill(objectName())) return {};
+        const SkillContext observation = data.value<SkillContext>();
+        return observation.owner == player && observation.skill_name == "guanxing"
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        if (event == EventPhaseStart) return Guanxing::cost(event, room, player, ctx);
+        if (!ctx.owner || !room->canShowGeneralForSkill(ctx.activationRef)) return false;
+        ctx.choice = room->askForChoice(ctx.owner, "GuanxingShowGeneral", "show_both_generals+cancel");
+        return ctx.choice == "show_both_generals";
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        // The nested payment hook only reveals this exact Yizhi source.
+        return event == EventPhaseStart ? Guanxing::effect(event, room, player, ctx) : false;
     }
 };
 
@@ -1100,7 +1150,7 @@ HFormationPackage::HFormationPackage()
 
     General *jiangwei = new General(this, "heg_jiangwei", "shu"); // SHU 012 G
     jiangwei->addSkill("tiaoxin");
-    jiangwei->addSkill(new Guanxing("heg_yizhi"));
+    jiangwei->addSkill(new HYizhi);
     jiangwei->setDeputyMaxHpAdjustedValue(-1);
     jiangwei->addSkill(new HTianfu);
 

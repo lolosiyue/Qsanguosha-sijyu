@@ -326,7 +326,7 @@ public:
         if (!target || !target->isAlive() || ids.isEmpty())
             return false;
         DummyCard dummy(ids);
-        room->obtainCard(target, &dummy);
+        room->obtainCard(target, &dummy, objectName());
         if (target != player && player->isAlive() && effect.to && effect.to->isAlive()
             && player->canSlash(effect.to, nullptr, false))
             room->askForUseSlashTo(player, effect.to, "iklanjian-slash:" + effect.to->objectName(), false, true);
@@ -379,7 +379,7 @@ public:
             target = player;
         DummyCard dummy(ids);
         room->setPlayerFlag(player, "Global_GongxinOperator");
-        room->obtainCard(target, &dummy, false);
+        room->obtainCard(target, &dummy, objectName(), false);
         room->setPlayerFlag(player, "-Global_GongxinOperator");
         return false;
     }

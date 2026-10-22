@@ -510,7 +510,7 @@ public:
         move.removeCardIds(ids);
         *ctx.original_data = QVariant::fromValue(move);
         DummyCard dummy(ids);
-        room->obtainCard(user, &dummy);
+        room->obtainCard(user, &dummy, objectName());
         return false;
     }
 };
@@ -672,7 +672,7 @@ public:
             if (player->isAlive() && player->canDiscard(player, "he")
                 && room->askForCard(player, ".Equip", "@ikyuzhi", QVariant(), objectName())) {
                 DummyCard get(tricks);
-                room->obtainCard(player, &get);
+                room->obtainCard(player, &get, objectName());
             } else {
                 rest << tricks;
             }
@@ -1170,7 +1170,7 @@ public:
         const QList<int> pile = player->getPile("rhythm");
         if (!pile.isEmpty() && player->isAlive()) {
             DummyCard dummy(pile);
-            room->obtainCard(player, &dummy);
+            room->obtainCard(player, &dummy, QString("ikhuyin"));
         }
         return false;
     }
@@ -1232,7 +1232,7 @@ public:
         const QList<int> pile = owner->getPile("rhythm");
         if (!pile.isEmpty()) {
             DummyCard dummy(pile);
-            room->obtainCard(player, &dummy);
+            room->obtainCard(player, &dummy, QString("ikhuyin"));
         }
         if (player->isAlive())
             room->loseHp(player, 1, true, owner, "ikhuyin");
@@ -1490,7 +1490,7 @@ public:
         const QList<int> judges = player->getJudgingAreaID();
         if (!judges.isEmpty() && player->isAlive()) {
             DummyCard dummy(judges);
-            room->throwCard(&dummy, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName()), nullptr);
+            room->throwCard(&dummy, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), objectName(), QString()), nullptr);
         }
         return false;
     }
@@ -1657,14 +1657,19 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 };
 
-class IkAoxueProhibit : public ProhibitSkill
+class IkAoxueProhibit : public ProhibitSkillV2
 {
 public:
-    IkAoxueProhibit() : ProhibitSkill("#ikaoxue-prohibit") {}
+    IkAoxueProhibit() : ProhibitSkillV2("#ikaoxue-prohibit")
+    {
+        setHolderSelector(CorrectSkill_System);
+    }
 
     // A snowed character may only slash the owners who marked it.
-    bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const override
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
+        const Player *from = context.from, *to = context.to;
+        const Card *card = context.card;
         return from && to && card && card->isKindOf("Slash") && from->getMark("@snow") > 0
             && from->getMark("ikaoxue_" + to->objectName()) == 0;
     }
@@ -1687,8 +1692,7 @@ public:
             if (!player->isAlive() || !player->hasSkill(objectName()) || !current || !current->isAlive()
                 || current->getPhase() == Player::NotActive)
                 return result;
-            for (int i = 0; i < data.value<DamageStruct>().damage; ++i)
-                result[player] << objectName();
+            result[player] << objectName() + "*" + QString::number(data.value<DamageStruct>().damage);
             return result;
         }
         if (data.value<PhaseChangeStruct>().to != Player::NotActive || player->getMark("iklingxue_discard-Clear") > 0)
@@ -1732,16 +1736,18 @@ public:
         room->sendLog(log);
         QStringList choices{"obtain", "draw"};
         for (int i = 0; i < n && owner->isAlive(); ++i) {
-            if (player->isNude() || !player->isAlive())
+            if (!owner->canGet(player, "he") || !player->isAlive())
                 choices.removeOne("obtain");
             if (choices.isEmpty())
                 break;
             const QString choice = room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player));
             choices.removeOne(choice);
             if (choice == "obtain") {
-                const int id = room->askForCardChosen(owner, player, "he", objectName());
-                if (id >= 0)
-                    room->obtainCard(owner, id, false);
+                const int id = room->askForCardChosen(owner, player, "he", objectName(), false, Card::MethodGet);
+                if (id >= 0 && owner->canGet(player, id))
+                    room->obtainCard(owner, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
+                                                                                    owner->objectName(), player->objectName(),
+                                                                                    objectName(), QString()), false);
             } else {
                 owner->drawCards(1, objectName());
             }
@@ -1917,7 +1923,7 @@ public:
                     back << id;
             if (!back.isEmpty() && p->isAlive()) {
                 DummyCard dummy(back);
-                room->obtainCard(p, &dummy);
+                room->obtainCard(p, &dummy, objectName());
             }
         }
         return false;
@@ -2008,10 +2014,7 @@ public:
         if (event == Damaged) {
             if (player->isNude())
                 return TriggerList();
-            QStringList times;
-            for (int i = 0; i < data.value<DamageStruct>().damage; ++i)
-                times << objectName();
-            return TriggerList{{player, times}};
+            return TriggerList{{player, {objectName() + "*" + QString::number(data.value<DamageStruct>().damage)}}};
         }
         if ((player->getPhase() == Player::Finish && !player->isNude())
             || (player->getPhase() == Player::Start && !player->getPile("page").isEmpty()))
@@ -2174,7 +2177,7 @@ public:
         move.removeCardIds(ids);
         *ctx.original_data = QVariant::fromValue(move);
         DummyCard dummy(ids);
-        room->obtainCard(player, &dummy);
+        room->obtainCard(player, &dummy, QString("ikfenxun"));
         return false;
     }
 };
@@ -2643,7 +2646,7 @@ public:
                 continue;
             p->setTag("IkHuangpoIds", ListI2V(keep));
             DummyCard dummy(back);
-            room->obtainCard(p, &dummy);
+            room->obtainCard(p, &dummy, QString("ikhuangpo"));
         }
         return false;
     }
@@ -3032,7 +3035,7 @@ public:
             return ContinueEffects;
         }
         DummyCard equips(target->getEquipsId());
-        room->obtainCard(target, &equips);
+        room->obtainCard(target, &equips, objectName());
         if (target->isAlive())
             room->damage(DamageStruct(objectName(), source->isAlive() ? source : nullptr, target));
         return ContinueEffects;
@@ -3386,7 +3389,7 @@ public:
             room->notifyMoveCards(false, cleanup, false, viewers);
         });
         bool optional = false;
-        const CardMoveReason reason(CardMoveReason::S_REASON_PREVIEWGIVE, owner->objectName());
+        const CardMoveReason reason(CardMoveReason::S_REASON_PREVIEWGIVE, owner->objectName(), objectName(), QString());
         while (owner->isAlive() && !cards.isEmpty()) {
             const QList<int> before = cards;
             if (!room->askForYiji(owner, cards, objectName(), true, true, optional, -1, room->getOtherPlayers(owner), reason,
@@ -3463,13 +3466,18 @@ public:
     }
 };
 
-class IkFeishanProhibit : public ProhibitSkill
+class IkFeishanProhibit : public ProhibitSkillV2
 {
 public:
-    IkFeishanProhibit() : ProhibitSkill("#ikfeishan") {}
-
-    bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const override
+    IkFeishanProhibit() : ProhibitSkillV2("#ikfeishan")
     {
+        setHolderSelector(CorrectSkill_System);
+    }
+
+    bool isProhibited(const ProhibitSkillContext &context) const override
+    {
+        const Player *from = context.from, *to = context.to;
+        const Card *card = context.card;
         return from && to && card && card->isKindOf("Slash") && from->getMark("ikfeishan_" + to->objectName() + "-Clear") > 0;
     }
 };
@@ -3643,7 +3651,7 @@ public:
     {
         const DamageStruct damage = data.value<DamageStruct>();
         if (!player || damage.from != player || !player->isAlive() || !player->hasSkill(objectName()) || !damage.to
-            || damage.to == player || !damage.to->hasEquip())
+            || damage.to == player || !player->canGet(damage.to, "e"))
             return TriggerList();
         return TriggerList{{player, {objectName()}}};
     }
@@ -3660,11 +3668,13 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         ServerPlayer *to = ctx.original_data->value<DamageStruct>().to;
-        if (!to || !to->hasEquip())
+        if (!to || !player->canGet(to, "e"))
             return false;
-        const int id = room->askForCardChosen(player, to, "e", objectName());
-        if (id >= 0)
-            room->obtainCard(player, id);
+        const int id = room->askForCardChosen(player, to, "e", objectName(), false, Card::MethodGet);
+        if (id >= 0 && player->canGet(to, id))
+            room->obtainCard(player, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
+                                                                             player->objectName(), to->objectName(),
+                                                                             objectName(), QString()));
         return false;
     }
 };

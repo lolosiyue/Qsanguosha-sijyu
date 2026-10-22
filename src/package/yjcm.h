@@ -27,7 +27,7 @@ public:
     Shangshi();
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override;
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override;
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
 
 protected:
     virtual int getMaxLostHp(ServerPlayer *player) const;

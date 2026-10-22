@@ -328,7 +328,7 @@ public:
     {
         QList<ServerPlayer *> result;
         foreach (ServerPlayer *p, room->getOtherPlayers(player))
-            if (p->hasLordSkill("iksongwei"))
+            if (p->hasLordSkill("iksongwei") && player->hasLordSkillKingdom("hana", p))
                 result << p;
         return result;
     }
@@ -336,7 +336,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         JudgeStruct *judge = data.value<JudgeStruct *>();
-        if (!player || !player->isAlive() || player->getKingdom() != "hana" || !judge || judge->who != player
+        if (!player || !player->isAlive() || !judge || judge->who != player
             || !judge->card || !judge->card->isBlack() || lords(room, player).isEmpty())
             return TriggerList();
         return TriggerList{{player, {objectName()}}};
@@ -445,7 +445,8 @@ public:
                          CardMoveReason(CardMoveReason::S_REASON_GIVE, owner->objectName(), source->objectName(), "ikyihuo",
                                         QString()));
         if (owner->isAlive() && room->getCardOwner(id) == source)
-            room->obtainCard(owner, id);
+            room->obtainCard(owner, Sanguosha->getCard(id),
+                             CardMoveReason(CardMoveReason::S_REASON_GIVE, source->objectName(), owner->objectName(), "ikyihuo", QString()));
         if (owner->isAlive())
             owner->drawCards(1, "ikyihuo");
         return ContinueEffects;
@@ -496,12 +497,12 @@ public:
         foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
             if (!player->isAlive())
                 break;
-            if (!p->isAlive() || p->isAllNude())
+            if (!p->isAlive() || !player->canGet(p, "hej"))
                 continue;
-            const int id = room->askForCardChosen(player, p, "hej", objectName());
-            if (id >= 0)
+            const int id = room->askForCardChosen(player, p, "hej", objectName(), false, Card::MethodGet);
+            if (id >= 0 && player->canGet(p, id))
                 room->obtainCard(player, Sanguosha->getCard(id),
-                                 CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, player->objectName()), false);
+                                 CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, player->objectName(), p->objectName(), objectName(), QString()), false);
         }
         if (player->isAlive())
             player->turnOver();
@@ -713,14 +714,14 @@ public:
     {
         QList<ServerPlayer *> result;
         foreach (ServerPlayer *p, room->getOtherPlayers(player))
-            if (p->hasLordSkill("ikwuhua"))
+            if (p->hasLordSkill("ikwuhua") && player->hasLordSkillKingdom("tsuki", p))
                 result << p;
         return result;
     }
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (!player || data.value<DamageStruct>().from != player || !player->isAlive() || player->getKingdom() != "tsuki"
+        if (!player || data.value<DamageStruct>().from != player || !player->isAlive()
             || lords(room, player).isEmpty())
             return TriggerList();
         return TriggerList{{player, {objectName()}}};
@@ -986,7 +987,7 @@ public:
         if (event == FinishJudge) {
             const JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
             if (judge && judge->card && room->getCardPlace(judge->card->getEffectiveId()) == Player::PlaceJudge)
-                player->obtainCard(judge->card);
+                room->obtainCard(player, judge->card, objectName());
             return false;
         }
         JudgeStruct judge;
@@ -1063,13 +1064,14 @@ public:
 
     static bool openTo(const Player *self, const Player *lord)
     {
-        return lord != self && lord->hasLordSkill("ikyuji") && lord->getMark("ikyuji_used-PlayClear") == 0;
+        return lord != self && lord->hasLordSkill("ikyuji") && lord->getMark("ikyuji_used-PlayClear") == 0
+            && self->hasLordSkillKingdom("tsuki", lord);
     }
 
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         const Player *self = request.initiator;
-        if (!self || request.reason != CardUseStruct::CARD_USE_REASON_PLAY || self->getKingdom() != "tsuki")
+        if (!self || request.reason != CardUseStruct::CARD_USE_REASON_PLAY)
             return false;
         foreach (const Player *p, self->getAliveSiblings())
             if (openTo(self, p))

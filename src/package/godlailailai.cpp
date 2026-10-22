@@ -60,7 +60,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     { return player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Draw ? TriggerList{{player, {objectName()}}} : TriggerList(); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
-    { ctx.manual_effect = true; return skillEffect(event, room, owner, ctx, owner); }
+    { return skillEffect(event, room, owner, ctx, owner); }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
         room->sendCompulsoryTriggerLog(owner, this);
@@ -246,8 +246,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
         if (!player || !player->isAlive() || player->getPhase() != Player::NotActive) return {};
-        const QVariantMap page = room->queryActualDamage({{"turn_id", room->historyScopes().value("turn_id")}, {"from", player->objectName()}, {"limit", 1}});
-        if (!page.value("complete").toBool() || !page.value("items").toList().isEmpty()) return {};
+        if (room->hasActualDamage({{"turn_id", room->historyScopes().value("turn_id")}, {"from", player->objectName()}}) != 0) return {};
         TriggerList result;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
             if (owner != player && owner->canGet(player, "he")) result[owner] << objectName();
@@ -320,12 +319,13 @@ public:
     { room->sendCompulsoryTriggerLog(owner, this); target->drawCards(getEffectiveAmount(ctx), objectName()); return false; }
 };
 
-class MingwanZ : public ProhibitSkill
+class MingwanZ : public ProhibitSkillV2
 {
 public:
-    MingwanZ() : ProhibitSkill("#mingwan") {}
-    bool isProhibited(const Player *from, const Player *to, const Card *, const QList<const Player *> &) const override
+    MingwanZ() : ProhibitSkillV2("#mingwan") { setHolderSelector(CorrectSkill_System); }
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
+        const Player *from = context.from, *to = context.to;
         if (!from || !to || from == to || !from->hasSkill("mingwan")) return false;
         QStringList targets;
         if (const auto *source = qobject_cast<const ServerPlayer *>(from)) {
@@ -962,7 +962,7 @@ public:
         for (int id : room->getDrawPile())
             if (cards.subcardsLength() < wanted && Sanguosha->getCard(id)->isRed()) cards.addSubcard(id);
         const int count = cards.subcardsLength();
-        if (count > 0) room->obtainCard(target, &cards);
+        if (count > 0) room->obtainCard(target, &cards, objectName());
         QList<ServerPlayer *> candidates = room->getOtherPlayers(target), selected;
         for (int i = 0; i < 3 - count && !candidates.isEmpty(); ++i) selected << candidates.takeAt(qsanRandomBounded(candidates.size()));
         room->sortByActionOrder(selected);
@@ -1043,7 +1043,8 @@ public:
                 obtainable.addSubcard(id);
         }
         if (obtainable.subcardsLength() > 0) {
-            room->obtainCard(owner, &obtainable, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, owner->objectName()), false);
+            room->obtainCard(owner, &obtainable, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
+                owner->objectName(), target->objectName(), objectName(), QString()), false);
             ctx.choice = "loseHp";
             skillEffect(event, room, owner, ctx, owner);
         }
@@ -1118,7 +1119,7 @@ public:
         for (int id : room->getDrawPile()) if (Sanguosha->getCard(id)->isKindOf("Slash")) slashes << id;
         DummyCard cards;
         for (int i = 0; i < getEffectiveAmount(ctx) && !slashes.isEmpty(); ++i) cards.addSubcard(slashes.takeAt(qsanRandomBounded(slashes.size())));
-        if (cards.subcardsLength() > 0) room->obtainCard(target, &cards);
+        if (cards.subcardsLength() > 0) room->obtainCard(target, &cards, objectName());
         return false;
     }
 };
@@ -1161,13 +1162,16 @@ public:
     }
 };
 
-class BossFengying: public ProhibitSkill {
+class BossFengying: public ProhibitSkillV2 {
 public:
-    BossFengying(): ProhibitSkill("boss_fengying")
+    BossFengying(): ProhibitSkillV2("boss_fengying")
 	{
+        setHolderSelector(CorrectSkill_AllHolders);
     }
 
-    bool isProhibited(const Player *from, const Player *to, const Card *, const QList<const Player *> &) const{
+    bool isProhibited(const ProhibitSkillContext &context) const override {
+        // Holder is `to` itself or a living friend of `to`; Engine has already checked this skill instance.
+        const Player *from = context.from, *to = context.to, *holder = context.holder;
         if (!from->isYourFriend(to)){
 			bool can = false;
 			foreach (const Player *p, to->getAliveSiblings()) {
@@ -1177,11 +1181,9 @@ public:
 				}
 			}
 			if (can){
-				if (to->hasSkill(objectName())) return true;
-				foreach (const Player *p, to->getAliveSiblings()) {
-					if (p->hasSkill(objectName())&&p->isYourFriend(to))
-						return true;
-				}
+				if (holder == to) return true;
+				if (holder && holder != to && holder->isYourFriend(to))
+					return true;
 			}
 		}
         return false;
@@ -1198,7 +1200,7 @@ bool KuangxiCard::targetFilter(const QList<const Player *> &, const Player *to_s
 
 void KuangxiCard::onEffect(CardEffectStruct &effect) const{
     effect.from->getRoom()->damage(DamageStruct("kuangxi", effect.from, effect.to));
-    effect.from->getRoom()->loseHp(effect.from);
+    effect.from->getRoom()->loseHp(HpLostStruct(effect.from, 1, "kuangxi", effect.from));
 }
 
 class KuangxiViewAsSkill : public ViewAsSkillV2
@@ -1415,9 +1417,9 @@ public:
                       ServerPlayer *target) const override {
         if (ctx.choice == "loseHp") { room->loseHp(HpLostStruct(target, getEffectiveAmount(ctx), objectName(), ctx.owner)); return false; }
         for (int i = 0; ctx.owner && target && i < getEffectiveAmount(ctx) && ctx.owner->canGet(target, "hej"); ++i) {
-            const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName());
+            const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodGet);
             if (id < 0 || room->getCardOwner(id) != target || !ctx.owner->canGet(target, id)) break;
-            const CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName());
+            const CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), QString());
             room->obtainCard(ctx.owner, Sanguosha->getCard(id), reason, false);
         }
         return false;
@@ -1590,12 +1592,15 @@ GodDiagram::GodDiagram(Suit suit, int number)
     setObjectName("god_diagram");
 }
 
-class GodPaoSkill: public ProhibitSkill {
+class GodPaoSkill: public ProhibitSkillV2 {
 public:
-    GodPaoSkill(): ProhibitSkill("god_pao") {
+    GodPaoSkill(): ProhibitSkillV2("god_pao") {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const{
+    bool isProhibited(const ProhibitSkillContext &context) const override {
+        const Player *from = context.from, *to = context.to;
+        const Card *card = context.card;
         return from != to && card->isNDTrick() && to->hasArmorEffect("god_pao");
     }
 };
@@ -2231,7 +2236,7 @@ public:
     {
         // The pile is the committed receipt and remains returnable after the treasure leaves play.
         const QList<int> ids = owner->getPile("god_headdress");
-        if (!ids.isEmpty()) { DummyCard cards(ids); room->obtainCard(target, &cards, false); }
+        if (!ids.isEmpty()) { DummyCard cards(ids); room->obtainCard(target, &cards, "god_headdress", false); }
         return false;
     }
 };
@@ -2276,8 +2281,8 @@ void GodShip::onUninstall(ServerPlayer *player) const
 			const Card*c = Sanguosha->getCard(id);
 			if(c->getNumber()>1&&c->getNumber()<11)
 				room->throwCard(c,objectName(),p,player);
-			else
-				player->obtainCard(c);
+			else if(player->canGet(p,id))
+				room->obtainCard(player,c,CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,player->objectName(),p->objectName(),objectName(),QString()));
 		}
 	}
 }
@@ -2339,9 +2344,10 @@ GodFlower::GodFlower(Suit suit, int number)
 
 bool GodFlower::isAvailable(const Player *player) const
 {
+	if (!SingleTargetTrick::isAvailable(player)) return false;
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -2373,9 +2379,10 @@ GodSpeel::GodSpeel(Suit suit, int number)
 
 bool GodSpeel::isAvailable(const Player *player) const
 {
+	if (!SingleTargetTrick::isAvailable(player)) return false;
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }

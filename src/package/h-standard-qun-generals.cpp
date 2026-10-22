@@ -437,8 +437,13 @@ public:
             return {{player, {objectName()}}};
         }
         if (event == TargetSpecified && use.from == player
-            && (use.card->isKindOf("Slash") || use.card->isKindOf("Duel")) && !use.to.isEmpty())
-            return {{player, {objectName() + "*" + QString::number(use.to.size())}}};
+            && (use.card->isKindOf("Slash") || use.card->isKindOf("Duel")) && !use.to.isEmpty()) {
+            // Each recipient is its own invocation, so declining one keeps the rest.
+            QStringList names;
+            for (ServerPlayer *target : use.to)
+                if (target && target->isAlive()) names << target->objectName();
+            return names.isEmpty() ? TriggerList() : TriggerList{{player, {objectName() + "->" + names.join("+")}}};
+        }
         if (event == TargetConfirmed && use.card->isKindOf("Duel") && use.to.contains(player) && use.from)
             return {{player, {objectName()}}};
         return {};
@@ -449,7 +454,7 @@ public:
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (event == TargetSpecifying)
             return !room->isGeneralHiddenForSkill(ctx.activationRef) || ctx.owner->askForSkillInvoke(this);
-        ServerPlayer *target = event == TargetConfirmed ? use.from : use.to.value(ctx.trigger_count);
+        ServerPlayer *target = event == TargetConfirmed ? use.from : ctx.preferredTarget;
         if (!target || !target->isAlive()) return false;
         ctx.targets = {target};
         return !room->isGeneralHiddenForSkill(ctx.activationRef)
@@ -543,7 +548,7 @@ public:
         if (!ctx.owner || !ctx.owner->isAlive()) return false;
         room->broadcastSkillInvoke(objectName(), event == Dying ? 1 : 2, ctx.owner);
         if (event == Dying) ctx.owner->drawCards(getEffectiveAmount(ctx), objectName());
-        else room->loseHp(ctx.owner, getEffectiveAmount(ctx));
+        else room->loseHp(HpLostStruct(ctx.owner, getEffectiveAmount(ctx), objectName(), ctx.owner));
         return false;
     }
 };

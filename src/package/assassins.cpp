@@ -209,7 +209,7 @@ public:
         if (!room || !ctx.owner || !ctx.preferredTarget || !ctx.original_data) return false;
         if (event == CardOffset) {
             // The liability removes the original user's cards; the dodging player chooses them.
-            ctx.targets = {ctx.owner};
+            ctx.targets.clear();
             return true;
         }
         if (!ctx.owner->askForSkillInvoke(this, QVariant::fromValue(ctx.preferredTarget))) return false;
@@ -217,12 +217,23 @@ public:
         if (ctx.owner->canDiscard(ctx.preferredTarget, "he"))
             ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+discard",
                                            QVariant::fromValue(ctx.preferredTarget));
-        ctx.targets = {ctx.choice == "draw" ? ctx.owner : ctx.preferredTarget};
+        if (ctx.choice == "draw") ctx.targets.clear();
+        else ctx.targets = {ctx.preferredTarget};
         return ctx.choice == "draw" || ctx.choice == "discard";
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // The draw choice and the offset liability both act on the owner.
+        if (event == CardOffset || ctx.choice == "draw") return resolve(event, room, ctx, ctx.owner);
+        return false;
     }
 
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
+    { return resolve(event, room, ctx, target); }
+
+    bool resolve(TriggerEvent event, Room *room, SkillContext &ctx, ServerPlayer *target) const
     {
         if (!room || !ctx.owner || !ctx.original_data || !target || !ctx.owner->isAlive()) return false;
         const int amount = getEffectiveAmount(ctx);
@@ -320,10 +331,7 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!room || !ctx.owner) return false;
-        SkillContext draw = ctx;
-        draw.choice = "owner-draw";
-        draw.targets = {ctx.owner};
-        skillEffect(TargetConfirming, room, ctx.owner, draw, ctx.owner);
+        if (ctx.owner->isAlive()) ctx.owner->drawCards(2 * getEffectiveAmount(ctx), objectName());
         int maxHp = -1;
         QList<ServerPlayer *> highest;
         for (ServerPlayer *p : room->getAllPlayers()) {
@@ -343,8 +351,7 @@ public:
     {
         if (!room || !ctx.owner || !target) return false;
         const int amount = 2 * getEffectiveAmount(ctx);
-        if (ctx.choice != "owner-draw")
-            room->askForDiscard(target, objectName(), amount, amount, false, true);
+        room->askForDiscard(target, objectName(), amount, amount, false, true);
         if (target->isAlive()) target->drawCards(amount, objectName());
         return false;
     }
@@ -355,7 +362,7 @@ class XiaoxinTianming : public Tianming
 public:
     XiaoxinTianming() : Tianming("xiaoxin_tianming") {}
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ctx.targets = {ctx.owner}; return ctx.owner && ctx.owner->isAlive() && ctx.owner->askForSkillInvoke(this); }
+    { return ctx.owner && ctx.owner->isAlive() && ctx.owner->askForSkillInvoke(this); }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner) return false;
@@ -366,9 +373,7 @@ public:
         return true;
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ctx.targets = {ctx.owner}; return false; }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    { if (target && target->isAlive()) target->drawCards(2 * getEffectiveAmount(ctx), objectName()); return false; }
+    { if (ctx.owner && ctx.owner->isAlive()) ctx.owner->drawCards(2 * getEffectiveAmount(ctx), objectName()); return false; }
 };
 
 class Mizhao : public ViewAsSkillV2
@@ -411,7 +416,8 @@ public:
                     const int id = room->askForCardChosen(source, other, "he", objectName(), false, Card::MethodGet);
                     if (id >= 0 && room->getCardOwner(id) == other && source->canGet(other, id)
                         && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)
-                        && !Sanguosha->getCard(id)->hasFlag("using")) room->obtainCard(source, id, false);
+                        && !Sanguosha->getCard(id)->hasFlag("using"))
+                        room->obtainCard(source, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, source->objectName(), other->objectName(), objectName(), QString()), false);
                 }
                 return ContinueEffects;
             }
@@ -463,7 +469,7 @@ bool MizhaoCard::targetFilter(const QList<const Player *> &targets, const Player
 { return targets.isEmpty() && to_select != Self; }
 void MizhaoCard::onEffect(CardEffectStruct &effect) const
 {
-    CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.from->objectName());
+    CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.from->objectName(), effect.to->objectName(), "mizhao", QString());
     Room *room = effect.from->getRoom();
     DummyCard *handcards = effect.from->wholeHandCards();
     room->obtainCard(effect.to, handcards, reason, false);
@@ -601,15 +607,8 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!room || !ctx.owner || !ctx.preferredTarget) return false;
+        if (!ctx.owner->isAlive()) return false;
         ctx.manual_effect = true;
-        // Admit both participants before changing either role.
-        SkillContext ownerGate = ctx;
-        ownerGate.choice = "admit-owner";
-        ownerGate.extra_data = false;
-        ownerGate.targets = {ctx.owner};
-        skillEffect(event, room, ctx.owner, ownerGate, ctx.owner);
-        if (!ownerGate.extra_data.toBool() || !ctx.owner->isAlive()) return false;
-        ctx.choice = "exchange";
         ctx.targets = {ctx.preferredTarget};
         skillEffect(event, room, ctx.owner, ctx, ctx.preferredTarget);
         return false;
@@ -617,7 +616,6 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
-        if (ctx.choice == "admit-owner") { ctx.extra_data = true; return false; }
         if (!ctx.owner || !ctx.owner->isAlive() || target != ctx.preferredTarget) return false;
         room->doSuperLightbox(ctx.owner, objectName());
         const QString role = ctx.owner->getRole();
@@ -636,7 +634,7 @@ void MixinCard::onEffect(CardEffectStruct &effect) const
     ServerPlayer *source = effect.from, *target = effect.to;
     Room *room = source->getRoom();
     room->broadcastSkillInvoke("mixin", 1);
-    target->obtainCard(this, false);
+    room->obtainCard(target, this, CardMoveReason(CardMoveReason::S_REASON_GIVE, source->objectName(), target->objectName(), "mixin", QString()), false);
     QList<ServerPlayer *> others;
     for (ServerPlayer *p : room->getOtherPlayers(target)) if (target->canSlash(p, false)) others << p;
     if (others.isEmpty()) return;
@@ -646,8 +644,14 @@ void MixinCard::onEffect(CardEffectStruct &effect) const
     if (room->askForUseSlashTo(target, target2, "#mixin", false)) room->broadcastSkillInvoke("mixin", 2);
     else {
         room->broadcastSkillInvoke("mixin", 3);
-        const QList<int> cards = target->handCards(); room->fillAG(cards, target2);
-        room->obtainCard(target2, room->askForAG(target2, cards, false, objectName()), false); room->clearAG(target2);
+        QList<int> cards;
+        for (int handId : target->handCards()) if (target2->canGet(target, handId)) cards << handId;
+        if (cards.isEmpty()) return;
+        room->fillAG(cards, target2);
+        const int id = room->askForAG(target2, cards, false, objectName()); room->clearAG(target2);
+        if (cards.contains(id))
+            room->obtainCard(target2, Sanguosha->getCard(id),
+                CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, target2->objectName(), target->objectName(), "mixin", QString()), false);
     }
 }
 
@@ -683,14 +687,16 @@ public:
         Room *room = source->getRoom();
         if (ctx.choice == "take") {
             ServerPlayer *giver = room->findPlayerByObjectName(ctx.extra_data.toString());
-            if (!giver || !giver->isAlive() || giver->isKongcheng()) return ContinueEffects;
-            const QList<int> cards = giver->handCards();
+            if (!giver || !giver->isAlive() || !target->canGet(giver, "h")) return ContinueEffects;
+            QList<int> cards;
+            for (int handId : giver->handCards()) if (target->canGet(giver, handId)) cards << handId;
             room->fillAG(cards, target);
             const auto clear = qScopeGuard([room, target] { room->clearAG(target); });
             const int id = room->askForAG(target, cards, false, objectName());
             if (target->isAlive() && cards.contains(id) && room->getCardOwner(id) == giver
                 && room->getCardPlace(id) == Player::PlaceHand && !Sanguosha->getCard(id)->hasFlag("using"))
-                room->obtainCard(target, id, false);
+                room->obtainCard(target, Sanguosha->getCard(id),
+                    CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, target->objectName(), giver->objectName(), objectName(), QString()), false);
             return ContinueEffects;
         }
         ServerPlayer *payer = ctx.initiator;
@@ -717,7 +723,7 @@ public:
             room->broadcastSkillInvoke(objectName(), 2);
         else {
             room->broadcastSkillInvoke(objectName(), 3);
-            if (!target2->isAlive() || target->isKongcheng()) return ContinueEffects;
+            if (!target2->isAlive() || !target2->canGet(target, "h")) return ContinueEffects;
             SkillContext take = ctx;
             take.choice = "take";
             take.extra_data = target->objectName();
@@ -778,20 +784,19 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!room || !ctx.owner) return false;
-        if (event == EventPhaseStart) ctx.targets = {ctx.owner};
+        if (event == EventPhaseStart) {
+            const int amount = getEffectiveAmount(ctx);
+            if (ctx.choice == "recover") room->recover(ctx.owner, RecoverStruct(ctx.owner, nullptr, amount, objectName()));
+            else ctx.owner->drawCards(amount * 2, objectName());
+            if (ctx.owner->isAlive()) ctx.owner->turnOver();
+        }
         return false;
     }
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *current) const override
     {
         if (!room || !ctx.owner || !current) return false;
         const int amount = getEffectiveAmount(ctx);
-        if (event == EventPhaseStart) {
-            if (ctx.choice == "recover") room->recover(current, RecoverStruct(ctx.owner, nullptr, amount, objectName()));
-            else current->drawCards(amount * 2, objectName());
-            if (current->isAlive()) current->turnOver();
-            return false;
-        }
         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, ctx.owner->objectName(), current->objectName());
         if (ctx.choice == "lose")
             room->askForDiscard(current, objectName(), amount, amount, false, true);
@@ -807,7 +812,7 @@ DuyiCard::DuyiCard() { setSkillName("duyi"); target_fixed = true; mute = true; }
 void DuyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
     const QList<int> ids = room->getNCards(1); if (ids.isEmpty()) return; const int id = ids.first(); room->fillAG(ids, nullptr); room->getThread()->delay();
-    ServerPlayer *target = room->askForPlayerChosen(source, room->getAlivePlayers(), "duyi"); const Card *card = Sanguosha->getCard(id); target->obtainCard(card); room->clearAG();
+    ServerPlayer *target = room->askForPlayerChosen(source, room->getAlivePlayers(), "duyi"); const Card *card = Sanguosha->getCard(id); room->obtainCard(target, card, QString("duyi")); room->clearAG();
     if (card->isBlack()) { room->setPlayerCardLimitation(target, "use,response", ".|.|.|hand", false); room->addPlayerMark(target, "duyi_target"); LogMessage log; log.type = "#duyi_eff"; log.from = source; log.to << target; log.arg = "duyi"; room->sendLog(log); room->broadcastSkillInvoke("duyi", 1); }
     else room->broadcastSkillInvoke("duyi", 2);
 }
@@ -906,7 +911,7 @@ public:
             receipts.removeAll(receipt);
             target->setTag("DuyiReceipts", receipts);
         });
-        target->obtainCard(card);
+        room->obtainCard(target, card, objectName());
         if (black) {
             QVariantList receipts = target->getTag("DuyiReceipts").toList();
             const int index = receipts.indexOf(receipt);
@@ -1010,10 +1015,6 @@ public:
                       ServerPlayer *target) const override
     {
         if (!room || !ctx.owner || !ctx.original_data || !target) return false;
-        if (ctx.choice == "lose-hp") {
-            room->loseHp(HpLostStruct(target, getEffectiveAmount(ctx), objectName(), ctx.owner));
-            return false;
-        }
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (target != use.from) return false;
         DummyCard dummy;
@@ -1040,10 +1041,8 @@ public:
             SkillContext discard = ctx;
             skillEffect(event, room, ctx.owner, discard, target);
         }
-        SkillContext loss = ctx;
-        loss.choice = "lose-hp";
-        loss.targets = {ctx.owner};
-        skillEffect(event, room, ctx.owner, loss, ctx.owner);
+        if (ctx.owner->isAlive())
+            room->loseHp(HpLostStruct(ctx.owner, getEffectiveAmount(ctx), objectName(), ctx.owner));
         return false;
     }
 };
@@ -1123,12 +1122,7 @@ public:
     {
         if (!room || !ctx.owner || !ctx.owner->isAlive()) return false;
         room->sendCompulsoryTriggerLog(ctx.owner, objectName(), true, true);
-        ctx.targets = {ctx.owner};
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        room->gainMaxHp(target, getEffectiveAmount(ctx), objectName());
+        room->gainMaxHp(ctx.owner, getEffectiveAmount(ctx), objectName());
         return false;
     }
 };

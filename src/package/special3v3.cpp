@@ -418,8 +418,9 @@ public:
         const Player *player = request.initiator;
         if (!player || request.reason == CardUseStruct::CARD_USE_REASON_PLAY || request.pattern != "peach"
             || player->getHp() <= 1 || !player->canDiscard(player, "he")) return false;
+        const QString dyingTarget = Sanguosha->getDyingSaveTarget(player);
         for (const Player *other : player->getAliveSiblings())
-            if (other->objectName() == Sanguosha->getDyingSaveTarget(player))
+            if (other->objectName() == dyingTarget)
                 return !ServerInfo.GameMode.startsWith("06_") || player->getRole().at(0) == other->getRole().at(0);
         return false;
     }

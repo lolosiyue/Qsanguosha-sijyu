@@ -322,14 +322,17 @@ public:
 	}
 };
 
-class RhHonghuang : public ProhibitSkill
+class RhHonghuang : public ProhibitSkillV2
 {
 public:
-	RhHonghuang() : ProhibitSkill("rhhonghuang") {}
+	RhHonghuang() : ProhibitSkillV2("rhhonghuang") {}
 
-	bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const override
+	bool isProhibited(const ProhibitSkillContext &context) const override
 	{
-		return from && to && card && from->getPhase() != Player::NotActive && to->hasSkill(objectName())
+		// Secondary selects the target; Engine has already checked this skill instance.
+		const Player *from = context.from, *to = context.holder;
+		const Card *card = context.card;
+		return from && to && card && from->getPhase() != Player::NotActive
 			&& card->isKindOf("TrickCard") && card->isBlack();
 	}
 };
@@ -850,7 +853,7 @@ public:
 		if (choices.length() != 1)
 			choice = room->askForChoice(from, objectName(), choices.join("+"));
 		if (choice == "lose")
-			room->loseHp(target);
+			room->loseHp(HpLostStruct(target, 1, objectName(), from));
 		else if (choice == "recover" && target->isAlive())
 			room->recover(target, RecoverStruct(from));
 		return ContinueEffects;
@@ -973,7 +976,7 @@ public:
 					room->throwCard(id, victim, player);
 			}
 		} else
-			room->loseHp(victim);
+			room->loseHp(HpLostStruct(victim, 1, objectName(), player));
 		return false;
 	}
 };
@@ -1121,7 +1124,7 @@ public:
 		if (!pile.isEmpty()) {
 			room->sendCompulsoryTriggerLog(player, objectName());
 			room->broadcastSkillInvoke(objectName());
-			room->obtainCard(player, pile.first());
+			room->obtainCard(player, pile.first(), objectName());
 		}
 		return true;
 	}
@@ -1202,13 +1205,18 @@ public:
 	}
 };
 
-class RhZhengyangProhibit : public ProhibitSkill
+class RhZhengyangProhibit : public ProhibitSkillV2
 {
 public:
-	RhZhengyangProhibit() : ProhibitSkill("#rhzhengyang-prohibit") {}
-
-	bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const override
+	RhZhengyangProhibit() : ProhibitSkillV2("#rhzhengyang-prohibit")
 	{
+		setHolderSelector(CorrectSkill_System);
+	}
+
+	bool isProhibited(const ProhibitSkillContext &context) const override
+	{
+		const Player *to = context.to;
+		const Card *card = context.card;
 		if (!to || !card || !to->hasSkill("rhzhengyang") || to->getPile("yang").isEmpty())
 			return false;
 		return card->getSuit() == reihouPileSuit(to, "yang");
@@ -1231,7 +1239,7 @@ public:
 		if (!pile.isEmpty()) {
 			room->sendCompulsoryTriggerLog(player, objectName());
 			room->broadcastSkillInvoke(objectName());
-			room->obtainCard(player, pile.first());
+			room->obtainCard(player, pile.first(), objectName());
 		}
 		return true;
 	}
@@ -1626,14 +1634,17 @@ public:
 	}
 };
 
-class RhLingwei : public ProhibitSkill
+class RhLingwei : public ProhibitSkillV2
 {
 public:
-	RhLingwei() : ProhibitSkill("rhlingwei") { frequency = NotCompulsory; }
+	RhLingwei() : ProhibitSkillV2("rhlingwei") { frequency = NotCompulsory; }
 
-	bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const override
+	bool isProhibited(const ProhibitSkillContext &context) const override
 	{
-		return to && card && to->hasSkill(objectName())
+		// Secondary selects the target; Engine has already checked this skill instance.
+		const Player *to = context.holder;
+		const Card *card = context.card;
+		return to && card
 			&& (card->isKindOf("Dismantlement") || card->isKindOf("Snatch"));
 	}
 };
@@ -1721,7 +1732,7 @@ public:
 			return false;
 		if (!player->canSlash(ctx.invoker, false)
 			|| !room->askForUseSlashTo(player, ctx.invoker, "@rhwangzhong:" + ctx.invoker->objectName(), false))
-			room->loseHp(player);
+			room->loseHp(HpLostStruct(player, 1, objectName(), player));
 		return false;
 	}
 };
@@ -1781,13 +1792,18 @@ public:
 	}
 };
 
-class RhCuiguProhibit : public ProhibitSkill
+class RhCuiguProhibit : public ProhibitSkillV2
 {
 public:
-	RhCuiguProhibit() : ProhibitSkill("#rhcuigu") {}
-
-	bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const override
+	RhCuiguProhibit() : ProhibitSkillV2("#rhcuigu")
 	{
+		setHolderSelector(CorrectSkill_System);
+	}
+
+	bool isProhibited(const ProhibitSkillContext &context) const override
+	{
+		const Player *to = context.to;
+		const Card *card = context.card;
 		return to && card && to->getMark("rhcuigu") > 0 && card->isKindOf("Peach");
 	}
 };
@@ -2188,7 +2204,7 @@ public:
 			room->sendCompulsoryTriggerLog(from, objectName());
 			room->removeReihouCard(from);
 			if (from->isAlive())
-				room->loseHp(from);
+				room->loseHp(HpLostStruct(from, 1, objectName(), from));
 		}
 		return ContinueEffects;
 	}
@@ -3388,7 +3404,7 @@ public:
 		if (!from->isAlive() || !first || !first->isAlive() || !second || !second->isAlive())
 			return FinishSkill;
 		const int alive = room->getAlivePlayers().length();
-		room->loseHp(from);
+		room->loseHp(HpLostStruct(from, 1, objectName(), from));
 		if (!from->isAlive() || !first->isAlive() || !second->isAlive()
 			|| room->getAlivePlayers().length() != alive)
 			return FinishSkill;
@@ -3398,8 +3414,8 @@ public:
 			if (equip && second->getEquip(equip->location()))
 				disabled << card->getEffectiveId();
 		}
-		const int id = room->askForCardChosen(from, first, "e", objectName(), false, Card::MethodNone, disabled);
-		if (id < 0)
+		const int id = room->askForCardChosen(from, first, "e", objectName(), false, Card::MethodMove, disabled);
+		if (id < 0 || !from->canMove(first, id))
 			return FinishSkill;
 		const Card *card = Sanguosha->getCard(id);
 		if (!card)
@@ -4172,7 +4188,7 @@ public:
 			ids << QString::number(id);
 		log.card_str = ids.join("+");
 		room->sendLog(log);
-		room->obtainCard(source, ctx.use_card);
+		room->obtainCard(source, ctx.use_card, objectName());
 		return FinishSkill;
 	}
 };
@@ -4265,7 +4281,7 @@ public:
 		const int id = room->askForAG(ctx.invoker, ids, false, "rhxiaozhang");
 		room->clearAG(ctx.invoker);
 		if (id >= 0)
-			room->obtainCard(ctx.invoker, id);
+			room->obtainCard(ctx.invoker, id, QString("rhxiaozhang"));
 		return false;
 	}
 };
@@ -4495,13 +4511,19 @@ public:
 	}
 };
 
-class RhZhangchiProhibit : public ProhibitSkill
+class RhZhangchiProhibit : public ProhibitSkillV2
 {
 public:
-	RhZhangchiProhibit() : ProhibitSkill("#rhzhangchi") { frequency = NotCompulsory; }
-
-	bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const override
+	RhZhangchiProhibit() : ProhibitSkillV2("#rhzhangchi")
 	{
+		frequency = NotCompulsory;
+		setHolderSelector(CorrectSkill_System);
+	}
+
+	bool isProhibited(const ProhibitSkillContext &context) const override
+	{
+		const Player *from = context.from, *to = context.to;
+		const Card *card = context.card;
 		return from && to && card && to->getMark("@knot") > 0 && to->isAdjacentTo(from)
 			&& card->getTypeId() != Card::TypeSkill;
 	}

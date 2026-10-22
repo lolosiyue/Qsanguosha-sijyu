@@ -73,7 +73,6 @@ public:
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        ctx.manual_effect = true;
         for (int i = 0; i < getEffectiveAmount(ctx) && ctx.owner->isAlive(); ++i) {
             QList<ServerPlayer *> sources;
             for (ServerPlayer *from : room->getAlivePlayers())
@@ -85,7 +84,7 @@ public:
             QList<int> disabled;
             for (const Card *card : from->getCards("ej"))
                 if (destinations(room, ctx.owner, from, card).isEmpty()) disabled << card->getEffectiveId();
-            const int id = room->askForCardChosen(ctx.owner, from, "ej", objectName(), false, Card::MethodNone, disabled);
+            const int id = room->askForCardChosen(ctx.owner, from, "ej", objectName(), false, Card::MethodMove, disabled);
             const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
             const auto receivers = destinations(room, ctx.owner, from, card);
             if (receivers.isEmpty()) break;
@@ -114,7 +113,7 @@ private:
     static QList<ServerPlayer *> destinations(Room *room, ServerPlayer *actor, ServerPlayer *from, const Card *card)
     {
         QList<ServerPlayer *> result;
-        if (!actor->isAlive() || !from || !from->isAlive() || !card || !from->canMove(from, card->getEffectiveId())
+        if (!actor->isAlive() || !from || !from->isAlive() || !card || !from->canMove(from, card->getEffectiveId()) || !actor->canMove(from, card->getEffectiveId())
             || room->getCardOwner(card->getEffectiveId()) != from) return result;
         const Player::Place place = room->getCardPlace(card->getEffectiveId());
         for (ServerPlayer *to : room->getAlivePlayers()) {
@@ -135,7 +134,7 @@ private:
 class HZhiheng : public ViewAsSkillV2
 {
 public:
-    HZhiheng() : ViewAsSkillV2("heg_zhiheng") {}
+    HZhiheng() : ViewAsSkillV2("heg_zhiheng") { setPhaseName("Play"); }
 
     LimitScope getLimitScope() const override { return Limit_Phase; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }
@@ -228,6 +227,7 @@ class HDuoshi : public ViewAsSkillV2
 public:
     HDuoshi() : ViewAsSkillV2("heg_duoshi", 1)
     {
+        setPhaseName("Play");
         response_or_use = true;
     }
 
@@ -270,7 +270,7 @@ public:
 class HKurou : public ViewAsSkillV2
 {
 public:
-    HKurou() : ViewAsSkillV2("heg_kurou", 1) {}
+    HKurou() : ViewAsSkillV2("heg_kurou", 1) { setPhaseName("Play"); }
 
     LimitScope getLimitScope() const override { return Limit_Phase; }
     int getMaxUsageLimit(const SkillContext &) const override { return 1; }

@@ -1099,10 +1099,11 @@ Collateral::Collateral(Card::Suit suit, int number)
 
 bool Collateral::isAvailable(const Player *player) const
 {
+	if (!SingleTargetTrick::isAvailable(player)) return false;
 	int maxVotes = 0;
     foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player, maxVotes)||maxVotes>0)
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -1191,8 +1192,9 @@ void Collateral::onEffect(CardEffectStruct &effect) const
         QString prompt = QString("collateral-slash:%1:%2").arg(victim->objectName()).arg(effect.from->objectName());
         if (doCollateral(room, effect.to, victim, prompt, effect.from)) return;
     }
-	if (effect.from->isAlive() && effect.to->getWeapon())
-		effect.from->obtainCard(effect.to->getWeapon());
+	if (effect.from->isAlive() && effect.to->getWeapon() && effect.from->canGet(effect.to, effect.to->getWeapon()->getEffectiveId()))
+		room->obtainCard(effect.from, effect.to->getWeapon(),
+			CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName(), effect.to->objectName(), objectName(), QString()));
 }
 
 Nullification::Nullification(Suit suit, int number)
@@ -1285,9 +1287,10 @@ Duel::Duel(Suit suit, int number)
 
 bool Duel::isAvailable(const Player *player) const
 {
+    if (!SingleTargetTrick::isAvailable(player)) return false;
     foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -1333,9 +1336,10 @@ Snatch::Snatch(Suit suit, int number)
 
 bool Snatch::isAvailable(const Player *player) const
 {
+    if (!SingleTargetTrick::isAvailable(player)) return false;
     foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return SingleTargetTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }
@@ -1359,12 +1363,15 @@ bool Snatch::targetFilter(const QList<const Player *> &targets, const Player *to
 
 void Snatch::onEffect(CardEffectStruct &effect) const
 {
-    if (effect.from->isDead() || effect.to->isAllNude())
-        return;
     Room *room = effect.to->getRoom();
     QString flag = (room->getMode() == "02_1v1" && Config.value("1v1/Rule", "2013").toString() != "Classical") ? "he" : "hej";
-    int card_id = room->askForCardChosen(effect.from, effect.to, flag, objectName());
-    room->obtainCard(effect.from, card_id, room->getCardPlace(card_id) != Player::PlaceHand);
+    if (effect.from->isDead() || !effect.from->canGet(effect.to, flag))
+        return;
+    int card_id = room->askForCardChosen(effect.from, effect.to, flag, objectName(), false, Card::MethodGet);
+    if (!effect.from->canGet(effect.to, card_id)) return;
+    room->obtainCard(effect.from, Sanguosha->getCard(card_id),
+        CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName(), effect.to->objectName(), objectName(), QString()),
+        room->getCardPlace(card_id) != Player::PlaceHand);
 }
 
 Dismantlement::Dismantlement(Suit suit, int number)
@@ -1429,9 +1436,10 @@ Indulgence::Indulgence(Suit suit, int number)
 
 bool Indulgence::isAvailable(const Player *player) const
 {
+    if (!DelayedTrick::isAvailable(player)) return false;
     foreach (const Player *p, player->getAliveSiblings()) {
 		if(targetFilter(QList<const Player *>(), p, player))
-			return DelayedTrick::isAvailable(player);
+			return true;
 	}
 	return false;
 }

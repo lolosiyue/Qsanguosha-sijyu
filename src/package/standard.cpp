@@ -335,11 +335,12 @@ void GlobalEffect::onUse(Room *room, CardUseStruct &card_use) const
 
 bool GlobalEffect::isAvailable(const Player *player) const
 {
+    if (!TrickCard::isAvailable(player)) return false;
     QList<const Player *> players = player->getAliveSiblings();
     players << player;
     foreach (const Player *p, players) {
         if (player->isProhibited(p, this)) continue;
-		return TrickCard::isAvailable(player);
+		return true;
     }
 	return false;
 }
@@ -351,9 +352,10 @@ QString AOE::getSubtype() const
 
 bool AOE::isAvailable(const Player *player) const
 {
+    if (!TrickCard::isAvailable(player)) return false;
     foreach (const Player *p, player->getAliveSiblings()) {
         if (player->isProhibited(p, this)) continue;
-		return TrickCard::isAvailable(player);
+		return true;
     }
     return false;
 }
@@ -787,15 +789,18 @@ QString Treasure::getCommonEffectName() const
     return "treasure";
 }
 
-class GameRuleProhibit : public ProhibitSkill
+class GameRuleProhibit : public ProhibitSkillV2
 {
 public:
-    GameRuleProhibit() : ProhibitSkill("gameruleprohibit")
+    GameRuleProhibit() : ProhibitSkillV2("gameruleprohibit")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const
+    bool isProhibited(const ProhibitSkillContext &context) const override
     {
+        const Player *to = context.to;
+        const Card *card = context.card;
         if (card->isKindOf("DelayedTrick"))
             return !to->hasJudgeArea()||to->containsTrick(card->objectName());
         else if (card->isKindOf("EquipCard"))

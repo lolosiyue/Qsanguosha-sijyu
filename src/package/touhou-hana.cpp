@@ -88,7 +88,7 @@ static int otherHanaCount(const Player *lord)
 {
     int n = 0;
     foreach (const Player *p, lord->getAliveSiblings())
-        if (p->getKingdom() == "hana")
+        if (p->hasLordSkillKingdom("hana", lord))
             ++n;
     return n;
 }
@@ -138,12 +138,13 @@ public:
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *source = ctx.invoker;
-        if (!source || !source->isAlive() || !target || !target->isAlive() || target->isNude())
+        if (!source || !source->isAlive() || !target || !target->isAlive() || !source->canGet(target, "he"))
             return ContinueEffects;
         Room *room = source->getRoom();
-        const int id = room->askForCardChosen(source, target, "he", objectName());
-        if (id >= 0)
-            room->obtainCard(source, id, false);
+        const int id = room->askForCardChosen(source, target, "he", objectName(), false, Card::MethodGet);
+        if (id >= 0 && source->canGet(target, id))
+            room->obtainCard(source, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
+                source->objectName(), target->objectName(), objectName(), QString()), false);
         if (!source->isAlive() || !target->isAlive())
             return ContinueEffects;
         auto *slash = new Slash(Card::NoSuit, 0);
@@ -1006,7 +1007,7 @@ public:
         const int id = room->askForCardChosen(source, target, "h", objectName());
         if (id < 0)
             return ContinueEffects;
-        room->showCard(target, id);
+        room->showCard(target, id, QList<ServerPlayer *>(), objectName());
         const Card *shown = Sanguosha->getCard(id);
         if (shown->isKindOf("Jink") || shown->isKindOf("Peach")) {
             auto *slash = new Slash(Card::NoSuit, 0);
@@ -2270,15 +2271,13 @@ public:
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         const Player *self = request.initiator;
-        if (!self || self->getKingdom() != "hana" || request.pattern != "peach"
+        if (!self || request.pattern != "peach"
             || (request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE_USE
                 && request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE))
             return false;
         const QString dying = Sanguosha->getDyingSaveTarget(self);
-        const SkillInstance *instance = self->findSkillInstance(request.activationRef.key.skillName,
-                                                                request.activationRef.key.instanceID);
-        return instance && instance->parentRef.key.skillName == "thtianchan"
-            && instance->parentRef.ownerObjectName == dying;
+        const Player *lord = attachedParentOwner(request, "thtianchan");
+        return lord && lord->objectName() == dying && self->hasLordSkillKingdom("hana", lord);
     }
 
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override

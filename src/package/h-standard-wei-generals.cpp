@@ -228,7 +228,7 @@ public:
         ctx.owner->assignmentCards(ids, objectName(), room->getAlivePlayers());
         if (!ids.isEmpty()) {
             DummyCard remaining(ids);
-            room->obtainCard(ctx.owner, &remaining, false);
+            room->obtainCard(ctx.owner, &remaining, objectName(), false);
         }
         return false;
     }
@@ -544,7 +544,7 @@ public:
         if (!remaining.isEmpty()) {
             DummyCard result(remaining);
             if (zhenji->isAlive())
-                room->obtainCard(zhenji, &result);
+                room->obtainCard(zhenji, &result, objectName());
             else
                 room->throwCard(&result, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER,
                     zhenji->objectName(), objectName(), QString()), nullptr);
