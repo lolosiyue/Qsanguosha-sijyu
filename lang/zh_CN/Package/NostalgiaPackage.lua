@@ -47,6 +47,7 @@ return {
 	["designer:nos_xuchu"] = "KayaK",
 	["nosluoyi"] = "裸衣",
 	[":nosluoyi"] = "摸牌阶段，你可以少摸一张牌；若如此做，你本回合因【杀】或【决斗】造成的伤害+1。",
+	["@nosluoyi.state.receipt_amount"] = "本回合【杀】或【决斗】伤害加值",
 
 	["nos_guojia"] = "郭嘉",
 	["illustrator:nos_guojia"] = "KayaK",
