@@ -158,6 +158,7 @@ body:has(.app.room) { background: var(--scene-bg), var(--bg); background-size: c
 .photo-marks .mark { position: relative; display: inline-flex; align-items: flex-end; }
 .photo-marks .mark-icon { width: calc(19 * var(--pu)); height: calc(19 * var(--pu)); object-fit: contain; filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px #000); }
 .photo-marks .mark-count { margin-left: calc(-2 * var(--pu)); font: 700 calc(11 * var(--pu)) / 1 Arial, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.photo-marks .mark-text { max-width: calc(108 * var(--pu)); padding: 0 calc(2 * var(--pu)); overflow: hidden; font: 600 calc(9 * var(--pu)) / calc(13 * var(--pu)) "Noto Sans SC", "Microsoft YaHei", sans-serif; color: #ffe9b0; text-overflow: ellipsis; white-space: nowrap; background: #000c; border: 1px solid #d8b45a80; border-radius: calc(2 * var(--pu)); text-shadow: 0 0 1px #000; }
 .photo-art .photo-equips { left: calc(1 * var(--pu)); top: calc(120 * var(--pu)); display: flex; flex-direction: column; }
 .photo-equips .equip-bar { position: relative; display: block; width: calc(140 * var(--pu)); height: calc(14 * var(--pu)); }
 .photo-equips .equip-image { position: absolute; left: 0; top: calc(1 * var(--pu)); width: calc(140 * var(--pu)); height: calc(19 * var(--pu)); }

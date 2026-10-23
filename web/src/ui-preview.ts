@@ -73,8 +73,8 @@ function seed(): void {
   Object.assign(session.state.ensureCard(10023), { object_name: "indulgence", owner: "player-2", place: PLACE_DELAYED_TRICK, suit: 2, number: 6 });
   Object.assign(session.state.ensureCard(10024), { object_name: "chitu", owner: "player-1", place: PLACE_EQUIP, suit: 2, number: 5 });
   Object.assign(session.state.ensureCard(10025), { object_name: "qinggang_sword", owner: "self", place: PLACE_EQUIP, suit: 0, number: 6 });
-  Object.assign(session.state.ensurePlayer("player-2"), { marks: { "@HuJia": 2, "@preview_unknown": 1, hidden_counter: 3 } });
-  Object.assign(session.state.ensurePlayer("self"), { marks: { "@HuJia": 1 } });
+  Object.assign(session.state.ensurePlayer("player-2"), { marks: { "@HuJia": 2, "@preview_unknown": 1, hidden_counter: 3, "&shenlvbu1": 2 } });
+  Object.assign(session.state.ensurePlayer("self"), { marks: { "@HuJia": 1, "&shenlvbu2+to+#player-1": 1 } });
   Object.assign(session.state.ensurePlayer("player-1"), { hp: 5, max_hp: 7 });
   if (playerCount > 4)
     Object.assign(session.state.ensurePlayer("player-4"), { alive: false, role: "rebel", hp: 0 });

@@ -197,6 +197,13 @@ the hand in a horizontal strip instead of scrolling the whole panel.
 Skill buttons toggle off when pressed again and show `:<skill>`
 descriptions from the translation table.
 
+Marks follow `ClientPlayer::setMark`: `@` marks keep the desktop images
+(`image/mark/@<name>.png`, count shown when above 1). `&` marks are skill state
+counters and have no image asset, so the seat draws them as text chips using the
+`&<name>` translation and the count when it is not 1. A scoped counter embeds its
+source player in the mark name (`&deep_seek+to+#sgs1`); the chip drops that
+suffix so the label stays readable.
+
 The idle screen shows `image/logo/logo.png` instead of the
 `QSanguosha idle` toolbar title.
 

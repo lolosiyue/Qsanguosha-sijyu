@@ -82,6 +82,19 @@ function skillDescription(skillName: string): string {
   return text.replace(/<[^>]+>/gu, "").replace(/&nbsp;/gu, " ").trim();
 }
 
+// & marks hold skill state counters, so the seat needs their label, not an
+// image. A scoped counter embeds its source player in the mark name
+// ("&deep_seek+to+#sgs1"); the chip drops that suffix and translates the rest.
+function markLabel(key: string): string {
+  const label = tr(key);
+  if (label !== key)
+    return label;
+  const base = key.replace(/\+(?:[^#]*)#.*$/u, "").replace(/^&/u, "");
+  const baseKey = `&${base}`;
+  const baseLabel = tr(baseKey);
+  return baseLabel === baseKey ? base : baseLabel;
+}
+
 function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElement {
   const { session, ui } = bind;
   const player = session.state.player(name);
@@ -137,9 +150,12 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   if (player?.chained === true)
     art.append(assetImg([skinImageUrl("system/chain.png")], "", "chain"));
   const markEntries = isObject(player?.marks) ? Object.entries(player.marks) : [];
-  // Only @ marks are drawn, as images, exactly like ClientPlayer::setMark.
+  // @ marks are drawn as images, exactly like ClientPlayer::setMark.
   const markIcons = markEntries.filter(([key, value]) => key.startsWith("@") && asNumber(value) > 0);
-  if (markIcons.length) {
+  // & marks are skill state counters: a chip keeps the text readable, where a
+  // mark image would need an asset per skill and the name would be lost.
+  const stateMarks = markEntries.filter(([key, value]) => key.startsWith("&") && asNumber(value) !== 0);
+  if (markIcons.length || stateMarks.length) {
     const row = el("span", { class: "photo-marks" });
     for (const [key, value] of markIcons) {
       const count = asNumber(value);
@@ -148,6 +164,12 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
       if (count > 1)
         mark.append(el("span", { class: "mark-count" }, [String(count)]));
       row.append(mark);
+    }
+    for (const [key, value] of stateMarks) {
+      const count = asNumber(value);
+      const label = markLabel(key);
+      const text = count === 1 ? label : `${label} ${count}`;
+      row.append(el("span", { class: "mark-text", title: text }, [text]));
     }
     art.append(row);
   }
