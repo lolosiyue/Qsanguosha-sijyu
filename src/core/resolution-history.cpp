@@ -2,6 +2,7 @@
 #include "snapshot-json-writer.h"
 
 #include <QDataStream>
+#include <QDebug>
 #include <QHash>
 #include <QList>
 #include <QQueue>
@@ -130,6 +131,19 @@ struct Journal {
     QSet<QString> coveredEvents;
     QSet<QString> coveredFacts;
 };
+
+// One rejected payload used to disable every negative-count rule (keji and
+// friends) for the rest of the game with no trace. Unknown is a valid answer;
+// an unexplained switch to unknown is not.
+static void markJournalIncomplete(Journal &journal, const char *site, const QString &detail)
+{
+    if (!journal.complete) return;
+    journal.complete = false;
+    qWarning().noquote() << "[HISTORY] journal complete=false at" << site
+                         << (detail.isEmpty() ? QStringLiteral("-") : detail)
+                         << "active=" << journal.active.size()
+                         << "events=" << journal.events.size();
+}
 
 struct Scope {
     qint64 roundId = 0;
@@ -909,7 +923,8 @@ qint64 ResolutionHistoryService::beginEvent(const QString &kind, const QVariantM
     bool valid = false;
     const QVariantMap clean = cleanMap(data, &valid);
     if (!valid || !eventKind(kind) || j.nextId == std::numeric_limits<qint64>::max()) {
-        j.complete = false; return 0;
+        markJournalIncomplete(j, "beginEvent", QStringLiteral("kind=%1 clean=%2").arg(kind).arg(valid));
+        return 0;
     }
     EventRecord event;
     event.id = j.nextId++;
@@ -946,7 +961,10 @@ void ResolutionHistoryService::updateEvent(qint64 id, const QVariantMap &data)
 {
     d.detach();
     bool valid = false; const QVariantMap clean = cleanMap(data, &valid);
-    if (!valid) { d->journal->complete = false; return; }
+    if (!valid) {
+        markJournalIncomplete(*d->journal, "updateEvent", QStringLiteral("event=%1").arg(id));
+        return;
+    }
     const auto found = d->events.byId.constFind(id);
     if (found == d->events.byId.cend()) return;
     EventRecord record = d->journal->events.at(found.value());
@@ -964,7 +982,8 @@ qint64 ResolutionHistoryService::appendFact(qint64 eventId, const QString &kind,
     const QVariantMap clean = cleanMap(data, &valid);
     if (!valid || !factKind(kind) || j.nextId == std::numeric_limits<qint64>::max()
         || j.nextSequence == std::numeric_limits<qint64>::max()) {
-        j.complete = false; return 0;
+        markJournalIncomplete(j, "appendFact", QStringLiteral("kind=%1 clean=%2").arg(kind).arg(valid));
+        return 0;
     }
     const Scope scope = scopeFor(j, d->events);
     FactRecord fact;
@@ -988,7 +1007,8 @@ qint64 ResolutionHistoryService::beginRound(const QVariantMap &data)
     bool valid = false;
     const QVariantMap clean = cleanMap(data, &valid);
     if (!valid || j.nextId == std::numeric_limits<qint64>::max()) {
-        j.complete = false; return 0;
+        markJournalIncomplete(j, "beginRound", QStringLiteral("clean=%1").arg(valid));
+        return 0;
     }
     // A broken last turn can bypass RoundEnd. Close only the history lifecycle;
     // do not replay game callbacks or leave an orphan active round in snapshots.
@@ -1259,8 +1279,20 @@ ResolutionHistoryContextGuard::~ResolutionHistoryContextGuard() noexcept
     if (!d) return;
     // Unbalanced cleanup cannot silently leave an apparently safe checkpoint.
     if (d->journal->active.size() != 1
-        || d->journal->active.constFirst() != d->journal->contextEventId)
-        d->journal->complete = false;
+        || d->journal->active.constFirst() != d->journal->contextEventId) {
+        // Name the abandoned context event: its kind and status identify the
+        // owner that finished or replaced it inside the guard.
+        QString context;
+        for (const EventRecord &record : d->journal->events)
+            if (record.id == d->journal->contextEventId) {
+                context = record.kind + QLatin1Char('/') + record.status;
+                break;
+            }
+        qWarning().noquote() << "[HISTORY] context guard ended unbalanced: active="
+                             << d->journal->active << "context=" << d->journal->contextEventId
+                             << context << "previous_active=" << d->previousActive;
+        markJournalIncomplete(*d->journal, "contextGuard", context);
+    }
     d->journal->active.swap(d->previousActive);
     d->journal->contextEventId = d->previousContext;
 }

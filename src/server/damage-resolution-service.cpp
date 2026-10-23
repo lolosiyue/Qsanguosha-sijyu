@@ -245,12 +245,17 @@ void DamageResolutionService::continueDying(const std::shared_ptr<Room::DyingCur
         cursor->history = m_room.m_resolutionHistory.beginEvent("dying", dyingFact, false);
         m_room.m_resolutionHistory.appendFact(cursor->history, "dying_start", dyingFact);
     }
-    ResolutionHistoryContextGuard historyContext(m_room.m_resolutionHistory, cursor->history, cursor->history != 0);
+    // The scope guard must be declared before the context guard so it runs last:
+    // finishing the event removes its id from the active stack, and the context
+    // guard has to close while that id is still there. Reversing the order left
+    // the journal permanently incomplete and silently disabled every
+    // negative-count rule (keji and friends) for the rest of the game.
     const auto finishHistory = qScopeGuard([&] {
         if (!cursor->history) return;
         if (cursor->stage == Room::DyingCursor::Finished) m_room.m_resolutionHistory.finishEvent(cursor->history, "completed");
         else if (!cursor->retained) m_room.m_resolutionHistory.finishEvent(cursor->history, "interrupted");
     });
+    ResolutionHistoryContextGuard historyContext(m_room.m_resolutionHistory, cursor->history, cursor->history != 0);
     if (cursor->stage != Room::DyingCursor::Start && (cursor->resolved || !player->isAlive() || player->getHp() > 0))
         cursor->stage = Room::DyingCursor::Quit;
     m_room.setPlayerFlag(player, "Global_Dying");
