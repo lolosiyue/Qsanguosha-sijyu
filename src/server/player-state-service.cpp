@@ -24,6 +24,15 @@ using namespace QSanProtocol;
 
 namespace {
 
+// Same expansion as Player::addEquipsNullified, so the client stores the server's exact pattern.
+QString equipsNullifiedPattern(const QString &pattern)
+{
+	QString normalized = pattern;
+	for (int fields = pattern.count('|') + 1; fields < 4; ++fields)
+		normalized += "|.";
+	return normalized;
+}
+
 bool isPrivateHegemonyProperty(const char *name)
 {
 	// Soul identities and marked hand-card IDs remain owner-only in every mode.
@@ -514,12 +523,12 @@ void PlayerStateService::setPlayerEquipsNullified(ServerPlayer *player,
 {
 	player->addEquipsNullified(pattern, reason, singleTurn);
 
-	QString fullPattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		fullPattern = pattern + "|.|.|";
-
-	JsonArray arg;
-	arg << true << "effect" << fullPattern << reason << singleTurn;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("set")},
+		{QStringLiteral("methods"), QStringList{QStringLiteral("effect")}},
+		{QStringLiteral("pattern"), equipsNullifiedPattern(pattern)},
+		{QStringLiteral("reason"), reason},
+		{QStringLiteral("single_turn"), singleTurn}};
 	m_notifier.doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -528,14 +537,16 @@ void PlayerStateService::removePlayerEquipsNullified(ServerPlayer *player,
 {
 	player->removeEquipsNullified(pattern, reason);
 
-	QString fullPattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		fullPattern = pattern + "|.|.|";
+	// Send the pattern the server removed: removeEquipsNullified defaults to single_turn, so a bare pattern ends in $1.
+	QString fullPattern = equipsNullifiedPattern(pattern);
 	if (!fullPattern.endsWith("$1") && !fullPattern.endsWith("$0"))
-		fullPattern = fullPattern + "$0";
+		fullPattern += "$1";
 
-	JsonArray arg;
-	arg << false << "effect" << fullPattern << reason << false;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("remove")},
+		{QStringLiteral("methods"), QStringList{QStringLiteral("effect")}},
+		{QStringLiteral("pattern"), fullPattern},
+		{QStringLiteral("reason"), reason}};
 	m_notifier.doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
