@@ -6,6 +6,8 @@
 #include "client.h"
 #include "theme-pack.h"
 
+#include <QTextDocumentFragment>
+
 ClientLogBox::ClientLogBox(QWidget *parent)
     : QTextEdit(parent)
 {
@@ -88,6 +90,16 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     const QString log = formatClientLog(request, style);
     if (log.isEmpty())
         return;
+    // Autotest runners check rendered battle-log lines (e.g. skill activations) in the client's Qt log.
+    // Non-ASCII is written as \uXXXX so the text survives any console code page.
+    QString escaped;
+    for (const QChar ch : QTextDocumentFragment::fromHtml(log).toPlainText()) {
+        if (ch.unicode() < 0x80 && ch != QLatin1Char('\\'))
+            escaped += ch;
+        else
+            escaped += QStringLiteral("\\u%1").arg(uint(ch.unicode()), 4, 16, QLatin1Char('0'));
+    }
+    qInfo().noquote() << "[BATTLE_LOG]" << type << escaped;
 
     const QString html = append(QString("<font color='%2'>%1</font>").arg(log).arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name()));
     if (type.contains("#Guhuo"))

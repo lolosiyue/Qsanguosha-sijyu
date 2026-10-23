@@ -506,7 +506,15 @@ export class RulesController {
         ? this.presentation.events : [];
       const seen = new Set<string>();
       const events = [...previousEvents, ...presentation.events]
-        .filter((event) => { const key = `${event.generation}:${event.sequence}`; if (seen.has(key)) return false; seen.add(key); return true; })
+        .filter((event, index) => {
+          const key = `${event.generation}:${event.sequence}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          // First appearance only: acceptance drivers collect the battle log from the console.
+          if (index >= previousEvents.length)
+            console.info("[BATTLE_LOG]", event.payload?.log_type ?? event.command, event.text);
+          return true;
+        })
         .slice(-200);
       this.presentation = { ...presentation, events };
       this.eventCursor = presentation.event_cursor;

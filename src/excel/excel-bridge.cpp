@@ -9,6 +9,7 @@
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -65,6 +66,19 @@ QString safeText(const QString &input, int limit = 2000)
     return result;
 }
 
+// Same Qt log line as the desktop ClientLogBox; non-ASCII, backslash and controls as \uXXXX.
+void battleLog(const QString &type, const QString &text)
+{
+    QString escaped;
+    for (const QChar ch : text) {
+        if (ch.unicode() >= 0x20 && ch.unicode() < 0x80 && ch != QLatin1Char('\\'))
+            escaped += ch;
+        else
+            escaped += QStringLiteral("\\u%1").arg(uint(ch.unicode()), 4, 16, QLatin1Char('0'));
+    }
+    qInfo().noquote() << "[BATTLE_LOG]" << type << escaped;
+}
+
 QJsonObject acknowledgement()
 {
     return {{QStringLiteral("queued"), true}};
@@ -113,12 +127,14 @@ ExcelBridge::ExcelBridge(const ExcelBridgeOptions &options, QObject *parent)
                     QSanProtocol::S_COMMAND_LOG_SKILL, QString(), payload);
                 if (line.isEmpty()) continue;
                 m_core.state()->appendPresentationEvent(QSanProtocol::S_COMMAND_LOG_SKILL, line, payload);
+                battleLog(record.type, line);
                 log(line);
             }
         });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
         [this](int command, const QString &text, const QVariant &payload) {
             const QString line = ExcelView::presentationText(m_core, command, text, payload);
+            if (!line.isEmpty()) battleLog(payload.toMap().value(QStringLiteral("log_type"), command).toString(), line);
             if (!line.isEmpty()) log(line);
             if (!m_options.suppressPresentationAudio)
                 ExcelView::playPresentationAudio(command, payload, m_options.assetRoot);
