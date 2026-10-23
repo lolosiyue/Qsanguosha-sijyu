@@ -89,10 +89,16 @@ await evalJs(`(() => {
   window.__auto = { robots:false, ready:false, roleAssigned:false, picked:false,
                     confirmed:false, trusted:false, done:false, result:"",
                     pickerSeen:0, genRewritten:0 };
-  const byText = (t) => [...document.querySelectorAll("button")]
-    .find(b => b.textContent.trim() === t && !b.disabled);
-  const panelOf = (title) => {
-    const h = [...document.querySelectorAll("h2")].find(x => x.textContent.includes(title));
+  // The built UI renders simplified Chinese: hard-coded labels live in
+  // web/src/ui-connect.ts (准备/加满机器人) and translated ones in
+  // web/public/translations.json under web.action.* (确定/提交/托管), which
+  // web/src/i18n.ts runs through toSimplified. Accept both variants so the
+  // driver does not depend on one rendering, and prefer labels over classes.
+  const byText = (labels, scope) => [...(scope ?? document).querySelectorAll("button")]
+    .find(b => !b.disabled && labels.split("|").includes(b.textContent.trim()));
+  const panelOf = (titles) => {
+    const t = titles.split("|");
+    const h = [...document.querySelectorAll("h2")].find(x => t.some(s => x.textContent.includes(s)));
     return h ? h.closest("section") : null;
   };
   // Rewrite CHOOSE_GENERAL(10)/ASK_GENERAL(65) replies so the server-side
@@ -118,13 +124,19 @@ await evalJs(`(() => {
   }
   setInterval(() => {
     const a = window.__auto;
-    if (document.querySelector(".wait-panel")) {
-      if (!a.robots) { const b = byText("加滿機器人"); if (b) { b.click(); a.robots = true; } }
-      else if (!a.ready) { const b = byText("準備"); if (b) { b.click(); a.ready = true; } }
+    const waitPanel = document.querySelector(".wait-panel");
+    if (waitPanel) {
+      if (!a.robots) {
+        const b = byText("加满机器人|加滿機器人", waitPanel);
+        if (b) { b.click(); a.robots = true; }
+      } else if (!a.ready) {
+        const b = byText("准备|準備", waitPanel);
+        if (b) { b.click(); a.ready = true; }
+      }
     }
     // FreeAssign: assign a valid 20p spread (1 lord / 8 loyalist / 10 rebel /
     // 1 renegade) across the seat selects, then submit.
-    const rolePanel = panelOf("分配身分");
+    const rolePanel = panelOf("分配身份|分配身分");
     if (rolePanel && !a.roleAssigned) {
       const sels = [...rolePanel.querySelectorAll("select")];
       const roles = ["lord", "loyalist","loyalist","loyalist","loyalist",
@@ -138,8 +150,8 @@ await evalJs(`(() => {
         a.roleAssigned = true;
       }
     } else if (a.roleAssigned && !a.roleSent) {
-      const ok = rolePanel && [...rolePanel.querySelectorAll("button")]
-        .find(b => b.textContent.trim() === "送出" && !b.disabled);
+      const ok = rolePanel && (byText("提交|送出", rolePanel)
+        ?? [...rolePanel.querySelectorAll("button.primary")].find(b => !b.disabled));
       if (ok) { ok.click(); a.roleSent = true; }
     }
     const pick = document.querySelector(".general-pick");
@@ -150,12 +162,15 @@ await evalJs(`(() => {
         ?? btns[0];
       if (btn) { btn.click(); a.picked = true; }
     } else if (a.picked && !a.confirmed) {
-      const ok = byText("確定");
+      // General pick confirm is uiText("web.action.confirm"); it is relocated
+      // into the confirm slot, so fall back to the panel's primary button.
+      const ok = byText("确定|確定")
+        ?? [...document.querySelectorAll(".interaction-actions button.primary")].find(b => !b.disabled);
       if (ok) { ok.click(); a.confirmed = true; }
     }
     if (a.confirmed && !a.trusted) {
-      const t = byText("託管");
-      if (t) { t.click(); a.trusted = true; }
+      const t = byText("托管|託管") ?? document.querySelector("button.trust");
+      if (t && !t.disabled) { t.click(); a.trusted = true; }
     }
     const result = document.querySelector("section.game-result");
     if (result) { a.done = true; a.result = result.innerText; }
