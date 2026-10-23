@@ -1147,6 +1147,7 @@ PindianStruct *ServerPlayer::finishPindian(PindianStruct *pindian_struct)
 
 	log.type = pindian_struct->success ? "#PindianSuccess" : "#PindianFailure";
 	log.from = this;
+	log.to << target;
 	room->sendLog(log);
 
 	JsonArray arg;
