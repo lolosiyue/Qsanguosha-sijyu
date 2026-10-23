@@ -568,14 +568,9 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         state->setPlayerValue(name, QStringLiteral("hp"), hp);
         break;
     }
-    case S_COMMAND_CHANGE_MAXHP: {
-        const QString name = resolvePlayerName(
-            state, object.value(QStringLiteral("player_name")));
-        const int hp = state->playerValue(name, QStringLiteral("max_hp")).toInt()
-            + object.value(QStringLiteral("delta")).toInt();
-        state->setPlayerValue(name, QStringLiteral("max_hp"), hp);
+    case S_COMMAND_CHANGE_MAXHP:
+        // The server broadcasts the absolute "maxhp" property first; this delta is presentation only.
         break;
-    }
     case S_COMMAND_KILL_PLAYER:
         state->setPlayerAlive(resolvePlayerName(
             state, object.value(QStringLiteral("player_name"))), false);

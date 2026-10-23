@@ -40,10 +40,14 @@ unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op
 與 log 類流程會成為 presentation event。戰鬥日誌（`S_COMMAND_LOG_SKILL`）與
 game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 client
 log formatter（`src/client/client-log-formatter`）的 `formatClientLog` 組句：`#UseCard` 片語走 `lang/zh_CN/Common.lua` 的
-`#UseCardPhrase_*`，目標「自己」走 `#LogSelf`。摸牌／裝卸／體力等正常戰報大半
+`#UseCardPhrase_*`，目標「自己」走 `#LogSelf`。技能發動通知
+（`S_COMMAND_INVOKE_SKILL`）也由同一支 formatter 組 `#InvokeSkill`（與
+`RoomScene::showSkillInvocation` 同句）：可選技能只廣播這個通知、不 `sendLog`，
+少了它反饋／剛烈／鐵騎這類技能就沒有戰報行。摸牌／裝卸／體力等正常戰報大半
 不是 `sendLog`：`src/tui/tui-synthesized-log.cpp` 在 reducer 之後用
 `src/client/core/client-move-log.cpp` 合成 `$DrawCards`／`$addRenPile`／`$removeRenPile`／`#GetHp` 等，再以
-`S_COMMAND_LOG_SKILL` 寫入 `presentationEvents`。互動 `prompt` 由
+`S_COMMAND_LOG_SKILL` 寫入 `presentationEvents`；Web 客戶端在同一支合成函式上
+由 `ClientRulesIngress::reduce` 接到自己的事件流。互動 `prompt` 由
 `src/client/core/client-prompt.cpp` 組句（與 GUI `Client::formatPromptList` 同一套
 colon list：`key:%src:%dest:%arg:%arg2`）。出牌階段 ViewAs／SkillCard 清單與
 `viewAs` 組線在 `src/tui/tui-play-skills.cpp`。仁區追蹤對齊 `RoomScene::RenPile`，

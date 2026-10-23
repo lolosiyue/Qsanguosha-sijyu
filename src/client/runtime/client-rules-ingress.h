@@ -54,6 +54,8 @@ private:
     InteractionRequest m_interaction;
     GameEventStream m_events;
     QList<GamePresentationEvent> m_pendingEvents;
+    // Table cards currently in the Ren zone, matching RoomScene::RenPile.
+    QList<int> m_renPile;
     QMap<quint64, int> m_outgoingRequests;
     quint64 m_lastOutgoing = 0;
     int m_generation = -1;

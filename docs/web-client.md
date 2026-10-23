@@ -238,13 +238,23 @@ Interaction `prompt` strings from `askForCard` / `askForDiscard` /
 translations after editing `lang/zh_CN/Package/StandardPackage.lua` so keys such
 as `shoot-jink` are in `web/public/translations.json`.
 `LOG_SKILL` fills lang placeholders; `#UseCard` uses `#UseCardPhrase_*` from the
-dumped translation table. `GET_CARD` / `LOSE_CARD` / `CHANGE_HP` /
-`CHANGE_MAXHP` are synthesised locally into `$DrawCards` / `$addRenPile` /
-`$removeRenPile` / `#GetHp` and stored
-as extra `LOG_SKILL` presentation events. 仁区 membership is tracked on the
-session like `RoomScene::RenPile` and cleared on `GAME_START` / `STATE_SYNC begin`. `LOG_EVENT` skill-cache refresh
-(`event` 9) stays out of the pane. Dump translations after editing
-`lang/zh_CN/Common.lua` or package tables such as `StandardPackage.lua`.
+dumped translation table. Two rows the server never `sendLog`s are built on the
+client side by the shared C++ formatter, not by TypeScript:
+
+- `S_COMMAND_INVOKE_SKILL` becomes `#InvokeSkill` in
+  `formatClientPresentationText`, exactly like `RoomScene::showSkillInvocation`.
+  Optional skills (`fankui`, `ganglie`, `tieqi`) only broadcast this
+  notification, so without the row they have no battle-log line at all.
+- `GET_CARD` / `LOSE_CARD` / `CHANGE_HP` / `CHANGE_MAXHP` are synthesised by
+  `src/client/core/client-move-log.cpp` into `$DrawCards` / `#GetHp` /
+  `$MoveCard` and the rest of the desktop set, called from
+  `ClientRulesIngress::reduce` and stored as extra `LOG_SKILL` presentation
+  events. 仁区 membership is tracked on the session like `RoomScene::RenPile`
+  and cleared on `GAME_START` / `STATE_SYNC begin`.
+
+`LOG_EVENT` skill-cache refresh (`event` 9) stays out of the pane. Dump
+translations after editing `lang/zh_CN/Common.lua` or package tables such as
+`StandardPackage.lua`.
 
 All 29 production interactions have a GUI-style widget. `PLAY_CARD`,
 `RESPONSE_CARD`, `ASK_PEACH` and `NULLIFICATION` use the persistent native

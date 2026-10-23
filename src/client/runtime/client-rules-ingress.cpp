@@ -2,6 +2,7 @@
 
 #include "client-game-state-reducer.h"
 #include "client-log-formatter.h"
+#include "client-move-log.h"
 #include "interaction-command-registry.h"
 #include "interaction-reply-encoder.h"
 #include "engine.h"
@@ -446,6 +447,27 @@ bool ClientRulesIngress::reduce(const ProtocolMessage &message, QString *error)
             m_pendingEvents.append(event);
         else
             m_events.append(event.command, event.text, event.payload);
+    }
+    // The desktop synthesizes draw / hit-point / card-movement rows from these
+    // state-only notifications (RoomScene::loseCards and getCards); the server
+    // never sendLogs them. Emit the same rows so the browser transcript matches
+    // the desktop instead of dropping the whole category.
+    ClientGameState *synthesizedState = m_syncActive ? &m_pending : &m_state;
+    const QList<ClientLogRecord> synthesized =
+        synthesizeClientMessageLogs(synthesizedState, &m_renPile, message);
+    for (const ClientLogRecord &record : synthesized) {
+        const QVariantMap log = record.toSkillLogMap();
+        const QString text = formatClientSkillLogText(log,
+            [synthesizedState](const QString &name) {
+                return clientLogPlayerName(synthesizedState->player(name), name);
+            });
+        if (text.isEmpty())
+            continue;
+        if (bufferedEvent)
+            m_pendingEvents.append(GamePresentationEvent{static_cast<quint64>(m_generation), 0,
+                S_COMMAND_LOG_SKILL, text, log});
+        else
+            m_events.append(S_COMMAND_LOG_SKILL, text, log);
     }
     if (!m_syncActive && m_pendingEvents.size() > 0) {
         for (const GamePresentationEvent &event : std::as_const(m_pendingEvents))

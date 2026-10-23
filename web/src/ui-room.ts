@@ -447,10 +447,15 @@ export function logView(bind: UiBind): HTMLElement {
     const type = asString(payload.log_type);
     const from = asString(payload.from_player);
     const targets = asStringList(payload.to_players);
-    const mine = from === session.state.selfName || targets.includes(session.state.selfName);
+    const mine = from === session.state.selfName || targets.includes(session.state.selfName)
+      // The native runtime synthesizes this row from INVOKE_SKILL; the
+      // notification names its player in player_name, not from_player.
+      || (event.command === Command.INVOKE_SKILL
+        && asString(payload.player_name) === session.state.selfName);
     const damage = /#(?:Damage|LoseHp|Recover|GetHp|ChangeHp)/u.test(type)
       || event.command === Command.CHANGE_HP;
-    const skill = /#(?:UseSkill|InvokeSkill|Skill)/u.test(type);
+    const skill = /#(?:UseSkill|InvokeSkill|Skill)/u.test(type)
+      || event.command === Command.INVOKE_SKILL;
     const categories: string[] = [];
     if (mine) categories.push("mine");
     if (damage) categories.push("damage");

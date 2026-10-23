@@ -459,13 +459,26 @@ QString formatClientPresentationText(int command, const QString &fallbackText,
         return QStringLiteral("%1: %2").arg(
             resolveName(playerName, chat.value(QStringLiteral("speaker")).toString()), said);
     }
+    case QSanProtocol::S_COMMAND_INVOKE_SKILL: {
+        // RoomScene::showSkillInvocation writes this line from the notification
+        // itself. Optional skills (fankui, ganglie, tieqi) only broadcast it --
+        // they never sendLog #InvokeSkill -- so the pane has no other row.
+        const QVariantMap invoked = payload.toMap();
+        QVariantMap log;
+        log.insert(QStringLiteral("log_type"), QStringLiteral("#InvokeSkill"));
+        log.insert(QStringLiteral("from_player"),
+                   invoked.value(QStringLiteral("player_name")));
+        log.insert(QStringLiteral("to_players"), QStringList());
+        log.insert(QStringLiteral("card_string"), QString());
+        log.insert(QStringLiteral("arguments"),
+                   QStringList{invoked.value(QStringLiteral("skill_name")).toString()});
+        return formatClientSkillLogText(log, playerName);
+    }
     case QSanProtocol::S_COMMAND_ANIMATE:
     case QSanProtocol::S_COMMAND_SET_EMOTION:
     // The desktop answers these with a skill bubble on the avatar and a table
-    // repaint; its log box stays silent, and the battle log already carries
-    // #InvokeSkill / #TriggerSkill for anything worth reading. Without this the
-    // transcript shows the reducer's own debug text ("sgs2 invoked eight_diagram").
-    case QSanProtocol::S_COMMAND_INVOKE_SKILL:
+    // repaint, so its log box stays silent. Without this the transcript shows
+    // the reducer's own debug text ("sgs2 invoked eight_diagram").
     case QSanProtocol::S_COMMAND_CHANGE_TABLE_BG:
     case QSanProtocol::S_COMMAND_SET_UI_THEME:
     case QSanProtocol::S_COMMAND_QML_ELEMENT:
