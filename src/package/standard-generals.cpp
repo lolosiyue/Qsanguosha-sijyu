@@ -5169,7 +5169,7 @@ bool NosTuxiCard::targetFilter(const QList<const Player *> &targets, const Playe
     if (targets.length() >= 2 || to_select == Self)
         return false;
 
-    return !to_select->isKongcheng();
+    return Self->canGet(to_select, "h");
 }
 
 void NosTuxiCard::onEffect(CardEffectStruct &effect) const
