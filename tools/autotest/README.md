@@ -13,7 +13,7 @@
 
 每模式一個 process, 內部連續跑 N 局 (正式對局使用 SmartAI), 以 exit code + log 標記判定。
 `--headless` 會在程序內啟用 AI，不受設定檔的 `EnableAI=false` 影響，也不回寫設定檔。
-選將前保留 TrustAI 作初始化，正式開局沿用 `Room::cloneAI()` 建立 SmartAI；Lua AI 建立失敗時仍走既有 TrustAI fallback，runner 會檢查既有 SmartAI 失敗標記。
+選將前保留原生 AI 作初始化，正式開局沿用 `Room::cloneAI()` 建立 SmartAI；Lua AI 建立失敗時仍走既有原生 AI fallback，runner 會檢查既有 SmartAI 失敗標記。
 
 用法:
 

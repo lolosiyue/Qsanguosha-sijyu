@@ -175,7 +175,7 @@ round is preceding. Waiting for the stack to unwind cannot move that target.
 
 The initial supported running envelope is explicitly audited `02p` normal
 GameRule with deferred/unloaded room rules definitions, fixed living
-roster/skill/general topology, stateless native TrustAI,
+roster/skill/general topology, stateless native AI,
 and managed Game/AI provider state. Active card definitions are a deliberately
 small audited whitelist; dynamic definition changes, arbitrary Card subclasses,
 unmanaged Lua/SmartAI state, controller redirection, races, external agents,
@@ -293,7 +293,7 @@ desktop platform. Start it with the ordinary staged engine assets:
 ```
 
 The process creates one private `02p` Room, two living players without generals
-or skills, stateless native TrustAI, and a fixed physical Slash/Jink/Peach deck.
+or skills, stateless native AI, and a fixed physical Slash/Jink/Peach deck.
 It starts a real `RoomThread` and executes the normal `GameRule`. The first JSON
 `ready` response follows the first completed player turn. Enter `step`,
 `rewind turn`, `rewind round`, `retry stats`, `status`, or `quit` on standard input. Input is a
@@ -334,7 +334,7 @@ choice only for that server's rooms. It is not persisted in QSettings. The QML
 home server-setup page does not expose this checkbox.
 
 This profile assigns two connected seats to fixed `sujiang` presentation and
-stateless native TrustAI, with 24 physical Slash/Jink/Peach cards and no skills.
+stateless native AI, with 24 physical Slash/Jink/Peach cards and no skills.
 Both clients remain connected to their original Room and player objects. They
 observe their own private hands while the owner advances whole ordinary turns.
 It is **not a human-choice game** and does not enable rewind for ordinary shipped
@@ -372,7 +372,7 @@ marshals only its requester and has a 250 ms per-peer cooldown. Idle acknowledgm
 is sent after the snapshot end, and the GUI clears its old mutable player
 projection before applying the committed replacement.
 
-Disconnected seats keep their player objects and native TrustAI state. The room's
+Disconnected seats keep their player objects and native AI state. The room's
 existing owner succession chooses a connected seat. Reconnect rotates the token,
 clears unsent frames from the old transport, and schedules a fresh private snapshot
 on the game worker. Socket availability and owner authority are not game-undo

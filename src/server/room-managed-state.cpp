@@ -296,10 +296,10 @@ bool RoomManagedState::quiescent(QString *error) const
             // the outbound/client cache; RoomThread invalidates it after restore.
             if(!derivedDistance) unsupportedDynamic=true;
         }
-        if (m_running && (!player->getSmartAI() || typeid(*player->getSmartAI()) != typeid(TrustAI)
-            || (player->ai && typeid(*player->ai) != typeid(TrustAI))
-            || (player->trust_ai && typeid(*player->trust_ai) != typeid(TrustAI) && typeid(*player->trust_ai) != typeid(BasicAI))))
-            return fail(error, QStringLiteral("native AI lacks a state contract (only stateless TrustAI is audited)"));
+        if (m_running && (!player->getSmartAI() || typeid(*player->getSmartAI()) != typeid(AI)
+            || (player->ai && typeid(*player->ai) != typeid(AI))
+            || (player->trust_ai && typeid(*player->trust_ai) != typeid(AI) && typeid(*player->trust_ai) != typeid(BasicAI))))
+            return fail(error, QStringLiteral("native AI lacks a state contract (only stateless native AI is audited)"));
         if ((!m_running && player->thread() != QThread::currentThread()) || player->m_isWaitingReply
             || (!m_running && player->m_expectedReplyMessageId.load() != 0)
             || (!m_running && (player->getGeneral() || player->getGeneral2()

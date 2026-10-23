@@ -48,7 +48,7 @@ bool ManagedRewindLab::start(quint64 seed, QString *error)
     if (QThread::currentThread() != thread() || m_room || m_started)
         return fail(error, QStringLiteral("lab must be started once on its local owner thread"));
     if (Config.EnableAI || Config.Enable2ndGeneral || Config.EnableHegemony)
-        return fail(error, QStringLiteral("lab requires native TrustAI, one general slot, and normal rules"));
+        return fail(error, QStringLiteral("lab requires native AI, one general slot, and normal rules"));
 
     m_room = new Room(nullptr, QStringLiteral("02p"), GameSessionConfig(seed),
                       Room::RuntimeInitializationPolicy::Deferred);
@@ -69,7 +69,7 @@ bool ManagedRewindLab::attach(Room *room, QString *error)
         || room->getMode() != QLatin1String("02p") || !Config.EnableCheat
         || Config.EnableAI || Config.Enable2ndGeneral || Config.EnableHegemony || Config.EnableMeleeMode
         || room->m_sessionConfig.takeover || room->m_sessionConfig.workLaunch)
-        return fail(error, QStringLiteral("Restricted rewind requires cheat-enabled 02p, native TrustAI and no scenario/takeover"));
+        return fail(error, QStringLiteral("Restricted rewind requires cheat-enabled 02p, native AI and no scenario/takeover"));
     m_ownedRoom = false;
     m_network = true;
     m_room = room;
@@ -109,7 +109,7 @@ bool ManagedRewindLab::initializePlayers(QString *error)
         player->setHp(3);
         player->setPhase(Player::NotActive);
         player->setRole(index == 0 ? QStringLiteral("lord") : QStringLiteral("rebel"));
-        player->setAI(new TrustAI(player));
+        player->setAI(new AI(player));
     }
     for (int index = 0; index < players.size(); ++index) {
         players[index]->setNext(players[(index + 1) % players.size()]);
@@ -141,7 +141,7 @@ bool ManagedRewindLab::initializePlayers(QString *error)
 
     GameState::ProviderRegistry registry;
     if (!registry.registerNativePackage(QStringLiteral("core.rewind-lab"), QStringLiteral("1"),
-        QStringLiteral("Private fixed living 02p; exact normal GameRule and stateless TrustAI; no general/skill definitions; physical Slash/Jink/Peach only; no external input providers"), error))
+        QStringLiteral("Private fixed living 02p; exact normal GameRule and stateless native AI; no general/skill definitions; physical Slash/Jink/Peach only; no external input providers"), error))
         return false;
     auto *worker = new RoomThread(m_room);
     m_room->thread = worker;
@@ -355,7 +355,7 @@ void ManagedRewindLab::disconnected(ServerPlayer *player)
     player->setSocket(nullptr);
     for (auto *seat : m_room->getPlayers()) m_room->broadcastProperty(seat, "owner");
     // Transport availability is outside the gameplay snapshot. Keep native
-    // TrustAI state fixed, so disconnect cannot create a human request path.
+    // AI state fixed, so disconnect cannot create a human request path.
     for (auto *recipient : recipients) sendStatus(recipient, QStringLiteral("A peer disconnected"));
 }
 

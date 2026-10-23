@@ -52,9 +52,9 @@ public:
     std::function<void(SkillContext &)> callback;
 };
 
-class OrderAI : public TrustAI {
+class OrderAI : public AI {
 public:
-    OrderAI(ServerPlayer *p) : TrustAI(p) {}
+    OrderAI(ServerPlayer *p) : AI(p) {}
     QString askForTriggerOrder(const QString &reason, QMap<ServerPlayer *, QStringList> &skills,
                                bool optional, const QVariant &data) override {
         ++calls;

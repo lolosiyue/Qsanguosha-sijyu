@@ -458,10 +458,10 @@ QWidget *ServerDialog::createAdvancedTab()
 	enable_cheat_checkbox->setToolTip(tr("This option enables the cheat menu"));
 	enable_cheat_checkbox->setChecked(Config.EnableCheat);
 
-	restricted_rewind_lab_checkbox = new QCheckBox(tr("Enable restricted rewind lab (02p; native TrustAI/basic cards only)"));
+	restricted_rewind_lab_checkbox = new QCheckBox(tr("Enable restricted rewind lab (02p; native AI/basic cards only)"));
 	restricted_rewind_lab_checkbox->setChecked(false);
 	restricted_rewind_lab_checkbox->setToolTip(tr(
-		"Opt in to the owner-controlled restricted profile. It uses native TrustAI and standard physical cards, with no general skills or ordinary room modes. It requires 02p, cheat enabled, and AI disabled. Previously revealed information cannot be forgotten; use only in an authorized debug room."));
+		"Opt in to the owner-controlled restricted profile. It uses native AI and standard physical cards, with no general skills or ordinary room modes. It requires 02p, cheat enabled, and AI disabled. Previously revealed information cannot be forgotten; use only in an authorized debug room."));
 
 	free_choose_checkbox = new QCheckBox(tr("Choose generals and cards freely"));
 	free_choose_checkbox->setChecked(Config.FreeChoose);
@@ -1733,7 +1733,7 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
 #endif
     m_restrictedRewindLab = qApp && qApp->property("restrictedRewindLabRequested").toBool();
     if (qApp) qApp->setProperty("restrictedRewindLabRequested", QVariant());
-    if (m_restrictedRewindLab) qInfo("Restricted rewind profile explicitly enabled for this server (TrustAI 02p)");
+    if (m_restrictedRewindLab) qInfo("Restricted rewind profile explicitly enabled for this server (native AI 02p)");
 	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	if (injectedSocket != nullptr) {
@@ -3211,7 +3211,7 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
 
     for (int i = 0; i < playerCount; i++) {
         ServerPlayer *player = room->addAIPlayer();
-        player->setAI(new TrustAI(player));
+        player->setAI(new AI(player));
         if (i == 0) {
             player->setOwner(true);
         }

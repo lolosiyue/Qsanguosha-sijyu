@@ -370,7 +370,7 @@ def main():
     parser.add_argument("--ai-delay", type=int, default=0,
                         help="server AI 思考延遲 (毫秒, CI 用 0)")
     parser.add_argument("--ai", choices=("on", "off"), default="on",
-                        help="SmartAI 開關；off 使用內建 TrustAI，僅作明確標示的 GUI 隔離驗證")
+                        help="SmartAI 開關；off 使用內建原生 AI，僅作明確標示的 GUI 隔離驗證")
     parser.add_argument("--require-interactions",
                         default=",".join(DEFAULT_REQUIRED_INTERACTIONS),
                         help="必須經真 UI 覆過的互動名, 逗號分隔")

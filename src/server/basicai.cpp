@@ -3,7 +3,7 @@
 #include "room.h"
 
 BasicAI::BasicAI(ServerPlayer *player)
-    : TrustAI(player)
+    : AI(player)
 {
 }
 
@@ -27,7 +27,7 @@ void BasicAI::activate(CardUseStruct &card_use)
         }
     }
     
-    TrustAI::activate(card_use);
+    AI::activate(card_use);
 }
 
 const Card *BasicAI::askForNullification(const Card *trick, ServerPlayer *from, 

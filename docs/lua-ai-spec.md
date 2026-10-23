@@ -794,7 +794,7 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 mode_policy。回傳值的修改不回寫共用距離表。玩家屬性、標記、旗標、tag、牌區、
 固定距離與 Room tag 的變更須立即推進 revision；工作執行緒的通知不等主執行緒
 處理 Qt 事件後才失效。`distanceTo_*` 是派生顯示屬性，不反過來使計算結果失效。
-大局的正常效能驗證以 SmartAI 開啟為準；TrustAI 僅作 fallback 與隔離診斷基線。
+大局的正常效能驗證以 SmartAI 開啟為準；原生 AI 僅作 fallback 與隔離診斷基線。
 
 Legacy SmartAI 的模式策略啟用判斷只查已註冊策略與自訂身份，與
 `evaluateModeAI` 的 `managed` 條件一致；自訂身份判斷依 Room revision 快取，

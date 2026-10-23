@@ -3,7 +3,7 @@
 
 #include "ai.h"
 
-class BasicAI : public TrustAI
+class BasicAI : public AI
 {
     Q_OBJECT
 

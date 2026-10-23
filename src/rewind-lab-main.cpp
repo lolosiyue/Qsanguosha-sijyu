@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("qsanguosha-rewind-lab"));
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral(
-        "Private restricted 02p rewind lab. No generals/skills, native TrustAI, basic cards only.\n"
+        "Private restricted 02p rewind lab. No generals/skills, native AI, basic cards only.\n"
         "Omniscient local debug console; no networking, lobby or GUI; statistics are excluded debug data.\n"
         "Commands: step | rewind turn | rewind round | retry stats | status | quit\n"
         "Rewind pauses at the selected start; step continues play. Limits: 128 advances / 128 restores."));
