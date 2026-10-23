@@ -113,7 +113,7 @@ bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternat
 						cardName = card->objectName();
 						cardNameReady = true;
 					}
-					hit = QStringView(term.text).mid(1) == cardName;
+					hit = term.text.size() == cardName.size() + 1 && term.text.endsWith(cardName);
 				}
 				if (!hit && term.cardStringPossible) {
 					if (!cardStringReady) {

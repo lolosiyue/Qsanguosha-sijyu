@@ -2886,7 +2886,7 @@ QList<const T *> skillsHeldInRoom(const QList<const T *> &all, const Player *anc
     static thread_local QList<const T *> s_held;
 
     const quint64 gen = SkillSet::generation();
-    if (gen != s_gen || anchor->parent() != s_room || all.constData() != s_all.constData()
+    if (gen != s_gen || anchor->parent() != s_room || !all.isSharedWith(s_all)
         || all.size() != s_all.size()) {
         s_held.clear();
         for (const T *skill : all)
@@ -3132,8 +3132,8 @@ CorrectSkillHolderList correctSkillHolders(const Player *primary, const Player *
     } else if (selector == CorrectSkill_AllHolders) {
         const Player *anchor = primary ? primary : secondary;
         if (anchor) {
-            const QList<const Player *> siblings = anchor->getAliveSiblings(true);
-            result.append(siblings.constData(), siblings.size());
+            foreach (const Player *sibling, anchor->getAliveSiblings(true))
+                result.append(sibling);
         }
     }
     return result;

@@ -4,7 +4,9 @@
 
 QStringList filterGeneralVersionsForMode(const QStringList &names, bool hegemony)
 {
-    const QSet<QString> pool(names.cbegin(), names.cend());
+    QSet<QString> pool;
+    foreach (const QString &name, names)
+        pool.insert(name);
     QStringList kept;
     foreach (const QString &name, names) {
         // heg_X is the hegemony version of exactly X: heg_huangzhong replaces huangzhong only,
