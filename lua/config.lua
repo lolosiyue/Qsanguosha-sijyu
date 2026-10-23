@@ -162,6 +162,7 @@ config = {
 		"extensions/newgenerals.lua;ai=lua/ai/newgenerals-ai.lua",
 		"extensions/newstar.lua;ai=lua/ai/newstar-ai.lua",
 		"extensions/nMobileEffect.lua",
+		"extensions/nuyan.lua",
 		"extensions/NyarzFirst.lua;ai=lua/ai/NyarzFirst-ai.lua",
 		"extensions/NyarzSecond.lua;ai=lua/ai/NyarzSecond-ai.lua",
 		"extensions/NyarzThird.lua;ai=lua/ai/NyarzThird-ai.lua",
