@@ -1607,8 +1607,11 @@ public:
     {
         if (!ctx.initiator || !ctx.use_card) return;
         QVariantMap receipt = ctx.extra_data.toMap();
+        // Both EventSkillInvoking and effect() commit; count each gift once.
+        if (receipt.value("committed").toBool()) return;
         if (!receipt.contains("given")) receipt.insert("given",
             ctx.initiator->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "given", 0));
+        receipt.insert("committed", true);
         ctx.extra_data = receipt;
         addUsage(ctx);
     }
@@ -2868,6 +2871,12 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
+    // The dispatcher does not gate quota; an awakened copy must not wake again.
+    bool prepareSource(Room *room, SkillContext &ctx) const override
+    {
+        return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
+    }
+
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *player = ctx.owner;
@@ -3325,6 +3334,12 @@ public:
             // canWake() consumes its grant, so selection only peeks at it.
             && (meetsCondition(room, player) || !player->getTag(objectName() + "_SKILLCANWAKE").toStringList().isEmpty())
             ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+
+    // The dispatcher does not gate quota; an awakened copy must not wake again.
+    bool prepareSource(Room *room, SkillContext &ctx) const override
+    {
+        return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx);
     }
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
