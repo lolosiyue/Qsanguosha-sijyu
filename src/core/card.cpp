@@ -319,13 +319,17 @@ bool Card::hasSuit() const
 	return getSuit() <= 3;
 }
 
+#if defined(QSAN_ENGINE_BUILD)
+// The client keeps the engine-side Self in sync through setEngineSelf() (player-self.cpp).
+namespace QSanEngine {
+extern Player *Self;
+}
+using QSanEngine::Self;
+#endif
+
 bool Card::isEquipped() const
 {
-#if defined(QSAN_ENGINE_BUILD)
-	return false;
-#else
 	return Self && Self->hasEquip(this);
-#endif
 }
 
 bool Card::match(const QString &pattern) const
