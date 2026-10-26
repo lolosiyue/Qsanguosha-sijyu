@@ -65,7 +65,7 @@ public:
     void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                   const QString &operation,
                                   const QString &key = QString(),
-                                  const QVariant &value = QVariant());
+                                  const QVariant &value = QVariant(), bool publicStateChanged = false);
 
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,

@@ -594,9 +594,9 @@ bool RoomRuntime::initialize(QString *error)
     // Isolated routes answer first, but every isolated refusal or stale answer falls
     // back to the legacy AI on this VM (AiDecisionCoordinator::runAnswer,
     // decideResponse, decide). Without SmartAI here that fallback degrades to the native AI,
-    // so the legacy runtime is bootstrapped whenever AI is enabled -- not only when
-    // the route registry names an explicit legacy callback.
-    if (Config.EnableAI) {
+    // so the legacy runtime is bootstrapped for non-hegemony AI routes -- not only
+    // when the route registry names an explicit legacy callback.
+    if (Config.EnableAI && !Config.EnableHegemony) {
         beginPhase("smart_ai");
         if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
             return failPhase();

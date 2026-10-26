@@ -2,6 +2,9 @@
 
 本文件記錄 `extensions/` 下 Lua 腳本的撰寫慣例、API 用法與最佳實踐。
 
+技能實例 state 可在 setter 最後指定 `sgs.SkillStatePublic`／`sgs.SkillStatePrivate`，省略時為私有；
+用法與生命週期見[Skill state 可見性介面](skill-description-instances.md#skill-state-可見性介面)。
+
 > 本文行號為 2026-09-06 實測，僅供輔助對照；Lua／C++ 檔案重構後行號會漂移，請一律以符號／工廠函式名搜尋定位。
 
 ---
@@ -987,6 +990,18 @@ createMode{
 - `intentions` 是 `onIntention` 的高階寫法，`objectiveByRole` 是 `objective` 的高階寫法；兩者不可與對應的底層 hook 同時使用。
 - `roles`／`teams` 中的身份必須已註冊，否則 `assert` 失敗。
 - 作者提供的政策會覆寫引擎內建的同名模式政策。
+
+`06pv`、`08pv`、`09pv`、`10pv` 的正式政策在 `lua/ai/mode-policies/villager.lua`，
+由 `lua/config.lua` 的 system 擴展 `ai` 宣告交給每個 Room 的 `package_ai` 載入，
+不在客戶端的規則載入階段執行。主忠同隊、反賊同隊；這三種身份對村民預設中立。
+內奸按可見局勢調整合作對象，並在包括村民的其他角色清場前保護主公。村民以自身
+生存為優先：已知或推測的其他村民固定友善；無敵對紀錄的主忠反預設中立，不因
+陣營強弱或目標較弱而挑釁。村民自己的 `intentions` hook 記錄針對自身的敵意與援助，
+包含主公的行為；低血、防禦手牌不足或對手明顯較強時降低反擊分數，未挑釁的內奸
+也只在自身較安全時保留低度敵意。防禦手牌只從完整的本人手牌投影估算，省略投影
+不當成沒有防牌。其他身份沿用原有身份推測，所有觀察者的記憶仍各自隔離；未明示
+且沒有行為證據的身份維持未知。身份分支只放在該模式政策，
+共用 AI 與 SmartAI 不新增村民判斷。
 
 ### 7.8 模式檢測
 

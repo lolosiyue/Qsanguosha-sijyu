@@ -2,6 +2,7 @@
 #define SKILL_INSTANCE_TYPES_H
 
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVariantMap>
 
@@ -12,6 +13,11 @@ enum SkillInstanceSource {
     SourceAcquired,    // Acquired through Room::acquireSkill.
     SourceHelper,      // Related helper, removed with its parent instance.
     SourceAttached
+};
+
+enum SkillStateVisibility {
+    SkillStatePrivate,
+    SkillStatePublic
 };
 
 struct SkillInstanceKey {
@@ -103,8 +109,9 @@ struct SkillInstance {
 private:
     friend class Player;
     friend class RoomManagedState;
-    // Private logical state is server-authoritative and synchronized only to its owner; see Room::notifySkillInstanceState.
+    // Values and visibility belong to this instance, independently of the skill definition.
     QVariantMap state;
+    QStringList publicStateKeys;
 };
 
 struct SkillChangeStruct {

@@ -150,6 +150,7 @@ struct AICardConversionView {
     // meta-object chain - the controlled catalogue, not anything the AI supplied.
     QString name;
     QString className;
+    QString skillName;
     QStringList kindOfNames;
     int suit;
     int number;
@@ -157,6 +158,9 @@ struct AICardConversionView {
     // held more than once, and it says nothing about whose quota pays for the use.
     SkillInstanceRef activationRef;
     SkillInstanceRef sourceRef;
+    // Equipment buttons have a native source receipt rather than a skill instance.
+    bool equipmentActivation = false;
+    PhysicalEquipSource physicalEquipSource;
     bool activationQuotaAvailable;
     bool sourceQuotaAvailable;
     // One ticket can describe choose(costCount) independent hand costs without subsets.
@@ -363,6 +367,9 @@ struct AIWorldView {
     QString modeId;
     bool customRoles = false;
     QJsonObject modePolicy;
+    // Viewer-scoped national-war facts. Knowing one's own general is distinct
+    // from having publicly revealed that general.
+    QJsonObject hegemonyFacts;
     int turnCount = 0; // The public round counter (TurnLengthCount).
     int drawPileCount = 0;
     QString currentDying; // Empty when nobody is dying.
@@ -398,13 +405,21 @@ struct AIWorldView {
 struct AiSkillActionContext {
     SkillInstanceRef activationRef;
     SkillInstanceRef sourceRef;
+    bool equipmentActivation = false;
+    PhysicalEquipSource physicalEquipSource;
     bool activationQuotaAvailable;
     bool sourceQuotaAvailable;
 
     AiSkillActionContext()
         : activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
 
-    bool isValid() const { return activationRef.isValid() && sourceRef.isValid(); }
+    bool isValid() const {
+        if (equipmentActivation)
+            return !activationRef.ownerObjectName.isEmpty() && !activationRef.key.skillName.isEmpty()
+                && activationRef.key.instanceID == 0
+                && (physicalEquipSource.isValid() || sourceRef.isValid());
+        return activationRef.isValid() && sourceRef.isValid();
+    }
     QString getActivationOwner() const { return activationRef.ownerObjectName; }
     QString getActivationSkillName() const { return activationRef.key.skillName; }
     int getActivationInstanceId() const { return activationRef.key.instanceID; }
@@ -473,6 +488,7 @@ struct AIRequest {
     // Every skill instance this player could activate for this request. The single
     // skillActionContext above stays the one the request was built for, if any.
     QList<AiSkillActionContext> skillActions;
+    bool equipmentActionsComplete = true;
     AIChoiceOptions choiceOptions;
     // Only the card decisions carry candidates; the other kinds leave this empty.
     QList<AICardCandidateView> cardCandidates;

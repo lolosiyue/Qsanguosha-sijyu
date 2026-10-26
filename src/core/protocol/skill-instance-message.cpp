@@ -19,6 +19,20 @@ bool isStateOperation(const QString &operation, bool privateState)
     return operation == "set" || operation == "remove" || operation == "clear"
         || (privateState && operation == "replace");
 }
+
+bool parsePublicStateKeys(const QVariantMap &object, QStringList &keys)
+{
+    if (!object.contains("public_state_keys")) return true; // Old messages contain private state.
+    const QVariant value = object.value("public_state_keys");
+    if (value.userType() != QMetaType::QStringList && value.userType() != QMetaType::QVariantList) return false;
+    for (const QVariant &entry : value.toList()) {
+        if (entry.userType() != QMetaType::QString || entry.toString().isEmpty() || keys.contains(entry.toString()))
+            return false;
+        keys << entry.toString();
+    }
+    keys.sort();
+    return true;
+}
 }
 
 QVariant SkillInstanceEntryMessage::toVariant() const
@@ -54,6 +68,7 @@ QVariant SkillInstanceEntryMessage::toVariant() const
         result.insert(QStringLiteral("correct_state"), instance.correctState);
     if (!privateState.isEmpty())
         result.insert(QStringLiteral("state"), privateState);
+    result.insert(QStringLiteral("public_state_keys"), publicStateKeys);
     return result;
 }
 
@@ -114,6 +129,9 @@ bool SkillInstanceEntryMessage::tryParse(const QVariant &value)
             return false;
         parsed.privateState = object.value(QStringLiteral("state")).toMap();
     }
+    if (!parsePublicStateKeys(object, parsed.publicStateKeys)) return false;
+    for (const QString &key : parsed.publicStateKeys)
+        if (!parsed.privateState.contains(key)) return false;
 
     *this = parsed;
     return true;
@@ -173,11 +191,13 @@ SkillInstanceMessage SkillInstanceMessage::makeCorrectState(
 SkillInstanceMessage SkillInstanceMessage::makeState(const QString &ownerName,
                                                       const QString &skillName, int instanceId,
                                                       const QString &operation,
-                                                      const QString &key, const QVariant &value)
+                                                      const QString &key, const QVariant &value,
+                                                      const QStringList &publicStateKeys)
 {
     SkillInstanceMessage message = makeCorrectState(ownerName, skillName, instanceId,
                                                     operation, key, value);
     message.action = State;
+    message.publicStateKeys = publicStateKeys;
     return message;
 }
 
@@ -228,6 +248,7 @@ QVariant SkillInstanceMessage::toVariant() const
         result.insert(QStringLiteral("operation"), operation);
         result.insert(QStringLiteral("key"), key);
         result.insert(QStringLiteral("value"), value);
+        result.insert(QStringLiteral("public_state_keys"), publicStateKeys);
         break;
     default:
         return QVariant();
@@ -284,6 +305,13 @@ bool SkillInstanceMessage::tryParse(const QVariant &value)
                 && object.value(QStringLiteral("value")).userType() != QMetaType::QVariantMap))
             return false;
         parsed.value = object.value(QStringLiteral("value"));
+        if (privateState) {
+            if (!parsePublicStateKeys(object, parsed.publicStateKeys)) return false;
+            if (parsed.operation == "replace") {
+                for (const QString &key : parsed.publicStateKeys)
+                    if (!parsed.value.toMap().contains(key)) return false;
+            }
+        }
     } else {
         return false;
     }

@@ -408,6 +408,10 @@ def main():
                         help="搭配 --ui-responder: 國戰回合開始的明置詢問一律取消, 武將只靠技能 (預亮) 或規則亮出")
     parser.add_argument("--server-config", default="",
                         help="server --config 覆蓋檔 (只在 server 記憶體生效, 不寫回 config.ini), 例: EnableHegemony=true")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="server 使用的 unsigned 64-bit 遊戲種子")
+    parser.add_argument("--server-asset-root", default="",
+                        help="server 原生 --asset-root，供指定來源樹的 Lua／規則資產")
     parser.add_argument("--port", type=int, default=DEFAULT_SERVER_PORT,
                         help="server 監聽 port (預設 %d); --parallel 時第 i 個 slot 用 port+i"
                              % DEFAULT_SERVER_PORT)
@@ -421,6 +425,12 @@ def main():
         SERVER_EXTRA_ARGS[:] = ["--force-general", args.force_general]
     if args.server_config:
         SERVER_EXTRA_ARGS.extend(["--config", os.path.abspath(args.server_config)])
+    if args.seed is not None:
+        if not 0 <= args.seed < 2**64:
+            parser.error("--seed 必須是 unsigned 64-bit 整數")
+        SERVER_EXTRA_ARGS.extend(["--seed", str(args.seed)])
+    if args.server_asset_root:
+        SERVER_EXTRA_ARGS.extend(["--asset-root", os.path.abspath(args.server_asset_root)])
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
     if not modes:

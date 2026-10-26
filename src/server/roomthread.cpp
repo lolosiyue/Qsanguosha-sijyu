@@ -2457,7 +2457,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
 		triggerDispatchStep(triggerEvent, skill_owner, v2->objectName());
 		bool do_cost = false;
-        if (!invokeAuthorCallback([&]() { do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+        if (!invokeAuthorCallback([&]() {
+            Room::AiSkillContextScope aiContext(*room, *selected_ctx);
+            do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
+        })) return false;
 		checkTriggerDispatchAbort();
 		restoreIdentity();
         selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2499,7 +2502,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 			triggerDispatchStep(triggerEvent, skill_owner, v2->objectName());
 			bool do_pay = false;
-            if (!invokeAuthorCallback([&]() { do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            if (!invokeAuthorCallback([&]() {
+                Room::AiSkillContextScope aiContext(*room, *selected_ctx);
+                do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
+            })) return false;
 			checkTriggerDispatchAbort();
 			restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2562,7 +2568,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         });
         if (paymentBypassed) {
             // Waiving payment never waives the quota of this accepted invocation.
-            if (!invokeAuthorCallback([&]() { v2->payBypassed(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            if (!invokeAuthorCallback([&]() {
+                Room::AiSkillContextScope aiContext(*room, *selected_ctx);
+                v2->payBypassed(triggerEvent, room, skill_owner, *selected_ctx);
+            })) return false;
             checkTriggerDispatchAbort();
             restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2593,7 +2602,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
         if (!skip_effect) {
-            if (!invokeAuthorCallback([&]() { broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            if (!invokeAuthorCallback([&]() {
+                Room::AiSkillContextScope aiContext(*room, *selected_ctx);
+                broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
+            })) return false;
             checkTriggerDispatchAbort();
             restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2602,7 +2614,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 foreach (ServerPlayer *t, selected_ctx->targets) {
                     triggerDispatchStep(triggerEvent, t, v2->objectName());
                     bool target_broken = false;
-                    if (!invokeAuthorCallback([&]() { target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t); })) return false;
+                    if (!invokeAuthorCallback([&]() {
+                        Room::AiSkillContextScope aiContext(*room, *selected_ctx);
+                        target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
+                    })) return false;
                     checkTriggerDispatchAbort();
                     restoreIdentity();
                     selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -3259,7 +3274,8 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
             } else invalidateManagedTurns(journalError);
         }
 		room->recordAiEvent(int(triggerEvent), target, data);
-		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+		if (!Config.EnableHegemony && target)
+			target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		stacked = false;
 		event_stack.pop_back();// pop event stack
 		flushOutermostDeferredWork(room);
@@ -3294,7 +3310,8 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
         if (!stacked) throw;
         try {
             room->recordAiEvent(int(triggerEvent), target, data);
-            if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+			if (!Config.EnableHegemony && target)
+				target->getSmartAI()->filterEvent(triggerEvent, target, data);
             checkTriggerDispatchAbort();
             stacked = false;
             event_stack.pop_back();

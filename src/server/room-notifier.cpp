@@ -269,11 +269,26 @@ void RoomNotifier::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlaye
 
 void RoomNotifier::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                             const QString &operation, const QString &key,
-                                            const QVariant &value)
+                                            const QVariant &value, bool publicStateChanged)
 {
     if (!owner) return;
+    const QVariantMap publicState = owner->getSkillInstancePublicState(instance.skillName, instance.instanceID);
     const SkillInstanceMessage message = SkillInstanceMessage::makeState(
         owner->objectName(), instance.skillName, instance.instanceID,
-        operation, key, value);
+        operation, key, value, publicState.keys());
     doNotify(owner, S_COMMAND_SKILL_INSTANCE, message.toVariant());
+
+    if (!publicStateChanged) return;
+
+    // Replace only the public subset, including expiry/removal; never forward private values.
+    const SkillInstanceMessage publicMessage = SkillInstanceMessage::makeState(
+        owner->objectName(), instance.skillName, instance.instanceID, "replace", QString(),
+        publicState, publicState.keys());
+    const QList<ServerPlayer *> privateReceivers = resolveRecipients(QList<ServerPlayer *>() << owner);
+    for (ServerPlayer *receiver : m_room.getPlayers()) {
+        if (privateReceivers.contains(receiver)
+            || !SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, receiver, owner, instance)) continue;
+        // Do not expand controllers again after selecting a filtered observer payload.
+        sendPacket(QList<ServerPlayer *>() << receiver, S_COMMAND_SKILL_INSTANCE, publicMessage.toVariant());
+    }
 }

@@ -322,6 +322,19 @@ bool validateSkillInstanceJson(const QJsonObject &object, const QString &path,
         || !requireJsonType(object, QStringLiteral("correctState"), QJsonValue::Object, path, error))
         return false;
     // Optional for older snapshots; a present applied-grant tuple is all-or-nothing.
+    if (object.contains("publicStateKeys")) {
+        if (!requireJsonType(object, "publicStateKeys", QJsonValue::Array, path, error)) return false;
+        QSet<QString> publicKeys;
+        const QJsonObject state = object.value("state").toObject();
+        for (const QJsonValue &entry : object.value("publicStateKeys").toArray()) {
+            if (!entry.isString() || entry.toString().isEmpty() || !state.contains(entry.toString())
+                || publicKeys.contains(entry.toString())) {
+                if (error) *error = path + QStringLiteral(": invalid public state key");
+                return false;
+            }
+            publicKeys.insert(entry.toString());
+        }
+    }
     if (object.contains("frozenSource") || object.contains("grantActivation")) {
         if (!requireJsonType(object, "frozenSource", QJsonValue::Object, path, error)
             || !requireJsonType(object, "grantActivation", QJsonValue::Object, path, error)) return false;
@@ -907,6 +920,7 @@ bool capturePlayer(ServerPlayer *player, PlayerSnapshot *snapshot, QString *erro
         item.amountOverride = instance.amountOverride;
         item.bindHead = instance.bindHead;
         item.state = player->getSkillInstanceState(instance.skillName, instance.instanceID);
+        item.publicStateKeys = player->getSkillInstancePublicState(instance.skillName, instance.instanceID).keys();
         item.correctState = player->getSkillInstanceCorrectState(instance.skillName, instance.instanceID);
         if (!checkMap(item.state, QStringLiteral("skillInstance.state"), error)
             || !checkMap(item.correctState, QStringLiteral("skillInstance.correctState"), error))
@@ -972,6 +986,7 @@ QVariantMap SkillInstanceSnapshot::serialize() const
             {QStringLiteral("parentRefInstanceID"), parentRefInstanceID}, {QStringLiteral("visible"), visible},
             {QStringLiteral("hasAmountOverride"), hasAmountOverride}, {QStringLiteral("amountOverride"), amountOverride},
             {QStringLiteral("bindHead"), bindHead}, {QStringLiteral("state"), state},
+            {QStringLiteral("publicStateKeys"), publicStateKeys},
             {QStringLiteral("correctState"), correctState},
             {QStringLiteral("frozenSource"), frozenSource},
             {QStringLiteral("grantActivation"), grantActivation}};
@@ -995,6 +1010,7 @@ SkillInstanceSnapshot SkillInstanceSnapshot::deserialize(const QVariantMap &map)
     result.amountOverride = map.value(QStringLiteral("amountOverride")).toInt();
     result.bindHead = map.value(QStringLiteral("bindHead")).toInt();
     result.state = map.value(QStringLiteral("state")).toMap();
+    result.publicStateKeys = map.value(QStringLiteral("publicStateKeys")).toStringList();
     result.correctState = map.value(QStringLiteral("correctState")).toMap();
     return result;
 }

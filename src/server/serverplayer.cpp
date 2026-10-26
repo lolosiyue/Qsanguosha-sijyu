@@ -341,41 +341,49 @@ void ServerPlayer::numericStateCommitted(const char *mutation, int hpBefore,
             getHp(), getMaxHp(), getHandcardNum());
 }
 
-void ServerPlayer::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
+void ServerPlayer::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                                        SkillStateVisibility visibility)
 {
 	if (!findSkillInstance(skillName, instanceID)) return;
-	Player::setSkillInstanceState(skillName, instanceID, state);
+	const QVariantMap previousPublicState = getSkillInstancePublicState(skillName, instanceID);
+	Player::setSkillInstanceState(skillName, instanceID, state, visibility);
 	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
 	if (room && instance)
-		room->notifySkillInstanceState(this, *instance, "replace", QString(), state);
+		room->notifySkillInstanceState(this, *instance, "replace", QString(), state,
+            previousPublicState != getSkillInstancePublicState(skillName, instanceID));
 }
 
 void ServerPlayer::removeSkillInstanceState(const QString &skillName, int instanceID)
 {
 	if (!findSkillInstance(skillName, instanceID)) return;
+	const bool hadPublicState = !getSkillInstancePublicState(skillName, instanceID).isEmpty();
 	Player::removeSkillInstanceState(skillName, instanceID);
 	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
 	if (room && instance)
-		room->notifySkillInstanceState(this, *instance, "clear");
+		room->notifySkillInstanceState(this, *instance, "clear", QString(), QVariant(), hadPublicState);
 }
 
-void ServerPlayer::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value)
+void ServerPlayer::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key,
+                                             const QVariant &value, SkillStateVisibility visibility)
 {
 	if (!findSkillInstance(skillName, instanceID) || key.isEmpty()) return;
-	Player::setSkillInstanceStateValue(skillName, instanceID, key, value);
+	const QVariantMap previousPublicState = getSkillInstancePublicState(skillName, instanceID);
+	Player::setSkillInstanceStateValue(skillName, instanceID, key, value, visibility);
 	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
 	if (room && instance)
-		room->notifySkillInstanceState(this, *instance, "set", key, value);
+		room->notifySkillInstanceState(this, *instance, "set", key, value,
+            previousPublicState != getSkillInstancePublicState(skillName, instanceID));
 }
 
 void ServerPlayer::removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key)
 {
 	if (!findSkillInstance(skillName, instanceID) || key.isEmpty()) return;
 	if (!getSkillInstanceState(skillName, instanceID).contains(key)) return;
+	const bool wasPublic = getSkillInstanceStateVisibility(skillName, instanceID, key) == SkillStatePublic;
 	Player::removeSkillInstanceStateValue(skillName, instanceID, key);
 	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
 	if (room && instance)
-		room->notifySkillInstanceState(this, *instance, "remove", key);
+		room->notifySkillInstanceState(this, *instance, "remove", key, QVariant(), wasPublic);
 }
 
 void ServerPlayer::setOnsoleOwner(ServerPlayer *owner)

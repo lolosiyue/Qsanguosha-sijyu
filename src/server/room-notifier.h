@@ -42,7 +42,7 @@ public:
                              const PlayerUIState &state);
     void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                   const QString &operation, const QString &key,
-                                  const QVariant &value);
+                                  const QVariant &value, bool publicStateChanged);
 
 private:
     QList<ServerPlayer *> resolveRecipients(const QList<ServerPlayer *> &players) const;

@@ -42,10 +42,12 @@ public:
     QString reportHeader() const;
     //void drawCard(const Card *card);
     Room *getRoom() const;
-    // Owner-only synchronization of SkillInstanceState. Player setters used by Lua automatically call notify.
-    void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state) override;
+    // Synchronize complete state to the owner and public values to visible observers.
+    void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                              SkillStateVisibility visibility = SkillStatePrivate) override;
     void removeSkillInstanceState(const QString &skillName, int instanceID) override;
-    void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value) override;
+    void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key,
+                                   const QVariant &value, SkillStateVisibility visibility = SkillStatePrivate) override;
     void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key) override;
     void setOnsoleOwner(ServerPlayer *owner);
     ServerPlayer *getOnsoleOwner() const;

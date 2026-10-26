@@ -270,6 +270,11 @@ namespace MaxCardsType {
     enum MaxCardsCount { Max = 1, Normal = 0, Min = -1 };
 }
 
+enum SkillStateVisibility {
+    SkillStatePrivate,
+    SkillStatePublic
+};
+
 class Player: public QObject {
 public:
 	enum Phase { RoundStart, Start, Judge, Draw, Play, Discard, Finish, NotActive, PhaseNone };
@@ -583,11 +588,14 @@ public:
 	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value, int instanceId = 0);
 	QHash<QString, QString> getSkillDescriptionSwap(const char*skill_name, int instanceId = 0) const;
 
-	void setSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &value);
+	void setSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &value,
+	                                SkillStateVisibility visibility = SkillStatePrivate);
+	SkillStateVisibility getSkillInstanceStateVisibility(const char*skill_name, int instanceID, const char*key) const;
 	QVariant getSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &defaultValue = QVariant()) const;
 	void removeSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key);
 	QStringList getSkillInstanceStateStringList(const char *skillName, int instanceID, const char *key) const;
-	bool setSkillInstanceStateStringList(const char *skillName, int instanceID, const char *key, QStringList stateStrings);
+	bool setSkillInstanceStateStringList(const char *skillName, int instanceID, const char *key, QStringList stateStrings,
+	                                     SkillStateVisibility visibility = SkillStatePrivate);
 	int removeSkillInstanceStateKeys(const char *skillName, int instanceID, QStringList stateStrings);
 
 static bool isNostalGeneral(const Player*p, const char*general_name);

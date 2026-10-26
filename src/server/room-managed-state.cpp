@@ -530,7 +530,8 @@ std::unique_ptr<RoomManagedState::NativeSlice> RoomManagedState::captureNative(Q
                     {"visible", skill.visible}, {"amount_override", skill.hasAmountOverride},
                     {"amount", skill.amountOverride}, {"bind_head", skill.bindHead}};
                 values << QVariantMap{{"skill", skill.skillName}, {"id", skill.instanceID},
-                                     {"state", skill.state}, {"correct", skill.correctState}};
+                                     {"state", skill.state}, {"public_state_keys", skill.publicStateKeys},
+                                     {"correct", skill.correctState}};
             }
         }
         QVariantMap marks, nextIds;
@@ -649,7 +650,8 @@ QByteArray RoomManagedState::nativeFingerprint(const NativeSlice &native) const
         for (const auto &instances : seat.skills)
             for (const auto &skill : instances)
                 values << QVariantMap{{"skill", skill.skillName}, {"id", skill.instanceID},
-                                     {"state", skill.state}, {"correct", skill.correctState}};
+                                     {"state", skill.state}, {"public_state_keys", skill.publicStateKeys},
+                                     {"correct", skill.correctState}};
         seats << QVariantMap{{"id", seat.player->objectName()}, {"hp", seat.hp}, {"maxhp", seat.maxHp},
             {"phase", int(seat.phase)}, {"marks", marks}, {"tags", seat.tags}, {"skill_values", values}};
     }
@@ -784,6 +786,7 @@ bool RoomManagedState::project(const NativeSlice &native, GameState::WorldState 
                 if (managed.providerId.isEmpty())
                     return fail(error, QStringLiteral("native skill has no audited managed provider: %1").arg(skill.skillName));
                 managed.state = skill.state; managed.correctState = skill.correctState;
+                managed.publicStateKeys = skill.publicStateKeys;
                 world.skills.insert(managed.id, managed);
             }
         }
@@ -1013,6 +1016,8 @@ bool RoomManagedState::buildNativeCandidate(NativeSlice &native, const GameState
                     || value.parentId != old.parentId || value.providerId != old.providerId)
                     return fail(error, QStringLiteral("candidate changed native skill topology"));
                 skill.state = value.state; skill.correctState = value.correctState;
+                skill.publicStateKeys = value.publicStateKeys;
+                skill.publicStateKeys.sort();
             }
         }
     }

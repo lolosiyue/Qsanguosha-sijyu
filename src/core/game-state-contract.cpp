@@ -192,6 +192,12 @@ bool validateWorld(const WorldState &world, const ProviderRegistry &registry, QS
             parent = world.skills.value(parent).parentId;
         }
         if (!validateValue(skill.state, world, error) || !validateValue(skill.correctState, world, error)) return false;
+        QSet<QString> publicKeys;
+        for (const QString &key : skill.publicStateKeys) {
+            if (key.isEmpty() || !skill.state.contains(key) || publicKeys.contains(key))
+                return fail(error, QStringLiteral("invalid public skill state key"));
+            publicKeys.insert(key);
+        }
     }
     if (!validateValue(world.roomTags, world, error)) return false;
     if (world.history.version != 1 || world.history.nextEventId == 0)

@@ -95,6 +95,8 @@ function(qsan_add_android_runtime_assets target)
             lua/ai/isolated/decision-core.lua
             lua/ai/isolated/retrial.lua
             lua/ai/isolated/strategy-hooks.lua
+            lua/ai/isolated/hook-defaults.lua
+            lua/ai/isolated/target-recommendation.lua
             lua/ai/isolated/event-intention.lua)
         list(FIND qsan_android_valid_lua_relative "${qsan_android_required_lua}"
             qsan_android_required_index)

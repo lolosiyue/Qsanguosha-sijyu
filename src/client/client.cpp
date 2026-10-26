@@ -3471,10 +3471,8 @@ void Client::syncSkillInstances(const QVariant &payload)
 			ClientPlayer *owner = getPlayer(entry.ownerName);
 			if (!owner) continue;
 			owner->upsertSkillInstance(entry.instance);
-			if (!entry.privateState.isEmpty())
-				owner->setSkillInstanceState(entry.instance.skillName,
-				                             entry.instance.instanceID,
-				                             entry.privateState);
+			owner->restoreSkillInstanceState(entry.instance.skillName, entry.instance.instanceID,
+			                                 entry.privateState, entry.publicStateKeys);
 		}
 		emit skill_instances_reset();
 		return;
@@ -3485,10 +3483,8 @@ void Client::syncSkillInstances(const QVariant &payload)
 		ClientPlayer *owner = getPlayer(entry.ownerName);
 		if (!owner) return;
 		owner->upsertSkillInstance(entry.instance);
-		if (!entry.privateState.isEmpty())
-			owner->setSkillInstanceState(entry.instance.skillName,
-			                             entry.instance.instanceID,
-			                             entry.privateState);
+		owner->restoreSkillInstanceState(entry.instance.skillName, entry.instance.instanceID,
+		                                 entry.privateState, entry.publicStateKeys);
 		emit skill_acquired(owner, SkillInstanceUtils::formatName(entry.instance.skillName,
 		                                                       entry.instance.instanceID));
 		return;
@@ -3533,14 +3529,15 @@ void Client::syncSkillInstances(const QVariant &payload)
 		return;
 	}
 
-	// Owner-only private-state operations: set, remove, clear, or replace.
+	// Apply values and visibility together, including public-to-private transitions.
 	if (message.action == SkillInstanceMessage::State) {
 		if (!owner || !owner->hasSkillInstance(message.skillName, message.instanceId)) return;
 		bool applied = false;
 		if (message.operation == "set") {
 			if (message.key.isEmpty()) return;
 			owner->setSkillInstanceStateValue(message.skillName, message.instanceId,
-			                                   message.key, message.value);
+			                                   message.key, message.value,
+			                                   message.publicStateKeys.contains(message.key) ? SkillStatePublic : SkillStatePrivate);
 			applied = true;
 		} else if (message.operation == "remove") {
 			if (message.key.isEmpty()) return;
@@ -3551,8 +3548,8 @@ void Client::syncSkillInstances(const QVariant &payload)
 			owner->removeSkillInstanceState(message.skillName, message.instanceId);
 			applied = true;
 		} else if (message.operation == "replace") {
-			owner->setSkillInstanceState(message.skillName, message.instanceId,
-			                             message.value.toMap());
+			owner->restoreSkillInstanceState(message.skillName, message.instanceId,
+			                                 message.value.toMap(), message.publicStateKeys);
 			applied = true;
 		}
 		if (applied)

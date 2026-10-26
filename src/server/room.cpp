@@ -4371,9 +4371,9 @@ void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInsta
 
 void Room::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                     const QString &operation, const QString &key,
-                                    const QVariant &value)
+                                    const QVariant &value, bool publicStateChanged)
 {
-	m_skillRuntime->notifySkillInstanceState(owner, instance, operation, key, value);
+	m_skillRuntime->notifySkillInstanceState(owner, instance, operation, key, value, publicStateChanged);
 }
 
 int Room::getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok) const
@@ -6537,11 +6537,11 @@ bool Room::setShimingStatus(const SkillInstanceRef &ref, int status, int index)
     if (!player || !player->hasSkillInstance(ref.key.skillName, ref.key.instanceID)) return false;
     if (getShimingStatus(ref) == status) return false;
 
-    QVariantMap state = player->getSkillInstanceState(ref.key.skillName, ref.key.instanceID);
-    const qulonglong revision = state.value("shiming_revision").toULongLong() + 1;
-    state.insert("shiming_status", status);
-    state.insert("shiming_revision", revision);
-    player->setSkillInstanceState(ref.key.skillName, ref.key.instanceID, state);
+    const qulonglong revision = player->getSkillInstanceStateValue(
+        ref.key.skillName, ref.key.instanceID, "shiming_revision").toULongLong() + 1;
+    // Updating mission fields must preserve the visibility of unrelated state keys.
+    player->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "shiming_revision", revision);
+    player->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "shiming_status", status);
     if (status == 0) return true;
 
     LogMessage log;

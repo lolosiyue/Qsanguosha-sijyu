@@ -22,12 +22,84 @@
 | 選玩家／棄牌 | `ai_skill_playerchosen[reason]`／`ai_skill_discard[reason]`，同一新 ABI |
 | 回應出牌 | `ai_skill_use[pattern](self, prompt, request)` |
 | 主動技能 | `ai_skill_activate[skill_name](self, request)` |
-| 自訂卡牌策略 | `ai_card_use[card_name_or_class](self, card, use)` |
+| 主動出牌候選 | `ai_fill_skill[skill_name](self, options, request)`，`options.inclusive` 保留候選收集時的原值 |
+| 自訂卡牌策略 | `ai_card_use[card_name_or_class](self, card, use, request)` |
 | 估值、保牌、傷害等偏好 | 先找共用 helper 與 `strategy-hooks.lua` 已有 consumer |
 
-鍵值對應實際 request 的 reason／pattern／技能名（不一定是顯示名稱）。新 ABI 的 `options` 不是 QVariant；`sgs.ai_skill_*` 相容表是 legacy ABI，參數位置不可混用。
+鍵值對應實際 request 的 reason／pattern／技能名（不一定是顯示名稱）。新 ABI 的 `options` 不是 QVariant；尚未遷移的 `sgs.ai_skill_*` 相容表是 legacy ABI，參數位置不可混用。
 
-已登記的純值 `ai_skill_invoke[reason]` 在一般模式與 Original 國戰皆優先處理該詢問；Original 的舊詢問流程只處理未登記純值 handler 的技能。技能別名可直接登記到同一純值回呼，不必保留 `sgs.ai_skill_invoke` 包裝。
+`ai_skill_use` 已統一為 `(self, prompt, request)`，不再提供 `sgs.ai_skill_use` 或 legacy 註冊 API。處理方式與牌模式讀取 `request.handling_method`／`request.pattern`，技能來源讀取 `request.skill_action`；來源必須與 authority 提供的行動逐欄相符。內部估算若原本沒有技能 request，維持省略，不拿 `self.request` 補另一個技能的授權。
+
+`ai_skill_invoke` 全套件統一為 `(self, options, request)`，不再提供 `sgs.ai_skill_invoke`。reason 先查原值，再查把 `-` 換成 `_` 的鍵；一般模式依 Lua truthiness 判斷，Original 國戰只接受 `true`。移植回呼原本的空回傳明確轉為 `false`；原生回呼的 `nil` 仍表示未處理。unsupported 必須先傳遞，不能轉成發動或拒絕。
+
+跨技能詢問使用原請求的 `options, request`；原本沒有資料時明確傳 `{ }, nil`。需要合成資料時，以 `self:inquiryInput("skill_invoke", reason, {damage=damage})` 取得兩個純值參數，作為呼叫的最後一個運算式。context 可含既有的玩家／牌 view、AIList 與具名結構；helper 轉成純值快照，設定 `context_scope="supplied"`，不借用世界 context、LastCardEffect 或行動票券，也不切換外層 `self.request`。callback 用 `self:getDecisionContext(request)` 讀這份資料；不得再建立帶 `toDamage`／`toCardUse` 方法的假 QVariant。
+
+`ai_fill_skill` 與登記用的局部 `getTurnUseCard` 使用同一原生三參數 ABI，沒有 `sgs.ai_fill_skill` 別名。第二參數是 options，第三參數是該技能實際的 raw request；來源檢查使用 `AIValue.isSkillActionRequest(request)` 與 `request.skill_action`。候選收集器按當時 `#cards < 1` 設定 inclusive，保留 Card／Conversion／候選陣列／nil 的回傳、順序與既有權威驗證。跨技能推薦原本沒有 request 時仍傳 nil，不補外層另一技能的來源身分。
+
+`ai_skill_choice` 全套件統一為 `(self, options, request)`，候選是純值陣列 `options.choices`；不再提供 `sgs.ai_skill_choice` 或其 legacy 分派。直接回傳選項字串；原生 handler 的 `nil` 仍表示未處理，明確要求共用預設可回 `{kind="choice_default"}`。此結果只由頂層 dispatcher 消費，不存進跨詢問記憶。既有 scalar 選項字串維持原值與最後寫入者優先序。
+
+移植政策使用 `ai_choice_result(value, options)` 完成每個最外層回傳，包括空回傳：一般頂層只接受字串，其他值要求預設；Original 頂層把數字轉成字串，非文字或空值保留原空答案旗標。原生 handler 自有的 `nil`／空字串語義不套這層轉換。頂層 scope 是 `ordinary_top_level`／`original_top_level`；內部呼叫使用獨立 options 與中性的 scope，保留原值，不能繼承外層的結果邊界。舊政策的字串輸入在頂層缺 choices 時仍為 `""`，內部原本省略時仍為 nil。Huashen 的額外參數改從 `options.xiaode_choice` 讀取。
+
+## 國戰 strict 契約
+
+國戰的二十個公開 AI callback（`activate`、`askForUseCard`、`askForSkillInvoke`、`askForChoice`、
+`askForSuit`、`askForKingdom`、`askForGeneral`、`askForDiscard`、`askForAG`、`askForCardChosen`、
+`askForYiji`、`askForPlayerChosen`、`askForPlayersChosen`、`askForGuanxing`、`askForTriggerOrder`、
+`askForCard`、`askForNullification`、`askForCardShow`、`askForPindian`、`askForSinglePeach`）一律走
+`Isolated`；`LegacyDirect`／`LegacyAdapted` 設定不會覆寫這條路由。`runAnswer`、`decideResponse`、`decide` 遇到未覆蓋、拒答、過期或錯誤時直接拒絕，
+不回 SmartAI。一般模式保留既有 legacy 相容路徑；國戰 `GameReady`、`Gongxin`、`filterEvent`
+與 legacy 初始化不提供 SmartAI fallback，handler 應使用值型事件與 request。
+
+國戰回 nil 時，`AI_HEGEMONY_NOT_COVERED` 另記該次 outcome、reason 與 key，與決策 ID 對照。
+這些是有長度上限的純值診斷；不執行額外 Lua callback、不保存題目或牌面，也不把未覆蓋改算 runtime fault。
+
+Original `askForCard` 的理由策略回傳已知無卡結果時，接續同一 isolated VM 的
+`response_card_default` 合法候選規劃，不要求 TrustAI 預設答案或額外的舊策略收據。
+已知完整合法候選可以作答；其他候選的 unknown 仍保留 coverage 診斷，不能算完整覆蓋。
+沒有可行答案且仍有 unknown 時維持 unsupported；合法 optional pass 與強制回應分開處理。
+
+`world.hegemony_facts` 是 native 依 viewer 產生的純值快照。`shown`／`known` 身份與技能必須
+分開處理，並只使用已提供的 `public_friends`、來源／`slots`、viewer 可見的 `card_counts`
+（手牌與 Wooden Ox）、公開牌 `catalog`／`pile`、owner history／recovery 與 `duanchang`；
+不要由名字字串或他人快照推測隱藏資訊。
+
+原生 V2 cost／pay／effect 回呼的詢問資料，只在該回呼存活期間借用，巢狀技能結束後還原。
+`heg_zhente`、`heg_qiao`、`heg_shejian`、`heg_anyong` 的玩家型詢問可取得同技能、同詢問者的
+當次用牌／傷害純值；`jinghe_skill` 的受贈者可取得同次有效執行的已選目標集合。
+投影仍依具名白名單提供 `original25.tags`／`original26.tags`，不公開整份 SkillContext，
+也不從其他技能的 frame、通用 CurrentUse／CurrentDamage tag 或選項文字推測缺少的資料。
+
+無懈的 `context.original26_nullification` 只在原生連鎖能對上同次用牌時提供
+`source="native_nullification_chain"`、`chain_known=true`、`root_effect`、`times` 與 `type`。
+`times` 是此根效果已接受的無懈反制層數；`type` 是被反制的國無懈已實際選定的全勢力效果。
+失敗用牌重問不增加層數，其他巢狀錦囊不承接父連鎖，缺少關聯或選擇憑據時欄位保持 unknown。
+Original 策略用此根效果與當題正反向判斷；native 的實際詢問與付款仍指向當前那張牌。
+donor 讀 `NullifyingTimes`／`NullificatonType` room tags 或 `targets` tag 的原版無懈分支，
+isolated 端一律改讀本投影的 `times`／`type`／`targets`，不掃 room tag；
+未被 native 見證時欄位缺即 unsupported，不回退 tag、不猜層數。
+
+知己知彼的 `skillChoice` 事件只向選擇者附上 `details.original_known_both_target`。
+此名稱須來自同一次 `askForChoice` 的玩家型資料，並與事件 payload、行動者、理由及答案相符；
+事件 callback 從純值事件輸入讀取，不借用另一題的 decision context，也不公開所看見的將名。
+
+`@@heg_Triblade` 的 `context.heg_triblade.targets` 只列當次武器回呼提供的目標；材料與來源仍由
+技能 action 重驗。`@@heg_jushou!` 是 `askForCard`／MethodNone 的 DummyCard 選擇，使用本題
+`card_conversions` 票據，不能套用舊 `@@heg_jushou_select!` 用牌字串。已出票的 `@@skill` 產物
+由同題 `canActivate`／`createCard` 證明身份，響應驗證不再把 `@@skill` 當成普通牌型；一般牌型
+與實體牌答案仍必須通過 pattern 檢查。
+
+設備 ViewAs 只能從 `request.skill_actions` 選已提供的
+`equipment_activation=true` 項目。這類 action 的 `instance=0` 是 native
+`prepareEquipSource` 背書的 physical equipment 收據，`physical_equipment` 只含純值
+`{holder, equipment, skill, card_id}`；回覆使用
+`skill_action={skill=..., instance=0, owner=..., equipment=true}`。不要自造來源、實例或
+設備 metadata；native 會以同一 source／physical ID 重驗 quota、costs、targets 與合法性。
+
+V1 view-as 只有 native 已提供 typed projection 時才列為可作答；未投影的國戰 V1 保持
+`NotCovered`／未完成，不退 SmartAI。驗證時要分開 **submission validation**（manifest、ABI、
+靜態契約）與最終 **gameplay** 觸發；前者通過不代表後者已驗收。
+
+已登記的純值 `ai_skill_invoke[reason]` 在一般模式與 Original 國戰皆優先處理頂層詢問。Original 內部詢問明確標記 `options.inquiry_scope="original_internal"`；原先僅供頂層使用的 handler 在此 scope 回 `nil`，保留原本的可見範圍。內部沒有 handler 且非 Frequent 技能時仍回 `nil`，維持 GameRule 的三態候選選擇；頂層才完成布林答案。技能別名直接登記同一原生回呼，保留 provider 與最後寫入者優先序。
 
 ## 例：受傷才選擇回血
 

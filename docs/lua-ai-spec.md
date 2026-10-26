@@ -717,13 +717,17 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 ### 15.2 AI VM 分離與遷移模式
 
 - Isolated 是獨立的新架構。SmartAI 的函式與 hook 契約只作行為參考，不是 isolated 決策的依賴；
-  C++ 既有 legacy fallback 僅為故障保底，觸發即代表新版驗收失敗。
+  C++ 既有 legacy fallback 只屬一般模式的相容保底，觸發不計入 isolated 驗收；國戰 strict
+  路由不提供這條保底。
 - 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；Isolated handler 只取得
   value-only request、viewer-scoped `AIWorldView`、decision-scoped `AiRng` 與 `AiData`。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
-- 決策預設走 `Isolated`：handler 必須透過純值 request 自主作答；未覆蓋、無法作答、過期或出錯均為待補缺口。
-  既有路由仍可按 callback 選擇 `LegacyAdapted`／`LegacyDirect`，其結果不計入 isolated 驗收。
+- 一般模式的決策預設走 `Isolated`：handler 必須透過純值 request 自主作答；未覆蓋、無法作答、過期或出錯均為待補缺口。
+  一般模式仍可按 callback 選擇 `LegacyAdapted`／`LegacyDirect`，其結果不計入 isolated 驗收。
+  國戰的二十個公開 AI callback 則強制走 `Isolated`；`AiLegacyDirectCallbacks`／
+  `AiLegacyAdaptedCallbacks` 對這些 callback 不得改路由，`runAnswer`、`decideResponse`、
+  `decide` 的 strict 分支遇到未覆蓋、拒答、過期或錯誤時直接拒絕，不回 SmartAI。
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
   原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
   只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
@@ -731,7 +735,8 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   反射注入，不另維護手寫 key/value 清單。
 - `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`
   可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name` 設定 callback 級路由；
-  Room 初始化後路由表凍結。未設定的 callback 預設 `Isolated`。
+  Room 初始化後路由表凍結。未設定的 callback 預設 `Isolated`，但國戰二十個公開 callback
+  的路由固定為 `Isolated`，不接受前兩份 legacy override。
 - `isolated-bootstrap.lua` 只管理 generic handler registry、dispatch 與統一的結果轉換（§15.2.3）；C++ 在 sandbox 安裝後、
   configured scripts 之前 mandatory 載入 `isolated-facades.lua`。後者是整個 Isolated Runtime
   共用的 value facade 層，不屬於 `AiIsolatedScripts` allowlist，也不依賴任何 decision-specific
@@ -760,11 +765,14 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 - 覆蓋狀態以 `ai_coverage` 申報與決策結果共同觀察；登記 registry 不等於實際作答。
 - `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名，避免 payload 從 Lua
   allocator 放大到 C++ heap。
-- AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
-  memory/instruction 錯誤在 callback 返回後才重建 VM。
+- 一般模式的 AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI
+  fallback；memory/instruction 錯誤在 callback 返回後才重建 VM。國戰 strict 路由不走這個
+  fallback，錯誤與無 handler 都是拒絕／未完成缺口。
 - 存活超過 16 人時，帶錯誤碼的失敗不走 legacy fallback（大局的 SmartAI 一次要數分鐘）：
-  `AI_INSTRUCTION_LIMIT` 先以兩倍預算重跑一次，仍失敗就放棄作答：出牌階段為 Pass，其他題用呼叫端的預設值，
-  並記錄 `Isolated AI fault contained`。unhandled 與 unsupported 照常交給 SmartAI。
+  `AI_INSTRUCTION_LIMIT` 先以兩倍預算重跑一次；一般模式仍依既有相容路徑處理，國戰 strict
+  路由重試後仍失敗就放棄作答，出牌階段為 Pass，其他題用呼叫端的預設值，並記錄
+  `Isolated AI fault contained`。國戰的 unhandled 與 unsupported 不交給 SmartAI，維持
+  `NotCovered`／strict rejection。
 
 超限診斷會在 instruction hook 首次耗盡預算、Lua stack 尚未展開時輸出
 `[AI_LIMIT]` 與最多 32 層 `[AI_LIMIT_STACK]`（檔案、行號、函式，不輸出參數或 locals）。
@@ -794,7 +802,8 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 mode_policy。回傳值的修改不回寫共用距離表。玩家屬性、標記、旗標、tag、牌區、
 固定距離與 Room tag 的變更須立即推進 revision；工作執行緒的通知不等主執行緒
 處理 Qt 事件後才失效。`distanceTo_*` 是派生顯示屬性，不反過來使計算結果失效。
-大局的正常效能驗證以 SmartAI 開啟為準；原生 AI 僅作 fallback 與隔離診斷基線。
+一般模式的大局效能基線仍可開啟 SmartAI；國戰以 strict isolated 路由為準，SmartAI 不再是
+其 fallback 或驗收基線。
 
 Legacy SmartAI 的模式策略啟用判斷只查已註冊策略與自訂身份，與
 `evaluateModeAI` 的 `managed` 條件一致；自訂身份判斷依 Room revision 快取，
@@ -850,6 +859,7 @@ array 與 string-key table 讀取 snapshot。
 | `AIValue.isList(value)` | 接受 `AIList` 或連續普通 array（含空 array）；拒絕代理、字典、稀疏表及未知 metatable |
 | `AIValue.requireKnown(value, key, reason?)` | 必要值守衛：原樣回傳已知值（含 false、0、空字串與空集合）；原樣拋出 `AIUnsupported`，nil 則以 key 記錄 unsupported。reason 可覆寫未知值診斷訊息；isolated 套件以 `local known = AIValue.requireKnown` 共用，禁止另寫副本 |
 | `AIValue.requireKnownFor(key, reason_prefix)` | 綁定固定 coverage key 與診斷前綴，回傳 `(value, field)` 守衛；僅 nil 時組合 `reason_prefix .. field`，其餘值與 unsupported 沿用 `requireKnown`。專屬診斷用此函式設定別名，不另寫守衛 |
+| `AIValue.bindQuery(contract)` | 綁定一次的標量查詢：集中方法解析、讀值、unsupported 傳播與精確 provider 的 nil 契約；核心呼叫差異透過契約欄位宣告，詳見[共用查詢契約](isolated-ai-common-layer.md#共用查詢契約與-call-包裝)。不可代替保留多回傳值的 `callOptional`／`callKnown` |
 | `AIList.new(array)` | 建立淺層集合副本；nil 原樣回 nil；非集合輸入報錯。`AIList.new({})` 表示已知空集合 |
 | `length/isEmpty/first/last/at` | `at(0)` 對應 `[1]`；越界／非法索引回 nil；空集合 first/last 回 nil |
 | `contains/append/removeOne` | 操作呼叫端集合，元素用 Lua `==` 比較；append 禁止 nil，removeOne 回成功與否。玩家同 request 共用身份；CardView／SkillView 每次查詢為新代理，跨查詢比較應使用公開 ID／instance，而非假定 native pointer 身份 |
@@ -900,7 +910,7 @@ pattern 與 prompt 之間還有一段 `sgs.cardEffect` 自動拒絕，它需要�
 | `{accepted=true, cards=…, targets=…}` | `use_card` | 舊結構化答案轉為 `kind="use_card"` |
 | `{cards=…, targets=…, user_string=…}` | `use_card` | §4.12 記載的 V2 回傳形狀，無 `accepted` 也視為動作 |
 | `{accepted=false}` | `pass` | 明示放棄 |
-| 其他型別、`kind`／`accepted`／動作欄位皆無、欄位型別錯誤、稀疏 `cards`／`targets` | 例外 | `AIResultValue.normalize` 直接 error，runtime 記 `AI_RUNTIME_ERROR` 並回退舊 AI，不得當成合法 pass |
+| 其他型別、`kind`／`accepted`／動作欄位皆無、欄位型別錯誤、稀疏 `cards`／`targets` | 例外 | `AIResultValue.normalize` 直接 error，runtime 記 `AI_RUNTIME_ERROR`；一般模式回退舊 AI，國戰 strict 路由拒絕，不得當成合法 pass |
 
 `ai_decide` 在回傳前對所有 decision kind 套用同一個 `AIResultValue.normalize`，use-card 分派層
 在每一層另外用它區分 unhandled／declined；轉換冪等，兩層都呼叫不改變結果。
@@ -983,8 +993,9 @@ ai_skill_invoke["skill_name"] = function(self, options, request) return true end
 ai_skill_choice["skill_name"] = function(self, options) return options.choices[1] end
 ```
 
-`ai_skill_suit`、`ai_skill_kingdom`、`ai_general_choice` 同形。沒有註冊就回 unhandled，
-交回舊 AI；不在這層編預設答案。舊 `sgs.ai_skill_invoke`／`ai_skill_choice` 的第二參數是
+`ai_skill_suit`、`ai_skill_kingdom`、`ai_general_choice` 同形。沒有註冊就回 unhandled；一般
+模式交回舊 AI，國戰則記為 `NotCovered` 並拒絕，不在這層編預設答案。舊
+`sgs.ai_skill_invoke`／`ai_skill_choice` 的第二參數是
 QVariant `data`，在事件上下文投影（見盤點 B3）之前無法跨界，因此這批沒有 legacy 形狀的
 adapter，兩張表也不互為 alias。
 
@@ -997,14 +1008,15 @@ adapter，兩張表也不互為 alias。
 | `{kind="pass"}` | 明示拒答 |
 | 其他（含 `kind="use_card"`） | 例外；出牌動作不是值型答案 |
 
-路由沿用同一張表：未設定的 kind／callback 由 `routeFor` 回 `Isolated`，
-isolated 端拒答即回退 legacy。`AiIsolatedCallbacks` 等三份設定的 callback 名稱由一份白名單
+路由沿用同一張表：未設定的 kind／callback 由 `routeFor` 回 `Isolated`；一般模式的
+isolated 拒答仍可回退 legacy。國戰二十個公開 callback 強制為 `Isolated`，拒答或 strict
+路由拒絕時不回 SmartAI。`AiIsolatedCallbacks` 等三份設定的 callback 名稱由一份白名單
 決定，含 `askForSkillInvoke`、`askForChoice`、`askForSuit`、`askForKingdom`、
 `askForGeneral`。隔離結果過期（decision id 或 revision 不符）直接不採用；legacy 答案
 與 `LegacyAdapted` 出牌一樣，按 callback 執行後的 revision 蓋章，這是既有相容路徑。
 
-隔離 handler 出錯或拒答時回退舊 AI 的答案，呼叫點原本的預設值與驗證都不動——錯誤不會
-變成一個非法選項。
+隔離 handler 出錯或拒答時，一般模式回退舊 AI 的答案，呼叫點原本的預設值與驗證都不動；
+國戰 strict 路由則拒絕並保留未完成缺口——錯誤不會變成一個非法選項。
 
 選牌與選人族用同一個 request／result 模型：`Discard`、`AmazingGrace`、`CardChosen`、
 `Yiji`、`PlayerChosen`、`PlayersChosen`。`options` 多兩個純值候選欄位：
@@ -1029,8 +1041,9 @@ isolated 端拒答即回退 legacy。`AiIsolatedCallbacks` 等三份設定的 ca
 | 型別混用、稀疏陣列、空的 answer 表 | 例外 |
 
 C++ 端再做一次授權檢查：答案裡的牌必須在 `card_ids` 內、玩家必須在 `players` 內，
-重複或未提供的目標直接拒絕整個答案，不截斷也不補齊；被拒絕時回退舊 AI，呼叫點原本的
-驗證與預設值不動。`players_chosen` 另外檢查數量在 `min_count`／`max_count` 之間。
+重複或未提供的目標直接拒絕整個答案，不截斷也不補齊；被拒絕時一般模式回退舊 AI，
+國戰 strict 路由則拒絕；呼叫點原本的驗證與預設值不動。`players_chosen` 另外檢查數量在
+`min_count`／`max_count` 之間。
 
 隔離側 registry 與其他值型詢問同形：`ai_skill_discard`、`ai_skill_askforag`、
 `ai_skill_cardchosen`、`ai_skill_askforyiji`、`ai_skill_playerchosen`、
@@ -1047,8 +1060,9 @@ C++ 端再做一次授權檢查：答案裡的牌必須在 `card_ids` 內、玩�
 隔離路由接受 `{cards = {id}}`，且該 ID 必須屬於本題授權的實體候選；也接受
 `{kind="answer", card_spec=...}`，由 native 核對本題 conversion ticket、activation/source
 instance、成本、pattern／method 與 revision 後重建。show／pindian 仍限定 offered 實體牌，
-不能用 card_spec；V1 view-as 依 §15.2.7 由 SmartAI 回答，未投影成本並未因此全部完成。
-非法結果仍可能回退舊 AI，但 fallback 不算 isolated 驗收通過。
+不能用 card_spec；V1 view-as 只有具備 native typed projection 時才由 isolated 回答，未投影
+成本並未因此全部完成。非法結果在一般模式仍可能回退舊 AI；國戰 strict 路由直接拒絕，不回
+SmartAI，且 fallback 不算 isolated 驗收通過。
 
 隔離側 registry 依 `options.question` 再分表：`ai_skill_cardask`、`ai_nullification`、
 `ai_cardshow`、`ai_skill_pindian`、`ai_skill_singlepeach`，每張表的鍵一樣是 reason。
@@ -1059,8 +1073,10 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 正規化與隨機退路；它的 `skills` 映射與 `data` 仍留在 legacy 呼叫裡，沒有跨界。
 
 至此二十個 AI 公開入口都走同一條通路：`activate`／`askForUseCard` 用出牌結果，其餘用值型
-答案。部分 V2 轉化與型別化事件上下文已有純值投影；V1 view-as 依 §15.2.7 由 SmartAI 回答，
-未投影的成本／合法性與任意 `QVariant data` 操作仍是缺口。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
+答案；國戰對這二十個入口一律強制 `Isolated`。部分 V2 轉化與型別化事件上下文已有純值
+投影；有 native typed projection 的 V1 view-as 可由 isolated 作答，未投影的成本／合法性與
+任意 `QVariant data` 操作仍是國戰 `NotCovered` 缺口，不回 SmartAI。非國戰仍保留既有
+相容路徑。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
 
 #### 15.2.6 牌區投影：可見牌、牌堆與位置索引
 
@@ -1102,6 +1118,7 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 | `AICardView` | `type_id`、`handling_method`、`virtual_card`、`target_fixed`、`damage_card`、`subcards` | 同名 getter 與 `getSubcards()`／`subcardsLength()` |
 | `AISkillView` | `skill_classes`（原生類別鏈）、`frequency`、`lord_skill`、`attached_lord_skill`、`lord_skill_effective` | `getSkillClass()`、`inherits(name)`、`getFrequency()`、`isLordSkill()`、`isLordSkillEffective()` |
 | `AIWorldView` | `turn_count`（公開輪數 `TurnLengthCount`）、`enable_hegemony`、`ai_humanized`、`ai_chat_enabled` | `RoomView:getTurnCount()`；其餘讀 `world` 同名欄位 |
+| `AIWorldView` | `hegemony_facts`：native 依 viewer 產生的國戰 facts；`shown`／`known` 身份與技能分開，並帶 `public_friends`、來源／`slots`、viewer 可見的 `card_counts`（手牌與 Wooden Ox）、公開牌 `general_definitions`／`general_piles` catalog／pile、owner history／recovery 與 `duanchang` | `AIHegemony.facts(world)` 只消費這份純值 facts，不擴張可見性 |
 | `AIWorldView` | `role_counts`：模式身份組成扣掉 viewer 看得到身份的死者；自訂身份或有身份未公開的死者時不出現 | `getRoleCounts()` |
 | `AIPlayerView` | `state`（`robot`／`online`／`trust`…）、`skills_complete`（國戰隱藏了部分技能時為 false）、`marks_complete`（viewer 本人為 true，未列出的 mark 即 0） | `getState()`、`areSkillsComplete()`、`getMark(name)` |
 | `AICardView` | `legacy_string_key`／`legacy_sort_key`（只有實體牌）、`name_length`、`can_recast`、`will_throw`、`single_target`；`source_skill` 只在自己的牌或發動技能即其來源時出現 | `getLegacyStringKey()`、`nameLength()`、`canRecast()`、`willThrow()`、`isSingleTargetCard()`、`getSourceSkillName()` |
@@ -1113,6 +1130,7 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 | `AIPlayerView` | `flags`（`setPlayerFlag` 會廣播，所有玩家都有）、`in_yinni_state`、`has_judge_area`、`equip_areas`、`change_skill_states` | `hasFlag(name)`、`inYinniState()`、`hasJudgeArea()`、`hasEquipArea([i])`、`getChangeSkillState(skill)` |
 | `AIPlayerView`（只有 viewer） | `used_history`（每個 history key 的 `usedTimes`）、`tags`／`properties`（自己的 tag 與動態 property，轉成純值；gameplay struct 變成帶玩家名稱與公開牌面的表）、`can_slash_without_crossbow`、`can_discard`（對每名玩家 `h/e/j/he/hj/ej/hej` 的 `canDiscard`） | `hasUsed(key)`、`usedTimes(key)`、`getTag(name)`、`getPropertyValue(name)`、`canSlashWithoutCrossbow()`、`canDiscard(who, zones)` |
 | `AISkillView` | `description`、`limit_mark`、`trigger_events`；viewer 自己的 view-as 技能在決策請求另有 `view_as_v2`、`enabled_at_play`；ViewAsEquipSkill 有 `view_as_equip_names`（`viewAsEquip(持有者)`） | `getDescription()`、`getLimitMark()`、`hasTriggerEvent(event)`、`SmartAIView:getFillSkillContext(name)`、`getViewAsEquipNames()` |
+| `AISkillView` | `state`：viewer 本人取得完整實例 state；他人只取得 setter 寫入為 `SkillStatePublic` 的欄位。`zhaxiang`、`luoyi`、`nosluoyi` 的 `receipt_amount` 為公開資訊；國戰暗置實例仍不投影 | `PlayerView:getSkillInstanceStateValue(skill, instance, key, default)` |
 | `AIPlayerView` | `armor_effect_names`：有視為裝備來源時，實體或被視為的防具中 `hasArmorEffect` 成立的名稱（沒有此來源時改用 `active_armor_name`） | `hasArmorEffect([name])` |
 | `CandidateView`／`ConversionView` | `extra_target_count`、`extra_target_by_player`（ExtraTarget 修正）、`target_filter_empty`（空前綴的 `targetFilter`，每名存活者） | `getExtraTargetCount([target])`、`canTargetWithEmptyPrefix(target)` |
 | `AIPlayerView` | `attack_range_without_weapon`、`skipped_phases`、`prototype_rules`（只在決策請求投影，事件與 TriggerOrder 不帶）：Slash／Jink／Peach／Analeptic／Nullification 原型的 `use_limited`、`response_limited`、`available`、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`、`residue_unlimited`（`Engine::hasResidueUnlimited`，國戰只計明置來源；連弩的大額 Residue 不算），viewer 自己的 Slash 另有 `target_filter_empty`、`extra_target` | `getAttackRange(false)`、`isSkipped(phase)`、`sgs.Slash_IsAvailable`、`isResidueUnlimited(class_name)`；Lua 端組出的轉化牌評估沿用其原型規則 |
@@ -1150,7 +1168,9 @@ QStringList 的 data 投影為 `context.string_list`（`data:toStringList()`）�
 
 由公開資料推得、不另投影的值：旗標與 `-Clear`／`-PlayClear` mark 的清除週期由
 `AIWorldLifecycle.epochs(world, kind)` 依 `Global_TurnCount`、當前回合與存活狀態算出；國戰的公開
-亮將與勢力由 `AIHegemony.facts(world)` 從玩家視圖整理；SmartAI 存在自身物件上的跨決策欄位改存
+亮將、勢力、友方與牌面由 native `makeAIHegemonyFacts(room, viewer)` 產生
+`world.hegemony_facts`，`AIHegemony.facts(world)` 只消費 viewer-scoped facts，不把 `shown`、
+`known` 或 `public_friends` 互相推廣；SmartAI 存在自身物件上的跨決策欄位改存
 `ai_memory`（目標欄位只存玩家名稱）。本題揭示的牌（AG、觀星等 `options.cards`）在
 `getKnownCardById` 與 `RoomView:isCardKnown` 裡也算已知。
 
@@ -1159,11 +1179,13 @@ QStringList 的 data 投影為 `context.string_list`（`data:toStringList()`）�
 目標合法性。規劃期間的技能卡與轉化牌（`evaluateTurnSkillCard`、`evaluateOwnerViewAsCard`）是依
 牌目錄與材料牌面在 Lua 端組出的評估牌，選中後才換成收據。
 
-V1 技能依設計由 SmartAI 回答，isolated 不送 legacy 牌字串。V1 技能卡、出牌階段的 V1 轉化
+V1 技能只有在 native 提供 typed projection 時才由 isolated 回答，isolated 不送 legacy 牌字串。
+V1 技能卡、出牌階段的 V1 轉化
 （`bindTurnConversion`）與回應政策裡 V1 技能的 `ai_view_as`／`ai_cardsview` 產物
 （`name:skill[suit:number]=ids`）只登記為評估收據（`legacy_v1`），可參與估值；`toCardSpec`
-送出這種收據時回報 unsupported，整題退回 SmartAI。出牌階段（`activate`）只要 viewer 有
-`enabled_at_play` 的 V1 view-as 技能且有 `ai_fill_skill`，`fillSkillCards` 在規劃前就回報 unsupported。
+送出這種收據時回報 unsupported。國戰整題拒絕並保留 `NotCovered`，非國戰才可退回
+SmartAI。出牌階段（`activate`）只要 viewer 有 `enabled_at_play` 的 V1 view-as 技能且有
+`ai_fill_skill`，`fillSkillCards` 在規劃前就回報 unsupported；國戰不因此改走 SmartAI。
 回應政策結果裡的牌 ID 仍指自己的牌。
 
 `getSkillViewCard`、`cardsView`、`getGuhuoCard` 的 V1 列在 legacy 先問
@@ -1267,6 +1289,7 @@ C 類。需要虛擬牌就用 spec。
 | `activation_owner`／`activation_skill`／`activation_instance` | 實際入口的擁有者、技能名與實例 ID |
 | `source_owner`／`source_skill`／`source_instance` | 根來源；與 activation 不同就是借用或轉化而來 |
 | `activation_quota_available`／`source_quota_available` | 這次是否還有次數 |
+| `equipment_activation`／`physical_equipment` | ViewAsEquipSkill 的 typed action；`equipment_activation=true` 時 `activation_instance=0`，`physical_equipment` 是 native `prepareEquipSource` 產生的 `{holder,equipment,skill,card_id}` 純值收據 |
 
 `SkillActionView`（`AIValue.kind` 回 `skill_action`）提供同名 getter、`isValid()`、
 `isBorrowed()` 與 `toAnswer()`；查詢用 `SmartAIView:getSkillActions()` 或
@@ -1274,9 +1297,12 @@ C 類。需要虛擬牌就用 spec。
 instance 時回第一筆，不會把兩個實例併成一個。
 
 結果要指名用了哪個實例時，帶 `skill_action = {skill=…, instance=…, owner=…}`（owner 省略
-就是自己）。權威端一律重新檢查：owner 必須是提問的玩家，非 `Activate` 的請求還必須命中
-`skill_actions` 裡真的提供過的那一筆，接著用 `findSkillInstance` 重建上下文並重跑
-`canActivate` 與次數檢查，才會造 proxy。AI 指名只是選擇，不是授權。
+就是自己）。設備 typed action 例外使用已提供的
+`{skill=…, instance=0, owner=…, equipment=true}`；`instance=0` 只代表 native
+`prepareEquipSource` 背書的 physical equipment receipt，不是可虛構的 SkillInstance。
+權威端一律重新檢查：owner 必須是提問的玩家，非 `Activate` 的請求還必須命中
+`skill_actions` 裡真的提供過的那一筆，再以同一 source／physical card ID 重驗 quota、成本、
+目標與 `canActivate`，才會造 proxy。AI 指名只是選擇，不是授權，也不能捏造設備 metadata。
 
 #### 15.2.11 值型事件上下文
 
@@ -1303,8 +1329,10 @@ ID 只留給新的持有者，其餘是公開的；建立快照時非該 viewer 
 （`AIValue.kind` 回 `event`），每次查詢是複本，改了不會回寫快照。沒有事件投影的舊快照回
 nil（未知），有投影但沒有該類事件回空集合。
 
-這取代了舊 `filterEvent` 直接吃 `QVariant` 的做法：舊路徑仍在（legacy AI 照常收到
-`filterEvent`），但隔離側只看這份值型紀錄。「目前正在結算哪張牌」這種即時查詢不提供——
+這取代了舊 `filterEvent` 直接吃 `QVariant` 的做法：一般模式的舊路徑仍在（legacy AI 照常收到
+`filterEvent`），但國戰不把 `filterEvent`、`GameReady` 或 legacy 初始化交給 SmartAI；隔離側
+只看這份值型紀錄。`Gongxin` 在國戰也走結構化 isolated request，不能以 legacy hook 補答。
+「目前正在結算哪張牌」這種即時查詢不提供——
 current player 不等於傷害來源或正在結算的 use，要什麼就從事件序列自己判斷。
 
 #### 15.2.12 AI 狀態分層：規則、推測、暫存與持久化
@@ -1361,12 +1389,12 @@ VM，這一層不變。
 | 檢查 | 出牌結果（`applyResult`） | 值型答案（`runAnswer` 與各 adapter） | 回應牌（`decideResponse`） |
 |---|---|---|---|
 | decision ID 與 revision | result 的 ID／revision 必須等於 request，且 request 的 revision 必須仍是當前 revision | 同左；不符就丟掉隔離答案 | 同左 |
-| 過期時的處置 | 回 false，維持呼叫點原本的結果 | 改用舊 AI 的答案 | 改用舊 AI 的 `const Card *` |
+| 過期時的處置 | 回 false，維持呼叫點原本的結果 | 一般模式改用舊 AI 的答案；國戰 strict 路由拒絕 | 一般模式改用舊 AI 的 `const Card *`；國戰 strict 路由拒絕 |
 | 候選授權 | 目標必須存在且不重複；技能實例必須是提供過的候選並重驗 `canActivate` 與次數 | 選牌必須在 `card_ids` 內、選人必須在 `players` 內、數量在上下限內 | 牌必須是這名玩家當下持有的實體牌 |
 | 來源 | `card_spec` 的技能歸屬與每張 subcard 的持有都要驗；造牌在權威端 | — | — |
 | 最終合法性 | 仍由既有 gameplay 流程（`Room::useCard` 等）做最後驗證 | 呼叫點原本的驗證與預設值不變 | `validateInResponse` 等原路徑不變 |
 
-隔離答案過期時**不會**事後改 stamp 去接受它——這是明文禁止的。舊 AI 的答案則沿用既有
+隔離答案過期時**不會**事後改 stamp 去接受它——這是明文禁止的。一般模式的舊 AI 答案則沿用既有
 `LegacyAdapted` 相容做法：它是在當前 Room 上即時跑出來的，所以按 callback 執行後的 revision
 蓋章。
 
@@ -1420,13 +1448,18 @@ VM，這一層不變。
 
 #### 15.2.17 切換與驗收程序
 
-Shadow 雙跑比對已移除；完成標準採獨立新版。一般未設定的 kind／callback 預設
-`Isolated`；`EnableHegemony` 仍先採 `LegacyAdapted` 預設，再套顯式 route override。
-`AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks` 是相容選項，其執行結果不屬於新版驗收。
+Shadow 雙跑比對已移除；完成標準採獨立新版。一般模式未設定的 kind／callback 預設
+`Isolated`，並保留既有 legacy 相容路徑；`EnableHegemony` 的二十個公開 callback 固定
+`Isolated`，忽略 `LegacyDirect`／`LegacyAdapted` override，strict 分支不回 SmartAI。
+`AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks` 只屬一般模式相容選項，其執行結果不屬於
+新版驗收。
 
 驗收門檻（需另獲建置與執行授權）：
 
-1. 驗收範圍內的決策（不含 §15.2.7 交給 SmartAI 的 V1 技能）全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。現有 coordinator 尚缺逐題路由、native 接受／拒絕及 fallback 的觀測，只有完局或無 error log 時此項仍是 BLOCKED。
+1. 驗收範圍內的決策由 isolated 產生且通過權威端驗證；具備 native typed projection 的 V1
+技能才列入可作答範圍，未投影的國戰 V1 是 `NotCovered`／未完成，不得退 SmartAI。一般模式
+的 legacy fallback 只是相容路徑。submission validation（manifest、ABI、靜態契約）與最終
+gameplay 驗收分開記錄，不能以其中一者宣稱另一者成功。
 2. 隔離性（VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）與 VM 重建（指令／記憶體上限觸發後 `ai_memory` 歸零而決策繼續）目前沒有自動化覆蓋（測試套件已於 2026-09-25 移除）。
 3. 效能：`QSAN_AI_PROBE=1` 在 request 建立後才計時且可含 SmartAI fallback，量測須另有來源與階段證據，O(n) 掃描與 O(n log n) 排序分別列明。
 
@@ -1437,8 +1470,8 @@ Shadow 雙跑比對已移除；完成標準採獨立新版。一般未設定的 
 
 `RoomThread` 同步執行 AI callback 與 Gameplay callback。`activate`／`askForUseCard`
 在同一 gate 取得 request、執行 callback、驗證 result，再交給既有 `Room::useCard` 或
-response resolver；isolated 結果未通過驗證時直接回退 legacy，不得回寫 Room 或等待另一條
-執行緒。
+response resolver；一般模式 isolated 結果未通過驗證時可回退 legacy，國戰 strict 路由則拒絕
+並保留缺口，不得回寫 Room 或等待另一條執行緒。
 
 ### 15.4 pcall 保護模式
 

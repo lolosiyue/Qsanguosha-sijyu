@@ -220,12 +220,9 @@ void ClientPlayer::applyRuleEffects(const QVariantMap &data)
         if (Sanguosha != nullptr && Sanguosha->getSkill(instance.instance.skillName) == nullptr)
             continue;
         upsertSkillInstance(instance.instance);
-        // Private state is owner-only on the wire. Apply it when present;
-        // do not invent empty maps for other players.
-        if (!instance.privateState.isEmpty()) {
-            setSkillInstanceState(instance.instance.skillName,
-                instance.instance.instanceID, instance.privateState);
-        }
+        // The wire already filters private values; preserve each received key's visibility.
+        restoreSkillInstanceState(instance.instance.skillName, instance.instance.instanceID,
+            instance.privateState, instance.publicStateKeys);
     }
     // A state that has never carried skill_instances (legacy scenes, fixtures)
     // only lists skill names, so give each one an innate instance. Once the

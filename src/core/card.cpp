@@ -1485,6 +1485,7 @@ void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
         ServerPlayer *acceptedInvoker = context.invoker;
         context.updated_targets.clear();
+        Room::AiSkillContextScope aiContext(*room, context);
         if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect) {
             card_use.to.clear();
             targetsHandled = true;
@@ -1525,8 +1526,10 @@ void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *
     foreach (ServerPlayer *target, ordered) {
         if (target && target->isAlive()) effectiveTargets << target;
     }
-    if (!effectiveTargets.isEmpty())
+    if (!effectiveTargets.isEmpty()) {
+        Room::AiSkillContextScope aiContext(*room, context);
         activeSkill->effectOnTargetGroup(context, effectiveTargets);
+    }
     restoreSkillExecutionIdentity(room, context.executionID, context, acceptedInvoker);
     room->setSkillExecutionContext(context.executionID, context);
 }
@@ -1539,6 +1542,7 @@ void ActiveSkillCard::onEffect(CardEffectStruct &effect) const
     if (!room) return;
     SkillContext context = room->getSkillExecutionContext(effect.skillExecutionID);
     ServerPlayer *acceptedInvoker = context.invoker;
+    Room::AiSkillContextScope aiContext(*room, context);
     if (activeSkill->targetEffectMode() == ViewAsSkillV2::EachTarget
         && activeSkill->effectOnTarget(context, effect.to) == ViewAsSkillV2::FinishSkill)
         context.is_canceled = true;

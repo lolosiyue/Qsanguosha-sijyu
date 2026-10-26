@@ -87,6 +87,9 @@ public:
     AIResult decideIsolated(const AIRequest &request, int budgetScale = 1);
     bool processEvent(const AIWorldView &world, const AIEventView &event,
                       LuaRuntime &modeRuntime, QString *error = nullptr);
+    // Immutable printed-deck composition, cached per Room rather than in AI
+    // belief memory. It contains no draw order or concealed card locations.
+    QJsonObject publicCardCounts();
 
 private:
     friend class RoomManagedState;
@@ -134,6 +137,8 @@ private:
     qint64 m_initializationInstructionBudget;
     qint64 m_instructionsRemaining;
     bool m_instructionLimitExceeded;
+    int m_publicCardCount = -1;
+    QJsonObject m_publicCardCounts;
 };
 
 #endif

@@ -118,6 +118,23 @@ public:
                   const GameSessionConfig &sessionConfig = GameSessionConfig(),
                   RuntimeInitializationPolicy runtimePolicy = RuntimeInitializationPolicy::Immediate);
     ~Room();
+
+    // Native-only observation of the callback currently asking an AI question.
+    // The borrowed context never escapes the callback; nested skills restore it.
+    class AiSkillContextScope {
+    public:
+        AiSkillContextScope(Room &room, const SkillContext &context)
+            : m_room(room), m_previous(room.m_aiSkillInquiryContext) {
+            room.m_aiSkillInquiryContext = &context;
+        }
+        ~AiSkillContextScope() { m_room.m_aiSkillInquiryContext = m_previous; }
+        AiSkillContextScope(const AiSkillContextScope &) = delete;
+        AiSkillContextScope &operator=(const AiSkillContextScope &) = delete;
+    private:
+        Room &m_room;
+        const SkillContext *m_previous;
+    };
+
     RoomManagedState &managedState();
     bool prepareRestrictedRewind(QString *error = nullptr);
     ManagedRewindLab *restrictedRewind() const { return m_rewindLab.get(); }
@@ -1039,10 +1056,10 @@ private:
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
-    // Owner-only: send the full SkillInstanceState only to its owning client.
+    // Full state is owner-only; public changes also refresh visible observers.
     void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                   const QString &operation, const QString &key = QString(),
-                                  const QVariant &value = QVariant());
+                                  const QVariant &value = QVariant(), bool publicStateChanged = false);
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     bool resolveCardSkillInstance(CardUseStruct &use);
@@ -1124,6 +1141,32 @@ private:
     std::unique_ptr<RoomRuntime> m_runtime;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
+    const SkillContext *m_aiSkillInquiryContext = nullptr;
+    // Borrowed inquiry observations. They have no Lua handles or tag authority
+    // and are restored when the exact native call/event returns.
+    struct AiNullificationContext {
+        const Card *trick = nullptr;
+        ServerPlayer *from = nullptr;
+        ServerPlayer *to = nullptr;
+        bool positive = true;
+        CardEffectStruct rootEffect;
+        int times = 0;
+        bool all = false;
+        bool complete = false;
+        const CardUseStruct *responseUse = nullptr;
+        bool responseAll = false;
+        bool responseTypeKnown = false;
+        bool retrying = false;
+    };
+    AiNullificationContext *m_aiNullificationContext = nullptr;
+    struct AiChoiceContext {
+        const ServerPlayer *player = nullptr;
+        QString reason;
+        QString answer;
+        const QVariant *input = nullptr;
+        const QVariant *payload = nullptr;
+    };
+    const AiChoiceContext *m_aiChoiceContext = nullptr;
     QHash<QString, std::shared_ptr<ExternalAgentEndpoint>> m_externalAgents;
     std::unique_ptr<RoomHybrid50> m_hybrid50;
     bool m_hybrid50Selected = false;

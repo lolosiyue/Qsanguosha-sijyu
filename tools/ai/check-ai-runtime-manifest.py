@@ -15,7 +15,8 @@ enabled and lua/ai/isolated/<package>-ai.lua exists.  These checks hold that lin
 4. no package handler is marked required
 5. both fetchers refuse a fetch that cannot satisfy the core
 6. the CMake asset manifest lists the isolated core as required
-7. the two shared strategy modules never declare the same SmartAIView method
+7. the shared strategy modules never declare the same SmartAIView method
+8. migrated use-card, card-planner, invoke, fill and choice families use native callback ABIs
 """
 from __future__ import annotations
 
@@ -31,6 +32,8 @@ FETCH_HINT = "run tools/ci/fetch-extensions.sh (or .ps1) to populate lua/ai/"
 SHARED_METHOD_FILES = (
     "lua/ai/isolated/decision-core.lua",
     "lua/ai/isolated/smart-ai-functions.lua",
+    "lua/ai/isolated/strategy-hooks.lua",
+    "lua/ai/isolated/target-recommendation.lua",
 )
 LUA_NON_CODE = re.compile(
     r"--\[(?P<comment_eq>=*)\[.*?\](?P=comment_eq)\]"
@@ -122,6 +125,21 @@ def check_isolated_inventory(root: Path, files: list[dict]) -> list[str]:
             f"it and what breaks without it" for path in unrecorded]
 
 
+def check_hook_boundaries(root: Path, core: list[str]) -> list[str]:
+    """Keep policy storage private and the declared dependency order explicit."""
+    modules = ("strategy-hooks.lua", "hook-defaults.lua", "target-recommendation.lua")
+    problems = []
+    if any(name not in core for name in modules):
+        problems.append("isolated core must include all three hook modules")
+    elif [core.index(name) for name in modules] != sorted(core.index(name) for name in modules):
+        problems.append("hook modules must load registry, defaults, then target recommendation")
+    for name in ("decision-core.lua", "smart-ai-functions.lua", *modules[1:]):
+        body = LUA_NON_CODE.sub(" ", read(root, f"lua/ai/isolated/{name}"))
+        if re.search(r"\b(?:_ordered|_stages)\b", body):
+            problems.append(f"{name} accesses private ordered-rule storage; use the hook API")
+    return problems
+
+
 def check_fetchers_gate_core(root: Path, core: list[str]) -> list[str]:
     """A fetch that cannot satisfy the core must fail at fetch time.
 
@@ -192,6 +210,92 @@ def check_shared_method_owners(root: Path) -> list[str]:
     return problems
 
 
+def check_native_use_interface(root: Path) -> list[str]:
+    """Keep completed callback families native while other families migrate.
+
+    Ignore examples and historical comments. Preserve offsets so a literal
+    bracket lookup can be distinguished from the same text inside a string.
+    """
+    retired = re.compile(
+        r"\bsgs\s*\.\s*(?:ai_skill_use(?:_func)?|ai_skill_invoke|ai_fill_skill|ai_skill_choice)\b"
+        r"|\b(?:ai_skill_use_legacy|ai_register_use_card_legacy_handler"
+        r"|ai_register_use_card_legacy_skill_handler)\b")
+    bracket = re.compile(r'''\bsgs\s*\[\s*(["'])(?:ai_skill_use(?:_func)?|ai_skill_invoke|ai_fill_skill|ai_skill_choice)\1\s*\]''')
+    callback = re.compile(
+        r"\bai_skill_use\s*(?:\.\s*\w+|\[[^\n]*?\])\s*=\s*function\s*\(([^)]*)\)")
+    planner = re.compile(
+        r"(?:\bai_card_use\s*(?:\.\s*\w+|\[[^\n]*?\])\s*=\s*function"
+        r"|\bfunction\s+ai_card_use\s*(?:\.\s*\w+|\[[^\n]*?\]))\s*\(([^)]*)\)")
+    invoke = re.compile(
+        r"(?:\bai_skill_invoke\s*(?:\.\s*\w+|\[[^\n]*?\])\s*=\s*function"
+        r"|\bfunction\s+ai_skill_invoke\s*(?:\.\s*\w+|\[[^\n]*?\]))\s*\(([^)]*)\)")
+    fill = re.compile(
+        r"(?:\bai_fill_skill\s*(?:\.\s*\w+|\[[^\n]*?\])\s*=\s*function"
+        r"|\b\w+\s*\.\s*getTurnUseCard\s*=\s*function"
+        r"|\bfunction\s+(?:ai_fill_skill\s*(?:\.\s*\w+|\[[^\n]*?\])"
+        r"|\w+\s*\.\s*getTurnUseCard))\s*\(([^)]*)\)")
+    choice = re.compile(
+        r"(?:\bai_skill_choice\s*(?:\.\s*\w+|\[[^\n]*?\])\s*=\s*function"
+        r"|\bfunction\s+ai_skill_choice\s*(?:\.\s*\w+|\[[^\n]*?\]))\s*\(([^)]*)\)")
+    problems = []
+    for path in sorted((root / "lua/ai/isolated").glob("*.lua")):
+        relative = path.relative_to(root).as_posix()
+        source = read(root, relative)
+        code = LUA_NON_CODE.sub(
+            lambda match: re.sub(r"[^\n]", " ", match.group()), source)
+        matches = list(retired.finditer(code))
+        matches.extend(match for match in bracket.finditer(source)
+                       if code[match.start():match.start() + 3] == "sgs")
+        for match in matches:
+            line = code.count("\n", 0, match.start()) + 1
+            problems.append(f"{relative}:{line}: retired callback registry; "
+                            "use the native callback registry")
+        for match in callback.finditer(code):
+            parameters = [part.strip() for part in match.group(1).split(",")
+                          if part.strip()]
+            if "..." not in parameters and (len(parameters) > 3 or
+                    len(parameters) == 3 and parameters[2] in ("method", "pattern")):
+                line = code.count("\n", 0, match.start()) + 1
+                problems.append(f"{relative}:{line}: retired use-card callback "
+                                "parameters; read method/pattern from request")
+        for match in planner.finditer(code):
+            parameters = [part.strip() for part in match.group(1).split(",")
+                          if part.strip()]
+            if "..." not in parameters and (len(parameters) > 4 or
+                    len(parameters) >= 3 and parameters[2] == "self"):
+                line = code.count("\n", 0, match.start()) + 1
+                problems.append(f"{relative}:{line}: card planners must use "
+                                "native (self, card, use, request) parameters")
+        for match in invoke.finditer(code):
+            parameters = [part.strip() for part in match.group(1).split(",")
+                          if part.strip()]
+            if (len(parameters) != 3 or parameters[0] != "self" or
+                    parameters[1] not in ("options", "native_options") or
+                    parameters[2] not in ("request", "native_request")):
+                line = code.count("\n", 0, match.start()) + 1
+                problems.append(f"{relative}:{line}: invoke callbacks must use "
+                                "native (self, options, request) parameters")
+        for match in fill.finditer(code):
+            parameters = [part.strip() for part in match.group(1).split(",")
+                          if part.strip()]
+            if (len(parameters) != 3 or parameters[0] != "self" or
+                    not re.fullmatch(r"(?:native_|fill_)*options", parameters[1]) or
+                    not re.fullmatch(r"(?:native_|fill_)*request", parameters[2])):
+                line = code.count("\n", 0, match.start()) + 1
+                problems.append(f"{relative}:{line}: fill callbacks must use "
+                                "native (self, options, request) parameters")
+        for match in choice.finditer(code):
+            parameters = [part.strip() for part in match.group(1).split(",")
+                          if part.strip()]
+            if (len(parameters) != 3 or parameters[0] != "self" or
+                    not re.fullmatch(r"(?:native_|choice_)*options", parameters[1]) or
+                    not re.fullmatch(r"(?:native_|choice_)*request", parameters[2])):
+                line = code.count("\n", 0, match.start()) + 1
+                problems.append(f"{relative}:{line}: choice callbacks must use "
+                                "native (self, options, request) parameters")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fail-closed isolated AI runtime source checker")
@@ -200,10 +304,20 @@ def main() -> int:
                         default=Path("docs/ai-runtime-manifest.json"))
     parser.add_argument("--shared-methods-only", action="store_true",
                         help="check shared method ownership without deployment inventory")
+    parser.add_argument("--native-use-only", action="store_true",
+                        help="check migrated callback ABIs without deployment inventory")
     arguments = parser.parse_args()
     root = arguments.root.resolve()
 
     try:
+        if arguments.native_use_only:
+            problems = check_native_use_interface(root)
+            for problem in problems:
+                print(f"native-use-interface: {problem}")
+            if problems:
+                return 1
+            print("native-use-interface: PASS; use, card planners, invoke, fill and choice use native ABIs")
+            return 0
         if arguments.shared_methods_only:
             problems = check_shared_method_owners(root)
             for problem in problems:
@@ -222,7 +336,9 @@ def main() -> int:
                     + check_package_handlers(root, files)
                     + check_fetchers_gate_core(root, core)
                     + check_asset_required(root, files)
-                    + check_shared_method_owners(root))
+                    + check_hook_boundaries(root, core)
+                    + check_shared_method_owners(root)
+                    + check_native_use_interface(root))
     except (CheckError, KeyError, json.JSONDecodeError) as error:
         print(f"ai-runtime-manifest: ERROR: {error}")
         return 2
@@ -237,7 +353,8 @@ def main() -> int:
     packages = sum(1 for entry in files if entry.get("kind") == "package_handler")
     print(f"ai-runtime-manifest: files={len(files)} required={required} "
           f"core={len(core)} package_handlers={packages}; the Lua declaration, the "
-          f"fetch gates and the asset manifest agree; shared method owners are unique")
+          f"fetch gates and the asset manifest agree; shared method owners are unique; "
+          f"use, card planners, invoke, fill and choice use native ABIs")
     return 0
 
 

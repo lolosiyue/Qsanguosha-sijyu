@@ -54,12 +54,21 @@ L 的 `lua/ai/` 被主倉庫忽略，主倉庫 `git status` 乾淨不代表 Lua 
 | invoke、choice、discard、playerchosen 等值型詢問 | 無前綴 `ai_skill_*[reason](self, options, request)` |
 | 回應使用牌 | `ai_skill_use[pattern](self, prompt, request)` |
 | 主動技能 | `ai_skill_activate[skill_name](self, request)` |
-| 卡牌策略 | `ai_card_use[name_or_class](self, card, use)`，填 `use.card`／`use.to` |
-| 舊 ABI 相容註冊 | `sgs.ai_skill_*` 相容表，依 `legacy_call` 保留位置參數（不是 gameplay userdata） |
+| 主動出牌候選 | `ai_fill_skill[name](self, options, request)`，inclusive 從 `options.inclusive` 讀取，request 為原始純值 |
+| 卡牌策略 | `ai_card_use[name_or_class](self, card, use, request)`，填 `use.card`／`use.to` |
+| 舊 ABI 相容註冊 | 尚未遷移的 `sgs.ai_skill_*` 相容表，依 `legacy_call` 保留位置參數（不是 gameplay userdata）；use／use_func／invoke／fill／choice 已完成原生遷移，不再提供這五族相容表 |
 | 事件 | `ai_event_callback[event][visible_skill](self, eventPlayer, event)`，`event` 是純值 DTO |
 | Yiji 意圖函式 | isolated `(self, event)`，不照搬 legacy 私有 cards 參數 |
 
 `sgs.ai_skill_*` 與無前綴表不一定是同一個 table，不可合併。以實際 `reason`、`pattern`、大小寫及 `options.question` 為 key，不用中文顯示名稱猜。`options.context.legacy_hook` 會讓 shared default 讓位給舊 SmartAI，那是相容路徑，不算移植完成。
+
+invoke 的跨技能呼叫也須傳原生 `(self, options, request)`：傳遞原資料時保留同一 request，原本 nil 時明確省略，合成資料使用 `self:inquiryInput("skill_invoke", reason, context)`，不要建立假 QVariant 或借外層行動票。一般 truthiness、Original strict true、unsupported 與內部未處理的 nil 分開；Original 的 `inquiry_scope="original_internal"` 保留既有 handler 可見範圍。
+
+fill 的局部 `getTurnUseCard`、登記回呼與 captured caller 均使用 `(self, options, request)`；保留原 inclusive 值及全部回傳，不能沿用 invoke 的 nil→false。raw request 保留 activation／source 的六個身分欄位，候選收集器內部仍做既有 admission 與來源匹配。沒有 request 的跨技能推薦不可借用外層來源；純值候選的 `finish_turn`／`select_preview`／`promote_fill` 仍保留。
+
+choice 的 options 帶純值候選陣列。移植政策每個最外層回傳使用 `ai_choice_result(value, options)`：一般非字串結果回 `{kind="choice_default"}`，Original 數字轉文字、其他非文字／空值保留空答案；內部 scope 保持原始回傳。既有 native handler 的 nil 與空字串不包此 helper。`choice_default` 在 dispatcher 內消費，與 native nil 的未處理／缺覆蓋分開。內部委派明確保留 choices／data 的省略與空值，使用新的中性 options；Huashen 額外的隨機參數放 `options.xiaode_choice`。
+
+遷移 proxy 時必須核對實際迭代能力：原 choice／invoke proxy 沒有 `__pairs`，OL 通用狀態包裝原本看不到它們；改成 native registry 後不能因此新增狀態讀寫。卡牌提案的字串轉換 loop 也不能套在 choice／invoke，否則普通字串結果會被當作卡牌提案。原本是 plain table 的 fill 與既有 use／card_use 包裝維持原流程。
 
 ## 4. 每個分支做五項對照
 

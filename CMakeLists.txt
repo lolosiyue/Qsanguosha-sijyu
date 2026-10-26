@@ -1224,9 +1224,26 @@ if(UNIX AND NOT ANDROID)
         lua/ai/isolated/decision-core.lua
         lua/ai/isolated/retrial.lua
         lua/ai/isolated/strategy-hooks.lua
+        lua/ai/isolated/hook-defaults.lua
+        lua/ai/isolated/target-recommendation.lua
+        lua/ai/isolated/speech.lua
         lua/ai/isolated/event-intention.lua
         lua/ai/isolated/smart-ai-functions.lua
+        lua/ai/isolated/imagine-ai.lua
+        lua/ai/isolated/pindian-ai.lua
+        lua/ai/isolated/guanxing.lua
+        lua/ai/isolated/standard_cards-ai.lua
+        lua/ai/isolated/maneuvering-ai.lua
+        lua/ai/isolated/standard-ai.lua
+        lua/ai/isolated/basara-ai.lua
+        lua/ai/isolated/hegemony-ai.lua
+        lua/ai/isolated/hulaoguan-ai.lua
+        lua/ai/isolated/jiange-defense-ai.lua
+        lua/ai/isolated/boss-ai.lua
         lua/ai/mode-ai.lua
+        # system's declared server AI loads these hooks in every AI-enabled Room.
+        lua/ai/mode-policies/villager.lua
+        lua/ai/role-policies/villager.lua
         extensions
     )
     set(QSAN_ASSET_OPTIONAL

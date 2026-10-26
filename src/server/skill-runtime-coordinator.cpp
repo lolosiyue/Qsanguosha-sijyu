@@ -89,7 +89,11 @@ SkillInstanceEntryMessage skillInstanceMessage(const ServerPlayer *owner,
     if (includePrivateState) {
         message.privateState = owner->getSkillInstanceState(instance.skillName,
                                                             instance.instanceID);
+    } else {
+        message.privateState = owner->getSkillInstancePublicState(instance.skillName,
+                                                                  instance.instanceID);
     }
+    message.publicStateKeys = owner->getSkillInstancePublicState(instance.skillName, instance.instanceID).keys();
     return message;
 }
 
@@ -730,11 +734,11 @@ void SkillRuntimeCoordinator::notifySkillInstanceCorrectState(
 
 void SkillRuntimeCoordinator::notifySkillInstanceState(
     ServerPlayer *owner, const SkillInstance &instance, const QString &operation,
-    const QString &key, const QVariant &value)
+    const QString &key, const QVariant &value, bool publicStateChanged)
 {
     if (Config.EnableHegemony && !canReceiveSkillInstance(m_room, owner, owner, instance))
         return;
-    m_room.m_notifier->notifySkillInstanceState(owner, instance, operation, key, value);
+    m_room.m_notifier->notifySkillInstanceState(owner, instance, operation, key, value, publicStateChanged);
 }
 
 int SkillRuntimeCoordinator::getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok) const

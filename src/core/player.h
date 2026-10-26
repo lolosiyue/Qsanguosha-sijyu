@@ -232,18 +232,27 @@ public:
     void upsertSkillInstance(const SkillInstance &instance);
     // Restore retired provenance IDs without manufacturing live instances.
     void reserveSkillInstanceId(const QString &skillName, int instanceID);
-    // State writes may be replaced; ServerPlayer synchronizes them owner-only.
-    virtual void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
+    // Unspecified visibility is private, including replacement of a previously public value.
+    virtual void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                                      SkillStateVisibility visibility = SkillStatePrivate);
     QVariantMap getSkillInstanceState(const QString &skillName, int instanceID) const;
+    QVariantMap getSkillInstancePublicState(const QString &skillName, int instanceID) const;
+    // Atomically restore a mixed-visibility replica/snapshot; gameplay uses the virtual setters.
+    void restoreSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                                   QStringList publicKeys);
+    SkillStateVisibility getSkillInstanceStateVisibility(const QString &skillName, int instanceID,
+                                                         const QString &key) const;
     virtual void removeSkillInstanceState(const QString &skillName, int instanceID);
-    virtual void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
+    virtual void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key,
+                                           const QVariant &value, SkillStateVisibility visibility = SkillStatePrivate);
     QVariant getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue = QVariant()) const;
     virtual void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
     // Private state conveniences. Mutations use virtual setters so ServerPlayer
-    // retains owner-only synchronization; no new visibility or lifetime policy.
+    // retains the same synchronization and lifetime policy.
     QStringList getSkillInstanceStateStringList(const QString &skillName, int instanceID, const QString &key) const;
     bool setSkillInstanceStateStringList(const QString &skillName, int instanceID,
-                                         const QString &key, QStringList values);
+                                         const QString &key, QStringList values,
+                                         SkillStateVisibility visibility = SkillStatePrivate);
     int removeSkillInstanceStateKeys(const QString &skillName, int instanceID, QStringList keys);
     bool hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
     int getSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
@@ -381,7 +390,7 @@ public:
     // Valid, non-invalidated instance IDs for this skill name; all live IDs are positive.
     QList<int> getValidSkillInstanceIds(const QString &skill_name) const;
     QString getSkillDescription() const;
-    // Private state is included only when the caller explicitly supplies this holder.
+    // Full state requires this holder as viewer; other callers see only declared public keys.
     QString getSkillDescription(const Player *viewer) const;
     void setSkillDescriptionState(const QVariantMap &usage, const QVariantMap &validity,
                                   const QVariantList &effects);

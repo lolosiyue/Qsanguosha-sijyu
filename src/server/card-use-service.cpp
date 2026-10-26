@@ -831,7 +831,11 @@ bool CardUseService::resolveCardUse(CardUseStruct &use, bool add_history, const 
 			request.activationRef = skillCardCtx.activationRef;
 			request.setCardSelection(use.card);
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
-			const bool paidCost = activeSkill->cost(&m_room, skillCardCtx, request);
+            bool paidCost = false;
+            {
+                Room::AiSkillContextScope aiContext(m_room, skillCardCtx);
+                paidCost = activeSkill->cost(&m_room, skillCardCtx, request);
+            }
 			restoreSkillCardIdentity(skillCardCtx);
 			skillCardCtx.invoker = skillCardIdentity.invoker;
 			if (!paidCost) {
@@ -911,7 +915,11 @@ bool CardUseService::resolveCardUse(CardUseStruct &use, bool add_history, const 
 			// Payment metadata belongs to this execution's admitted CardUseStruct.
 			SkillExecutionRegistry::Entry *entry = skillExecution.get();
 			skillCardCtx.original_data = entry ? &entry->backingData : nullptr;
-			const bool paid = activeSkill->pay(&m_room, skillCardCtx, request);
+            bool paid = false;
+            {
+                Room::AiSkillContextScope aiContext(m_room, skillCardCtx);
+                paid = activeSkill->pay(&m_room, skillCardCtx, request);
+            }
 			restoreSkillCardIdentity(skillCardCtx);
 			skillCardCtx.invoker = skillCardInvoker;
 			if (!paid || skillCardCtx.is_canceled) {
@@ -1028,7 +1036,10 @@ bool CardUseService::resolveCardUse(CardUseStruct &use, bool add_history, const 
         saveSkillContext(skillCardCtx);
         ViewAsSkillV2::EffectFlow flow = ViewAsSkillV2::ContinueEffects;
         m_room.setCurrentCardUse(admittedPattern, admittedReason);
-        if (!intercepted && !skillCardCtx.is_canceled) flow = activeSkill->effect(skillCardCtx);
+        if (!intercepted && !skillCardCtx.is_canceled) {
+            Room::AiSkillContextScope aiContext(m_room, skillCardCtx);
+            flow = activeSkill->effect(skillCardCtx);
+        }
         m_room.setCurrentCardUse(admittedPattern, admittedReason);
         restoreSkillCardIdentity(skillCardCtx); skillCardCtx.invoker = skillCardInvoker;
         // Replacement callbacks must return an owned virtual clone with material

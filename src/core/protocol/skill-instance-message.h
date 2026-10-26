@@ -10,7 +10,8 @@ struct SkillInstanceEntryMessage
 {
     QString ownerName;
     SkillInstance instance;
-    QVariantMap privateState;
+    QVariantMap privateState; // Recipient-visible state; observers receive only public values.
+    QStringList publicStateKeys;
 
     QVariant toVariant() const;
     bool tryParse(const QVariant &value);
@@ -39,6 +40,7 @@ struct SkillInstanceMessage
     QString operation;
     QString key;
     QVariant value;
+    QStringList publicStateKeys;
 
     static SkillInstanceMessage makeSnapshot(const QList<SkillInstanceEntryMessage> &entries);
     static SkillInstanceMessage makeUpsert(const SkillInstanceEntryMessage &entry);
@@ -51,7 +53,8 @@ struct SkillInstanceMessage
                                                  const QString &key, const QVariant &value);
     static SkillInstanceMessage makeState(const QString &ownerName, const QString &skillName,
                                           int instanceId, const QString &operation,
-                                          const QString &key, const QVariant &value);
+                                          const QString &key, const QVariant &value,
+                                          const QStringList &publicStateKeys = QStringList());
 
     QVariant toVariant() const;
     bool tryParse(const QVariant &value);

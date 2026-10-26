@@ -41,6 +41,7 @@ struct SkillState {
     QString parentId;
     QVariantMap state;
     QVariantMap correctState;
+    QStringList publicStateKeys;
 };
 enum class ZoneKind { Draw, Discard, Table, Hand, Equip, Judge, Private, Void };
 struct CardZone {

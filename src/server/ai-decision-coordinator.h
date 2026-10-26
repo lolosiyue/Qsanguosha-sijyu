@@ -13,6 +13,7 @@
 class Room;
 class DistanceSkill;
 class SkillRuntimeCoordinator;
+class AiDecisionAudit;
 
 class AiDecisionCoordinator
 {
@@ -119,7 +120,7 @@ private:
     // checks only apply to those: a legacy answer keeps the behaviour it had before
     // the route existed.
     bool runAnswer(ServerPlayer *player, const AIRequest &request, const QString &callbackName,
-                   const LegacyAnswer &legacy, AIResult &result,
+                   const LegacyAnswer &legacy, AIResult &result, AiDecisionAudit &audit,
                    bool *fromIsolated = nullptr) const;
     bool externalAnswer(ServerPlayer *player, const AIRequest &request, AIResult &result,
                         const std::function<bool(const AIResult &)> &validate) const;

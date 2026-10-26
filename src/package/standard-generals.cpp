@@ -68,7 +68,8 @@ void syncStandardReceiptState(Room *room, const QVariantMap &receipt, bool clear
     const SkillInstanceRef source = standardReceiptRef(receipt);
     if (!owner || !source.isValid()) return;
     if (clear) owner->removeSkillInstanceStateValue(source.key.skillName, source.key.instanceID, "receipt_amount");
-    else owner->setSkillInstanceStateValue(source.key.skillName, source.key.instanceID, "receipt_amount", receipt.value("amount"));
+    else owner->setSkillInstanceStateValue(source.key.skillName, source.key.instanceID,
+        "receipt_amount", receipt.value("amount"), SkillStatePublic);
 }
 void clearStandardReceipts(Room *room, ServerPlayer *recipient, const QString &name)
 {

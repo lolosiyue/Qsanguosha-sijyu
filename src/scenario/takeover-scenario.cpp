@@ -139,7 +139,7 @@ void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
         instance.bindHead = saved.bindHead;
         instance.correctState = saved.correctState;
         player->upsertSkillInstance(instance);
-        player->setSkillInstanceState(instance.skillName, instance.instanceID, saved.state);
+        player->restoreSkillInstanceState(instance.skillName, instance.instanceID, saved.state, saved.publicStateKeys);
     }
     // The visible list is retained as a compatibility guard for innate/helper
     // skills whose runtime instance is intentionally not exposed to clients.

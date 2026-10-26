@@ -2556,14 +2556,30 @@ void Player::upsertSkillInstance(const SkillInstance &instance)
     emit skill_set_changed();
 }
 
-void Player::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
+void Player::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                                  SkillStateVisibility visibility)
+{
+    restoreSkillInstanceState(skillName, instanceID, state,
+        visibility == SkillStatePublic ? state.keys() : QStringList());
+}
+
+void Player::restoreSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state,
+                                      QStringList publicKeys)
 {
     auto outerIt = m_skillInstances.find(skillName);
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
-    if (innerIt.value().state == state) return;
+    // Canonicalize visibility and reject dangling public keys during snapshot restoration.
+    publicKeys.removeDuplicates();
+    for (auto it = publicKeys.begin(); it != publicKeys.end(); ) {
+        if (it->isEmpty() || !state.contains(*it)) it = publicKeys.erase(it);
+        else ++it;
+    }
+    publicKeys.sort();
+    if (innerIt.value().state == state && innerIt.value().publicStateKeys == publicKeys) return;
     innerIt.value().state = state;
+    innerIt.value().publicStateKeys = publicKeys;
     emit skill_state_changed();
 }
 
@@ -2576,25 +2592,55 @@ QVariantMap Player::getSkillInstanceState(const QString &skillName, int instance
     return innerIt.value().state;
 }
 
+QVariantMap Player::getSkillInstancePublicState(const QString &skillName, int instanceID) const
+{
+    QVariantMap result;
+    if (const SkillInstance *instance = findSkillInstance(skillName, instanceID)) {
+        for (const QString &key : instance->publicStateKeys) {
+            const auto it = instance->state.constFind(key);
+            if (it != instance->state.cend()) result.insert(key, it.value());
+        }
+    }
+    return result;
+}
+
+SkillStateVisibility Player::getSkillInstanceStateVisibility(const QString &skillName, int instanceID,
+                                                            const QString &key) const
+{
+    const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+    return instance && instance->state.contains(key) && instance->publicStateKeys.contains(key)
+        ? SkillStatePublic : SkillStatePrivate;
+}
+
 void Player::removeSkillInstanceState(const QString &skillName, int instanceID)
 {
     auto outerIt = m_skillInstances.find(skillName);
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
-    if (innerIt.value().state.isEmpty()) return;
+    if (innerIt.value().state.isEmpty() && innerIt.value().publicStateKeys.isEmpty()) return;
     innerIt.value().state.clear();
+    innerIt.value().publicStateKeys.clear();
     emit skill_state_changed();
 }
 
-void Player::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value)
+void Player::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key,
+                                       const QVariant &value, SkillStateVisibility visibility)
 {
+    if (key.isEmpty()) return;
     auto outerIt = m_skillInstances.find(skillName);
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
-    if (innerIt.value().state.contains(key) && innerIt.value().state.value(key) == value) return;
+    const bool isPublic = visibility == SkillStatePublic;
+    if (innerIt.value().state.contains(key) && innerIt.value().state.value(key) == value
+        && innerIt.value().publicStateKeys.contains(key) == isPublic) return;
     innerIt.value().state[key] = value;
+    innerIt.value().publicStateKeys.removeAll(key);
+    if (isPublic) {
+        innerIt.value().publicStateKeys << key;
+        innerIt.value().publicStateKeys.sort();
+    }
     emit skill_state_changed();
 }
 
@@ -2613,7 +2659,9 @@ void Player::removeSkillInstanceStateValue(const QString &skillName, int instanc
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
-    if (innerIt.value().state.remove(key) > 0)
+    const bool removed = innerIt.value().state.remove(key) > 0;
+    const bool visibilityRemoved = innerIt.value().publicStateKeys.removeAll(key) > 0;
+    if (removed || visibilityRemoved)
         emit skill_state_changed();
 }
 
@@ -2626,11 +2674,11 @@ QStringList Player::getSkillInstanceStateStringList(const QString &skillName, in
 }
 
 bool Player::setSkillInstanceStateStringList(const QString &skillName, int instanceID,
-                                             const QString &key, QStringList values)
+                                             const QString &key, QStringList values, SkillStateVisibility visibility)
 {
     if (key.isEmpty() || !findSkillInstance(skillName, instanceID)) return false;
     if (values.isEmpty()) removeSkillInstanceStateValue(skillName, instanceID, key);
-    else setSkillInstanceStateValue(skillName, instanceID, key, QVariant(values));
+    else setSkillInstanceStateValue(skillName, instanceID, key, QVariant(values), visibility);
     return true;
 }
 
@@ -3055,7 +3103,9 @@ QString Player::getSkillDescription(const Player *viewer) const
             groupValid[group] = groupValid.at(group) || instanceValid;
             const QVariantMap usage = viewer == this ? m_skillDescriptionUsage.value(instanceKey).toMap()
                                                      : QVariantMap();
-            const QVariantMap privateState = viewer == this ? getSkillInstanceState(skillName, id) : QVariantMap();
+            // Only pointer-identical owners see private state; others see declared public keys.
+            const QVariantMap visibleState = viewer == this ? getSkillInstanceState(skillName, id)
+                                                           : getSkillInstancePublicState(skillName, id);
             // Only actual counter summaries deserve a usage row; absent/None/custom
             // without counts must not add placeholders to every passive skill.
             const bool hasUsage = usage.contains("used") && usage.contains("limit")
@@ -3109,16 +3159,16 @@ QString Player::getSkillDescription(const Player *viewer) const
                 }
                 return described;
             };
-            if (viewer == this) {
+            if (!visibleState.isEmpty()) {
                 int rawCount = 0;
-                for (auto it = privateState.cbegin(); it != privateState.cend(); ++it)
+                for (auto it = visibleState.cbegin(); it != visibleState.cend(); ++it)
                     if (!it.key().startsWith("__description_")) ++rawCount;
-                const int described = readableState("state", privateState);
+                const int described = readableState("state", visibleState);
                 if (described < rawCount)
                     detail += "<br/>" + tr("Skill state: %1 more entries (see technical details)").arg(rawCount - described);
             }
             readableState("correct", instance->correctState);
-            const QVariantMap correctionSources = privateState.value("__description_correct").toMap();
+            const QVariantMap correctionSources = visibleState.value("__description_correct").toMap();
             for (auto it = correctionSources.cbegin(); it != correctionSources.cend(); ++it) {
                 const QVariantMap change = it.value().toMap();
                 if (!instance->correctState.contains(it.key()) || instance->correctState.value(it.key()) != change.value("value")) continue;
@@ -3135,7 +3185,7 @@ QString Player::getSkillDescription(const Player *viewer) const
                         : QString::number(instance->amountOverride);
                     detail += "<br/>" + tr("Modification: %1: %2").arg(label.toHtmlEscaped(), amount);
                 }
-                const QVariantMap provenance = privateState.value("__description_amount").toMap();
+                const QVariantMap provenance = visibleState.value("__description_amount").toMap();
                 if (!provenance.isEmpty() && provenance.value("value").toInt() == instance->amountOverride) {
                     const QString source = descriptionPlayerName(this, provenance.value("source_player").toString());
                     if (!source.isEmpty()) detail += "<br/>" + tr("Modified by: %1").arg(source.toHtmlEscaped());
@@ -3165,10 +3215,8 @@ QString Player::getSkillDescription(const Player *viewer) const
             };
             appendState("correctState", instance->correctState);
             if (hasUsage) appendState("usage", usage);
-            // Pointer identity is deliberate: matching objectName alone is not authorization.
-            // This reads only the local replica, never a room/server or another player's state.
-            if (viewer == this)
-                appendState("state", getSkillInstanceState(skillName, id));
+            // Read the filtered local replica, never a room/server or another player's state.
+            appendState("state", visibleState);
             detail += QString("<br/><small><font color=\"#888888\">%1<br/>%2</font></small>")
                 .arg(tr("Technical details"), technical.join("<br/>"));
             // Equal bodies can contain both valid and invalid instances. Grey the

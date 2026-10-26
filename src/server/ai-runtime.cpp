@@ -524,7 +524,7 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     lua_setfield(state, -2, "attached_lord_skill");
     lua_pushboolean(state, skill.lordSkillEffective);
     lua_setfield(state, -2, "lord_skill_effective");
-    if (skill.hasPrivateState) {
+    if (skill.hasPrivateState || !skill.state.isEmpty()) {
         pushAIJsonValue(state, skill.state);
         lua_setfield(state, -2, "state");
     }
@@ -784,6 +784,10 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "custom_roles");
     pushAIJsonValue(state, world.modePolicy);
     lua_setfield(state, -2, "mode_policy");
+    if (world.enableHegemony) {
+        pushAIJsonValue(state, world.hegemonyFacts);
+        lua_setfield(state, -2, "hegemony_facts");
+    }
     setStringField(state, "revision", QString::number(world.revision));
     pushAIPlayerView(state, world.self);
     lua_setfield(state, -2, "self");
@@ -1186,6 +1190,35 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
             lua_pop(state, 1);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else {
+            if (lua_isnil(state, -1) && Config.EnableHegemony) {
+                // Coverage is not a runtime fault. Read only bounded primitive
+                // diagnostics; never call Lua again after the budget is removed.
+                const auto boundedString = [state](int index, size_t limit) {
+                    size_t length = 0;
+                    const char *value = lua_type(state, index) == LUA_TSTRING
+                        ? lua_tolstring(state, index, &length) : nullptr;
+                    return value ? QString::fromUtf8(value, int(qMin(length, limit))) : QString();
+                };
+                lua_getglobal(state, "ai_last_decision_outcome");
+                const QString outcome = boundedString(-1, 64);
+                lua_pop(state, 1);
+                QString reason, key;
+                lua_getglobal(state, "ai_last_decision_failure");
+                if (lua_istable(state, -1)) {
+                    lua_pushliteral(state, "reason");
+                    lua_rawget(state, -2);
+                    reason = boundedString(-1, 1024);
+                    lua_pop(state, 1);
+                    lua_pushliteral(state, "key");
+                    lua_rawget(state, -2);
+                    key = boundedString(-1, 256);
+                    lua_pop(state, 1);
+                }
+                lua_pop(state, 1);
+                qWarning().noquote() << "[AI_HEGEMONY_NOT_COVERED] decision=" << request.decisionId
+                    << "player=" << request.viewerObjectName << "outcome=" << outcome
+                    << "reason=" << reason << "key=" << key;
+            }
             if (!lua_isnil(state, -1)) {
                 if (!parseResult(state, result)
                     || (result.kind == AIResult::Answer && result.action.hasCardSpec
@@ -1677,11 +1710,11 @@ static const QStringList &aiRoutableCallbackNames()
 
 static void loadConfiguredAiRoutes(AiRouteRegistry &routes)
 {
-    // The imported HEG callbacks run through the room-local legacy adapter.
-    // Apply explicit user routes afterward, including per-skill isolated overrides.
+    // National war is independently isolated. Compatibility routes remain
+    // available to other modes, never as a Hegemony policy dependency.
     if (Config.EnableHegemony) {
         for (const QString &callback : aiRoutableCallbackNames())
-            routes.setCallbackRoute(callback, QString(), AiRouteLegacyAdapted);
+            routes.setCallbackRoute(callback, QString(), AiRouteIsolated);
     }
     const auto addRoutes = [&routes](const QString &key, AiRoute route) {
         foreach (const QString &entry, Config.value(key).toStringList()) {
@@ -1692,14 +1725,39 @@ static void loadConfiguredAiRoutes(AiRouteRegistry &routes)
             routes.setCallbackRoute(callbackName, parts.value(1).trimmed(), route);
         }
     };
-    addRoutes(QStringLiteral("AiLegacyDirectCallbacks"), AiRouteLegacyDirect);
-    addRoutes(QStringLiteral("AiLegacyAdaptedCallbacks"), AiRouteLegacyAdapted);
+    if (!Config.EnableHegemony) {
+        addRoutes(QStringLiteral("AiLegacyDirectCallbacks"), AiRouteLegacyDirect);
+        addRoutes(QStringLiteral("AiLegacyAdaptedCallbacks"), AiRouteLegacyAdapted);
+    }
     addRoutes(QStringLiteral("AiIsolatedCallbacks"), AiRouteIsolated);
 }
 
 void AiLuaRuntime::loadConfiguredRoutes()
 {
     loadConfiguredAiRoutes(m_routes);
+}
+
+QJsonObject AiLuaRuntime::publicCardCounts()
+{
+    const int size = Sanguosha->getCardCount();
+    if (size == m_publicCardCount && !m_publicCardCounts.isEmpty())
+        return m_publicCardCounts;
+    QHash<QString, int> counts;
+    bool missing = false;
+    for (int id = 0; id < size; ++id) {
+        const Card *card = Sanguosha->getEngineCard(id);
+        if (!card) { missing = true; continue; }
+        const QStringList names = card->getKindOfNames();
+        const QSet<QString> unique(names.cbegin(), names.cend());
+        for (const QString &name : unique) ++counts[name];
+    }
+    QJsonObject classes;
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+        classes.insert(it.key(), it.value());
+    m_publicCardCount = size;
+    m_publicCardCounts = QJsonObject{{"engine_size", size},
+        {"missing_engine_card", missing}, {"engine_counts", classes}};
+    return m_publicCardCounts;
 }
 
 bool AiLuaRuntime::requiresLegacyRuntime()
@@ -1897,6 +1955,12 @@ static void pushAiSkillAction(lua_State *state, const AiSkillActionContext &acti
     lua_setfield(state, -2, "activation_quota_available");
     lua_pushboolean(state, action.isSourceQuotaAvailable());
     lua_setfield(state, -2, "source_quota_available");
+    lua_pushboolean(state, action.equipmentActivation);
+    lua_setfield(state, -2, "equipment_activation");
+    if (action.physicalEquipSource.isValid()) {
+        pushAIJsonValue(state, QJsonObject::fromVariantMap(action.physicalEquipSource.toVariantMap()));
+        lua_setfield(state, -2, "physical_equipment");
+    }
 }
 static void pushAICardCandidate(lua_State *state, const AICardCandidateView &candidate)
 {
@@ -2066,6 +2130,7 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             lua_setfield(state, -2, "eligible_subcards");
             setStringField(state, "name", conversion.name);
             setStringField(state, "class_name", conversion.className);
+            setStringField(state, "skill_name", conversion.skillName);
             lua_pushinteger(state, conversion.suit);
             lua_setfield(state, -2, "suit");
             lua_pushinteger(state, conversion.number);
@@ -2078,6 +2143,12 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             setStringField(state, "source_skill", conversion.sourceRef.key.skillName);
             lua_pushinteger(state, conversion.sourceRef.key.instanceID);
             lua_setfield(state, -2, "source_instance");
+            lua_pushboolean(state, conversion.equipmentActivation);
+            lua_setfield(state, -2, "equipment_activation");
+            if (conversion.physicalEquipSource.isValid()) {
+                pushAIJsonValue(state, QJsonObject::fromVariantMap(conversion.physicalEquipSource.toVariantMap()));
+                lua_setfield(state, -2, "physical_equipment");
+            }
             lua_pushboolean(state, conversion.activationQuotaAvailable);
             lua_setfield(state, -2, "activation_quota_available");
             lua_pushboolean(state, conversion.sourceQuotaAvailable);
@@ -2485,16 +2556,22 @@ static bool readResultSkillAction(lua_State *state, AIResult &result)
     int instanceId = 0;
     lua_getfield(state, -1, "instance");
     const bool instanceOk = lua_type(state, -1) == LUA_TNUMBER
-        && aiResultInteger(lua_tonumber(state, -1), instanceId) && instanceId > 0;
+        && aiResultInteger(lua_tonumber(state, -1), instanceId) && instanceId >= 0;
     lua_pop(state, 1);
     QString owner;
     lua_getfield(state, -1, "owner");
     const bool ownerOk = lua_isnil(state, -1)
         || (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, owner));
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "equipment");
+    const bool equipmentOk = lua_isnil(state, -1) || lua_type(state, -1) == LUA_TBOOLEAN;
+    const bool equipment = lua_type(state, -1) == LUA_TBOOLEAN && lua_toboolean(state, -1);
     lua_pop(state, 2);
-    if (!skillOk || !instanceOk || !ownerOk)
+    if (!skillOk || !instanceOk || !ownerOk || !equipmentOk)
         return false;
+    if ((instanceId == 0) != equipment) return false;
     result.action.hasSkillActionContext = true;
+    result.action.skillActionContext.equipmentActivation = equipment;
     result.action.skillActionContext.activationRef = SkillInstanceRef(owner,
         SkillInstanceKey(skillName, instanceId));
     return true;

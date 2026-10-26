@@ -52,6 +52,7 @@ struct SkillInstanceSnapshot
     int bindHead = 0;
     QVariantMap state;
     QVariantMap correctState;
+    QStringList publicStateKeys;
 
     QVariantMap serialize() const;
     static SkillInstanceSnapshot deserialize(const QVariantMap &map);

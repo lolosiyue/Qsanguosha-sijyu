@@ -41,6 +41,22 @@ auto cardRequestScope(RoomState &state)
         state.setCurrentCardUsePattern(pattern);
     });
 }
+
+// A failed strict isolated decision must remain visible when the caller applies
+// its legal native default.  The coordinator owns decision ids; this service
+// still has the stable seat/callback/reason and current revision.
+static void recordHegemonyNativeDefault(const Room &room, const ServerPlayer *player,
+                                        const QString &callback, const QString &reason,
+                                        const QString &fallback, const QString &source)
+{
+    if (!Config.EnableHegemony || !player) return;
+    const int revision = const_cast<Room &>(room).roomRuntime()
+        ? const_cast<Room &>(room).roomRuntime()->stateRevision() : -1;
+    qWarning().noquote() << QString("[AI_HEGEMONY_NATIVE_DEFAULT] seat=%1 revision=%2 "
+                                   "callback=%3 reason=%4 fallback=%5 source=%6")
+        .arg(player->objectName()).arg(revision).arg(callback)
+        .arg(reason).arg(fallback).arg(source);
+}
 }
 
 PlayerDecisionService::PlayerDecisionService(Room &room, EventDispatcher &eventDispatcher)
@@ -93,6 +109,7 @@ bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QStrin
     m_room.notifyMoveFocus(player, S_COMMAND_INVOKE_SKILL);
 
     bool invoked = false;
+    bool aiDecision = true;
     ServerPlayer *tp = data.value<ServerPlayer *>();
     QVariant over = findTestOverride(player, "skill_invoke", skillName);
     if (over.isValid() && over.canConvert<bool>()) {
@@ -102,7 +119,10 @@ bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QStrin
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            m_room.decideAiSkillInvoke(player, skillName, data, invoked);
+            aiDecision = m_room.decideAiSkillInvoke(player, skillName, data, invoked);
+            if (!aiDecision)
+                recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForSkillInvoke"),
+                    skillName, QStringLiteral("refuse"), QStringLiteral("isolated_rejected"));
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -123,7 +143,10 @@ bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QStrin
             } else {
                 ai = player->getAI();
                 if (ai)
-                    m_room.decideAiSkillInvoke(player, skillName, data, invoked);
+                    aiDecision = m_room.decideAiSkillInvoke(player, skillName, data, invoked);
+                    if (!aiDecision)
+                        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForSkillInvoke"),
+                            skillName, QStringLiteral("refuse"), QStringLiteral("isolated_rejected"));
             }
         }
     }
@@ -151,6 +174,22 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
 
+    const auto observeNullificationChoice = [&](const QString &selection) {
+        auto *frame = m_room.m_aiNullificationContext;
+        if (!Config.EnableHegemony || skill_name != QStringLiteral("heg_nullification")
+            || !frame || !frame->responseUse || frame->responseUse->from != player
+            || !frame->responseUse->card
+            || !frame->responseUse->card->isKindOf("HegNullification")
+            || !data.canConvert<CardEffectStruct>()) return;
+        const CardEffectStruct effect = data.value<CardEffectStruct>();
+        if (effect.card != frame->trick || effect.from != frame->from || effect.to != frame->to)
+            return;
+        // HegNullification::use grants a faction group only for "all". Record
+        // the actual returned choice, including native forced/cancel outcomes.
+        frame->responseAll = selection == QStringLiteral("all");
+        frame->responseTypeKnown = true;
+    };
+
     ChoiceData choiceData;
     choiceData.player = player;
     choiceData.skill_name = skill_name;
@@ -164,11 +203,15 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
     m_eventDispatcher.dispatch(EventAskForChoice, player, choiceDataVar);
     choiceData = choiceDataVar.value<ChoiceData>();
 
-    if (choiceData.canceled)
+    if (choiceData.canceled) {
+        observeNullificationChoice(QString());
         return QString();
+    }
 
-    if (!choiceData.forced_answer.isEmpty())
+    if (!choiceData.forced_answer.isEmpty()) {
+        observeNullificationChoice(choiceData.forced_answer);
         return choiceData.forced_answer;
+    }
 
     QString effectiveChoices = choiceData.choices;
     QString effectiveExceptChoices = choiceData.except_choices;
@@ -177,6 +220,8 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
     m_room.notifyMoveFocus(player, S_COMMAND_MULTIPLE_CHOICE);
 
     QString answer = effectiveChoices;
+    bool aiAttempted = false;
+    bool aiDecision = true;
     if (effectiveChoices.contains("+")) {
         QVariant over = findTestOverride(player, "choice", skill_name);
         if (over.isValid() && over.canConvert<QString>()) {
@@ -184,9 +229,10 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
         } else {
             AI *ai = player->getAI();
             if (ai) {
+                aiAttempted = true;
                 QElapsedTimer timer;
                 timer.start();
-                m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
+                aiDecision = m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
                 if (Config.AIDelay > timer.elapsed())
                     m_room.thread->delay(Config.AIDelay - timer.elapsed());
             } else {
@@ -200,17 +246,40 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
                         answer = clientReply.toString();
                 } else {
                     ai = player->getAI();
-                    if (ai)
-                        m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
+                    if (ai) {
+                        aiAttempted = true;
+                        aiDecision = m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
+                    }
                 }
             }
         }
-        if (!effectiveChoices.contains(answer)) {
+        if (Config.EnableHegemony) {
+            const QStringList legalChoices = effectiveChoices.split("+", Qt::SkipEmptyParts);
+            if (!legalChoices.contains(answer)) {
+                if (aiAttempted)
+                    recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForChoice"),
+                        skill_name, QStringLiteral("random_option"),
+                        aiDecision ? QStringLiteral("authority_rejected")
+                                   : QStringLiteral("isolated_rejected"));
+                answer = legalChoices.isEmpty() ? QStringLiteral("cancel")
+                    : legalChoices.at(qsanRandomBounded(legalChoices.length()));
+            }
+        } else if (!effectiveChoices.contains(answer)) {
             QStringList _choices = effectiveChoices.split("+");
             answer = _choices.at(qsanRandomBounded(_choices.length()));
         }
     }
+    observeNullificationChoice(answer);
     QVariant decisionData = "skillChoice:" + skill_name + ":" + answer;
+    Room::AiChoiceContext observation;
+    observation.player = player;
+    observation.reason = skill_name;
+    observation.answer = answer;
+    observation.input = &data;
+    observation.payload = &decisionData;
+    const auto *previousChoice = m_room.m_aiChoiceContext;
+    m_room.m_aiChoiceContext = &observation;
+    const auto choiceObservation = qScopeGuard([&] { m_room.m_aiChoiceContext = previousChoice; });
     m_eventDispatcher.dispatch(ChoiceMade, player, decisionData);
     return answer;
 }
@@ -223,8 +292,12 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
 
     Card::Suit suit = Card::AllSuits[qsanRandomBounded(4)];
     AI *ai = player->getAI();
-    if (ai)
-        m_room.decideAiSuit(player, reason, suit);
+    if (ai) {
+        const bool aiDecision = m_room.decideAiSuit(player, reason, suit);
+        if (!aiDecision)
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForSuit"),
+                reason, QStringLiteral("random_suit"), QStringLiteral("isolated_rejected"));
+    }
     else if (m_room.doRequest(player, S_COMMAND_CHOOSE_SUIT, QVariant(), true)) {
         if (player->getClientReply().toString() == "spade")
             suit = Card::Spade;
@@ -236,8 +309,12 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
             suit = Card::Diamond;
     } else {
         ai = player->getAI();
-        if (ai)
-            m_room.decideAiSuit(player, reason, suit);
+        if (ai) {
+            const bool aiDecision = m_room.decideAiSuit(player, reason, suit);
+            if (!aiDecision)
+                recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForSuit"),
+                    reason, QStringLiteral("random_suit"), QStringLiteral("isolated_rejected"));
+        }
     }
     return suit;
 }
@@ -264,8 +341,11 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
         return "god";
     QString result = kingdoms.first();
     AI *ai = player->getAI();
+    bool aiAttempted = false;
+    bool aiDecision = true;
     if (ai) {
-        m_room.decideAiKingdom(player, reason, kingdoms, result);
+        aiAttempted = true;
+        aiDecision = m_room.decideAiKingdom(player, reason, kingdoms, result);
     } else {
         JsonArray arg;
         arg << kingdoms.join("+");
@@ -276,12 +356,22 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
         } else {
             ai = player->getAI();
             if (ai) {
-                m_room.decideAiKingdom(player, reason, kingdoms, result);
+                aiAttempted = true;
+                aiDecision = m_room.decideAiKingdom(player, reason, kingdoms, result);
             }
         }
     }
-    if (!kingdoms.contains(result))
+    if (!kingdoms.contains(result)) {
+        if (aiAttempted)
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForKingdom"),
+                reason, QStringLiteral("random_kingdom"),
+                aiDecision ? QStringLiteral("authority_rejected")
+                           : QStringLiteral("isolated_rejected"));
         result = kingdoms.at(qsanRandomBounded(kingdoms.length()));
+    } else if (aiAttempted && !aiDecision) {
+        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForKingdom"),
+            reason, QStringLiteral("first_kingdom"), QStringLiteral("isolated_rejected"));
+    }
     if (send_log) {
         LogMessage log;
         log.type = "#ChooseKingdom";
@@ -327,12 +417,15 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
     }
 
     QString chosenGeneral;
+    bool aiAttempted = false;
+    bool aiDecision = true;
     AI *ai = player->getAI();
 
     if (ai) {
+        aiAttempted = true;
         QElapsedTimer timer;
         timer.start();
-        m_room.decideAiGeneral(player, actualGenerals, default_choice, reason, chosenGeneral);
+        aiDecision = m_room.decideAiGeneral(player, actualGenerals, default_choice, reason, chosenGeneral);
         if (m_room.thread && Config.AIDelay - timer.elapsed() > 0)
             m_room.thread->delay(Config.AIDelay - timer.elapsed());
     } else if (player->isOnline()) {
@@ -347,6 +440,16 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
         }
     }
 
+    if (aiAttempted && Config.EnableHegemony
+        && (!aiDecision || !actualGenerals.contains(chosenGeneral))) {
+        const QString source = aiDecision ? QStringLiteral("authority_rejected")
+                                          : QStringLiteral("isolated_rejected");
+        const QString fallback = !default_choice.isEmpty() && actualGenerals.contains(default_choice)
+            ? QStringLiteral("default_general") : QStringLiteral("random_general");
+        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForGeneral"),
+            reason, fallback, source);
+        chosenGeneral.clear();
+    }
     if (chosenGeneral.isEmpty()) {
         if (!default_choice.isEmpty() && actualGenerals.contains(default_choice))
             chosenGeneral = default_choice;
@@ -411,7 +514,12 @@ int PlayerDecisionService::askForAG(ServerPlayer *player, const QList<int> &card
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
+            const bool aiDecision = m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
+            if (!aiDecision)
+                recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForAG"),
+                    reason, refusable || card_ids.isEmpty() ? QStringLiteral("cancel")
+                                                            : QStringLiteral("first_card"),
+                    QStringLiteral("isolated_rejected"));
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -422,8 +530,14 @@ int PlayerDecisionService::askForAG(ServerPlayer *player, const QList<int> &card
                     card_id = clientReply.toInt();
             } else {
                 ai = player->getAI();
-                if (ai)
-                    m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
+                if (ai) {
+                    const bool aiDecision = m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
+                    if (!aiDecision)
+                        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForAG"),
+                            reason, refusable || card_ids.isEmpty() ? QStringLiteral("cancel")
+                                                                    : QStringLiteral("first_card"),
+                            QStringLiteral("isolated_rejected"));
+                }
             }
         }
     }
@@ -447,6 +561,8 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_PLAYER);
     ServerPlayer *choice = targets.first();
+    bool aiAttempted = false;
+    bool aiDecision = true;
     LogMessage log;
     log.arg = skillName;
     if (skillName.contains("$"))
@@ -464,9 +580,10 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
         } else {
             AI *ai = player->getAI();
             if (ai) {
+                aiAttempted = true;
                 QElapsedTimer timer;
                 timer.start();
-                m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
+                aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
                 if (Config.AIDelay > timer.elapsed())
                     m_room.thread->delay(Config.AIDelay - timer.elapsed());
             } else {
@@ -481,11 +598,17 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
                         choice = m_room.findChild<ServerPlayer *>(clientReply.toString());
                 } else {
                     ai = player->getAI();
-                    if (ai)
-                        m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
+                    if (ai) {
+                        aiAttempted = true;
+                        aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
+                    }
                 }
             }
         }
+        if (aiAttempted && !aiDecision)
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForPlayerChosen"),
+                log.arg, QStringLiteral("first_candidate"),
+                QStringLiteral("isolated_rejected"));
         if (!choice && !optional)
             choice = targets.at(qsanRandomBounded(targets.length()));
     }
@@ -528,10 +651,13 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
         log.arg = skillName.split("$").first();
     if (targets.length() > min_num) {
         AI *ai = player->getAI();
+        bool aiAttempted = false;
+        bool aiDecision = true;
         if (ai) {
+            aiAttempted = true;
             QElapsedTimer timer;
             timer.start();
-            m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
+            aiDecision = m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -551,9 +677,21 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
                 }
             } else {
                 ai = player->getAI();
-                if (ai)
-                    m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
+                if (ai) {
+                    aiAttempted = true;
+                    aiDecision = m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
+                }
             }
+        }
+        if (aiAttempted && !aiDecision) {
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForPlayersChosen"),
+                log.arg, min_num <= 0 ? QStringLiteral("cancel_or_empty")
+                                      : QStringLiteral("random_candidates"),
+                QStringLiteral("isolated_rejected"));
+            // decideAiPlayersChosen writes into the caller's list. On a strict
+            // rejection it must not leave the prefilled full target list looking
+            // like an accepted selection or exceed max_num.
+            log.to.clear();
         }
         if (log.to.length() < min_num) {
             QList<ServerPlayer *> copy = targets;
@@ -640,11 +778,14 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             card_id = candidates.at(m_room.roomRuntime()->rng().bounded(candidates.size()))->getId();
     } else {
         AI *ai = player->getAI();
+        bool aiAttempted = false;
+        bool aiDecision = true;
         if (ai) {
+            aiAttempted = true;
             QElapsedTimer timer;
             timer.start();
             player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-            m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+            aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -662,11 +803,16 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             } else {
                 ai = player->getAI();
                 if (ai) {
+                    aiAttempted = true;
                     player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-                    m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+                    aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
                 }
             }
         }
+        if (aiAttempted && !aiDecision)
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForCardChosen"),
+                reason, can_cancel ? QStringLiteral("cancel") : QStringLiteral("first_legal_card"),
+                QStringLiteral("isolated_rejected"));
     }
     // A disabled id is an earlier pick of the same loop. Accepting it again puts one
     // card in a move several times (an isolated Luochong answer did); treat it as no pick.
@@ -708,16 +854,24 @@ const Card *PlayerDecisionService::askForCardShow(ServerPlayer *player, ServerPl
 
     if (player->getHandcardNum() > 1) {
         AI *ai = player->getAI();
-        if (ai)
+        if (ai) {
             card = m_room.decideAiCardShow(player, requestor, reason);
+            if (!card)
+                recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForCardShow"),
+                    reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+        }
         else if (m_room.doRequest(player, S_COMMAND_SHOW_CARD, requestor->objectName(), true)) {
             JsonArray clientReply = player->getClientReply().value<JsonArray>();
             if (clientReply.size() > 0)
                 card = Card::Parse(clientReply[0].toString());
         } else {
             ai = player->getAI();
-            if (ai)
+            if (ai) {
                 card = m_room.decideAiCardShow(player, requestor, reason);
+                if (!card)
+                    recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForCardShow"),
+                        reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+            }
         }
     }
     if (!card)
@@ -746,6 +900,9 @@ const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPla
         QElapsedTimer timer;
         timer.start();
         card = m_room.decideAiPindian(player, from, reason);
+        if (!card)
+            recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForPindian"),
+                reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
         if (Config.AIDelay > timer.elapsed())
             m_room.thread->delay(Config.AIDelay - timer.elapsed());
     } else if (m_room.doRequest(player, S_COMMAND_PINDIAN,
@@ -756,8 +913,12 @@ const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPla
             card = Card::Parse(clientReply[0].toString());
     } else {
         ai = player->getAI();
-        if (ai)
+        if (ai) {
             card = m_room.decideAiPindian(player, from, reason);
+            if (!card)
+                recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForPindian"),
+                    reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+        }
     }
     if (!card)
         card = player->getRandomHandCard();
@@ -787,13 +948,21 @@ QList<const Card *> PlayerDecisionService::askForPindianRace(ServerPlayer *from,
     timer.start();
     if (!from_card) {
         AI *ai = from->getAI();
-        if (ai)
+        if (ai) {
             from_card = m_room.decideAiPindian(from, from, reason);
+            if (!from_card)
+                recordHegemonyNativeDefault(m_room, from, QStringLiteral("askForPindian"),
+                    reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+        }
     }
     if (!to_card) {
         AI *ai = to->getAI();
-        if (ai)
+        if (ai) {
             to_card = m_room.decideAiPindian(to, from, reason);
+            if (!to_card)
+                recordHegemonyNativeDefault(m_room, to, QStringLiteral("askForPindian"),
+                    reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+        }
     }
     QList<ServerPlayer *> players;
     if (!from_card) {
@@ -821,8 +990,12 @@ QList<const Card *> PlayerDecisionService::askForPindianRace(ServerPlayer *from,
                     card = Card::Parse(clientReply[0].toString());
             } else {
                 AI *ai = player->getAI();
-                if (ai)
+                if (ai) {
                     card = m_room.decideAiPindian(player, from, reason);
+                    if (!card)
+                        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForPindian"),
+                            reason, QStringLiteral("random_hand_card"), QStringLiteral("isolated_rejected"));
+                }
             }
             if (card == nullptr)
                 card = player->getRandomHandCard();
@@ -872,6 +1045,8 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         return optional ? "cancel" : QString();
 
     QString answer;
+    bool aiAttempted = false;
+    bool aiDecision = true;
     // A single concealed compulsory skill still needs the owner's consent.
     const bool hiddenChoice = optional && contexts.length() == 1
         && m_room.isGeneralHiddenForSkill(contexts.first().activationRef);
@@ -886,6 +1061,7 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
     } else {
         AI*ai = player->getAI();
         if (ai) {
+            aiAttempted = true;
             QElapsedTimer timer;
             timer.start();
             QStringList allSkills;
@@ -905,8 +1081,8 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
                     candidate += ":" + ctx.owner->objectName();
                 triggerCandidates << candidate;
             }
-            m_room.decideAiTriggerOrder(player, reason, triggerCandidates, skillsMap,
-                                        optional, data, answer);
+            aiDecision = m_room.decideAiTriggerOrder(player, reason, triggerCandidates, skillsMap,
+                                                     optional, data, answer);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -925,15 +1101,19 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         }
     }
 
-    if (optional && (answer.isEmpty() || answer == "cancel"))
-        return "cancel";
-
     // A mandatory shown skill can share the menu with optional hidden copies.
     // Missing/invalid input must never choose a hidden copy on the owner's behalf.
     QList<int> fallbackIndices;
     for (int i = 0; i < contexts.size(); ++i)
         if (!m_room.isGeneralHiddenForSkill(contexts.at(i).activationRef))
             fallbackIndices << i;
+    if (aiAttempted && !aiDecision)
+        recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForTriggerOrder"),
+            reason, optional || fallbackIndices.isEmpty() ? QStringLiteral("cancel")
+                                                          : QStringLiteral("random_visible_skill"),
+            QStringLiteral("isolated_rejected"));
+    if (optional && (answer.isEmpty() || answer == "cancel"))
+        return "cancel";
 
     // Format 2 supports replies of "skillName:ownerObjectName" or "skillName".
     QString result;
@@ -1044,6 +1224,39 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 		trickEffect.from = from;
 		trickEffect.to = to;
 	}
+
+    Room::AiNullificationContext observation;
+    observation.trick = trick;
+    observation.from = from;
+    observation.to = to;
+    observation.positive = positive;
+    observation.rootEffect = trickEffect;
+    observation.complete = trick && !trick->isKindOf("Nullification")
+        && trickEffect.card == trick && trickEffect.from == from && trickEffect.to == to;
+    auto *previousNullification = m_room.m_aiNullificationContext;
+    if (previousNullification) {
+        const auto *response = previousNullification->responseUse;
+        // The native UseHistory receipt proves that this is the parent's
+        // accepted response, not an unrelated nested trick or a stale tag.
+        const bool counter = response && response->card == trick && response->from == from
+            && previousNullification->to == to && previousNullification->positive != positive
+            && card_use.card == trick && card_use.from == from
+            && card_use.whocard == previousNullification->trick;
+        const bool retry = previousNullification->retrying
+            && previousNullification->trick == trick && previousNullification->from == from
+            && previousNullification->to == to && previousNullification->positive == positive;
+        if (counter || retry) {
+            observation.rootEffect = previousNullification->rootEffect;
+            observation.times = previousNullification->times + (counter ? 1 : 0);
+            observation.all = counter ? previousNullification->responseAll : previousNullification->all;
+            observation.complete = previousNullification->complete
+                && (!counter || previousNullification->responseTypeKnown);
+        }
+    }
+    if (Config.EnableHegemony) m_room.m_aiNullificationContext = &observation;
+    const auto nullificationObservation = qScopeGuard([&] {
+        m_room.m_aiNullificationContext = previousNullification;
+    });
 	
 	QList<ServerPlayer*> validPlayers, raceHumanPlayers, controlledHumanPlayers;
 	QVariant data = QVariant::fromValue(trickEffect);
@@ -1112,13 +1325,15 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 			if (ai){
 				if (qEnvironmentVariableIsSet("QSAN_TAG_DISCRIMINATOR_BOUNDARY")) {
 					std::fprintf(stderr,
-					             "NULLIFICATION_BOUNDARY TrickEffect.to=%p passed_to=%p "
+					             "NULLIFICATION_BOUNDARY trickEffect.to=%p passed_to=%p "
 					             "from=%p positive=%d\n",
-					             static_cast<const void *>(TrickEffect.to),
+					             static_cast<const void *>(trickEffect.to),
 					             static_cast<const void *>(to),
-					             static_cast<const void *>(TrickEffect.from), positive ? 1 : 0);
+					             static_cast<const void *>(trickEffect.from), positive ? 1 : 0);
 				}
-				use.card = m_room.decideAiNullification(player, TrickEffect.card, TrickEffect.from, TrickEffect.to, positive);
+                // Use the effect already matched to this ask, including the
+                // explicit arguments when the target's tag belongs to an older trick.
+				use.card = m_room.decideAiNullification(player, trickEffect.card, trickEffect.from, trickEffect.to, positive);
 				if (use.card){
 					use.from = player;
 					if (Config.AIDelay>timer.elapsed())
@@ -1133,7 +1348,15 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 	use.who = from;
 	trickEffect.nullified = positive;
 	use.from->setTag("NullifyingEffect", QVariant::fromValue(trickEffect));
-	if (!m_room.useCard(use)) return _askForNullification(trick, from, to, positive);/*
+    observation.responseUse = &use;
+    observation.responseAll = observation.all;
+    observation.responseTypeKnown = observation.complete;
+    if (use.card->isKindOf("HegNullification") && trick->isNDTrick()
+        && !trick->isKindOf("Nullification")) observation.responseTypeKnown = false;
+	if (!m_room.useCard(use)) {
+        observation.retrying = true;
+        return _askForNullification(trick, from, to, positive);
+    }/*
 	QString tn = use.from->objectName();
 	if (to) tn = to->objectName();
 	m_room.thread->delay(Config.AIDelay/2);
@@ -1301,7 +1524,9 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 					}
 				}else{
 					ai = player->getAI();
-					if (ai) resp.m_card = m_room.decideAiResponseCard(player, _pattern, prompt, data, method);
+					if (ai) {
+						resp.m_card = m_room.decideAiResponseCard(player, _pattern, prompt, data, method);
+					}
 				}
 			}
 			}
@@ -2030,12 +2255,18 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 			if (ai){
 				QElapsedTimer timer;
 				timer.start();
-				if (!m_room.decideAiSkillAction(player, m_room.m_runtime->state().getCurrentCardUseReason(), pattern,
-					prompt, method, card_use)) {
+				const bool skillActionAccepted = m_room.decideAiSkillAction(player,
+					m_room.m_runtime->state().getCurrentCardUseReason(), pattern,
+					prompt, method, card_use);
+				bool actionAccepted = skillActionAccepted;
+				if (!skillActionAccepted) {
 					const AIRequest request = m_room.makeAIRequest(player, AIRequest::UseCard,
 						m_room.m_runtime->state().getCurrentCardUseReason(), pattern, prompt, method);
-					m_room.decideAiAction(player, request, card_use);
+					actionAccepted = m_room.decideAiAction(player, request, card_use);
 				}
+				if (!actionAccepted)
+					recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForUseCard"),
+						pattern, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
 				if (Config.AIDelay>timer.elapsed())
 					m_room.thread->delay(Config.AIDelay-timer.elapsed());
 			} else {
@@ -2046,12 +2277,18 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 				}else{
 					ai = player->getAI();
 					if(ai){
-						if (!m_room.decideAiSkillAction(player, m_room.m_runtime->state().getCurrentCardUseReason(),
-							pattern, prompt, method, card_use)) {
+						const bool skillActionAccepted = m_room.decideAiSkillAction(player,
+							m_room.m_runtime->state().getCurrentCardUseReason(), pattern,
+							prompt, method, card_use);
+						bool actionAccepted = skillActionAccepted;
+						if (!skillActionAccepted) {
 							const AIRequest request = m_room.makeAIRequest(player, AIRequest::UseCard,
 								m_room.m_runtime->state().getCurrentCardUseReason(), pattern, prompt, method);
-							m_room.decideAiAction(player, request, card_use);
+							actionAccepted = m_room.decideAiAction(player, request, card_use);
 						}
+						if (!actionAccepted)
+							recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForUseCard"),
+								pattern, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
 					}
 				}
 			}
@@ -2160,7 +2397,9 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 				}
 			}else{
 				ai = player->getAI();
-				if(ai) card = m_room.decideAiSinglePeach(player, dying);
+				if(ai) {
+					card = m_room.decideAiSinglePeach(player, dying);
+				}
 			}
 		}
 		if (card){
@@ -2213,7 +2452,11 @@ void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use
 		timer.start();
 		const AIRequest request = m_room.makeAIRequest(player, AIRequest::Activate,
 			CardUseStruct::CARD_USE_REASON_PLAY, QString(), QString(), Card::MethodUse);
-		m_room.decideAiAction(player, request, card_use);
+		const bool aiDecision = m_room.decideAiAction(player, request, card_use);
+		if (!aiDecision)
+			recordHegemonyNativeDefault(m_room, player, QStringLiteral("activate"),
+				QStringLiteral("play_phase"), QStringLiteral("cancel"),
+				QStringLiteral("isolated_rejected"));
 		if (Config.AIDelay>timer.elapsed())
 			m_room.thread->delay(Config.AIDelay-timer.elapsed());/*
 		else if(Config.OperationTimeout*1000-timer.elapsed()<0)
@@ -2240,7 +2483,11 @@ void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use
 			if(ai) {
 				const AIRequest request = m_room.makeAIRequest(player, AIRequest::Activate,
 					CardUseStruct::CARD_USE_REASON_PLAY, QString(), QString(), Card::MethodUse);
-				m_room.decideAiAction(player, request, card_use);
+				const bool aiDecision = m_room.decideAiAction(player, request, card_use);
+				if (!aiDecision)
+					recordHegemonyNativeDefault(m_room, player, QStringLiteral("activate"),
+						QStringLiteral("play_phase"), QStringLiteral("cancel"),
+						QStringLiteral("isolated_rejected"));
 			}
 		}
 	}
@@ -2280,7 +2527,12 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 			QElapsedTimer timer;
 			timer.start();
 			to_discard.clear();
-			m_room.decideAiDiscard(player, reason, discard_num, min_num, optional, include_equip, pattern, ai_candidates, to_discard);
+			const bool aiDecision = m_room.decideAiDiscard(player, reason, discard_num, min_num,
+				optional, include_equip, pattern, ai_candidates, to_discard);
+			if (!aiDecision)
+				recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForDiscard"),
+					reason, optional ? QStringLiteral("cancel") : QStringLiteral("legal_fill"),
+					QStringLiteral("isolated_rejected"));
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -2293,7 +2545,12 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 				ai = player->getAI();
 				if(ai) {
 					to_discard.clear();
-					m_room.decideAiDiscard(player, reason, discard_num, min_num, optional, include_equip, pattern, ai_candidates, to_discard);
+					const bool aiDecision = m_room.decideAiDiscard(player, reason, discard_num, min_num,
+						optional, include_equip, pattern, ai_candidates, to_discard);
+					if (!aiDecision)
+						recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForDiscard"),
+							reason, optional ? QStringLiteral("cancel") : QStringLiteral("legal_fill"),
+							QStringLiteral("isolated_rejected"));
 				}
 				//else if(!optional) to_discard = player->forceToDiscard(min_num, include_equip, true, pattern);
 			}
@@ -2388,7 +2645,12 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 			QElapsedTimer timer;
 			timer.start();
 			to_exchange.clear();
-			m_room.decideAiDiscard(player, reason, exchange_num, min_num, optional, include_equip, pattern, ai_candidates, to_exchange);
+			const bool aiDecision = m_room.decideAiDiscard(player, reason, exchange_num, min_num,
+				optional, include_equip, pattern, ai_candidates, to_exchange);
+			if (!aiDecision)
+				recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForExchange"),
+					reason, optional ? QStringLiteral("cancel") : QStringLiteral("legal_fill"),
+					QStringLiteral("isolated_rejected"));
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -2401,7 +2663,12 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 				ai = player->getAI();
 				if(ai) {
 					to_exchange.clear();
-					m_room.decideAiDiscard(player, reason, exchange_num, min_num, optional, include_equip, pattern, ai_candidates, to_exchange);
+					const bool aiDecision = m_room.decideAiDiscard(player, reason, exchange_num, min_num,
+						optional, include_equip, pattern, ai_candidates, to_exchange);
+					if (!aiDecision)
+						recordHegemonyNativeDefault(m_room, player, QStringLiteral("askForExchange"),
+							reason, optional ? QStringLiteral("cancel") : QStringLiteral("legal_fill"),
+							QStringLiteral("isolated_rejected"));
 				}
 				//else if(!optional) to_exchange = player->forceToDiscard(min_num, include_equip, false, pattern);
 			}
@@ -2443,7 +2710,21 @@ PlayerDecisionService::GuanxingSelection PlayerDecisionService::askForGuanxingSe
 		if (ai){
 			QElapsedTimer timer;
 			timer.start();
-			m_room.decideAiGuanxing(zhuge, cards, guanxing_type, top_cards, bottom_cards);
+			const bool aiDecision = m_room.decideAiGuanxing(zhuge, cards, guanxing_type,
+				top_cards, bottom_cards);
+			if (!aiDecision) {
+				recordHegemonyNativeDefault(m_room, zhuge, QStringLiteral("askForGuanxing"),
+					QStringLiteral("guanxing"), guanxing_type == Room::GuanxingDownOnly
+						? QStringLiteral("all_bottom") : QStringLiteral("all_top"),
+					QStringLiteral("isolated_rejected"));
+				if (guanxing_type == Room::GuanxingDownOnly) {
+					bottom_cards = cards;
+					top_cards.clear();
+				} else {
+					top_cards = cards;
+					bottom_cards.clear();
+				}
+			}
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -2461,7 +2742,23 @@ PlayerDecisionService::GuanxingSelection PlayerDecisionService::askForGuanxingSe
 				}
 			}else{
 				ai = zhuge->getAI();
-				if(ai) m_room.decideAiGuanxing(zhuge, cards, guanxing_type, top_cards, bottom_cards);
+				if(ai) {
+					const bool aiDecision = m_room.decideAiGuanxing(zhuge, cards, guanxing_type,
+						top_cards, bottom_cards);
+					if (!aiDecision) {
+						recordHegemonyNativeDefault(m_room, zhuge, QStringLiteral("askForGuanxing"),
+							QStringLiteral("guanxing"), guanxing_type == Room::GuanxingDownOnly
+								? QStringLiteral("all_bottom") : QStringLiteral("all_top"),
+							QStringLiteral("isolated_rejected"));
+						if (guanxing_type == Room::GuanxingDownOnly) {
+							bottom_cards = cards;
+							top_cards.clear();
+						} else {
+							top_cards = cards;
+							bottom_cards.clear();
+						}
+					}
+				}
 			}
 		}
 	}/*
@@ -2509,7 +2806,10 @@ CardsMoveStruct PlayerDecisionService::askForYijiStruct(ServerPlayer*guojia, QLi
 		foreach(ServerPlayer*p, players)
 			player_names << p->objectName();
 		guojia->setTag("yijiForAI", player_names);
-		m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
+		const bool aiDecision = m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
+		if (!aiDecision)
+			recordHegemonyNativeDefault(m_room, guojia, QStringLiteral("askForYiji"),
+				skill_name, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
 		if (card_id>=0) move.card_ids << card_id;
 		if (Config.AIDelay>timer.elapsed())
 			m_room.thread->delay(Config.AIDelay-timer.elapsed());
@@ -2531,7 +2831,10 @@ CardsMoveStruct PlayerDecisionService::askForYijiStruct(ServerPlayer*guojia, QLi
 				foreach(ServerPlayer*p, players)
 					player_names << p->objectName();
 				guojia->setTag("yijiForAI", player_names);
-				m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
+				const bool aiDecision = m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
+				if (!aiDecision)
+					recordHegemonyNativeDefault(m_room, guojia, QStringLiteral("askForYiji"),
+						skill_name, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
 				if (card_id>=0) move.card_ids << card_id;
 			}
 		}
@@ -2993,8 +3296,13 @@ int PlayerDecisionService::doGongxin(ServerPlayer *shenlvmeng, ServerPlayer *tar
 	shenlvmeng->setTag(skill_name, QVariant::fromValue(target));
 	AI*ai = shenlvmeng->getAI();
 	if (ai){
-        if (m_room.externalAgent(shenlvmeng->objectName()))
-            m_room.decideAiAmazingGrace(shenlvmeng, enabled_ids, true, skill_name, card_id);
+        if (Config.EnableHegemony || m_room.externalAgent(shenlvmeng->objectName())) {
+            const bool aiDecision = m_room.decideAiAmazingGrace(shenlvmeng, enabled_ids, true,
+                skill_name, card_id);
+            if (!aiDecision)
+                recordHegemonyNativeDefault(m_room, shenlvmeng, QStringLiteral("askForAG"),
+                    skill_name, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
+        }
         else
             card_id = ai->askForAG(enabled_ids, true, skill_name);
 	} else {
@@ -3006,7 +3314,17 @@ int PlayerDecisionService::doGongxin(ServerPlayer *shenlvmeng, ServerPlayer *tar
 				card_id = clientReply.toInt();
 		}else{
 			ai = shenlvmeng->getAI();
-			if(ai) card_id = ai->askForAG(enabled_ids, true, skill_name);
+			if(ai) {
+				if (Config.EnableHegemony || m_room.externalAgent(shenlvmeng->objectName())) {
+					const bool aiDecision = m_room.decideAiAmazingGrace(shenlvmeng, enabled_ids, true,
+						skill_name, card_id);
+					if (!aiDecision)
+						recordHegemonyNativeDefault(m_room, shenlvmeng, QStringLiteral("askForAG"),
+							skill_name, QStringLiteral("cancel"), QStringLiteral("isolated_rejected"));
+				} else {
+					card_id = ai->askForAG(enabled_ids, true, skill_name);
+				}
+			}
 		}
 	}
 	return card_id; // Do remember to remove the tag later!

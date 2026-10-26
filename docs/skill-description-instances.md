@@ -9,7 +9,7 @@
 | 實例 | 以目前 Player 的技能名稱＋instanceID 查詢；畫面簡寫 `#ID`，技術資料保留 owner／skill／instanceID |
 | 正文 | 同名技能依最終正文分組；相同正文與 Oracle 只顯示一次，下方各列實例資料；不同正文分開 |
 | 來源 | 原生／後天獲得／附加技能／關聯附屬，僅實際雙將按 bindHead 加主將／副將；parentRef 僅列已記錄身分，不推定效果原因 |
-| 私有 state | [`Player::getSkillDescription(viewer)`](../src/core/player.cpp) 僅在 viewer 指標等於 holder 時顯示該本地副本已收到的資料；原無參數 API 保留且不顯示私有 state |
+| state 可見性 | [`Player::getSkillDescription(viewer)`](../src/core/player.cpp) 在 viewer 指標等於 holder 時顯示完整本地 state；其他 viewer 與無參數 API 只顯示寫入時設為 `SkillStatePublic` 的欄位 |
 | 修正 | 公開 correctState 與 amountOverride 放次要技術區；amountOverride 明標絕對值，不推定摸牌／傷害等語意 |
 | 技術資料 | HTML 跳脫身分與 JSON state，避免資料變成富文字標記 |
 | 失效 | 保留既有技能名稱層級的有效性快取與灰字；不將其宣稱為逐實例權威狀態，不標示「現在可發動」 |
@@ -44,11 +44,39 @@ Player 的 skill_set_changed／skill_state_changed 以 queued unique connection 
 | 可讀 state | 靜態翻譯 metadata 指定標題、player/players 類型及列舉值；其餘原始值仍在技術區。已接使命狀態、破圍目標、衛明目標、探幽角色與限定使用情況 |
 | 修改 | 有 amount 語意名稱才顯示 base → override；override 是絕對值。Room 數值修改與 correctState 修改 API 同時記錄當時來源，來源不由最終數值反推 |
 | 附加效果 | 失效記錄、卡牌限制及技能明確登記的描述另列「目前受到的效果」。探幽已接入來源 ref、作用對象、標記結束條件；不授予技能所有權 |
-| 私密性 | usage、原始 state、修改來源與預設效果只給持有者（沿用既有合法控制者的接收範圍）。公開效果須明確宣告 publicEffect；forObserver 移除私人欄位，定向發送不在選好資料後再擴張接收者 |
+| 私密性 | usage、私有 state、修改來源與預設效果只給持有者（沿用既有合法控制者的接收範圍）。公開 state 逐鍵記錄可見性，仍須通過技能實例可見性檢查；公開效果須明確宣告 publicEffect。定向發送不在選好資料後再擴張接收者 |
 | 刷新 | 私有 state、技能集、mark、phase、general、卡牌限制等變化只標記 dirty；RoomThread 在事件收尾與互動請求前刷新。預留／釋放／提交也標 dirty。既有完整 UI-state 刷新合併執行，避免重複計算 |
 | 生命週期 | UI-state 每次整份取代，缺少新欄位視為空（相容舊伺服器／錄影）；移除／死亡不再產出舊實例。效果 activeMark 歸零時移除描述，之後重用同名 mark 不復活舊來源 |
 
 摘要的上下文是該持有者與實例的當前無目標狀態；顯示的是計次資料，不是選牌、目標、cost 或特定事件的發動判定。規則仍以真正執行時的完整 SkillContext 結算。UI hover 不呼叫新增的規則／Lua 查詢。
+
+### Skill state 可見性介面
+
+`setSkillInstanceStateValue(skill, instance, key, value, visibility)` 與
+`setSkillInstanceStateStringList(skill, instance, key, values, visibility)` 的最後一個參數為
+`SkillStateVisibility`，預設 `SkillStatePrivate`；指定 `SkillStatePublic` 才公開。
+可見性存於該角色、技能、實例及欄位，不查詢技能定義上的動態 property。
+
+```cpp
+player->setSkillInstanceStateValue("luoyi", instance, "receipt_amount", amount, SkillStatePublic);
+player->setSkillInstanceStateValue("luoyi", instance, "prompt", prompt, SkillStatePrivate);
+```
+
+```lua
+player:setSkillInstanceStateValue("example", instance, "count", sgs.QVariant(1), sgs.SkillStatePublic)
+-- 省略最後參數等同 SkillStatePrivate，也可把原本公開的欄位改回私有。
+player:setSkillInstanceStateValue("example", instance, "count", sgs.QVariant(1))
+```
+
+`getSkillInstanceStateVisibility(skill, instance, key)` 查詢本地可見性；不存在的欄位回私有。
+C++ 整份 `setSkillInstanceState(..., state, visibility)` 以同一可見性取代全部欄位，預設全私有；
+混合可見性快照由 `restoreSkillInstanceState` 一次還原，遊戲規則應使用會同步的 setter。
+移除單鍵或清空 state 時一併清掉可見性。值相同但可見性改變仍是狀態變更；公開改私有時，
+觀察者收到過濾後的替換，會移除舊公開副本。沒有可見性欄位的舊協定與快照預設全私有。
+
+`zhaxiang`、`luoyi`、`nosluoyi` 在寫入 `receipt_amount` 時指定公開。
+增量更新、重連／明置快照、接管／回溯、技能說明及 isolated AI 共用這份實例可見性；
+國戰仍依原本實例與來源可見性過濾，公開欄位不會揭露暗置技能。
 
 ### 技能作者 metadata
 
