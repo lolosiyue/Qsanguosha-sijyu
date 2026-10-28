@@ -309,6 +309,7 @@ public:
 
 		if (judge.isBad() || player->isDead()) return true;
 
+		// The choice and recover eligibility depend on the completed judgement and its hooks.
 		QStringList choices;
 		if (player->isWounded())
 			choices << "recover";
@@ -1350,7 +1351,10 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         room->sendCompulsoryTriggerLog(ctx.owner, this);
+        // This prompt executes the recipient's discard; refusal is tested only after that settlement.
         if (target->canDiscard(target, "he") && room->askForDiscard(target, objectName(), getEffectiveAmount(ctx),
             getEffectiveAmount(ctx), true, true, "@yhjuyi-discard:" + ctx.owner->objectName())) return false;
         // The refusal settles on the giver.
@@ -1396,6 +1400,7 @@ public:
         if (!target->isAlive() || !use.from || !use.from->isAlive() || !target->canPindian(use.from, false)
             || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand
             || target->isCardLimited(Sanguosha->getCard(id), Card::MethodPindian, true)) return false;
+        // Pindian must follow the actual obtain and its hooks; its result drives the follow-up damage.
         // Own the selection before pindian callbacks can throw or retire the skill source.
         std::unique_ptr<PindianStruct> selection(target->pindianSelect(use.from, objectName(), Sanguosha->getCard(id)));
         if (!selection || !selection->from_card || !selection->to_card) return false;
@@ -3888,14 +3893,19 @@ public:
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, candidates, objectName(), "@yhxiaoyun-discard", true, true);
         if (!target) return false;
         ctx.targets = {target};
+        const int id = room->askForCardChosen(ctx.owner, target, "ej", objectName(), false, Card::MethodDiscard);
+        if (id < 0) return false;
+        ctx.extra_data = QVariantMap{{"card_id", id}};
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         if (!ctx.owner->canDiscard(target, "ej")) return false;
         ctx.owner->peiyin(this);
-        const int id = room->askForCardChosen(ctx.owner, target, "ej", objectName(), false, Card::MethodDiscard);
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
         const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
         const Player::Place place = room->getCardPlace(id);
         if (!card || card->hasFlag("using") || room->getCardOwner(id) != target
@@ -4626,14 +4636,22 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const int state = ctx.owner->getSkillInstanceStateValue(ctx.activationRef.key.skillName,
             ctx.activationRef.key.instanceID, "conversion_state", 1).toInt();
         if ((event == Damage && state != 1) || (event == Damaged && state != 2)) return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         ctx.choice = event == Damage ? "take" : "give";
-        ctx.targets = {event == Damage ? damage.to : damage.from};
+        ServerPlayer *target = event == Damage ? damage.to : damage.from;
+        if (!target || !target->isAlive()) return false;
+        ctx.targets = {target};
+        ServerPlayer *recipient = ctx.choice == "take" ? ctx.owner : target;
+        ServerPlayer *holder = ctx.choice == "take" ? target : ctx.owner;
+        int id = -1;
+        if (getEffectiveAmount(ctx) > 0 && recipient->canGet(holder, "he"))
+            id = room->askForCardChosen(recipient, holder, "he", objectName(), false, Card::MethodGet);
+        ctx.extra_data = QVariantMap{{"card_id", id}};
         return true;
     }
 
@@ -4650,11 +4668,16 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         ServerPlayer *recipient = ctx.choice == "take" ? ctx.owner : target;
         ServerPlayer *holder = ctx.choice == "take" ? target : ctx.owner;
         for (int i = 0; i < qMax(0, getEffectiveAmount(ctx)); ++i) {
-            if (!recipient->isAlive() || !recipient->canGet(holder, "he")) break;
-            const int id = room->askForCardChosen(recipient, holder, "he", objectName(), false, Card::MethodGet);
+            if (!ctx.owner->isAlive() || !ctx.invoker->isAlive() || !target->isAlive()
+                || !isSourceAvailable(room, ctx) || !recipient->canGet(holder, "he")) break;
+            // Later picks depend on the preceding extraction and its nested movement hooks.
+            const int id = i == 0 ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                : room->askForCardChosen(recipient, holder, "he", objectName(), false, Card::MethodGet);
             const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
             if (!card || card->hasFlag("using") || room->getCardOwner(id) != holder || !recipient->canGet(holder, id)
                 || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)) break;
@@ -5381,6 +5404,8 @@ public:
         if (!isUsable(ctx)) return false;
         if (!ctx.owner->askForSkillInvoke(this)) return false;
         ctx.targets = room->getOtherPlayers(ctx.owner);
+        // Reveals determine the AG pool; each actual take changes the next recipient's choices.
+        // Keep this result-dependent reveal/distribution sequence together.
         ctx.manual_effect = true;
         return true;
     }

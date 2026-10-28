@@ -669,10 +669,16 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
-        if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(from)))
+        if (!from || !from->isAlive() || !ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(from)))
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {from};
+        // The pick happens here; an empty or ungettable source still gets its skills blocked.
+        if (ctx.owner->canGet(from, "he")) {
+            const int id = room->askForCardChosen(ctx.owner, from, "he", objectName(), false, Card::MethodGet);
+            if (id >= 0 && room->getCardOwner(id) == from && ctx.owner->canGet(from, id))
+                ctx.extra_data = id;
+        }
         return true;
     }
 
@@ -680,11 +686,14 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
     {
         ServerPlayer *player = ctx.owner;
-        if (!from || !from->isAlive())
+        if (!from || !from->isAlive() || !player || !player->isAlive() || !isSourceAvailable(room, ctx))
             return false;
-        if (player->canGet(from, "he")) {
-            const int id = room->askForCardChosen(player, from, "he", objectName(), false, Card::MethodGet);
-            if (id >= 0 && player->canGet(from, id))
+        // No pick leaves extra_data invalid; QVariant's default 0 must not select physical card zero.
+        if (ctx.extra_data.isValid()) {
+            const int id = ctx.extra_data.toInt();
+            const Player::Place place = room->getCardPlace(id);
+            if (room->getCardOwner(id) == from && (place == Player::PlaceHand || place == Player::PlaceEquip)
+                && player->canGet(from, id))
                 room->obtainCard(player, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
                     player->objectName(), from->objectName(), objectName(), QString()), false);
         }

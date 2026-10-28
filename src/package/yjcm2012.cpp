@@ -878,6 +878,24 @@ void GongqiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
     }
 }
 
+static QVariantList gongqiReceipts(ServerPlayer *player)
+{
+    return QJsonDocument::fromJson(player->property("GongqiEffects").toByteArray()).toVariant().toList();
+}
+
+static void setGongqiReceipts(Room *room, ServerPlayer *player, const QVariantList &receipts)
+{
+    room->setPlayerProperty(player, "GongqiEffects", QString::fromUtf8(QJsonDocument::fromVariant(receipts).toJson(QJsonDocument::Compact)));
+}
+
+static QList<ServerPlayer *> gongqiDiscardTargets(ServerPlayer *actor)
+{
+    QList<ServerPlayer *> targets;
+    for (ServerPlayer *other : actor->getRoom()->getOtherPlayers(actor))
+        if (actor->canDiscard(other, "he")) targets << other;
+    return targets;
+}
+
 class Gongqi : public ViewAsSkillV2
 {
 public:
@@ -927,33 +945,83 @@ public:
         }
         if (!ctx.invoker || !ctx.invoker->isAlive() || getEffectiveAmount(ctx) <= 0) return FinishSkill;
         Room *room = ctx.invoker->getRoom();
-        QVariantList receipts = QJsonDocument::fromJson(ctx.invoker->property("GongqiEffects").toByteArray()).toVariant().toList();
+        QVariantList receipts = gongqiReceipts(ctx.invoker);
+        // An equip cost leaves a pending discard on this execution's receipt; #gongqi asks and settles it.
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)},
-            {"turn", room->historyScopes().value("turn_id").toLongLong()}};
-        room->setPlayerProperty(ctx.invoker, "GongqiEffects", QString::fromUtf8(QJsonDocument::fromVariant(receipts).toJson(QJsonDocument::Compact)));
-        if (ctx.extra_data.toBool() && ctx.invoker->isAlive()) {
-            QList<ServerPlayer *> candidates;
-            for (ServerPlayer *other : room->getOtherPlayers(ctx.invoker))
-                if (ctx.invoker->canDiscard(other, "he")) candidates << other;
-            if (!candidates.isEmpty()) {
-                ServerPlayer *victim = room->askForPlayerChosen(ctx.invoker, candidates, objectName(), "@gongqi-discard", true);
-                if (victim) skillEffect(ctx, victim);
-            }
-        }
+            {"turn", room->historyScopes().value("turn_id").toLongLong()},
+            {"execution", ctx.executionID}, {"discard", ctx.extra_data.toBool()}};
+        setGongqiReceipts(room, ctx.invoker, receipts);
         return FinishSkill;
     }
-    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+};
+
+class GongqiDiscard : public TriggerSkillV2
+{
+public:
+    GongqiDiscard() : TriggerSkillV2("#gongqi") { events << EventSkillEffectFinished; frequency = Compulsory; }
+    static int pendingAmount(ServerPlayer *actor, qint64 execution)
     {
-        if (!target || !target->isAlive() || getEffectiveAmount(ctx) <= 0) return ContinueEffects;
-        Room *room = target->getRoom();
-        for (int i = 0; i < getEffectiveAmount(ctx) && ctx.invoker->isAlive() && target->isAlive()
-            && ctx.invoker->canDiscard(target, "he"); ++i) {
-            const int id = room->askForCardChosen(ctx.invoker, target, "he", objectName(), false, Card::MethodDiscard);
-            if (room->getCardOwner(id) == target && ctx.invoker->canDiscard(target, id)
-                && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)) room->throwCard(id, target, ctx.invoker);
+        if (execution <= 0) return 0;
+        for (const QVariant &entry : gongqiReceipts(actor)) {
+            const QVariantMap receipt = entry.toMap();
+            if (receipt.value("execution").toLongLong() == execution && receipt.value("discard").toBool())
+                return receipt.value("amount").toInt();
         }
-        return ContinueEffects;
+        return 0;
+    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const SkillContext accepted = data.value<SkillContext>();
+        return player && player->isAlive() && player->hasSkill(objectName()) && accepted.skill_name == "gongqi"
+                && accepted.invoker == player && !player->hasFlag("Global_ProcessBroken")
+                && pendingAmount(player, accepted.executionID) > 0 && !gongqiDiscardTargets(player).isEmpty()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const qint64 execution = ctx.original_data->value<SkillContext>().executionID;
+        const int amount = pendingAmount(ctx.owner, execution);
+        // The pending discard is consumed whether or not it is taken.
+        QVariantList receipts = gongqiReceipts(ctx.owner);
+        for (QVariant &entry : receipts) {
+            QVariantMap receipt = entry.toMap();
+            if (receipt.value("execution").toLongLong() == execution) receipt.remove("discard");
+            entry = receipt;
+        }
+        setGongqiReceipts(room, ctx.owner, receipts);
+        const QList<ServerPlayer *> candidates = gongqiDiscardTargets(ctx.owner);
+        if (amount <= 0 || candidates.isEmpty()) return false;
+        ServerPlayer *victim = room->askForPlayerChosen(ctx.owner, candidates, "gongqi", "@gongqi-discard", true);
+        if (!victim) return false;
+        QList<int> chosen;
+        for (int i = 0; i < amount; ++i) {
+            bool left = false;
+            for (const Card *card : victim->getCards("he"))
+                left |= !chosen.contains(card->getEffectiveId()) && ctx.owner->canDiscard(victim, card->getEffectiveId());
+            if (!left) break;
+            const int id = room->askForCardChosen(ctx.owner, victim, "he", "gongqi", false, Card::MethodDiscard, chosen);
+            if (id < 0 || chosen.contains(id) || room->getCardOwner(id) != victim) break;
+            chosen << id;
+        }
+        if (chosen.isEmpty()) return false;
+        QVariantList ids;
+        for (int id : chosen) ids << id;
+        ctx.targets = {victim};
+        ctx.extra_data = ids;
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        for (const QVariant &value : ctx.extra_data.toList()) {
+            const int id = value.toInt();
+            const Player::Place place = room->getCardPlace(id);
+            if (ctx.owner->isAlive() && target->isAlive() && room->getCardOwner(id) == target && ctx.owner->canDiscard(target, id)
+                && (place == Player::PlaceHand || place == Player::PlaceEquip)) room->throwCard(id, target, ctx.owner);
+        }
+        return false;
     }
 };
 
@@ -2260,8 +2328,10 @@ YJCM2012Package::YJCM2012Package()
     handang->addSkill(new Gongqi);
     handang->addSkill(new GongqiRange);
     handang->addSkill(new GongqiRecord);
+    handang->addSkill(new GongqiDiscard);
     related_skills.insert("gongqi", "#gongqi-range");
     related_skills.insert("gongqi", "#gongqi-record");
+    related_skills.insert("gongqi", "#gongqi");
     handang->addSkill(new Jiefan);
 
     General *huaxiong = new General(this, "huaxiong", "qun", 6); // YJ 106

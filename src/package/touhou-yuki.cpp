@@ -53,14 +53,19 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {ctx.invoker};
+        // The target picks here; effectTarget only applies the recorded choice.
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), "jian+mo", QVariant::fromValue(ctx.owner));
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || target->getPhase() != Player::Play || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         LogMessage log;
         log.from = target;
-        if (room->askForChoice(target, objectName(), "jian+mo", QVariant::fromValue(ctx.owner)) == "jian") {
+        if (ctx.choice == "jian") {
             log.type = "#thjianmochoose1";
             log.arg = "1";
             room->sendLog(log);
@@ -450,16 +455,21 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {target};
+        // The target answers here; effectTarget settles only a refusal.
+        ctx.choice = room->askForUseCard(target, "analeptic", "@thxugu-use:" + ctx.owner->objectName(), -1,
+                                         Card::MethodUse, false)
+            ? "used"
+            : "refused";
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        if (room->askForUseCard(target, "analeptic", "@thxugu-use:" + player->objectName(), -1, Card::MethodUse, false))
+        if (ctx.choice != "refused" || !player || !player->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         room->setPlayerFlag(player, "ThXuguFailed");
-        if (!player->isAlive() || !target->isAlive())
+        if (!target || !target->isAlive())
             return false;
         auto *slash = new Slash(Card::NoSuit, 0);
         slash->setSkillName("_thxugu");
@@ -879,32 +889,33 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = chosen;
+        // Every card pick happens here, keyed by target name; no entry means nullify only.
+        QVariantMap picks;
+        foreach (ServerPlayer *to, chosen) {
+            const QStringList choices = cardChoices(ctx.owner, to);
+            if (!choices.isEmpty())
+                picks[to->objectName()] = room->askForChoice(ctx.owner, objectName(), choices.join("+"),
+                                                             QVariant::fromValue(to));
+        }
+        ctx.extra_data = picks;
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
+        if (!target || !target->isAlive() || !player || !player->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.card || use.from != player || !use.to.contains(target))
+            return false;
         if (!use.nullified_list.contains(target->objectName()))
             use.nullified_list << target->objectName();
         *ctx.original_data = QVariant::fromValue(use);
-        if (!player->isAlive())
+        // An earlier derived card may have changed what is still usable on this target.
+        const QString choice = ctx.extra_data.toMap().value(target->objectName()).toString();
+        if (choice.isEmpty() || !cardChoices(player, target).contains(choice))
             return false;
-        // Upstream also offers its own 木隐妖岚, which this engine does not have.
-        QStringList choices;
-        const QStringList names{"snatch", "dismantlement", "duel"};
-        foreach (const QString &name, names) {
-            QScopedPointer<Card> card(Sanguosha->cloneCard(name));
-            if (!card)
-                continue;
-            card->setSkillName("_thqingming");
-            if (!player->isProhibited(target, card.data()) && card->targetFilter(QList<const Player *>(), target, player))
-                choices << name;
-        }
-        if (choices.isEmpty())
-            return false;
-        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target));
         Card *card = Sanguosha->cloneCard(choice);
         if (!card)
             return false;
@@ -924,6 +935,22 @@ private:
                 && !result.contains(to))
                 result << to;
         return result;
+    }
+
+    // Upstream also offers its own 木隐妖岚, which this engine does not have.
+    static QStringList cardChoices(ServerPlayer *player, ServerPlayer *target)
+    {
+        QStringList choices;
+        const QStringList names{"snatch", "dismantlement", "duel"};
+        foreach (const QString &name, names) {
+            QScopedPointer<Card> card(Sanguosha->cloneCard(name));
+            if (!card)
+                continue;
+            card->setSkillName("_thqingming");
+            if (!player->isProhibited(target, card.data()) && card->targetFilter(QList<const Player *>(), target, player))
+                choices << name;
+        }
+        return choices;
     }
 };
 
@@ -1193,22 +1220,38 @@ public:
         if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker)))
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.targets = {ctx.invoker};
+        ServerPlayer *owner = ctx.owner;
+        ServerPlayer *target = ctx.invoker;
+        ctx.targets = {target};
+        // Both answers are taken here: the target's choice, then the owner's card pick as the payload.
+        QStringList choices{"letdraw"};
+        if (owner->canDiscard(target, "he"))
+            choices << "discard";
+        ctx.choice = room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(owner));
+        if (ctx.choice == "discard") {
+            const int id = room->askForCardChosen(owner, target, "he", objectName(), false, Card::MethodDiscard);
+            if (id >= 0 && room->getCardOwner(id) == target && owner->canDiscard(target, id))
+                ctx.extra_data = id;
+        }
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *owner = ctx.owner;
-        QStringList choices{"letdraw"};
-        if (owner->canDiscard(target, "he"))
-            choices << "discard";
-        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(owner)) == "discard") {
-            const int id = room->askForCardChosen(owner, target, "he", objectName(), false, Card::MethodDiscard);
-            if (id >= 0)
-                room->throwCard(id, target, owner);
-        } else {
+        if (!target || !target->isAlive() || !owner || !owner->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        if (ctx.choice != "discard") {
             owner->drawCards(1, objectName());
+            return false;
+        }
+        // No pick leaves extra_data invalid; QVariant's default 0 must not select physical card zero.
+        if (ctx.extra_data.isValid()) {
+            const int id = ctx.extra_data.toInt();
+            const Player::Place place = room->getCardPlace(id);
+            if (room->getCardOwner(id) == target && (place == Player::PlaceHand || place == Player::PlaceEquip)
+                && owner->canDiscard(target, id))
+                room->throwCard(id, target, owner);
         }
         return false;
     }

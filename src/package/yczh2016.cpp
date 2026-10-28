@@ -973,11 +973,8 @@ public:
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     { if (request.selectedCardIds.isEmpty()) return false; ActiveSkillRequest checked = request; checked.selectedCardIds.clear(); for (int id : request.selectedCardIds) { if (!canSelectCard(checked, Sanguosha->getCard(id))) return false; checked.selectedCardIds << id; } return true; }
     QString historyKey(const ActiveSkillRequest &) const override { return "HuishengCard"; }
-    EffectFlow effect(SkillContext &ctx) const override
-    {
-        ServerPlayer *target = ctx.initiator; if (!target || !target->isAlive()) return FinishSkill;
-        QVariantList ids; if (ctx.use_card) for (int id : ctx.use_card->getSubcards()) ids << id; target->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "selection", ids); return FinishSkill;
-    }
+    // Selection only: the huisheng cost reads the offered subcards.
+    EffectFlow effect(SkillContext &) const override { return FinishSkill; }
 };
 class Huisheng : public TriggerSkillV2
 {
@@ -990,42 +987,62 @@ public:
         for (int id : player->getValidSkillInstanceIds(objectName())) if (!player->getSkillInstanceStateValue(objectName(), id, "settled_attackers").toStringList().contains(damage.from->objectName())) result[player] << SkillInstanceUtils::formatName(objectName(), id);
         return result;
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override { ctx.manual_effect = true; if (ServerPlayer *from = ctx.original_data->value<DamageStruct>().from) ctx.targets = {from}; return true; }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    static bool isOffered(Room *room, ServerPlayer *owner, int id)
+    { return room->getCardOwner(id) == owner && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip) && !Sanguosha->getCard(id)->hasFlag("using"); }
+    bool isSettled(const SkillContext &ctx, ServerPlayer *from) const
+    { return ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "settled_attackers").toStringList().contains(from->objectName()); }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        ServerPlayer *from = ctx.targets.value(0); if (!from || from->isDead()) return false;
+        ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
+        if (!ctx.owner || !from || from->isDead() || getEffectiveAmount(ctx) <= 0) return false;
         const QVariant previous = room->getTag("HuishengDamage"); room->setTag("HuishengDamage", *ctx.original_data);
         const auto restore = qScopeGuard([&] { room->setTag("HuishengDamage", previous); });
-        Room::AcceptedViewAsEffectScope response(room, ctx.owner, objectName(), ctx); if (!response.isValid()) return false;
-        room->askForUseCard(ctx.owner, "@@huisheng", "@huisheng:" + from->objectName());
-        if (ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "settled_attackers").toStringList().contains(from->objectName())) return false;
-        const QVariantList selected = ctx.owner->getSkillInstanceStateValue(objectName(), response.activationRef().key.instanceID, "selection").toList();
         QList<int> ids;
-        for (const QVariant &value : selected) { const int id = value.toInt(); if (room->getCardOwner(id) != ctx.owner || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using")) return false; ids << id; }
-        if (ids.isEmpty()) return false;
-        ctx.extra_data = selected; return skillEffect(event, room, player, ctx, from);
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        QList<int> ids; for (const QVariant &value : ctx.extra_data.toList()) { const int id = value.toInt(); if (room->getCardOwner(id) == ctx.owner && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip) && !Sanguosha->getCard(id)->hasFlag("using")) ids << id; }
-        if (ids.isEmpty() || getEffectiveAmount(ctx) <= 0) return false;
-        room->fillAG(ids, target); const QVariant previous = target->getTag("huisheng_ag_ids"); target->setTag("huisheng_ag_ids", ctx.extra_data);
-        const auto cleanup = qScopeGuard([&] { room->clearAG(target); target->setTag("huisheng_ag_ids", previous); });
-        int discardable = 0; for (const Card *card : target->getCards("he")) if (!card->hasFlag("using") && target->canDiscard(target, card->getEffectiveId())) ++discardable;
-        if (discardable >= ids.size() && room->askForDiscard(target, objectName(), ids.size(), ids.size(), true, true, "huisheng-discard:" + QString::number(ids.size()))) return false;
+        {
+            Room::BorrowedSkillScope selection(room, ctx.owner, objectName(), ctx.activationRef); if (!selection.activationRef().isValid()) return false;
+            const CardUseStruct use = room->askForUseCardStruct(ctx.owner, "@@huisheng", "@huisheng:" + from->objectName());
+            if (!use.card) return false;
+            ids = use.card->getSubcards();
+        }
+        if (ids.isEmpty() || from->isDead() || isSettled(ctx, from)) return false;
+        for (int id : ids) if (!isOffered(room, ctx.owner, id)) return false;
+        // The attacker answers in cost too: the equal discard or the picked cards ride as the card-id payload.
+        room->fillAG(ids, from); const QVariant previousIds = from->getTag("huisheng_ag_ids"); from->setTag("huisheng_ag_ids", ListI2V(ids));
+        const auto cleanup = qScopeGuard([&] { room->clearAG(from); from->setTag("huisheng_ag_ids", previousIds); });
+        QList<int> discardable; for (const Card *card : from->getCards("he")) if (!card->hasFlag("using") && from->canDiscard(from, card->getEffectiveId())) discardable << card->getEffectiveId();
+        if (discardable.size() >= ids.size()) {
+            const Card *discard = room->askForExchange(from, objectName(), ids.size(), ids.size(), true, "huisheng-discard:" + QString::number(ids.size()), true, ListI2S(discardable).join(","));
+            if (discard && discard->subcardsLength() == ids.size()) { ctx.targets = {from}; ctx.choice = "discard"; ctx.extra_data = ListI2V(discard->getSubcards()); return true; }
+        }
         QList<int> obtained;
         for (int i = 0; i < getEffectiveAmount(ctx) && !ids.isEmpty(); ++i) {
-            const int id = room->askForAG(target, ids, false, objectName());
-            if (!ids.contains(id) || room->getCardOwner(id) != ctx.owner || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using") || !target->canGet(ctx.owner, id)) return false;
+            const int id = room->askForAG(from, ids, false, objectName());
+            if (!ids.contains(id) || !isOffered(room, ctx.owner, id) || !from->canGet(ctx.owner, id)) return false;
             obtained << id; ids.removeOne(id);
         }
         if (obtained.isEmpty()) return false;
-        // Choosing the offered cards establishes this exact instance's permanent attacker exclusion.
+        ctx.targets = {from}; ctx.choice = "obtain"; ctx.extra_data = ListI2V(obtained); return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        // A3: settle only for this damage's live attacker while the exact instance is available and still unsettled for it.
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || ctx.original_data->value<DamageStruct>().from != target || isSettled(ctx, target)) return false;
+        QList<int> ids = ListV2I(ctx.extra_data.toList());
+        if (ids.isEmpty()) return false;
+        if (ctx.choice == "discard") {
+            for (int id : ids) if (!isOffered(room, target, id) || !target->canDiscard(target, id)) return false;
+            room->throwCard(ids, objectName(), target); return false;
+        }
+        ids = ids.mid(0, getEffectiveAmount(ctx));
+        if (ids.isEmpty()) return false;
+        for (int id : ids) if (!isOffered(room, ctx.owner, id) || !target->canGet(ctx.owner, id)) return false;
+        // Taking the offered cards establishes this exact instance's permanent attacker exclusion.
         QStringList settled = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "settled_attackers").toStringList();
-        if (!settled.contains(target->objectName())) settled << target->objectName();
+        settled << target->objectName();
         ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "settled_attackers", settled);
         room->setPlayerProperty(ctx.owner, "huisheng_targets", settled);
-        DummyCard gift(obtained); room->obtainCard(target, &gift, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, target->objectName(), ctx.owner->objectName(), objectName(), QString()), false); return true;
+        DummyCard gift(ids); room->obtainCard(target, &gift, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, target->objectName(), ctx.owner->objectName(), objectName(), QString()), false); return true;
     }
 };
 KuangbiCard::KuangbiCard()

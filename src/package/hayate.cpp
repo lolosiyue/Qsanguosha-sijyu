@@ -1261,7 +1261,8 @@ public:
             ctx.skill_name = objectName(); ctx.owner = ctx.initiator = owner; ctx.invoker = use.from;
             ctx.instanceID = receipt.value("instance").toInt(); ctx.is_forced = true;
             ctx.sourceRef = SkillInstanceRef(owner->objectName(), SkillInstanceKey(objectName(), ctx.instanceID));
-            ctx.extra_data = receipt; ctx.targets = use.to; ctx.original_data = &data; ctx.current_event = event;
+            ctx.extra_data = QVariantMap{{"receipt", receipt}}; ctx.targets = use.to;
+            ctx.original_data = &data; ctx.current_event = event;
             contexts << ctx;
         }
         return true;
@@ -1276,11 +1277,30 @@ public:
     {
         if (ctx.current_event != CardFinished) return TriggerSkillV2::isSourceAvailable(room, ctx);
         const Card *card = ctx.original_data->value<CardUseStruct>().card;
-        return card && card->getTag("ZhanfangReceipts").toList().contains(ctx.extra_data);
+        return card && card->getTag("ZhanfangReceipts").toList().contains(ctx.extra_data.toMap().value("receipt"));
     }
     bool cost(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
-        if (event == CardFinished) return true;
+        if (event == CardFinished) {
+            // Each victim decides and picks here, in use order; the picked equip id is payload
+            // keyed by victim, and victim identity comes only from ctx.targets.
+            QVariantMap extra = ctx.extra_data.toMap(), picks;
+            const QList<ServerPlayer *> victims = ctx.targets;
+            ctx.targets.clear();
+            for (ServerPlayer *target : victims) {
+                if (!target->isAlive() || target->getMark("@Frozen_Eu") <= 0 || !target->canDiscard(target, "e")
+                    || room->askForChoice(target, objectName(), "zhanfang_discard+cancel", *ctx.original_data) != "zhanfang_discard") continue;
+                const int id = room->askForCardChosen(target, target, "e", objectName(), false, Card::MethodDiscard);
+                if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip
+                    || !target->canDiscard(target, id)) continue;
+                ctx.targets << target;
+                picks.insert(target->objectName(), id);
+            }
+            extra.insert("picks", picks);
+            ctx.extra_data = extra;
+            // Accept even with no picks so effect still consumes the receipt exactly once.
+            return true;
+        }
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         const Card *card = ctx.original_data->value<CardUseStruct>().card;
         for (ServerPlayer *target : room->getAlivePlayers())
@@ -1291,10 +1311,10 @@ public:
     bool effect(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == CardFinished) {
-            // Consume the retained continuation before prompting; nested card uses cannot replay it.
+            // Consume the retained continuation before settling; nested card uses cannot replay it.
             const Card *card = ctx.original_data->value<CardUseStruct>().card;
             QVariantList receipts = card->getTag("ZhanfangReceipts").toList();
-            receipts.removeOne(ctx.extra_data);
+            receipts.removeOne(ctx.extra_data.toMap().value("receipt"));
             card->setTag("ZhanfangReceipts", receipts);
         }
         return false;
@@ -1303,16 +1323,18 @@ public:
     {
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (event == CardFinished) {
-            if (target->getMark("@Frozen_Eu") <= 0 || !target->canDiscard(target, "e")
-                || room->askForChoice(target, objectName(), "zhanfang_discard+cancel", *ctx.original_data) != "zhanfang_discard") return false;
-            const int id = room->askForCardChosen(target, target, "e", objectName(), false, Card::MethodDiscard);
-            if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip
+            // The receipt is consumed in effect, so recheck the victim and its cost pick instead.
+            const QVariant pick = ctx.extra_data.toMap().value("picks").toMap().value(target->objectName());
+            if (!pick.isValid() || !target->isAlive() || target->getMark("@Frozen_Eu") <= 0) return false;
+            const int id = pick.toInt();
+            if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip
                 || !target->canDiscard(target, id)) return false;
             room->throwCard(id, target, target);
             if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip) removeFrozen(room, target, 1);
             return false;
         }
-        if (!use.card || room->isProhibited(owner, target, use.card)) return false;
+        if (!owner || !owner->isAlive() || !isSourceAvailable(room, ctx) || !use.card
+            || target->getMark("@Frozen_Eu") <= 0 || room->isProhibited(owner, target, use.card)) return false;
         if (!use.to.contains(target)) use.to << target;
         room->sortByActionOrder(use.to);
         *ctx.original_data = QVariant::fromValue(use);

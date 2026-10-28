@@ -980,17 +980,23 @@ public:
         for (int id : player->getValidSkillInstanceIds(objectName())) if (player->getSkillInstanceStateValue(objectName(), id, "conversion_state", 1).toInt() == 2) result[player] << SkillInstanceUtils::formatName(objectName(), id);
         return result;
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ServerPlayer *source = ctx.original_data->value<DamageStruct>().from; if (!source || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(source))) return false; ctx.targets = {source}; return true; }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *source = ctx.original_data->value<DamageStruct>().from; if (!source || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(source))) return false;
+        ctx.targets = {source}; ctx.extra_data = QVariant();
+        // The owner still sees the hand before picking; a missing gift id still converts in effect().
+        room->doGongxin(ctx.owner, source, QList<int>(), objectName());
+        if (ctx.owner->isDead() || source->isDead() || ctx.owner->isNude()) return true;
+        const Card *gift = room->askForExchange(ctx.owner, objectName(), 1, 1, true, "shenshi-give:" + source->objectName());
+        if (gift && gift->subcardsLength() == 1) ctx.extra_data = gift->getSubcards().first();
+        return true;
+    }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "conversion_state", 1); room->setChangeSkillState(ctx.owner, objectName(), 1); return false; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        room->doGongxin(ctx.owner, target, QList<int>(), objectName());
-        if (ctx.owner->isDead() || target->isDead() || ctx.owner->isNude()) return false;
-        const Card *gift = room->askForExchange(ctx.owner, objectName(), 1, 1, true, "shenshi-give:" + target->objectName());
-        if (!gift || gift->subcardsLength() != 1) return false;
-        const int id = gift->getSubcards().first();
+        bool picked = false; const int id = ctx.extra_data.toInt(&picked);
+        if (!picked || ctx.owner->isDead() || target->isDead() || !isSourceAvailable(room, ctx)) return false;
         if (room->getCardOwner(id) != ctx.owner || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using")) return false;
         const QVariantMap before = room->queryHistoryMoves({{"limit", 1}});
         SkillContext issuer = ctx; issuer.invoker = ctx.owner;

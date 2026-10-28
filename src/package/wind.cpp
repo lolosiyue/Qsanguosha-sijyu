@@ -797,59 +797,98 @@ public:
         if (!room->askForSkillInvoke(ctx.owner, objectName())) return false;
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        const QVariantMap selection = ctx.extra_data.toMap();
-        ServerPlayer *actor = room->findPlayerByObjectName(selection.value("actor").toString(), true);
-        if (!actor || !actor->isAlive()) return false;
-        const int type = selection.value("type").toInt();
-        QList<int> disabled;
-        for (const Card *card : target->getCards("ej"))
-            if (underlyingType(card) != type) disabled << card->getEffectiveId();
-        if (!hasMaterial(actor, target, type)) return false;
-        const int id = room->askForCardChosen(actor, target, "ej", objectName(), false, Card::MethodDiscard, disabled);
-        const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
-        if (card && !card->hasFlag("using") && underlyingType(card) == type && room->getCardOwner(id) == target
-            && (room->getCardPlace(id) == Player::PlaceEquip || room->getCardPlace(id) == Player::PlaceDelayedTrick)
-            && actor->canDiscard(target, id)) room->throwCard(id, target, actor);
-        return false;
-    }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *target = ctx.owner;
         room->broadcastSkillInvoke(objectName());
         target->drawCards(getEffectiveAmount(ctx), objectName());
-        if (!target->isAlive()) return false;
-        // Retain the returned use payload while inspecting its virtual card after nested resolution.
-        const CardUseStruct used = room->askForUseCardStruct(target,
-            "TrickCard+^Nullification+^Suijiyingbian,EquipCard|.|.|hand", "@jiewei");
-        if (!used.card || !target->isAlive()) return false;
-        const int type = used.card->getTypeId();
-        QList<ServerPlayer *> candidates;
-        for (ServerPlayer *candidate : room->getAlivePlayers())
-            if (hasMaterial(target, candidate, type)) candidates << candidate;
-        if (candidates.isEmpty()) return false;
-        ServerPlayer *discardTarget = room->askForPlayerChosen(target, candidates, objectName(), "@jiewei-discard", true);
-        if (discardTarget) {
-            SkillContext discard = ctx;
-            discard.targets = {discardTarget};
-            discard.extra_data = QVariantMap{{"actor", target->objectName()}, {"type", type}};
-            skillEffect(event, room, player, discard, discardTarget);
-        }
+        // The used card's same-type discard is settled by #jiewei at CardFinished, where choosing it is its cost.
+        if (target->isAlive())
+            room->askForUseCard(target, "TrickCard+^Nullification+^Suijiyingbian,EquipCard|.|.|hand", "@jiewei");
         return false;
     }
-private:
-    static int underlyingType(const Card *card)
-    {
-        if (!card) return -1;
-        const Card *actual = card->getTypeId() == Card::TypeSkill ? Sanguosha->getEngineCard(card->getEffectiveId()) : card;
-        return actual ? int(actual->getTypeId()) : -1;
-    }
-    static bool hasMaterial(ServerPlayer *actor, ServerPlayer *target, int type)
-    {
-        if (type != Card::TypeTrick && type != Card::TypeEquip) return false;
+};
+
+static int jieweiUnderlyingType(const Card *card)
+{
+    if (!card) return -1;
+    const Card *actual = card->getTypeId() == Card::TypeSkill ? Sanguosha->getEngineCard(card->getEffectiveId()) : card;
+    return actual ? int(actual->getTypeId()) : -1;
+}
+
+static bool jieweiDiscardable(ServerPlayer *actor, ServerPlayer *target, int id, int type)
+{
+    const Card *card = Sanguosha->getCard(id);
+    const Player::Place place = actor->getRoom()->getCardPlace(id);
+    return card && !card->hasFlag("using") && jieweiUnderlyingType(card) == type
+        && actor->getRoom()->getCardOwner(id) == target
+        && (place == Player::PlaceEquip || place == Player::PlaceDelayedTrick) && actor->canDiscard(target, id);
+}
+
+static QList<ServerPlayer *> jieweiDiscardTargets(ServerPlayer *actor, int type)
+{
+    QList<ServerPlayer *> targets;
+    if (type != Card::TypeTrick && type != Card::TypeEquip) return targets;
+    for (ServerPlayer *target : actor->getRoom()->getAlivePlayers())
         for (const Card *card : target->getCards("ej"))
-            if (!card->hasFlag("using") && underlyingType(card) == type && actor->canDiscard(target, card->getEffectiveId())) return true;
+            if (jieweiDiscardable(actor, target, card->getEffectiveId(), type)) {
+                targets << target;
+                break;
+            }
+    return targets;
+}
+
+// A card used from jiewei's prompt resolves inside the accepted jiewei activation of its user.
+static bool jieweiUsedCard(Room *room, ServerPlayer *owner)
+{
+    const qint64 use = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
+    if (use <= 0) return false;
+    const QVariantMap skill = room->historyParent(use, "skill");
+    // A card used while that card resolves (e.g. Nullification) sits under its own use, not jiewei's prompt.
+    const qint64 outer = room->historyParent(use, "use_card").value("id").toLongLong();
+    if (outer > skill.value("id").toLongLong()) return false;
+    const QVariantMap data = skill.value("data").toMap();
+    return data.value("executing_skill").toString() == "jiewei"
+        && data.value("skill_owner").toString() == owner->objectName();
+}
+
+class JieweiDiscard : public TriggerSkillV2
+{
+public:
+    JieweiDiscard() : TriggerSkillV2("#jiewei") { events << CardFinished; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        return player && player->isAlive() && player->hasSkill(objectName()) && use.from == player && use.card
+                && !player->hasFlag("Global_ProcessBroken") && jieweiUsedCard(room, player)
+                && !jieweiDiscardTargets(player, use.card->getTypeId()).isEmpty()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const int type = ctx.original_data->value<CardUseStruct>().card->getTypeId();
+        const QList<ServerPlayer *> candidates = jieweiDiscardTargets(ctx.owner, type);
+        if (candidates.isEmpty()) return false;
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, candidates, "jiewei", "@jiewei-discard", true);
+        if (!target) return false;
+        QList<int> disabled;
+        for (const Card *card : target->getCards("ej"))
+            if (jieweiUnderlyingType(card) != type) disabled << card->getEffectiveId();
+        const int id = room->askForCardChosen(ctx.owner, target, "ej", "jiewei", false, Card::MethodDiscard, disabled);
+        if (id < 0) return false;
+        ctx.targets = {target};
+        ctx.extra_data = id;
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || !ok || !use.card || !jieweiDiscardable(ctx.owner, target, id, use.card->getTypeId()))
+            return false;
+        room->throwCard(id, target, ctx.owner);
         return false;
     }
 };
@@ -2525,6 +2564,8 @@ WindPackage::WindPackage()
     General *caoren = new General(this, "caoren", "wei"); // WEI 011
     caoren->addSkill(new Jushou);
     caoren->addSkill(new Jiewei);
+    caoren->addSkill(new JieweiDiscard);
+    related_skills.insert("jiewei", "#jiewei");
 
     General *huangzhong = new General(this, "huangzhong", "shu"); // SHU 008
     huangzhong->addSkill(new Liegong);

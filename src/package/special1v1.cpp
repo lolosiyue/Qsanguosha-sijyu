@@ -38,8 +38,11 @@ public:
         }
 
 		ServerPlayer *target = room->askForPlayerChosen(zhangliao, targets, objectName(), "koftuxi-invoke", true, true);
-        if (!target) return false;
+        if (!target || !zhangliao->canGet(target, "h")) return false;
+        const int id = room->askForCardChosen(zhangliao, target, "h", objectName(), false, Card::MethodGet);
+        if (id < 0 || room->getCardOwner(id) != target || !zhangliao->canGet(target, id)) return false;
         ctx.targets = {target};
+        ctx.extra_data = id;
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -52,12 +55,17 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.owner->canGet(target, "h")) return false;
-        int id = room->askForCardChosen(ctx.owner, target, "h", objectName(), false, Card::MethodGet);
-        if (id >= 0 && ctx.owner->canGet(target, id)) {
-            CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), "");
-            room->obtainCard(ctx.owner, Sanguosha->getCard(id), reason, false);
-        }
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || target == ctx.owner || !isSourceAvailable(room, ctx)) return false;
+        // A waived cost has no chosen card; QVariant's default 0 must not select physical card zero.
+        if (!ctx.extra_data.isValid()) return false;
+        const int id = ctx.extra_data.toInt();
+        if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand
+            || !ctx.owner->canGet(target, id)) return false;
+        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), "");
+        room->obtainCard(ctx.owner, Sanguosha->getCard(id), reason, false);
         return false;
     }
 };
@@ -754,17 +762,36 @@ public:
             target = room->askForPlayerChosen(ctx.owner, targets, objectName(), "yanhuo-invoke", true, true);
         }
         if (!target) return false;
+        const int count = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "cards_at_death").toInt();
+        ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "cards_at_death");
+        // All picks happen here; earlier picks are disabled instead of discarded between asks.
+        QList<int> picked;
+        for (int i = 0; i < count; ++i) {
+            bool selectable = false;
+            for (const Card *card : target->getCards("he"))
+                if (!picked.contains(card->getId()) && ctx.owner->canDiscard(target, card->getId())) {
+                    selectable = true;
+                    break;
+                }
+            if (!selectable) break;
+            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard, picked);
+            if (id < 0 || picked.contains(id) || room->getCardOwner(id) != target) break;
+            picked << id;
+        }
         ctx.targets = {target};
-        ctx.extra_data = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "cards_at_death");
+        ctx.extra_data = ListI2V(picked);
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // The owner is dead at Death; only the source and the discard target are revalidated.
+        if (!target || !target->isAlive() || !ctx.owner || target == ctx.owner
+            || !isSourceAvailable(room, ctx)) return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "cards_at_death");
-        for (int i = 0; i < ctx.extra_data.toInt() && ctx.owner->canDiscard(target, "he"); ++i) {
-            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
-            if (id < 0) break;
+        for (int id : ListV2I(ctx.extra_data.toList())) {
+            const Player::Place place = room->getCardPlace(id);
+            if (room->getCardOwner(id) != target || (place != Player::PlaceHand && place != Player::PlaceEquip)
+                || !ctx.owner->canDiscard(target, id)) continue;
             room->throwCard(id, target, ctx.owner);
         }
         return false;
@@ -808,17 +835,33 @@ public:
                 && target->canDiscard(player, "he")) result[target] << objectName();
         return result;
     }
-    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        // The dispatcher passes the owner here; the discard target is the card user.
+        ServerPlayer *player = ctx.original_data->value<CardUseStruct>().from;
+        if (!room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)
+            || !player || !player->isAlive() || !ctx.owner->canDiscard(player, "he")) return false;
+        const int id = room->askForCardChosen(ctx.owner, player, "he", objectName(), false, Card::MethodDiscard);
+        if (id < 0 || room->getCardOwner(id) != player || !ctx.owner->canDiscard(player, id)) return false;
         ctx.targets = {player};
-        return room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data);
+        ctx.extra_data = id;
+        return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.owner->canDiscard(target, "he")) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.original_data || !isSourceAvailable(room, ctx)
+            || ctx.original_data->value<CardUseStruct>().from != target) return false;
+        // A waived cost has no chosen card; QVariant's default 0 must not select physical card zero.
+        if (!ctx.extra_data.isValid()) return false;
+        const int id = ctx.extra_data.toInt();
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) != target || (place != Player::PlaceHand && place != Player::PlaceEquip)
+            || !ctx.owner->canDiscard(target, id)) return false;
         room->broadcastSkillInvoke("rende");
-        const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
-        if (id >= 0) room->throwCard(id, target, ctx.owner);
+        room->throwCard(id, target, ctx.owner);
         return false;
     }
 };

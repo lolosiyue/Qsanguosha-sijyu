@@ -1083,12 +1083,17 @@ public:
         const CardUseStruct use = data.value<CardUseStruct>();
         if (!use.from || !use.from->isAlive() || !use.card || use.card->getTypeId() == Card::TypeSkill) return result;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
-            if (owner != use.from && use.to.contains(owner)) result.insert(owner, {objectName() + "->" + use.from->objectName()});
+            if (owner != use.from && use.to.contains(owner) && owner->canSlash(use.from, nullptr, false))
+                result.insert(owner, {objectName() + "->" + use.from->objectName()});
         return result;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
         // The event's card user is the counterattack target; callback player denotes the V2 owner.
+        if (!owner || !owner->isAlive() || !isSourceAvailable(room, ctx) || !target->isAlive() || target == owner
+            || !owner->canSlash(target, nullptr, false)) return false;
+        // The optional slash is the skill's action, not a pre-use choice: pre-picking a card in cost
+        // would bypass slash view-as skills and extra-target selection, so the use ask stays here.
         room->askForUseSlashTo(owner, target, QString("@fangong-slash:%1").arg(target->objectName()), false);
         return false;
     }

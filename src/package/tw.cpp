@@ -105,6 +105,33 @@ public:
     }
 };
 
+// A receipt keeps its identity after settlement marks it, so lookup ignores the payload.
+static int findReceipt(const Card *card, const char *tag, const QVariant &receipt)
+{
+    const QVariantMap wanted = receipt.toMap();
+    const QVariantList receipts = card ? card->getTag(tag).toList() : QVariantList();
+    for (int i = 0; i < receipts.size(); ++i) {
+        const QVariantMap item = receipts.at(i).toMap();
+        if (item.value("dispatch") == wanted.value("dispatch") && item.value("owner") == wanted.value("owner")
+            && item.value("use_event") == wanted.value("use_event")) return i;
+    }
+    return -1;
+}
+
+// Marks the receipt settled exactly once; a second settlement attempt fails.
+static bool settleReceipt(const Card *card, const char *tag, QVariant &receipt)
+{
+    const int index = findReceipt(card, tag, receipt);
+    QVariantList receipts = index >= 0 ? card->getTag(tag).toList() : QVariantList();
+    if (index < 0 || receipts.at(index).toMap().value("settled").toBool()) return false;
+    QVariantMap settled = receipts.at(index).toMap();
+    settled.insert("settled", true);
+    receipts[index] = settled;
+    card->setTag(tag, receipts);
+    receipt = settled;
+    return true;
+}
+
 class Tijin : public TriggerSkillV2
 {
 public:
@@ -137,7 +164,7 @@ public:
         if (useEvent <= 0) return true;
         for (const QVariant &item : receipts) {
             const QVariantMap receipt = item.toMap();
-            if (receipt.value("use_event").toLongLong() != useEvent) continue;
+            if (receipt.value("use_event").toLongLong() != useEvent || receipt.value("settled").toBool()) continue;
             ServerPlayer *owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true);
             if (!owner || !owner->isAlive() || !owner->canDiscard(use.from, "he")) continue;
             SkillContext ctx;
@@ -160,12 +187,24 @@ public:
         if (ctx.activationRef.isValid()) return TriggerSkillV2::isSourceAvailable(room, ctx);
         const Card *card = ctx.original_data ? ctx.original_data->value<CardUseStruct>().card : nullptr;
         return ctx.extra_data.toMap().value("applied_tijin").toBool() && ctx.invoker && ctx.invoker->isAlive()
-            && card && card->getTag("TijinReceipts").toList().contains(ctx.extra_data);
+            && findReceipt(card, "TijinReceipts", ctx.extra_data) >= 0;
     }
 
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == CardFinished) return true;
+        if (event == CardFinished) {
+            const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+            // Settle the opportunity before the choice or any recipient interception.
+            if (!settleReceipt(use.card, "TijinReceipts", ctx.extra_data)) return false;
+            if (!use.from || !use.from->isAlive() || !ctx.invoker->canDiscard(use.from, "he")) return false;
+            const int id = room->askForCardChosen(ctx.invoker, use.from, "he", "tijin", false, Card::MethodDiscard);
+            if (id < 0) return false;
+            QVariantMap receipt = ctx.extra_data.toMap();
+            receipt.insert("card_id", id);
+            ctx.extra_data = receipt;
+            ctx.targets = {use.from};
+            return true;
+        }
         if (room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong() <= 0) return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (!use.from || use.to.size() != 1 || use.from == ctx.owner || !use.from->inMyAttackRange(ctx.owner)) return false;
@@ -194,21 +233,22 @@ public:
                 {"dispatch", dispatch}, {"use_event", QString::number(useEvent)}};
             use.card->setTag("TijinReceipts", receipts);
             *ctx.original_data = QVariant::fromValue(use);
-            return false;
         }
-        const Card *card = ctx.original_data->value<CardUseStruct>().card;
-        QVariantList receipts = card->getTag("TijinReceipts").toList();
-        // Settle the opportunity before recipient interception or nested card movements.
-        if (!receipts.removeOne(ctx.extra_data)) ctx.targets.clear();
-        card->setTag("TijinReceipts", receipts);
         return false;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         // Only the CardFinished receipt contexts carry a target: the slash user.
-        if (!ctx.invoker->canDiscard(target, "he")) return false;
-        const int id = room->askForCardChosen(ctx.invoker, target, "he", "tijin", false, Card::MethodDiscard);
+        const QVariantMap receipt = ctx.extra_data.toMap();
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx)
+            || ctx.original_data->value<CardUseStruct>().from != target
+            || !receipt.contains("card_id"))
+            return false;
+        const int id = receipt.value("card_id").toInt();
         const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
         if (card && !card->hasFlag("using") && room->getCardOwner(id) == target
             && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)
@@ -257,7 +297,7 @@ public:
         for (const QVariant &item : damage.card->getTag("XiaolianReceipts").toList()) {
             const QVariantMap receipt = item.toMap();
             if (receipt.value("owner").toString() != player->objectName()
-                || receipt.value("use_event").toLongLong() != useEvent) continue;
+                || receipt.value("use_event").toLongLong() != useEvent || receipt.value("settled").toBool()) continue;
             ServerPlayer *target = room->findPlayerByObjectName(receipt.value("beneficiary").toString(), true);
             if (!target || !target->isAlive()) continue;
             SkillContext ctx;
@@ -278,12 +318,25 @@ public:
         const Card *card = ctx.original_data ? ctx.original_data->value<DamageStruct>().card : nullptr;
         return ctx.invoker && ctx.invoker->isAlive() && card
             && ctx.extra_data.toMap().value("applied_xiaolian").toBool()
-            && card->getTag("XiaolianReceipts").toList().contains(ctx.extra_data);
+            && findReceipt(card, "XiaolianReceipts", ctx.extra_data) >= 0;
     }
 
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == Damaged) return true;
+        if (event == Damaged) {
+            const Card *card = ctx.original_data->value<DamageStruct>().card;
+            // A cancelled recipient or declined gift still consumes this damage opportunity.
+            if (!settleReceipt(card, "XiaolianReceipts", ctx.extra_data)) return false;
+            if (ctx.targets.size() != 1 || ctx.invoker->isNude()) return false;
+            // This is the already-applied protection's optional gift, not a fresh skill grant.
+            const Card *gift = room->askForExchange(ctx.invoker, "xiaolian", 1, 1, true, "@xiaolian-put", true);
+            const int id = gift && gift->subcardsLength() == 1 ? gift->getSubcards().first() : -1;
+            if (id < 0) return false;
+            QVariantMap receipt = ctx.extra_data.toMap();
+            receipt.insert("card_id", id);
+            ctx.extra_data = receipt;
+            return true;
+        }
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (!use.card || use.to.size() != 1 || use.to.first() == ctx.owner) return false;
         const qint64 useEvent = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
@@ -321,28 +374,27 @@ public:
                 {"activation_id", ctx.activationRef.key.instanceID}, {"dispatch", dispatch}, {"use_event", QString::number(useEvent)}};
             use.card->setTag("XiaolianReceipts", receipts);
             *ctx.original_data = QVariant::fromValue(use);
-            return false;
         }
-        const Card *card = ctx.original_data->value<DamageStruct>().card;
-        QVariantList receipts = card->getTag("XiaolianReceipts").toList();
-        // A cancelled recipient or declined gift still consumes this damage opportunity.
-        if (!receipts.removeOne(ctx.extra_data)) ctx.targets.clear();
-        card->setTag("XiaolianReceipts", receipts);
         return false;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         // Only the Damaged receipt contexts carry a target: the protected beneficiary.
-        if (ctx.invoker->isNude()) return false;
-        // This is the already-applied protection's optional gift, not a fresh skill grant.
-        const Card *gift = room->askForExchange(ctx.invoker, "xiaolian", 1, 1, true, "@xiaolian-put", true);
-        if (gift && gift->subcardsLength() == 1) {
-            const int id = gift->getSubcards().first();
-            if (!Sanguosha->getCard(id)->hasFlag("using") && room->getCardOwner(id) == ctx.invoker
-                && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip))
-                target->addToPile("xlhorse", id);
-        }
+        const QVariantMap receipt = ctx.extra_data.toMap();
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx)
+            || receipt.value("beneficiary").toString() != target->objectName()
+            || ctx.original_data->value<DamageStruct>().to != ctx.owner
+            || !receipt.contains("card_id"))
+            return false;
+        const int id = receipt.value("card_id").toInt();
+        const Card *gift = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+        if (gift && !gift->hasFlag("using") && room->getCardOwner(id) == ctx.invoker
+            && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip))
+            target->addToPile("xlhorse", id);
         return false;
     }
 };

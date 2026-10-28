@@ -525,6 +525,8 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (event == Damaged) return false;
+        // Deferred: each removed card buys one branch picked in turn, two branches can hit the invoker and the
+        // recover candidates are read after the earlier branches settle; one framework choice cannot carry this.
         ctx.manual_effect = true;
         QStringList choices{"cardlimit", "skilllimit", "recover"};
         const QStringList types = ctx.extra_data.toMap().value("types").toStringList();
@@ -547,6 +549,7 @@ public:
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
         if (ctx.choice == "put") {
+            // The pick count is the settlement-time amount and the pick is the placement itself.
             const QStringList types = available(ctx.owner);
             if (types.isEmpty()) return false;
             const QList<int> selected = room->askForExchangeCards(target, "sidi_put", amount, 0, "@sidi-put:" + ctx.owner->objectName(), QString(), types.join(","));
@@ -1306,6 +1309,9 @@ public:
         if (player->askForSkillInvoke(this, QVariant::fromValue(skill_target))) {
             room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), skill_target->objectName());
             room->broadcastSkillInvoke(objectName(), player);
+            QStringList choices{"draw"};
+            if (player->canDiscard(skill_target, "he")) choices << "discard";
+            ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(skill_target), "draw+discard", "@moukui-choose::" + skill_target->objectName());
             return true;
         }
         return false;
@@ -1313,14 +1319,14 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
-        QStringList choices{"draw"};
-        if (ctx.owner->canDiscard(target, "he")) choices << "discard";
-        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(target), "draw+discard", "@moukui-choose::" + target->objectName());
-        if (choice == "draw") {
+        if (ctx.choice == "draw") {
             ctx.owner->drawCards(amount, objectName());
-        } else if (choice == "discard") {
-            const QList<int> ids = room->askForCardsChosen(ctx.owner, target, "he", objectName(), amount, amount, false, Card::MethodDiscard);
+        } else if (ctx.choice == "discard") {
+            // The pick count is the settlement-time amount, so the pick stays with the discard.
+            const QList<int> ids = !ctx.owner->canDiscard(target, "he") ? QList<int>()
+                : room->askForCardsChosen(ctx.owner, target, "he", objectName(), amount, amount, false, Card::MethodDiscard);
             DummyCard cards;
             for (int id : ids) {
                 const Card *card = Sanguosha->getCard(id);
@@ -1413,6 +1419,7 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         consume(ctx);
+        // Receipt-driven forced follow-up: the pick is the discard itself and counts the settlement-time amount.
         // The jinked target discards from the receipt holder itself.
         ServerPlayer *target = ctx.owner;
         const int amount = getEffectiveAmount(ctx);
@@ -1540,6 +1547,9 @@ public:
         if (player->askForSkillInvoke(this, QVariant::fromValue(skill_target))) {
             room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), skill_target->objectName());
             room->broadcastSkillInvoke(objectName(), player);
+            QStringList choices{"usecard"};
+            if (player->canDiscard(skill_target, "he")) choices << "discard";
+            ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(skill_target), "usecard+discard", "@zhenxi-choose::" + skill_target->objectName());
             return true;
         }
         return false;
@@ -1547,9 +1557,11 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
         ServerPlayer *player = ctx.owner;
+        // The trick use and the discard pick are fused with their execution; the follow-up branch depends on the first one's result.
         auto convert = [&]() {
             Room::AcceptedViewAsEffectScope continuation(room, player, "heg_zhenxi_trick", ctx);
             if (!continuation.isValid()) return false;
@@ -1571,9 +1583,7 @@ public:
             if (cards.subcardsLength() == 0) return false;
             room->throwCard(&cards, target, player); return true;
         };
-        QStringList choices{"usecard"};
-        if (player->canDiscard(target, "he")) choices << "discard";
-        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target), "usecard+discard", "@zhenxi-choose::" + target->objectName());
+        const QString choice = ctx.choice;
         if (choice == "usecard") {
             if (convert() && player->hasShownAllGenerals() && !target->hasShownAllGenerals() && player->canDiscard(target, "he")
                 && room->askForChoice(player, "zhenxi_discard", "yes+no", *ctx.original_data, QString(), "@zhenxi-discard::" + target->objectName()) == "yes") discard();
@@ -1901,15 +1911,18 @@ public:
         ctx.targets = {damage.to};
         if (damage.to->isFemale()) {
             const Card *card = room->askForExchange(ctx.owner, "zhuidu_discard", 1, 1, true, "@zhuidu-both::" + damage.to->objectName(), true);
-            if (card) ctx.extra_data = card->getSubcards().value(0, -1);
+            if (card) ctx.extra_data = QVariantMap{{"card_id", card->getSubcards().value(0, -1)}};
         }
+        // Paying both leaves the victim no choice; otherwise it picks now, an equipment-less victim takes the damage.
+        if (!ctx.extra_data.toMap().contains("card_id"))
+            ctx.choice = damage.to->getEquips().isEmpty() ? "damage" : room->askForChoice(damage.to, "zhuidu_choice", "throw+damage", *ctx.original_data);
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
-        if (ctx.extra_data.isValid()) {
-            const int id = ctx.extra_data.toInt(); const Card *card = Sanguosha->getCard(id);
+        if (ctx.extra_data.toMap().contains("card_id")) {
+            const int id = ctx.extra_data.toMap().value("card_id").toInt(); const Card *card = Sanguosha->getCard(id);
             if (!card || card->hasFlag("using") || (!ctx.owner->handCards().contains(id) && !ctx.owner->hasEquip(card))
                 || !ctx.owner->canDiscard(ctx.owner, id)) return false;
             addUsage(ctx); room->throwCard(card, ctx.owner, ctx.owner); return true;
@@ -1918,10 +1931,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
-        const bool both = ctx.extra_data.isValid();
-        const bool discard = both || (!target->getEquips().isEmpty()
-            && room->askForChoice(target, "zhuidu_choice", "throw+damage", *ctx.original_data) == "throw");
+        const bool both = ctx.extra_data.toMap().contains("card_id");
+        // Equipment lost since the choice falls back to the damage branch, as an equipment-less victim would.
+        const bool discard = both || (ctx.choice == "throw" && !target->getEquips().isEmpty());
         if (discard) target->throwAllEquips();
         if (both || !discard) {
             DamageStruct damage = ctx.original_data->value<DamageStruct>(); damage.damage += amount;
@@ -1951,6 +1965,10 @@ public:
         if (!isUsable(ctx) || !ctx.owner->askForSkillInvoke(this)) return false;
         ctx.extra_data = ctx.owner->getActualGeneral2Name();
         if (room->getCurrent() && room->getCurrent()->isAlive()) ctx.targets = {room->getCurrent()};
+        // The offer is the handed-over general's static skill list, so the current player picks now.
+        const QStringList choices = skillChoices(ctx.extra_data.toString());
+        if (!ctx.targets.isEmpty() && !choices.isEmpty())
+            ctx.choice = room->askForChoice(ctx.targets.first(), "shigong_skill", (choices + QStringList{"cancel"}).join("+"), *ctx.original_data, QString(), "@shigong-choose:::" + ctx.extra_data.toString());
         return true;
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -1969,16 +1987,10 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         if (getEffectiveAmount(ctx) <= 0) return false;
-        const General *general = Sanguosha->getGeneral(ctx.extra_data.toString());
-        QStringList choices;
-        if (general) for (const Skill *skill : general->getVisibleSkillList()) if (isNormalSkill(skill)) choices << skill->objectName();
-        bool acquired = false;
-        if (!choices.isEmpty()) {
-            choices << "cancel";
-            const QString selected = room->askForChoice(target, "shigong_skill", choices.join("+"), *ctx.original_data, QString(), "@shigong-choose:::" + ctx.extra_data.toString());
-            if (selected != "cancel" && choices.contains(selected)) acquired = room->acquireSkillFromEffect(target, selected, ctx) > 0;
-        }
+        const bool acquired = skillChoices(ctx.extra_data.toString()).contains(ctx.choice)
+            && room->acquireSkillFromEffect(target, ctx.choice, ctx) > 0;
         ServerPlayer *owner = ctx.owner;
         const int endpoint = acquired ? owner->getMaxHp() : 1;
         if (owner->isAlive() && endpoint > owner->getHp()) room->recover(owner, RecoverStruct(objectName(), owner, endpoint - owner->getHp()));
@@ -1991,6 +2003,13 @@ private:
         if (skill->relateToPlace(true) || skill->relateToPlace(false)
             || dynamic_cast<const HArraySummon *>(ViewAsSkill::parseViewAsSkill(skill))) return false;
         return skill->getFrequency() == Skill::Frequent || skill->getFrequency() == Skill::NotFrequent;
+    }
+    static QStringList skillChoices(const QString &generalName)
+    {
+        QStringList choices;
+        const General *general = Sanguosha->getGeneral(generalName);
+        if (general) for (const Skill *skill : general->getVisibleSkillList()) if (isNormalSkill(skill)) choices << skill->objectName();
+        return choices;
     }
 };
 
@@ -2016,20 +2035,22 @@ public:
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, candidates, objectName(), "@tanfeng-target", true, true);
         if (!target) return false;
         ctx.targets = {target};
-        ctx.extra_data = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodDiscard);
+        ctx.extra_data = QVariantMap{{"card_id", room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodDiscard)}};
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (ctx.targets.isEmpty()) return false;
-        ServerPlayer *target = ctx.targets.first(); const int id = ctx.extra_data.toInt(); const Card *card = Sanguosha->getCard(id);
+        if (ctx.targets.isEmpty() || !ctx.extra_data.toMap().contains("card_id")) return false;
+        ServerPlayer *target = ctx.targets.first(); const int id = ctx.extra_data.toMap().value("card_id").toInt(); const Card *card = Sanguosha->getCard(id);
         if (!card || card->hasFlag("using") || room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id)
             || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip && room->getCardPlace(id) != Player::PlaceDelayedTrick)) return false;
         room->throwCard(card, target, ctx.owner); return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
+        // The victim decides after seeing which card was discarded in pay, so its choice stays here.
         const QStringList phases{"judge", "draw", "play", "discard", "finish", "cancel"};
         const QString choice = room->askForChoice(target, objectName(), phases.join("+"), QVariant(), QString(), "@tanfeng-choose:" + ctx.owner->objectName());
         const int index = phases.indexOf(choice);
@@ -2164,6 +2185,7 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (getEffectiveAmount(ctx) <= 0) return false;
+        // Deferred: each reveal changes who is a friend for the draw and grant passes and what later players may show.
         ctx.targets.clear();
         QList<ServerPlayer *> players = room->getAlivePlayers(); room->sortByActionOrder(players);
         for (ServerPlayer *target : players) {
@@ -2617,8 +2639,10 @@ public:
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
+        // The pick count is the settlement-time amount, so the pick stays with the discard.
         const QString zone = ctx.owner->isFriendWith(target) ? "he" : "h";
         if (!ctx.owner->canDiscard(target, zone)) return false;
         const QList<int> selected = room->askForCardsChosen(ctx.owner, target, zone, objectName(), amount, amount, false, Card::MethodDiscard);
@@ -2751,7 +2775,17 @@ public:
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (event == TargetConfirmed) return ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from));
+        if (event == TargetConfirmed) {
+            if (!ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from))) return false;
+            // The user's own draw stays in effect; the attacker settles through the framework.
+            ctx.targets.clear(); ctx.choice.clear();
+            if (!use.from || !use.from->isAlive()) return true;
+            ctx.targets = {use.from};
+            const QStringList choices = hideChoices(use.from);
+            if (use.from->hasShownAllGenerals() && !choices.isEmpty())
+                ctx.choice = room->askForChoice(ctx.owner, objectName(), (choices + QStringList{"cancel"}).join("+"), QVariant(), "head+deputy+cancel", "@juzhan-hide::" + use.from->objectName());
+            return true;
+        }
         QList<ServerPlayer *> candidates;
         for (ServerPlayer *target : use.to) if (ctx.owner->canGet(target, "he")) candidates << target;
         if (candidates.isEmpty()) return false;
@@ -2767,37 +2801,36 @@ public:
             {"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
             {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID}};
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
+    static QStringList hideChoices(ServerPlayer *target)
     {
-        if (event != TargetConfirmed) return false;
-        ctx.manual_effect = true;
-        if (getEffectiveAmount(ctx) > 0) ctx.owner->drawCards(getEffectiveAmount(ctx), objectName());
-        ServerPlayer *attacker = ctx.original_data->value<CardUseStruct>().from;
-        if (attacker && attacker->isAlive()) {
-            SkillContext other = ctx; other.choice = "draw-hide"; skillEffect(event, room, owner, other, attacker);
-        }
+        QStringList choices;
+        if (!target->getActualGeneral1Name().contains("sujiang") && !target->isLord()) choices << "head";
+        if (target->getGeneral2() && !target->getGeneral2Name().contains("sujiang")) choices << "deputy";
+        return choices;
+    }
+    bool effect(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (event == TargetConfirmed && getEffectiveAmount(ctx) > 0) ctx.owner->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !isSourceAvailable(room, ctx)) return false;
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
-        if (ctx.choice == "draw-hide") {
+        if (event == TargetConfirmed) {
             target->drawCards(amount, objectName());
+            // The hide pick was made in cost; the draw may have changed who is alive or shown.
             if (!ctx.owner->isAlive() || !target->isAlive() || !target->hasShownAllGenerals()) return false;
-            QStringList choices;
-            if (!target->getActualGeneral1Name().contains("sujiang") && !target->isLord()) choices << "head";
-            if (target->getGeneral2() && !target->getGeneral2Name().contains("sujiang")) choices << "deputy";
-            if (choices.isEmpty()) return false;
-            choices << "cancel";
-            const QString selected = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), "head+deputy+cancel", "@juzhan-hide::" + target->objectName());
-            if (!choices.contains(selected) || selected == "cancel") return false;
+            const QString selected = ctx.choice;
+            if (!hideChoices(target).contains(selected)) return false;
             QVariantMap applied = receipt(room, ctx, target, "hide");
             QVariantList list = room->getTag("HJuzhanApplied").toList(); list << applied; room->setTag("HJuzhanApplied", list);
             room->setPlayerDisableShow(target, selected == "head" ? "h" : "d", applied.value("token").toString());
             target->hideGeneral(selected == "head"); return false;
         }
-        if (!ctx.owner->canGet(target, "he")) return false;
+        // The pick count is the settlement-time amount, so the pick stays with the extraction.
+        if (!ctx.owner->isAlive() || !ctx.owner->canGet(target, "he")) return false;
         const QList<int> ids = room->askForCardsChosen(ctx.owner, target, "he", objectName(), amount, amount, false, Card::MethodGet);
         DummyCard cards;
         for (int id : ids) {

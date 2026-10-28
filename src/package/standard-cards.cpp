@@ -438,10 +438,18 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         if (ctx.choice == "draw") {
             target->drawCards(getEffectiveAmount(ctx), objectName());
             return false;
         }
+        // askForCard executes the discard; its result decides the wielder's draw.
+        // Keep this payment and the dependent secondary dispatch in settlement.
         if (target->canDiscard(target, "h")
             && room->askForCard(target, ".", "double-sword-card:" + player->objectName(),
                                 *ctx.original_data))
@@ -568,6 +576,12 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
         if (!effect.card || !effect.from || !effect.to || !effect.to->isAlive()
             || effect.to != target || !effect.from->canSlash(target, nullptr, false))
@@ -586,6 +600,7 @@ public:
             if (weapon_id >= 0 && !weapon_was_using) room->setCardFlag(weapon_id, "-using");
         });
         effect.from->setFlags("BladeUse");
+        // This prompt executes a follow-up Slash during the offset settlement.
         room->askForUseSlashTo(effect.from, effect.to, QString("blade-slash:%1").arg(effect.to->objectName()), false, true);
         return false;
     }
@@ -854,35 +869,51 @@ public:
         return result;
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         if (!damage.to || !player->askForSkillInvoke(this, *ctx.original_data)) return false;
         ctx.targets << damage.to;
+        int id = -1;
+        const QList<int> horses = discardableHorses(damage.from, damage.to);
+        if (getEffectiveAmount(ctx) > 0 && !horses.isEmpty()) {
+            room->setEmotion(player, "weapon/kylin_bow");
+            room->fillAG(horses, player);
+            auto clear = qScopeGuard([&] { room->clearAG(player); });
+            id = room->askForAG(player, horses, false, objectName(), "@kylin_bow_horse");
+            if (!horses.contains(id)) id = -1;
+        }
+        ctx.extra_data = QVariantMap{{"card_id", id}};
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
 
         if (damage.card && damage.card->isKindOf("Slash") && damage.by_user && !damage.chain && !damage.transfer
             && damage.to == target && damage.from) {
             for (int i = 0; i < getEffectiveAmount(ctx) && target->isAlive(); ++i) {
-                QList<int> horses;
-                const Card *horse = target->getDefensiveHorse();
-                if (horse && damage.from->canDiscard(target, horse->getEffectiveId()))
-                    horses << horse->getEffectiveId();
-                horse = target->getOffensiveHorse();
-                if (horse && damage.from->canDiscard(target, horse->getEffectiveId()))
-                    horses << horse->getEffectiveId();
+                if (!ctx.invoker->isAlive() || !ctx.owner->isAlive()
+                    || !isSourceAvailable(room, ctx) || !damage.from->isAlive()) break;
+                const QList<int> horses = discardableHorses(damage.from, target);
                 if (horses.isEmpty()) break;
 
-                room->setEmotion(player, "weapon/kylin_bow");
-                room->fillAG(horses, player);
-                const int id = room->askForAG(player, horses, false, objectName(), "@kylin_bow_horse");
-                room->clearAG(player);
+                int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+                if (i > 0) {
+                    // Each actual discard and its callbacks change the next horse pool.
+                    room->setEmotion(player, "weapon/kylin_bow");
+                    room->fillAG(horses, player);
+                    auto clear = qScopeGuard([&] { room->clearAG(player); });
+                    id = room->askForAG(player, horses, false, objectName(), "@kylin_bow_horse");
+                }
                 if (!horses.contains(id) || !target->getEquipsId().contains(id)
                     || !damage.from->canDiscard(target, id)) break;
                 room->throwCard(id, target, damage.from);
@@ -890,6 +921,16 @@ public:
         }
 
         return false;
+    }
+private:
+    static QList<int> discardableHorses(ServerPlayer *from, ServerPlayer *target)
+    {
+        QList<int> horses;
+        if (!from || !target) return horses;
+        for (const Card *horse : {target->getDefensiveHorse(), target->getOffensiveHorse()})
+            if (horse && from->canDiscard(target, horse->getEffectiveId()))
+                horses << horse->getEffectiveId();
+        return horses;
     }
 };
 
@@ -1518,17 +1559,28 @@ public:
         return result;
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         if (!damage.to || !player->askForSkillInvoke(objectName(), *ctx.original_data)) return false;
         ctx.targets << damage.to;
+        int id = -1;
+        if (getEffectiveAmount(ctx) > 0 && damage.from && damage.from->isAlive()
+            && damage.to->isAlive() && damage.from->canDiscard(damage.to, "he"))
+            id = room->askForCardChosen(player, damage.to, "he", objectName(), false, Card::MethodDiscard);
+        ctx.extra_data = QVariantMap{{"card_id", id}};
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
 
         if (damage.card && damage.card->isKindOf("Slash")
@@ -1537,7 +1589,11 @@ public:
 			room->notifySkillInvoked(player, "ice_sword");
             for (int i = 0; i < 2 * getEffectiveAmount(ctx) && damage.from->isAlive()
                  && target->isAlive() && damage.from->canDiscard(target, "he"); ++i) {
-                const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
+                if (!ctx.invoker->isAlive() || !ctx.owner->isAlive()
+                    || !isSourceAvailable(room, ctx)) break;
+                // Later picks observe the preceding discard and its movement callbacks.
+                const int id = i == 0 ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                    : room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
                 if ((!target->handCards().contains(id) && !target->getEquipsId().contains(id))
                     || !damage.from->canDiscard(target, id)) break;
                 room->throwCard(Sanguosha->getCard(id), target, damage.from);

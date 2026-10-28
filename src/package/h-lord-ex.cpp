@@ -446,6 +446,8 @@ public:
     {
         ServerPlayer *actor = ctx.invoker;
         if (!actor || !victim) return false;
+        // Picks stay here: extra_data is the exact receipt that isSourceAvailable matches, and each
+        // pick is the extraction itself, sized by the settlement-time amount.
         for (int i = 0; i < getEffectiveAmount(ctx) && actor->isAlive() && victim->isAlive() && actor->canGet(victim, "he"); ++i) {
             const int id = room->askForCardChosen(actor, victim, "he", "heg_liangfan", false, Card::MethodGet);
             if (id < 0 || room->getCardOwner(id) != victim || !actor->canGet(victim, id)
@@ -670,7 +672,7 @@ public:
         return (player && player->isAlive() && player->hasSkill(objectName())) && damage.from && player->canGet(damage.from, "he")
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         // Preserve nested payment state; V2 owns source activation after consent.
         const bool costFlag = ctx.owner && !ctx.owner->hasFlag("Global_askForSkillCost");
@@ -683,14 +685,18 @@ public:
         const DamageStruct damage = data.value<DamageStruct>();
         if (!damage.from || !player->canGet(damage.from, "he") || !player->askForSkillInvoke(this, data)) return false;
         ctx.targets = {damage.from};
+        ctx.extra_data = QVariantMap{{"card_id", room->askForCardChosen(player, damage.from, "he", objectName(), false, Card::MethodGet)}};
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *victim) const override
     {
         ServerPlayer *actor = ctx.invoker;
-        if (!actor || !victim) return false;
+        if (!actor || !actor->isAlive() || !victim || !victim->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        // Later picks stay here: each follows the previous extraction and the settlement-time amount.
         for (int i = 0; i < getEffectiveAmount(ctx) && actor->isAlive() && victim->isAlive() && actor->canGet(victim, "he"); ++i) {
-            const int id = room->askForCardChosen(actor, victim, "he", "heg_fankui_simazhao", false, Card::MethodGet);
+            const int id = i == 0 ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                : room->askForCardChosen(actor, victim, "he", "heg_fankui_simazhao", false, Card::MethodGet);
             if (id < 0 || room->getCardOwner(id) != victim || !actor->canGet(victim, id)
                 || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)) continue;
             CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, actor->objectName(), victim->objectName(),
@@ -1147,11 +1153,14 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (ctx.choice == "receive") {
-            const QVariantMap receipt = ctx.extra_data.toMap();
-            receive(room, ctx, room->findPlayerByObjectName(receipt.value("giver").toString()), target,
-                receipt.value("card", -1).toInt(), false);
+            // The give-back completes an exchange already under way; the owner is always its giver.
+            receive(room, ctx, ctx.owner && ctx.owner->isAlive() ? ctx.owner : nullptr, target,
+                ctx.extra_data.toMap().value("card", -1).toInt(), false);
             return false;
         }
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        // The target's give is the settlement itself, and the owner's give-back depends on whether that card
+        // arrived without a grant, so both stay here; the give-back keeps its own recipient dispatch.
         for (int n = 0; n < getEffectiveAmount(ctx) && target->isAlive() && ctx.owner->isAlive() && !target->isNude(); ++n) {
             QList<int> ids = lordExExchange(room, target, "wenji_give", 1, 1, "@wenji-give:" + ctx.owner->objectName());
             // Replies can run nested skills; rebuild any compulsory fallback from current material.
@@ -1177,7 +1186,7 @@ public:
             const int back = !ids.isEmpty() && candidates.contains(ids.first()) ? ids.first() : candidates.first();
             SkillContext giveBack = ctx;
             giveBack.choice = "receive";
-            giveBack.extra_data = QVariantMap{{"giver", ctx.owner->objectName()}, {"card", back}};
+            giveBack.extra_data = QVariantMap{{"card", back}};
             skillEffect(event, room, player, giveBack, target);
         }
         return false;
@@ -1473,6 +1482,9 @@ public:
             room->sendLog(log);
             room->broadcastSkillInvoke("heg_lixia", owner);
             room->notifySkillInvoked(owner, "heg_lixia");
+            const int id = player->canDiscard(owner, "e")
+                ? room->askForCardChosen(player, owner, "e", "heg_lixia", false, Card::MethodDiscard) : -1;
+            ctx.extra_data = QVariantMap{{"card_id", id}};
             return true;
         }
         return false;
@@ -1483,8 +1495,10 @@ public:
         ServerPlayer *target = ctx.owner;
         ServerPlayer *actor = ctx.invoker;
         if (!actor || !actor->isAlive() || !actor->canDiscard(target, "e")) return false;
-        const int id = room->askForCardChosen(actor, target, "e", "heg_lixia", false, Card::MethodDiscard);
-        if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip || !actor->canDiscard(target, id)) return false;
+        // The consequence choice and its hand dispatch stay deferred: options depend on the actual
+        // discard and the actor's discardable cards afterwards, and "draw" settles on the owner instead.
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip || !actor->canDiscard(target, id)) return false;
         CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, actor->objectName(), target->objectName(), "heg_lixia", QString());
         const QVariant moved = room->moveCardsSub(CardsMoveStruct(id, nullptr, Player::DiscardPile, reason), true);
         bool discarded = false;
@@ -2196,6 +2210,8 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // Picks stay here: extra_data is the exact receipt that isSourceAvailable matches, and each
+        // pick is the extraction itself, sized by the settlement-time amount.
         for (int n = 0; n < getEffectiveAmount(ctx) && ctx.invoker->isAlive() && target->isAlive() && ctx.invoker->canGet(target, "hej"); ++n) {
             const int id = room->askForCardChosen(ctx.invoker, target, "hej", "heg_zhidao", false, Card::MethodGet);
             if (room->getCardOwner(id) != target || !ctx.invoker->canGet(target, id)) continue;
@@ -2908,6 +2924,8 @@ public:
             DamageStruct damage = ctx.original_data->value<DamageStruct>();
             if (damage.to == target) { damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); }
         } else {
+            // Picks stay here: a batch discard can yield several recipients, and later recipients
+            // see the earlier extractions; each pick is the extraction itself.
             for (int n = 0; n < getEffectiveAmount(ctx) && ctx.owner->isAlive() && target->isAlive() && ctx.owner->canGet(target, "he"); ++n) {
                 const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodGet);
                 if (room->getCardOwner(id) == target && ctx.owner->canGet(target, id)
@@ -3160,6 +3178,7 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // The slash ask is a fused ask+use, and the discard pick only follows a refusal, so both stay here.
         for (int n = 0; n < getEffectiveAmount(ctx) && ctx.owner->isAlive() && target->isAlive(); ++n) {
             RoomState *state = Sanguosha->currentRoomState();
             const auto reason = state->getCurrentCardUseReason();
@@ -3685,6 +3704,8 @@ public:
             *ctx.original_data = QVariant::fromValue(damage);
             return damage.damage <= 0;
         }
+        // Picks stay here: extra_data is the exact receipt that isSourceAvailable matches, and each
+        // pick is the extraction itself, sized by the settlement-time amount.
         for (int n = 0; n < getEffectiveAmount(ctx) && ctx.invoker->isAlive() && target->isAlive() && ctx.invoker->canGet(target, "he"); ++n) {
             const int id = room->askForCardChosen(ctx.invoker, target, "he", "heg_xiongnve", false, Card::MethodGet);
             if (room->getCardOwner(id) == target && ctx.invoker->canGet(target, id)
@@ -4506,6 +4527,7 @@ public:
     { ctx.targets = room->getOtherPlayers(ctx.owner); return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // The put-or-damage reply is each target's own settlement, sized by the settlement-time amount.
         const int count = ctx.choice.toInt() * getEffectiveAmount(ctx);
         if (count <= 0) return false;
         const Card *reply = room->askForExchange(target, "heg_juejue", count, count, false,
@@ -4800,6 +4822,7 @@ public:
             room->setPlayerProperty(target, "tongling_usetarget", oldTarget);
             if (oldDamage.isValid()) target->setTag("tongling-damage", oldDamage); else target->removeTag("tongling-damage");
         });
+        // Fused ask+use: the follow-up obtain/draw dispatch depends on the damage this use actually dealt.
         const CardUseStruct used = room->askForUseCardStruct(target, "@@heg_tongling_usecard", "@tongling-usecard::" + damage.to->objectName(), -1, Card::MethodUse, false);
         const qint64 useId = used.targetModReveal.useHistoryEventId;
         if (!used.card || useId <= 0) return false;

@@ -966,26 +966,12 @@ public:
         ctx.extra_data = ListI2V(ids);
         return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
-        if (ctx.targets.isEmpty()) return false;
-        ctx.manual_effect = true;
-        SkillContext give = ctx;
-        skillEffect(event, room, player, give, ctx.targets.first());
-        const QString recipient = give.extra_data.toMap().value("recipient").toString();
-        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
-        if (recipient.isEmpty() || recipient == ctx.owner->objectName() || !ctx.owner->isAlive()
-            || !effect.to || !effect.to->isAlive() || !ctx.owner->canSlash(effect.to, nullptr, false)) return false;
-        RoomState *state = Sanguosha->currentRoomState();
-        const auto reason = state->getCurrentCardUseReason();
-        const QString pattern = state->getCurrentCardUsePattern();
-        const auto restore = qScopeGuard([=] { state->setCurrentCardUseReason(reason); state->setCurrentCardUsePattern(pattern); });
-        room->askForUseSlashTo(ctx.owner, effect.to, "zhongyong-slash:" + effect.to->objectName(), false, true);
-        return false;
-    }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || !ctx.original_data || getEffectiveAmount(ctx) <= 0) return false;
+        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        if (!effect.to || target == effect.to) return false;
         DummyCard cards;
         for (const QVariant &entry : ctx.extra_data.toList()) {
             const int id = entry.toInt();
@@ -993,7 +979,14 @@ public:
         }
         if (cards.subcardsLength() <= 0) return false;
         room->obtainCard(target, &cards, objectName());
-        ctx.extra_data = QVariantMap{{"recipient", target->objectName()}};
+        // The follow-up slash is a card use after the gift, so it cannot be chosen in cost.
+        if (target == ctx.owner || !ctx.owner->isAlive() || !effect.to->isAlive()
+            || !ctx.owner->canSlash(effect.to, nullptr, false)) return false;
+        RoomState *state = Sanguosha->currentRoomState();
+        const auto reason = state->getCurrentCardUseReason();
+        const QString pattern = state->getCurrentCardUsePattern();
+        const auto restore = qScopeGuard([=] { state->setCurrentCardUseReason(reason); state->setCurrentCardUsePattern(pattern); });
+        room->askForUseSlashTo(ctx.owner, effect.to, "zhongyong-slash:" + effect.to->objectName(), false, true);
         return false;
     }
 };
@@ -1160,79 +1153,94 @@ public:
         return false;
     }
 };
-class Zenhui : public TriggerSkill
+class Zenhui : public TriggerSkillV2
 {
 public:
-    Zenhui() : TriggerSkill("zenhui")
+    Zenhui() : TriggerSkillV2("zenhui") { events << TargetSpecifying << CardFinished; }
+    static bool isZenhuiCard(const Card *card)
     {
-        events << TargetSpecifying << CardFinished;
+        return card && (card->isKindOf("Slash") || (card->isNDTrick() && card->isBlack()));
     }
-
-    bool triggerable(const ServerPlayer *target) const
+    static QList<ServerPlayer *> candidates(Room *room, ServerPlayer *player, const CardUseStruct &use)
     {
-        return target != nullptr;
+        QList<ServerPlayer *> targets;
+        if (use.to.length() != 1 || !isZenhuiCard(use.card) || use.card->targetFixed()) return targets;
+        for (ServerPlayer *p : room->getAlivePlayers())
+            if (p != player && p != use.to.first() && !room->isProhibited(player, p, use.card)
+                && use.card->targetFilter(QList<const Player *>(), p, player))
+                targets << p;
+        return targets;
     }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        CardUseStruct use = data.value<CardUseStruct>();
-        if (triggerEvent == CardFinished && (use.card->isKindOf("Slash") || (use.card->isNDTrick() && use.card->isBlack()))) {
-            use.from->setFlags("-ZenhuiUser_" + use.card->toString());
+        if (event != CardFinished || !ctx.original_data) return;
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.from && isZenhuiCard(use.card)) use.from->setFlags("-ZenhuiUser_" + use.card->toString());
+    }
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != TargetSpecifying || !player || !player->isAlive() || !player->hasSkill(this)
+            || player->getPhase() != Player::Play || player->hasFlag(objectName())) return TriggerList();
+        const CardUseStruct use = data.value<CardUseStruct>();
+        return use.from == player && !candidates(room, player, use).isEmpty()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        const QList<ServerPlayer *> targets = candidates(room, ctx.owner, use);
+        if (targets.isEmpty()) return false;
+        ctx.owner->setTag("zenhui", *ctx.original_data);
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName(),
+            "zenhui-invoke:" + use.to.first()->objectName(), true, true);
+        ctx.owner->removeTag("zenhui");
+        if (!target) return false;
+        ctx.owner->setFlags(objectName());
+        room->broadcastSkillInvoke(objectName());
+        // The target answers here: a given card makes it the user; no card makes it an extra target.
+        const Card *card = target->isNude() ? nullptr
+            : room->askForCard(target, "..", "@zenhui-give:" + ctx.owner->objectName(), *ctx.original_data, Card::MethodNone);
+        ctx.targets = {target};
+        ctx.extra_data = QVariantMap{{"give", card ? card->getEffectiveId() : -1}};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || !ctx.original_data) return false;
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.from != ctx.owner || use.to.contains(target)) return false;
+        const int id = ctx.extra_data.toMap().value("give", -1).toInt();
+        const Player::Place place = id >= 0 ? room->getCardPlace(id) : Player::PlaceUnknown;
+        // A picked card that is no longer the target's to give counts as not giving.
+        if (id >= 0 && room->getCardOwner(id) == target && (place == Player::PlaceHand || place == Player::PlaceEquip)) {
+            room->obtainCard(ctx.owner, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
+                target->objectName(), ctx.owner->objectName(), objectName(), QString()));
+            if (target->isAlive()) {
+                LogMessage log;
+                log.type = "#BecomeUser";
+                log.from = target;
+                log.card_str = use.card->toString();
+                room->sendLog(log);
+
+                target->setFlags("ZenhuiUser_" + use.card->toString()); // For AI
+                use.from = target;
+                *ctx.original_data = QVariant::fromValue(use);
+            }
             return false;
         }
-        if (!TriggerSkill::triggerable(player) || player->getPhase() != Player::Play || player->hasFlag(objectName()))
-            return false;
+        if (!candidates(room, ctx.owner, use).contains(target)) return false;
+        LogMessage log;
+        log.type = "#BecomeTarget";
+        log.from = target;
+        log.card_str = use.card->toString();
+        room->sendLog(log);
 
-        if (use.to.length() == 1 && !use.card->targetFixed()
-            && (use.card->isKindOf("Slash") || (use.card->isNDTrick() && use.card->isBlack()))) {
-            QList<ServerPlayer *> targets;
-            foreach (ServerPlayer *p, room->getAlivePlayers()) {
-                if (p != player && p != use.to.first() && !room->isProhibited(player, p, use.card) && use.card->targetFilter(QList<const Player *>(), p, player))
-                    targets << p;
-            }
-            if (targets.isEmpty()) return false;
-            use.from->setTag("zenhui", data);
-            ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "zenhui-invoke:" + use.to.first()->objectName(), true, true);
-            use.from->removeTag("zenhui");
-            if (target) {
-                player->setFlags(objectName());
-                room->broadcastSkillInvoke(objectName());
-
-                bool extra_target = true;
-                if (!target->isNude()) {
-                    const Card *card = room->askForCard(target, "..", "@zenhui-give:" + player->objectName(), data, Card::MethodNone);
-                    if (card) {
-                        extra_target = false;
-                        room->obtainCard(player, card, CardMoveReason(CardMoveReason::S_REASON_GIVE,
-                            target->objectName(), player->objectName(), objectName(), QString()));
-
-                        if (target->isAlive()) {
-                            LogMessage log;
-                            log.type = "#BecomeUser";
-                            log.from = target;
-                            log.card_str = use.card->toString();
-                            room->sendLog(log);
-
-                            target->setFlags("ZenhuiUser_" + use.card->toString()); // For AI
-                            use.from = target;
-                            data = QVariant::fromValue(use);
-                        }
-                    }
-                }
-                if (extra_target) {
-                    LogMessage log;
-                    log.type = "#BecomeTarget";
-                    log.from = target;
-                    log.card_str = use.card->toString();
-                    room->sendLog(log);
-
-                    room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), target->objectName());
-                    use.to.append(target);
-                    room->sortByActionOrder(use.to);
-                    data = QVariant::fromValue(use);
-                }
-            }
-        }
+        room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, ctx.owner->objectName(), target->objectName());
+        use.to.append(target);
+        room->sortByActionOrder(use.to);
+        *ctx.original_data = QVariant::fromValue(use);
         return false;
     }
 };

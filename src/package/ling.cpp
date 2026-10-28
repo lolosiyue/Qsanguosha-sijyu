@@ -257,43 +257,47 @@ public:
             addAllInstances(result, player, objectName());
         return result;
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.original_data || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.targets << ctx.original_data->value<DamageStruct>().to;
+        ServerPlayer *target = ctx.original_data->value<DamageStruct>().to;
+        if (!target || !ctx.owner->canGet(target, "hej")) return false;
+        const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodGet);
+        if (id < 0 || room->getCardOwner(id) != target || !ctx.owner->canGet(target, id)) return false;
+        ctx.targets = {target};
+        ctx.extra_data = id;
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!room || !ctx.owner || !ctx.original_data) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.original_data || !isSourceAvailable(room, ctx)) return false;
         ServerPlayer *player = ctx.owner;
-        QVariant &data = *ctx.original_data;
-        DamageStruct damage = data.value<DamageStruct>();
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.card || !damage.card->isKindOf("Slash") || !damage.by_user || damage.chain
+            || damage.transfer || damage.to != target)
+            return false;
+        // A waived cost has no chosen card; QVariant's default 0 must not select physical card zero.
+        if (!ctx.extra_data.isValid()) return false;
+        const int card_id = ctx.extra_data.toInt();
+        const Player::Place place = room->getCardPlace(card_id);
+        if (room->getCardOwner(card_id) != target || !player->canGet(target, card_id)
+            || (place != Player::PlaceHand && place != Player::PlaceEquip && place != Player::PlaceDelayedTrick))
+            return false;
 
-        if (damage.card && damage.card->isKindOf("Slash")
-            && damage.by_user && !damage.chain && !damage.transfer && target && player->canGet(target, "hej")) {
-            room->broadcastSkillInvoke(objectName(), 1);
-            LogMessage log;
-            log.type = "#Yishi";
-            log.from = player;
-            log.arg = objectName();
-            log.to << target;
-            room->sendLog(log);
-            int card_id = room->askForCardChosen(player, target, "hej", objectName(), false, Card::MethodGet);
-            if (room->getCardOwner(card_id) != target || !target->getCards("hej").contains(Sanguosha->getCard(card_id)) || !player->canGet(target, card_id)) return false;
-            if (room->getCardPlace(card_id) == Player::PlaceDelayedTrick)
-                room->broadcastSkillInvoke(objectName(), 2);
-            else if (room->getCardPlace(card_id) == Player::PlaceEquip)
-                room->broadcastSkillInvoke(objectName(), 3);
-            else
-                room->broadcastSkillInvoke(objectName(), 4);
-            const Player::Place place = room->getCardPlace(card_id);
-            if (!player->isAlive() || (place != Player::PlaceHand && place != Player::PlaceEquip && place != Player::PlaceDelayedTrick)) return false;
-            room->obtainCard(player, Sanguosha->getCard(card_id),
-                CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, player->objectName(), target->objectName(), objectName(), QString()), place != Player::PlaceHand);
-            return true;
-        }
-        return false;
+        room->broadcastSkillInvoke(objectName(), 1);
+        LogMessage log;
+        log.type = "#Yishi";
+        log.from = player;
+        log.arg = objectName();
+        log.to << target;
+        room->sendLog(log);
+        room->broadcastSkillInvoke(objectName(), place == Player::PlaceDelayedTrick ? 2 : place == Player::PlaceEquip ? 3 : 4);
+        room->obtainCard(player, Sanguosha->getCard(card_id),
+            CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, player->objectName(), target->objectName(), objectName(), QString()), place != Player::PlaceHand);
+        return true;
     }
 };
 
@@ -359,6 +363,19 @@ public:
     }
 };
 
+// The settling judgement runs inside the accepted neoganglie event; that event's committed source is the record.
+static ServerPlayer *neoGanglieJudgedTarget(Room *room, ServerPlayer *owner)
+{
+    const qint64 judge = room->historyParent(room->currentHistoryEventId(), "judge", true).value("id").toLongLong();
+    if (judge <= 0) return nullptr;
+    const QVariantMap skill = room->historyParent(judge, "skill").value("data").toMap();
+    const QVariantList targets = skill.value("targets").toList();
+    if (skill.value("executing_skill").toString() != "neoganglie"
+        || skill.value("activation_owner").toString() != owner->objectName() || targets.length() != 1)
+        return nullptr;
+    return room->findPlayerByObjectName(targets.first().toString());
+}
+
 class NeoGanglie : public TriggerSkillV2
 {
 public:
@@ -380,22 +397,65 @@ public:
         if (ServerPlayer *from = ctx.original_data->value<DamageStruct>().from) ctx.targets << from;
         return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    void performJudge(Room *room, ServerPlayer *owner) const
     {
-        ctx.manual_effect = true;
-        if (!room || !ctx.owner || !ctx.original_data) return false;
         room->broadcastSkillInvoke("ganglie");
-        JudgeStruct judge; judge.pattern = ".|heart"; judge.good = false; judge.reason = objectName(); judge.who = ctx.owner; room->judge(judge);
-        if (!judge.isGood()) return false;
-        for (ServerPlayer *from : ctx.targets) if (from->isAlive()) skillEffect(event, room, player, ctx, from);
+        JudgeStruct judge; judge.pattern = ".|heart"; judge.good = false; judge.reason = objectName(); judge.who = owner;
+        // A good judgement is settled by #neoganglie at FinishJudge, where the owner's choice is its cost.
+        room->judge(judge);
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // Without a damage source the judgement is still performed, but there is nothing to settle.
+        if (ctx.targets.isEmpty() && ctx.owner && ctx.owner->isAlive() && isSourceAvailable(room, ctx)) performJudge(room, ctx.owner);
         return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
     {
+        if (!from || !from->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.original_data || !isSourceAvailable(room, ctx)
+            || ctx.original_data->value<DamageStruct>().from != from)
+            return false;
+        performJudge(room, ctx.owner);
+        return false;
+    }
+};
+
+class NeoGanglieSettle : public TriggerSkillV2
+{
+public:
+    NeoGanglieSettle() : TriggerSkillV2("#neoganglie") { events << FinishJudge; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const JudgeStruct *judge = data.value<JudgeStruct *>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || !judge || judge->who != player
+            || judge->reason != "neoganglie" || !judge->isGood())
+            return TriggerList();
+        ServerPlayer *from = neoGanglieJudgedTarget(room, player);
+        return from && from->isAlive() ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *from = neoGanglieJudgedTarget(room, ctx.owner);
+        if (!from || !from->isAlive()) return false;
         QStringList choices; choices << "damage"; if (from->getHandcardNum() > 1) choices << "throw";
-        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
-        if (choice == "damage") room->damage(DamageStruct(objectName(), ctx.owner, from, getEffectiveAmount(ctx)));
-        else room->askForDiscard(from, objectName(), 2 * getEffectiveAmount(ctx), 2 * getEffectiveAmount(ctx));
+        // The source's discard is itself the ask; only the damage branch is left to settlement.
+        if (room->askForChoice(ctx.owner, "neoganglie", choices.join("+")) == "throw") {
+            room->askForDiscard(from, "neoganglie", 2 * getEffectiveAmount(ctx), 2 * getEffectiveAmount(ctx));
+            return false;
+        }
+        ctx.targets = {from};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
+    {
+        if (!from || !from->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx) || neoGanglieJudgedTarget(room, ctx.owner) != from)
+            return false;
+        room->damage(DamageStruct("neoganglie", ctx.owner, from, getEffectiveAmount(ctx)));
         return false;
     }
 };
@@ -405,6 +465,8 @@ LingPackage::LingPackage()
 {
     General *neo_xiahoudun = new General(this, "neo_xiahoudun", "wei");
     neo_xiahoudun->addSkill(new NeoGanglie);
+    neo_xiahoudun->addSkill(new NeoGanglieSettle);
+    related_skills.insert("neoganglie", "#neoganglie");
 
     General *neo_xuchu = new General(this, "neo_xuchu", "wei");
     neo_xuchu->addSkill(new NeoLuoyi);

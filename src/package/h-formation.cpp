@@ -248,14 +248,16 @@ public:
         Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const Card *card = room->askForUseCard(ctx.owner, "@@heg_ziliang", "@heg_ziliang-give", -1, Card::MethodNone);
         if (!card || card->getSubcards().size() != 1) return false;
-        ctx.extra_data = card->getSubcards().first();
+        ctx.extra_data = QVariantMap{{"card_id", card->getSubcards().first()}};
         ctx.targets = {player};
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        const int id = ctx.extra_data.toInt();
-        if (ctx.owner && target->isAlive() && ctx.owner->getPile("field").contains(id))
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        if (ctx.owner->getPile("field").contains(id))
             room->obtainCard(target, id, objectName());
         return false;
     }
@@ -359,15 +361,16 @@ public:
         Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const CardUseStruct use = room->askForUseCardStruct(ctx.owner, "@@heg_huyuan", "@heg_huyuan-equip", -1, Card::MethodNone);
         if (!use.card || use.card->getSubcards().size() != 1 || use.to.size() != 1) return false;
-        ctx.extra_data = use.card->getSubcards().first();
+        ctx.extra_data = QVariantMap{{"card_id", use.card->getSubcards().first()}};
         ctx.targets = use.to;
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || ctx.targets.size() != 1 || !ctx.targets.first()->isAlive()) return false;
-        const int id = ctx.extra_data.toInt();
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
         const Card *card = Sanguosha->getCard(id);
+        if (!card) return false;
         const auto *equip = qobject_cast<const EquipCard *>(card->getRealCard());
         ServerPlayer *target = ctx.targets.first();
         if (room->getCardOwner(id) != ctx.owner
@@ -386,10 +389,13 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.owner || !ctx.owner->isAlive()) return false;
-        const auto *equip = qobject_cast<const EquipCard *>(
-            Sanguosha->getCard(ctx.extra_data.toInt())->getRealCard());
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        const Card *card = Sanguosha->getCard(ctx.extra_data.toMap().value("card_id", -1).toInt());
+        const auto *equip = card ? qobject_cast<const EquipCard *>(card->getRealCard()) : nullptr;
         if (!equip) return false;
+        // The victim pick stays at settlement: candidates are measured from the target after pay has
+        // placed the equipment (a horse changes distanceTo), so asking in cost could offer a stale set.
         QList<ServerPlayer *> candidates;
         for (ServerPlayer *other : room->getAllPlayers())
             if (target->distanceTo(other) == 1 && ctx.owner->canDiscard(other, "ej")) candidates << other;
@@ -625,17 +631,19 @@ public:
     {
         if (!ctx.original_data) return false;
         ServerPlayer *target = qobject_cast<ServerPlayer *>(ctx.original_data->value<CardsMoveOneTimeStruct>().from);
-        if (!target || !invokeHegemonySkill(this, room, ctx.owner, *ctx.original_data)) return false;
+        if (!target || !target->isAlive() || !invokeHegemonySkill(this, room, ctx.owner, *ctx.original_data)) return false;
+        // The owner invokes Shoucheng; in identity mode the recipient may refuse the draw.
+        // A refusal still counts as an invocation, so it is kept in ctx.choice rather than failing cost.
+        ctx.choice = Config.EnableHegemony ? QString("accept")
+            : room->askForChoice(target, objectName(), "accept+reject", QVariant::fromValue(ctx.owner));
         ctx.targets = {target};
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target->isAlive()) return false;
-        // The owner invokes Shoucheng; in identity mode the recipient may refuse the draw.
-        if (!Config.EnableHegemony && room->askForChoice(target, objectName(), "accept+reject",
-            QVariant::fromValue(ctx.owner)) != "accept") return false;
-        if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), objectName());
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || ctx.choice != "accept") return false;
+        target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
 };
@@ -827,7 +835,10 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         target->drawCards(getEffectiveAmount(ctx), objectName());
+        // The mandatory discard is the target's own and may pick the card just drawn, so it stays here.
         if (target->isAlive() && target->canDiscard(target, "he")) room->askForDiscard(target, objectName(), 1, 1, false, true);
         return false;
     }

@@ -1159,7 +1159,7 @@ public:
     }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     { return ctx.owner && ctx.owner->askForSkillInvoke(this); }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         // Accepting the reveal replaces the draw phase on every path.
         ServerPlayer *target = ctx.owner;
@@ -1191,20 +1191,53 @@ public:
             try { cleanup(); } catch (...) {}
             throw;
         }
-        if (different && ctx.owner->isAlive()) {
-            QList<ServerPlayer *> enemies;
-            for (ServerPlayer *candidate : room->getAlivePlayers())
-                if (!isJianGeFriend(candidate, ctx.owner)) enemies << candidate;
-            if (!enemies.isEmpty()) {
-                ServerPlayer *enemy = room->askForPlayerChosen(ctx.owner, enemies, objectName(), "@jglingfeng");
-                if (enemy) skillEffect(event, room, ctx.owner, ctx, enemy);
-            }
-        }
+        // A completed mixed-colour reveal leaves its HP loss on the finished context; #jglingfeng asks and settles it.
+        if (different) ctx.extra_data = QVariantMap{{"jglingfeng_loss", getEffectiveAmount(ctx)}};
+        return true;
+    }
+};
+
+static QList<ServerPlayer *> jglingfengEnemies(ServerPlayer *owner)
+{
+    QList<ServerPlayer *> enemies;
+    for (ServerPlayer *candidate : owner->getRoom()->getAlivePlayers())
+        if (!isJianGeFriend(candidate, owner)) enemies << candidate;
+    return enemies;
+}
+
+class JGLingfengLoseHp : public TriggerSkillV2
+{
+public:
+    JGLingfengLoseHp() : TriggerSkillV2("#jglingfeng") { events << EventSkillEffectFinished; frequency = Compulsory; }
+    static int pendingLoss(const QVariant &data)
+    {
+        const SkillContext finished = data.value<SkillContext>();
+        return finished.skill_name == "jglingfeng" ? finished.extra_data.toMap().value("jglingfeng_loss").toInt() : 0;
+    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        return player && player->isAlive() && player->hasSkill(objectName())
+                && data.value<SkillContext>().owner == player && pendingLoss(data) > 0
+                && !jglingfengEnemies(player).isEmpty()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const int amount = pendingLoss(*ctx.original_data);
+        const QList<ServerPlayer *> enemies = jglingfengEnemies(ctx.owner);
+        if (amount <= 0 || enemies.isEmpty()) return false;
+        ServerPlayer *enemy = room->askForPlayerChosen(ctx.owner, enemies, "jglingfeng", "@jglingfeng");
+        if (!enemy) return false;
+        ctx.targets = {enemy};
+        ctx.extra_data = amount;
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        room->loseHp(HpLostStruct(target, getEffectiveAmount(ctx), objectName(), ctx.owner));
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || isJianGeFriend(target, ctx.owner)) return false;
+        room->loseHp(HpLostStruct(target, ctx.extra_data.toInt(), "jglingfeng", ctx.owner));
         return false;
     }
 };
@@ -2291,6 +2324,8 @@ JianGeDefensePackage::JianGeDefensePackage()
     Soul *jg_soul_liubei = new Soul(this, "jg_soul_liubei", "shu", 5, true, true);
     jg_soul_liubei->addSkill(new JGJizhen);
     jg_soul_liubei->addSkill(new JGLingfeng);
+    jg_soul_liubei->addSkill(new JGLingfengLoseHp);
+    related_skills.insert("jglingfeng", "#jglingfeng");
     jg_soul_liubei->addRelateSkill("jgqinzhen");
 	skills << new JGQinzhen << new JGSlashRules;
 

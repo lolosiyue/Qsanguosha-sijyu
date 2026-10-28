@@ -357,6 +357,8 @@ public:
             if (!alreadyMarked) target->setFlags("-TieqiTarget");
         });
         room->judge(judge);
+        // Keep these asks after judgement: retrial hooks can change shown generals,
+        // and the suit discard must follow the resulting skill invalidation.
         QStringList choices;
         if (target->hasShownGeneral1()) choices << "head_general";
         if (target->hasShownGeneral2()) choices << "deputy_general";
@@ -444,21 +446,23 @@ public:
         ServerPlayer *target = ctx.preferredTarget;
         if (!use.card || !target || !target->isAlive() || !use.to.contains(target)) return false;
         if (target->getHp() < ctx.owner->getHp()) return false;
-        return invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target));
+        if (!invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target))) return false;
+        ctx.targets = {target};
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "nojink+adddamage", *ctx.original_data);
+        return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
-        if (ctx.owner && ctx.original_data) {
-            const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-            if (!use.card) return false;
-            const QString choice = room->askForChoice(ctx.owner, objectName(), "nojink+adddamage", *ctx.original_data);
-            if (choice == "nojink") preventJink(room, ctx.owner, target, use);
-            else if (choice == "adddamage") {
-                QStringList targets = use.card->getTag("heg_liegong_damage").toStringList();
-                targets << target->objectName();
-                use.card->setTag("heg_liegong_damage", targets);
-            }
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx) || !ctx.original_data) return false;
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.card || !use.to.contains(target) || target->getHp() < ctx.owner->getHp()) return false;
+        if (ctx.choice == "nojink") preventJink(room, ctx.owner, target, use);
+        else if (ctx.choice == "adddamage") {
+            QStringList targets = use.card->getTag("heg_liegong_damage").toStringList();
+            targets << target->objectName();
+            use.card->setTag("heg_liegong_damage", targets);
         }
         return false;
     }
@@ -679,6 +683,8 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // Keep choices sequential: earlier recoveries/draw hooks can change the
+        // owner's wounds and therefore the next recipient's available options.
         QStringList choices{"drawcard"};
         if (ctx.owner && ctx.owner->isAlive() && ctx.owner->isWounded()) choices << "recover";
         if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(ctx.owner)) == "recover")

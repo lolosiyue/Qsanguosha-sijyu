@@ -294,19 +294,30 @@ public:
         if (!early && !room->askForCard(player, "^TrickCard", "@ikxunyu-discard", QVariant(), objectName()))
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
+        if (!player || !player->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        // Accepted phase skips precede the Slash, even if its target effect is canceled.
         if (ctx.original_data->value<PhaseChangeStruct>().to == Player::Judge) {
             player->skip(Player::Judge, true);
             player->skip(Player::Draw, true);
         } else {
             player->skip(Player::Play, true);
         }
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         useSkillSlash(room, ctx, player, target, objectName());
         return false;
     }
@@ -358,15 +369,18 @@ public:
         log.to << lord;
         log.arg = objectName();
         room->sendLog(log);
-        ctx.extra_data = lord->objectName();
+        ctx.targets = QList<ServerPlayer *>{lord};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *lord = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (lord && lord->isAlive())
-            lord->drawCards(1, objectName());
+        if (!player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        if (lords(room, player).contains(target))
+            target->drawCards(1, objectName());
         return false;
     }
 };
@@ -532,20 +546,26 @@ public:
         if (!to)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = to->objectName();
+        ctx.targets = QList<ServerPlayer *>{to};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *to = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!to || !to->isAlive())
+        if (!player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        if (target == player)
             return false;
         const int x = qMax(player->getLostHp(), 1);
-        const bool drawMany = x > 1 && room->askForChoice(player, objectName(), "d1tx+dxt1", QVariant::fromValue(to)) == "dxt1";
-        to->drawCards(drawMany ? x : 1, objectName());
-        if (to->isAlive())
-            room->askForDiscard(to, objectName(), drawMany ? 1 : x, drawMany ? 1 : x, false, true);
+        // The mode is offered only for settlement-time X; interception can change lost HP.
+        const bool drawMany = x > 1
+            && room->askForChoice(player, objectName(), "d1tx+dxt1", QVariant::fromValue(target)) == "dxt1";
+        target->drawCards(drawMany ? x : 1, objectName());
+        // The executing discard must see the completed draw and its movement hooks.
+        if (target->isAlive())
+            room->askForDiscard(target, objectName(), drawMany ? 1 : x, drawMany ? 1 : x, false, true);
         return false;
     }
 };
@@ -742,22 +762,30 @@ public:
         log.to << lord;
         log.arg = objectName();
         room->sendLog(log);
-        ctx.extra_data = lord->objectName();
+        ctx.targets = QList<ServerPlayer *>{lord};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        if (!lords(room, player).contains(target))
+            return false;
         JudgeStruct judge;
         judge.pattern = ".|spade";
         judge.good = true;
         judge.reason = objectName();
         judge.who = player;
         room->judge(judge);
-        ServerPlayer *lord = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (judge.isGood() && lord && lord->isAlive() && lord->isWounded()) {
+        // Judgment hooks can retire the source or change the lord's eligibility.
+        if (judge.isGood() && player->isAlive() && ctx.owner->isAlive() && ctx.invoker->isAlive()
+            && target->isAlive() && isSourceAvailable(room, ctx)
+            && lords(room, player).contains(target) && target->isWounded()) {
             room->broadcastSkillInvoke(objectName());
-            room->recover(lord, RecoverStruct(objectName(), player));
+            room->recover(target, RecoverStruct(objectName(), player));
         }
         return false;
     }
@@ -878,30 +906,48 @@ public:
         return TriggerList{{player, {objectName()}}};
     }
 
-    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         if (!player->askForSkillInvoke(objectName()))
             return false;
         room->broadcastSkillInvoke(objectName());
-        return true;
-    }
-
-    // Draw one, or knock a card out of play.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
-    {
         QList<ServerPlayer *> targets;
         foreach (ServerPlayer *p, room->getAlivePlayers())
             if (player->canDiscard(p, "ej"))
                 targets << p;
         ServerPlayer *target = targets.isEmpty() ? nullptr
                                                  : room->askForPlayerChosen(player, targets, objectName(), "@ikjingfa", true);
-        if (!target) {
-            player->drawCards(1, objectName());
+        ctx.targets = QList<ServerPlayer *>{target ? target : player};
+        ctx.choice = target ? "discard" : "draw";
+        if (target) {
+            const int id = room->askForCardChosen(player, target, "ej", objectName(), false, Card::MethodDiscard);
+            ctx.extra_data = QVariantMap{{"card_id", id}};
+        }
+        return true;
+    }
+
+    // Draw one, or knock a card out of play.
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        if (ctx.choice == "draw") {
+            if (target == player)
+                player->drawCards(1, objectName());
             return false;
         }
-        const int id = room->askForCardChosen(player, target, "ej", objectName(), false, Card::MethodDiscard);
-        if (id >= 0)
-            room->throwCard(id, room->getCardPlace(id) == Player::PlaceDelayedTrick ? nullptr : target, player);
+        if (ctx.choice != "discard")
+            return false;
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        if (id < 0)
+            return false;
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) == target
+            && (place == Player::PlaceEquip || place == Player::PlaceDelayedTrick)
+            && player->canDiscard(target, id))
+            room->throwCard(id, place == Player::PlaceDelayedTrick ? nullptr : target, player);
         return false;
     }
 };

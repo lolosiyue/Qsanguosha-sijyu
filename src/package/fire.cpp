@@ -135,36 +135,79 @@ public:
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *source = ctx.invoker;
-        if (!source || !target) return ContinueEffects;
-        Room *room = source->getRoom();
-        if (ctx.choice == "damage") {
-            ServerPlayer *tiger = room->findPlayerByObjectName(ctx.extra_data.toString(), true);
-            if (tiger) room->damage(DamageStruct(objectName(), tiger, target, getEffectiveAmount(ctx)));
+        if (!source || !source->isAlive() || !target || !target->isAlive() || !source->canPindian(target))
             return ContinueEffects;
-        }
-        if (!source->canPindian(target)) return ContinueEffects;
+        Room *room = source->getRoom();
         room->broadcastSkillInvoke(objectName(), source->isJieGeneral() ? 3 : 1);
-        const bool success = source->pindian(target, objectName(), nullptr);
-        if (success) {
-            room->broadcastSkillInvoke(objectName(), source->isJieGeneral() ? 4 : 2);
-            QList<ServerPlayer *> wolves;
-            for (ServerPlayer *player : room->getOtherPlayers(target))
-                if (target->inMyAttackRange(player)) wolves << player;
-            if (wolves.isEmpty()) {
-                LogMessage log;
-                log.type = "#QuhuNoWolf";
-                log.from = source;
-                log.to << target;
-                room->sendLog(log);
-            } else {
-                ServerPlayer *wolf = room->askForPlayerChosen(source, wolves, objectName(),
-                    QString("@quhu-damage:%1").arg(target->objectName()));
-                ctx.choice = "damage";
-                ctx.extra_data = target->objectName();
-                skillEffect(ctx, wolf);
-            }
-        } else if (source->isAlive()) room->damage(DamageStruct(objectName(), target, source, getEffectiveAmount(ctx)));
+        // A won pindian is settled by #quhu at Pindian, where choosing the wolf is its cost.
+        if (!source->pindian(target, objectName(), nullptr) && source->isAlive())
+            room->damage(DamageStruct(objectName(), target, source, getEffectiveAmount(ctx)));
         return ContinueEffects;
+    }
+};
+
+static QList<ServerPlayer *> quhuWolves(Room *room, ServerPlayer *tiger)
+{
+    QList<ServerPlayer *> wolves;
+    for (ServerPlayer *player : room->getOtherPlayers(tiger))
+        if (tiger->inMyAttackRange(player)) wolves << player;
+    return wolves;
+}
+
+// The quhu pindian runs inside the accepted quhu activation; that activation's committed target is the tiger.
+static ServerPlayer *quhuPindianTiger(Room *room, ServerPlayer *owner)
+{
+    const qint64 pindian = room->historyParent(room->currentHistoryEventId(), "pindian", true).value("id").toLongLong();
+    if (pindian <= 0) return nullptr;
+    const QVariantMap skill = room->historyParent(pindian, "skill").value("data").toMap();
+    const QVariantList targets = skill.value("targets").toList();
+    if (skill.value("executing_skill").toString() != "quhu"
+        || skill.value("activation_owner").toString() != owner->objectName() || targets.length() != 1)
+        return nullptr;
+    return room->findPlayerByObjectName(targets.first().toString());
+}
+
+class QuhuSettle : public TriggerSkillV2
+{
+public:
+    QuhuSettle() : TriggerSkillV2("#quhu") { events << Pindian; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const PindianStruct *pindian = data.value<PindianStruct *>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || !pindian || pindian->from != player
+            || pindian->reason != "quhu" || !pindian->success)
+            return TriggerList();
+        ServerPlayer *tiger = quhuPindianTiger(room, player);
+        return tiger && pindian->to == tiger ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *tiger = quhuPindianTiger(room, ctx.owner);
+        if (!tiger) return false;
+        room->broadcastSkillInvoke("quhu", ctx.owner->isJieGeneral() ? 4 : 2);
+        const QList<ServerPlayer *> wolves = quhuWolves(room, tiger);
+        if (wolves.isEmpty()) {
+            LogMessage log;
+            log.type = "#QuhuNoWolf";
+            log.from = ctx.owner;
+            log.to << tiger;
+            room->sendLog(log);
+            return false;
+        }
+        ServerPlayer *wolf = room->askForPlayerChosen(ctx.owner, wolves, "quhu", QString("@quhu-damage:%1").arg(tiger->objectName()));
+        if (!wolf) return false;
+        ctx.targets = {wolf};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *tiger = ctx.owner ? quhuPindianTiger(room, ctx.owner) : nullptr;
+        if (!target || !target->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx) || !tiger || !quhuWolves(room, tiger).contains(target))
+            return false;
+        room->damage(DamageStruct("quhu", tiger, target, getEffectiveAmount(ctx)));
+        return false;
     }
 };
 
@@ -1849,7 +1892,9 @@ FirePackage::FirePackage()
 
     General *xunyu = new General(this, "xunyu", "wei", 3); // WEI 013
     xunyu->addSkill(new Quhu);
+    xunyu->addSkill(new QuhuSettle);
     xunyu->addSkill(new Jieming);
+    related_skills.insert("quhu", "#quhu");
 
     General *pangtong = new General(this, "pangtong", "shu", 3); // SHU 010
     pangtong->addSkill(new Lianhuan);

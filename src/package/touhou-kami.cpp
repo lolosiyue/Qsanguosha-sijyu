@@ -1479,18 +1479,21 @@ public:
         const Card *used = room->askForUseCard(ctx.owner, "@@" + objectName(), "@" + objectName(), -1, Card::MethodDiscard);
         if (!used)
             return false;
-        ctx.extra_data = used->subcardsLength();
+        ctx.choice = used->subcardsLength() < 2
+            ? room->askForChoice(ctx.owner, objectName(), m_skills.join("+")) : m_skills.join("+");
+        ctx.targets = QList<ServerPlayer *>{ctx.owner};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        QStringList chosen = m_skills;
-        if (ctx.extra_data.toInt() < 2)
-            chosen = QStringList{room->askForChoice(player, objectName(), m_skills.join("+"))};
-        foreach (const QString &skill, chosen)
-            grantTracked(room, player, tagKey(), skill);
+        if (!player || !player->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || target != player || !isSourceAvailable(room, ctx))
+            return false;
+        foreach (const QString &skill, ctx.choice.split("+"))
+            if (m_skills.contains(skill))
+                grantTracked(room, player, tagKey(), skill);
         return false;
     }
 
@@ -1523,15 +1526,17 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (judge && judge->card && target && target->isAlive()
+        if (judge && judge->who == ctx.owner && judge->card
             && room->getCardPlace(judge->card->getEffectiveId()) == Player::PlaceJudge)
             room->obtainCard(target, judge->card, objectName());
         return false;
@@ -3365,19 +3370,24 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive() || !player->getWeapon())
+        if (!player || !player->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || target == player || !isSourceAvailable(room, ctx)
+            || player->getMark("thchuntie-Clear") > 0 || !player->getWeapon())
             return false;
-        room->addPlayerMark(player, "thchuntie-Clear");
         const int weapon = player->getWeapon()->getEffectiveId();
         CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+        const int index = move.card_ids.indexOf(weapon);
+        if (move.from != player || index < 0 || move.from_places.value(index) != Player::PlaceEquip
+            || room->getCardOwner(weapon) != player)
+            return false;
+        room->addPlayerMark(player, "thchuntie-Clear");
         move.removeCardIds(QList<int>{weapon});
         *ctx.original_data = QVariant::fromValue(move);
         room->giveCard(player, target, QList<int>{weapon}, objectName(), true);

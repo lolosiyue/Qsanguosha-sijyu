@@ -549,26 +549,26 @@ public:
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        return ctx.owner && !candidates(room, ctx.owner).isEmpty() && ctx.owner->askForSkillInvoke(this);
-    }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
-        if (getEffectiveAmount(ctx) <= 0) return false;
-        // Recompute the second choice after the first discard and its nested effects.
-        for (int i = 0; i < 2 && ctx.owner->isAlive(); ++i) {
+        ctx.targets.clear();
+        if (!ctx.owner || candidates(room, ctx.owner).isEmpty() || !ctx.owner->askForSkillInvoke(this)) return false;
+        // Both players are chosen before settlement; recompute eligibility after each pick.
+        for (int i = 0; i < 2 && getEffectiveAmount(ctx) > 0 && ctx.owner->isAlive(); ++i) {
             const QList<ServerPlayer *> targets = candidates(room, ctx.owner);
             if (targets.isEmpty()) break;
             ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName());
             if (!target) break;
-            SkillContext discard = ctx;
-            skillEffect(event, room, player, discard, target);
+            ctx.targets << target;
         }
-        return false;
+        return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !ctx.owner->canDiscard(target, "he")
+            || !isSourceAvailable(room, ctx)) return false;
+        // Card choices stay here to see earlier discards and their nested effects.
         for (int i = 0; i < getEffectiveAmount(ctx) && target->isAlive() && ctx.owner->isAlive()
-             && ctx.owner->canDiscard(target, "he"); ++i) {
+             && ctx.owner->canDiscard(target, "he") && isSourceAvailable(room, ctx); ++i) {
             const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
             if (room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id)
                 || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)

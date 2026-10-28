@@ -496,15 +496,16 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
+        if (!ctx.owner || !ctx.owner->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (target && target->isAlive() && onTable(room, damage.card))
+        if (onTable(room, damage.card))
             room->obtainCard(target, damage.card, objectName());
         return false;
     }
@@ -615,15 +616,15 @@ public:
         const Card *card = room->askForCard(player, "..", prompt, *ctx.original_data, Card::MethodResponse, judge->who, true);
         if (!card)
             return false;
-        ctx.extra_data = card->getEffectiveId();
+        ctx.extra_data = QVariantMap{{"card_id", card->getEffectiveId()}};
         return true;
     }
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
-        const int id = ctx.extra_data.toInt();
-        if (!judge || room->getCardOwner(id) != player
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        if (!judge || id < 0 || room->getCardOwner(id) != player
             || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip))
             return false;
         room->broadcastSkillInvoke(objectName());
@@ -838,15 +839,14 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *from = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!from || !from->isAlive())
+        if (!player || !player->isAlive() || !from || !from->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         QList<int> disabled;
         if (!fieldMoveSource(room, player, from, &disabled))
@@ -1278,29 +1278,35 @@ public:
         if (player->getMark("@wayward") > 0) {
             if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(player)))
                 return false;
-            ctx.extra_data = QString();
+            ctx.choice = "draw";
+            ctx.targets.clear();
         } else {
             ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(),
                                                             "@ikguijiao", true, true);
             if (!target)
                 return false;
-            ctx.extra_data = target->objectName();
+            ctx.choice = "mark";
+            ctx.targets = QList<ServerPlayer *>{target};
         }
         room->broadcastSkillInvoke(objectName());
         return true;
     }
 
+    // Self-only branch: no recipient, so it settles here rather than in effectTarget.
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        const QString name = ctx.extra_data.toString();
-        if (name.isEmpty()) {
+        if (ctx.choice == "draw") {
             ctx.owner->drawCards(1, objectName());
             room->addPlayerMark(player, "ikguijiao_less-Clear");
-            return false;
         }
-        ServerPlayer *target = room->findPlayerByObjectName(name);
-        if (target && target->isAlive())
-            target->gainMark("@wayward");
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.owner || !ctx.owner->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        target->gainMark("@wayward");
         return false;
     }
 };

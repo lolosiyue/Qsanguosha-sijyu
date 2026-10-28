@@ -3280,7 +3280,11 @@ public:
         if (targets.isEmpty()) return false;
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName(), "ifxiongzheng0", true, true);
         if (!target) return false;
-        ctx.targets = {target}; return true;
+        ctx.targets = {target};
+        // Selection only: reveal and spend the character selection at settlement.
+        ctx.extra_data = target->isKongcheng() ? -1
+            : room->askForCardChosen(ctx.owner, target, "h", objectName());
+        return true;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -3302,6 +3306,8 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         if (getEffectiveAmount(ctx) <= 0) return false;
         if (!candidates(room, ctx).contains(target)) return false;
         QVariantMap receipt = dreamReceipt(room, ctx);
@@ -3309,8 +3315,7 @@ public:
         // Selection itself is spent even when the selected character has no hand.
         QVariantList receipts = room->getTag("IfXiongzhengApplied").toList();
         receipts << receipt; room->setTag("IfXiongzhengApplied", receipts);
-        if (target->isKongcheng()) return false;
-        const int id = room->askForCardChosen(ctx.owner, target, "h", objectName());
+        const int id = ctx.extra_data.toInt();
         if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand) return false;
         const QString type = Sanguosha->getCard(id)->getType();
         receipt.insert("type", type);

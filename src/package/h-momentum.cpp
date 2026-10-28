@@ -509,9 +509,19 @@ public:
             objectName(), "yinghun-invoke", true, true);
         if (!target) return false;
         ctx.targets = {target};
+        ctx.choice = "dxt1";
+        if (ctx.owner->getLostHp() * getEffectiveAmount(ctx) != 1) {
+            const bool flagged = target->hasFlag("YinghunTarget");
+            target->setFlags("YinghunTarget");
+            const auto clear = qScopeGuard([&] { if (!flagged) target->setFlags("-YinghunTarget"); });
+            ctx.choice = room->askForChoice(ctx.owner, objectName(), "d1tx+dxt1");
+        }
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || target == ctx.owner || !isSourceAvailable(room, ctx)) return false;
+        // Discard executes after the draw and its hooks, using the final effect amount.
         const int lostHp = ctx.owner->getLostHp() * getEffectiveAmount(ctx);
         if (lostHp == 1) {
             target->drawCards(1, objectName());
@@ -521,9 +531,7 @@ public:
         const bool flagged = target->hasFlag("YinghunTarget");
         target->setFlags("YinghunTarget");
         const auto clear = qScopeGuard([&] { if (!flagged) target->setFlags("-YinghunTarget"); });
-        const QString choice = room->askForChoice(ctx.owner, objectName(), "d1tx+dxt1");
-
-        if (choice == "d1tx") {
+        if (ctx.choice == "d1tx") {
             target->drawCards(1, objectName());
             if (lostHp > 0) room->askForDiscard(target, objectName(), lostHp, lostHp, false, true);
         } else {
@@ -623,13 +631,24 @@ public:
         if (!ctx.owner->askForSkillInvoke(this)) return false;
         for (ServerPlayer *p : room->getAlivePlayers())
             if (p->isChained() && ctx.owner->canDiscard(p, "he")) ctx.targets << p;
-        return !ctx.targets.isEmpty();
+        if (ctx.targets.isEmpty()) return false;
+        ServerPlayer *first = ctx.targets.first();
+        if (first != ctx.owner)
+            ctx.extra_data = QVariantMap{{"card_id", room->askForCardChosen(ctx.owner, first, "he", objectName(), false, Card::MethodDiscard)}};
+        return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
-        if (!ctx.owner->isAlive() || !target->isChained() || !ctx.owner->canDiscard(target, "he")) return false;
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)
+            || !target->isChained() || !ctx.owner->canDiscard(target, "he")) return false;
+        // Self-discard executes payment here; later picks must see prior discards and their hooks.
         if (target == ctx.owner) room->askForDiscard(target, objectName(), 1, 1, false, true);
         else {
-            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
+            const int id = target == ctx.targets.value(0) ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                : room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
+            if (id < 0 || Sanguosha->getCard(id)->hasFlag("using") || room->getCardOwner(id) != target
+                || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)
+                || !ctx.owner->canDiscard(target, id)) return false;
             room->throwCard(id, target, ctx.owner);
         }
         return false;
@@ -651,7 +670,9 @@ public:
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
         room->setPlayerMark(ctx.owner, "HengzhengUsed", 1);
-        // Replacement draw must return true after all V2 target effects complete.
+        // DEFER: replacement draw must return true even if every recipient is intercepted.
+        // The framework has no post-target stage; returning true here prevents its target drain.
+        // Later card picks must also observe each preceding extraction and its hooks.
         for (ServerPlayer *p : room->getOtherPlayers(ctx.owner)) {
             if (!ctx.owner->isAlive()) break;
             if (ctx.owner->canGet(p, "hej")) skillEffect(event, room, player, ctx, p);
@@ -659,7 +680,9 @@ public:
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
-        if (ctx.owner->isAlive() && ctx.owner->canGet(target, "hej")) {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        if (ctx.owner->canGet(target, "hej")) {
             const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodGet);
             if (!ctx.owner->canGet(target, id)) return false;
             room->obtainCard(ctx.owner, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName(), target->objectName(), objectName(), QString()), false);
@@ -739,6 +762,11 @@ public:
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        // Preserve damage prevention; these guards only gate the replacement penalty.
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return true;
+        // DEFER: penalty options and skill names depend on current equipment, visible skills
+        // and prior stripped-target state at settlement, after interception.
         QStringList choices;
         if (target->hasEquip()) choices << "discard";
         QStringList skills;
@@ -808,6 +836,10 @@ public:
         return !ctx.targets.isEmpty();
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)
+            || !ctx.original_data || !targets(ctx.owner, ctx.original_data->value<CardUseStruct>()).contains(target)) return false;
+        // DEFER: this mandatory ask executes the discard; cost would pay even if intercepted.
         if (target->canDiscard(target, "e")) room->askForDiscard(target, objectName(), 1, 1, false, true,
             "@heg_fengshi-discard:" + ctx.owner->objectName(), ".|.|.|equipped");
         return false;

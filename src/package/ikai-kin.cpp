@@ -242,21 +242,31 @@ public:
         return TriggerList();
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
-
-    // Each target may lose a card.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        foreach (ServerPlayer *to, use.to) {
-            if (!player->isAlive() || !to->isAlive() || !player->canDiscard(to, "he")
-                || !player->askForSkillInvoke(objectName(), QVariant::fromValue(to)))
-                continue;
-            room->broadcastSkillInvoke(objectName());
-            const int id = room->askForCardChosen(player, to, "he", objectName(), false, Card::MethodDiscard);
-            if (id >= 0)
-                room->throwCard(id, to, player);
+        ctx.targets.clear();
+        // Confirm every recipient before the framework starts target effects.
+        const QList<ServerPlayer *> tos = ctx.original_data->value<CardUseStruct>().to;
+        foreach (ServerPlayer *to, tos) {
+            if (!player->isAlive() || !isSourceAvailable(room, ctx))
+                break;
+            if (to->isAlive() && player->canDiscard(to, "he")
+                && player->askForSkillInvoke(objectName(), QVariant::fromValue(to)))
+                ctx.targets << to;
         }
+        return !ctx.targets.isEmpty();
+    }
+
+    // Each confirmed target may lose a card.
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx)
+            || !player->canDiscard(target, "he"))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
+        if (id >= 0)
+            room->throwCard(id, target, player);
         return false;
     }
 };
@@ -313,21 +323,22 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
     // The 闪 goes to someone else; unless that is the user, it slashes the same target again.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
         const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
         const QList<int> ids = jinkIds(room, effect);
-        if (!target || !target->isAlive() || ids.isEmpty())
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx)
+            || ids.isEmpty())
             return false;
         DummyCard dummy(ids);
         room->obtainCard(target, &dummy, objectName());
-        if (target != player && player->isAlive() && effect.to && effect.to->isAlive()
+        // The follow-up 杀 must see the completed obtain; its movement hooks can retire the source.
+        if (target != player && player->isAlive() && isSourceAvailable(room, ctx) && effect.to && effect.to->isAlive()
             && player->canSlash(effect.to, nullptr, false))
             room->askForUseSlashTo(player, effect.to, "iklanjian-slash:" + effect.to->objectName(), false, true);
         return false;
@@ -372,6 +383,8 @@ public:
         if (!judge.isGood() || !player->isAlive())
             return false;
         const QList<int> ids = room->getNCards(player->getLostHp() + 1, false);
+        // The recipient is chosen only after a good judgement, seeing these cards; a canceled
+        // target effect would strand them off the pile, so the pick stays here, not in cost.
         room->fillAG(ids, player);
         ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(), "@ikxuanwu");
         room->clearAG(player);
@@ -441,17 +454,13 @@ public:
         return TriggerList{{player, {objectName()}}};
     }
 
-    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+    // A free thunder 杀, or a point of thunder damage to someone adjacent.
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         if (!player->askForSkillInvoke(objectName()))
             return false;
         room->broadcastSkillInvoke(objectName());
-        return true;
-    }
-
-    // A free thunder 杀, or a point of thunder damage to someone adjacent.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
+        ctx.targets.clear();
         ThunderSlash probe(Card::NoSuit, 0);
         probe.setSkillName("_" + objectName());
         QList<ServerPlayer *> slashTargets, adjacent;
@@ -466,11 +475,27 @@ public:
             choices << "slash";
         if (!adjacent.isEmpty())
             choices << "damage";
+        // An accepted invocation with no legal mode settles nothing, as before.
         if (choices.isEmpty())
+            return true;
+        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"));
+        ServerPlayer *target = ctx.choice == "slash"
+            ? room->askForPlayerChosen(player, slashTargets, "iknilan_slash", "@dummy-slash")
+            : room->askForPlayerChosen(player, adjacent, "iknilan_damage", "@iknilan-damage");
+        if (target)
+            ctx.targets << target;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
             return false;
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "slash") {
-            ServerPlayer *target = room->askForPlayerChosen(player, slashTargets, "iknilan_slash", "@dummy-slash");
-            if (!target)
+        if (ctx.choice == "slash") {
+            ThunderSlash probe(Card::NoSuit, 0);
+            probe.setSkillName("_" + objectName());
+            // The recipient must still be a legal 杀 target when the target effect settles.
+            if (player->isCardLimited(&probe, Card::MethodUse) || !player->canSlash(target, &probe, false))
                 return false;
             auto *slash = new ThunderSlash(Card::NoSuit, 0);
             slash->setSkillName("_" + objectName());
@@ -478,10 +503,8 @@ public:
             use.m_addHistory = false;
             use.setOwnedCard(slash);
             room->useCardFromSkillEffect(use, ctx);
-        } else {
-            ServerPlayer *target = room->askForPlayerChosen(player, adjacent, "iknilan_damage", "@iknilan-damage");
-            if (target)
-                room->damage(DamageStruct(objectName(), player, target, 1, DamageStruct::Thunder));
+        } else if (ctx.choice == "damage") {
+            room->damage(DamageStruct(objectName(), player, target, 1, DamageStruct::Thunder));
         }
         return false;
     }
@@ -533,15 +556,15 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = QList<ServerPlayer *>{target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (target && target->isAlive())
-            room->damage(DamageStruct(objectName(), ctx.owner, target, 1, DamageStruct::Thunder));
+        if (!ctx.owner || !ctx.owner->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        room->damage(DamageStruct(objectName(), ctx.owner, target, 1, DamageStruct::Thunder));
         return false;
     }
 };

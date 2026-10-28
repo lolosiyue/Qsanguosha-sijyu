@@ -176,74 +176,97 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "FujueCard"; }
     EffectFlow effect(SkillContext &ctx) const override
     {
-        ServerPlayer *source = ctx.invoker;
-        if (!source || !source->isAlive()) return FinishSkill;
-        Room *room = source->getRoom();
-        const int before = source->getCardCount();
-        QList<ServerPlayer *> sources;
-        for (ServerPlayer *from : room->getAlivePlayers()) {
-            bool movable = false;
-            for (const Card *card : from->getCards("ej")) {
-                for (ServerPlayer *to : room->getOtherPlayers(from))
-                    if (canTransfer(source, from, to, card)) { movable = true; break; }
-                if (movable) break;
-            }
-            if (movable) sources << from;
-        }
-        if (!sources.isEmpty()) {
-            ServerPlayer *from = room->askForPlayerChosen(source, sources, objectName() + "_from", "@movefield-from-optional", true);
-            if (from && from->isAlive() && source->isAlive()) {
-                QList<int> disabled;
-                for (const Card *card : from->getCards("ej")) {
-                    bool movable = false;
-                    for (ServerPlayer *to : room->getOtherPlayers(from))
-                        if (canTransfer(source, from, to, card)) { movable = true; break; }
-                    if (!movable) disabled << card->getEffectiveId();
-                }
-                if (disabled.size() < from->getCards("ej").size()) {
-                    const int id = room->askForCardChosen(source, from, "ej", objectName(), false, Card::MethodMove, disabled);
-                    const Card *card = id < 0 ? nullptr : Sanguosha->getCard(id);
-                    QList<ServerPlayer *> destinations;
-                    for (ServerPlayer *to : room->getOtherPlayers(from)) if (canTransfer(source, from, to, card)) destinations << to;
-                    if (!destinations.isEmpty()) {
-                        ServerPlayer *to = room->askForPlayerChosen(source, destinations, objectName() + "_to", "@movefield-to:" + card->objectName());
-                        QStringList accepted;
-                        for (ServerPlayer *participant : QList<ServerPlayer *>{from, to}) {
-                            SkillContext move = ctx;
-                            move.extra_data = QStringList();
-                            skillEffect(move, participant);
-                            accepted << move.extra_data.toStringList();
-                        }
-                        if (accepted.size() == 2 && accepted[0] != accepted[1]) {
-                            ServerPlayer *actualFrom = room->findPlayerByObjectName(accepted[0]);
-                            ServerPlayer *actualTo = room->findPlayerByObjectName(accepted[1]);
-                            // Recheck the selected material and both zones after recipient callbacks.
-                            if (canTransfer(source, actualFrom, actualTo, card))
-                                room->moveCardTo(card, actualFrom, actualTo, room->getCardPlace(id),
-                                    CardMoveReason(CardMoveReason::S_REASON_TRANSFER, source->objectName(), objectName(), ""), true);
-                        }
-                    }
-                }
-            }
-        }
+        // The amount is this execution's receipt; #fujue asks and settles the move and the hand balance once it finishes.
         const int amount = getEffectiveAmount(ctx);
-        if (!source->isAlive() || amount <= 0) return FinishSkill;
-        const int after = source->getCardCount();
-        const int delta = 5 * amount - source->getHandcardNum();
-        if (delta > 0) source->drawCards(delta, objectName());
-        else if (delta < 0) room->askForDiscard(source, objectName(), -delta, -delta);
-        if ((after < before && delta > 0) || (after > before && delta < 0)) room->addDistance(source, -amount);
+        if (ctx.invoker && ctx.invoker->isAlive() && amount > 0) ctx.extra_data = amount;
         return FinishSkill;
     }
-    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+};
+
+class FujueSettle : public TriggerSkillV2
+{
+public:
+    FujueSettle() : TriggerSkillV2("#fujue") { events << EventSkillEffectFinished; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (!target || !target->isAlive() || getEffectiveAmount(ctx) <= 0) return ContinueEffects;
-        QStringList accepted = ctx.extra_data.toStringList();
-        accepted << target->objectName();
-        ctx.extra_data = accepted;
-        return ContinueEffects;
+        const SkillContext accepted = data.value<SkillContext>();
+        return player && player->isAlive() && player->hasSkill(objectName()) && accepted.skill_name == "fujue"
+                && accepted.invoker == player && !player->hasFlag("Global_ProcessBroken") && accepted.extra_data.toInt() > 0
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // The move is optional but the hand balance is not, so a declined move still settles in effect.
+        ctx.targets.clear();
+        ctx.extra_data = QVariant();
+        ServerPlayer *source = ctx.owner;
+        if (!source || !source->isAlive()) return false;
+        QList<ServerPlayer *> sources;
+        for (ServerPlayer *from : room->getAlivePlayers())
+            if (!movable(source, from).isEmpty()) sources << from;
+        if (sources.isEmpty()) return true;
+        ServerPlayer *from = room->askForPlayerChosen(source, sources, "fujue_from", "@movefield-from-optional", true);
+        if (!from || !from->isAlive() || !source->isAlive()) return true;
+        const QList<int> legal = movable(source, from);
+        if (legal.isEmpty()) return true;
+        QList<int> disabled;
+        for (const Card *card : from->getCards("ej"))
+            if (!legal.contains(card->getEffectiveId())) disabled << card->getEffectiveId();
+        const int id = room->askForCardChosen(source, from, "ej", "fujue", false, Card::MethodMove, disabled);
+        if (!legal.contains(id)) return true;
+        const Card *card = Sanguosha->getCard(id);
+        QList<ServerPlayer *> destinations;
+        for (ServerPlayer *to : room->getOtherPlayers(from)) if (canTransfer(source, from, to, card)) destinations << to;
+        if (destinations.isEmpty()) return true;
+        ServerPlayer *to = room->askForPlayerChosen(source, destinations, "fujue_to", "@movefield-to:" + card->objectName());
+        if (!to) return true;
+        ctx.targets = {to};
+        ctx.extra_data = id;
+        return true;
+    }
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // A chosen move balances after it settles at its recipient.
+        if (ctx.targets.isEmpty() && ctx.owner && ctx.owner->isAlive()) balance(ctx, ctx.owner->getCardCount());
+        return false;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        const int before = ctx.owner->getCardCount();
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        const Card *card = ok ? Sanguosha->getCard(id) : nullptr;
+        // The card id pins the source: it moves from its live holder only while that transfer is still legal.
+        ServerPlayer *from = card ? room->getCardOwner(id) : nullptr;
+        if (target && target->isAlive() && canTransfer(ctx.owner, from, target, card))
+            room->moveCardTo(card, from, target, room->getCardPlace(id),
+                CardMoveReason(CardMoveReason::S_REASON_TRANSFER, ctx.owner->objectName(), "fujue", ""), true);
+        // The balance reads the move's result, so it stays after the settle.
+        balance(ctx, before);
+        return false;
     }
 private:
+    static void balance(const SkillContext &ctx, int before)
+    {
+        ServerPlayer *source = ctx.owner;
+        const int amount = ctx.original_data ? ctx.original_data->value<SkillContext>().extra_data.toInt() : 0;
+        if (!source || !source->isAlive() || amount <= 0) return;
+        Room *room = source->getRoom();
+        const int after = source->getCardCount();
+        const int delta = 5 * amount - source->getHandcardNum();
+        if (delta > 0) source->drawCards(delta, "fujue");
+        else if (delta < 0) room->askForDiscard(source, "fujue", -delta, -delta);
+        if ((after < before && delta > 0) || (after > before && delta < 0)) room->addDistance(source, -amount);
+    }
+    static QList<int> movable(ServerPlayer *actor, ServerPlayer *from)
+    {
+        QList<int> ids;
+        for (const Card *card : from->getCards("ej"))
+            for (ServerPlayer *to : actor->getRoom()->getOtherPlayers(from))
+                if (canTransfer(actor, from, to, card)) { ids << card->getEffectiveId(); break; }
+        return ids;
+    }
     static bool canTransfer(ServerPlayer *actor, ServerPlayer *from, ServerPlayer *to, const Card *card)
     {
         if (!actor || !actor->isAlive() || !from || !from->isAlive() || !to || !to->isAlive() || from == to || !card) return false;
@@ -1187,6 +1210,8 @@ YJCM2023Package::YJCM2023Package()
 	General *th_peixiu = new General(this, "th_peixiu", "qun", 3);
 	th_peixiu->addSkill(new Zhitu);
 	th_peixiu->addSkill(new Fujue);
+	th_peixiu->addSkill(new FujueSettle);
+	related_skills.insert("fujue", "#fujue");
 	addMetaObject<FujueCard>();
 
 	General *th_simafu = new General(this, "th_simafu", "wei", 3);

@@ -176,7 +176,8 @@ public:
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.owner->isAlive() || !ctx.original_data) return false;
-        if (ctx.current_event != CardOffset) {
+        // Framework effect hooks replace current_event; continuation identity is static.
+        if (!events.contains(CardOffset)) {
             const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
             return TriggerSkillV2::isSourceAvailable(room, ctx) && slashUse(use)
                 && use.from == ctx.owner && ctx.preferredTarget && ctx.preferredTarget->isAlive()
@@ -209,7 +210,7 @@ public:
         if (!room || !ctx.owner || !ctx.preferredTarget || !ctx.original_data) return false;
         if (event == CardOffset) {
             // The liability removes the original user's cards; the dodging player chooses them.
-            ctx.targets.clear();
+            ctx.targets = {ctx.owner};
             return true;
         }
         if (!ctx.owner->askForSkillInvoke(this, QVariant::fromValue(ctx.preferredTarget))) return false;
@@ -218,14 +219,28 @@ public:
             ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+discard",
                                            QVariant::fromValue(ctx.preferredTarget));
         if (ctx.choice == "draw") ctx.targets.clear();
-        else ctx.targets = {ctx.preferredTarget};
+        else {
+            ctx.targets = {ctx.preferredTarget};
+            int id = -1;
+            if (ctx.choice == "discard" && getEffectiveAmount(ctx) > 0
+                && ctx.owner->canDiscard(ctx.preferredTarget, "he")) {
+                const QVariant previous = room->getTag("MoukuiDiscard");
+                const auto restoreTag = qScopeGuard([room, previous] {
+                    if (previous.isValid()) room->setTag("MoukuiDiscard", previous);
+                    else room->removeTag("MoukuiDiscard");
+                });
+                room->setTag("MoukuiDiscard", *ctx.original_data);
+                id = room->askForCardChosen(ctx.owner, ctx.preferredTarget, "he", objectName(), false, Card::MethodDiscard);
+            }
+            ctx.extra_data = QVariantMap{{"card_id", id}};
+        }
         return ctx.choice == "draw" || ctx.choice == "discard";
     }
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        // The draw choice and the offset liability both act on the owner.
-        if (event == CardOffset || ctx.choice == "draw") return resolve(event, room, ctx, ctx.owner);
+        // Only the targetless draw settles here; liability uses framework target dispatch.
+        if (event == TargetSpecified && ctx.choice == "draw") return resolve(event, room, ctx, ctx.owner);
         return false;
     }
 
@@ -235,7 +250,10 @@ public:
 
     bool resolve(TriggerEvent event, Room *room, SkillContext &ctx, ServerPlayer *target) const
     {
-        if (!room || !ctx.owner || !ctx.original_data || !target || !ctx.owner->isAlive()) return false;
+        if (!room || !ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.original_data || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        if (target != ((event == CardOffset || ctx.choice == "draw") ? ctx.owner : ctx.preferredTarget))
+            return false;
         const int amount = getEffectiveAmount(ctx);
         if (event == TargetSpecified) {
             const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
@@ -246,14 +264,16 @@ public:
             if (ctx.choice == "draw") target->drawCards(amount, objectName());
             else {
                 for (int i = 0; i < amount && ctx.owner->isAlive() && target->isAlive()
-                     && ctx.owner->canDiscard(target, "he"); ++i) {
+                     && ctx.owner->canDiscard(target, "he") && isSourceAvailable(room, ctx); ++i) {
                     const QVariant previous = room->getTag("MoukuiDiscard");
                     const auto restoreTag = qScopeGuard([room, previous] {
                         if (previous.isValid()) room->setTag("MoukuiDiscard", previous);
                         else room->removeTag("MoukuiDiscard");
                     });
                     room->setTag("MoukuiDiscard", *ctx.original_data);
-                    const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
+                    // Later picks depend on the preceding discard and its movement callbacks.
+                    const int id = i == 0 ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                        : room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
                     if (!discardableMaterial(room, ctx.owner, target, id)) break;
                     room->throwCard(id, objectName(), target, ctx.owner);
                 }
@@ -291,6 +311,8 @@ public:
             }
             if (!found) return false;
             // Consume before discard callbacks can re-enter this continuation.
+            // Keep even the first pick here: chooser != owner, and prompt callbacks must
+            // observe the consumed receipt; later picks also depend on earlier discards.
             setMoukuiReceipts(room, offset.card, receipts);
             room->removePlayerMark(offset.to, "moukui" + offset.card->toString());
             room->broadcastSkillInvoke("moukui", 3);

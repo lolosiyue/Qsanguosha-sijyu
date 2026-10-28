@@ -62,21 +62,29 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {ctx.invoker};
+        // The user answers here; effectTarget only nullifies when it declined.
+        ctx.choice = "nullify";
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.card && ctx.invoker->isAlive()) {
+            QString className = use.card->getClassName();
+            if (className.endsWith("Slash"))
+                className = "Slash";
+            QString name = use.card->objectName();
+            if (name.endsWith("_slash"))
+                name = "slash";
+            if (room->askForCard(ctx.invoker, className, "@thhuaji:::" + name, *ctx.original_data))
+                ctx.choice = "paid";
+        }
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card)
+        if (ctx.choice != "nullify" || !target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
             return false;
-        QString className = use.card->getClassName();
-        if (className.endsWith("Slash"))
-            className = "Slash";
-        QString name = use.card->objectName();
-        if (name.endsWith("_slash"))
-            name = "slash";
-        if (room->askForCard(target, className, "@thhuaji:::" + name, *ctx.original_data))
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.card || use.from != target || use.nullified_list.contains("_ALL_TARGETS"))
             return false;
         use.nullified_list << "_ALL_TARGETS";
         *ctx.original_data = QVariant::fromValue(use);
@@ -1950,13 +1958,12 @@ public:
         if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker)))
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.targets = {ctx.invoker};
-        return true;
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
         ServerPlayer *owner = ctx.owner;
+        ServerPlayer *target = ctx.invoker;
+        ctx.targets = {target};
+        // Both answers are taken here: "paid" when the target discards, else the
+        // phase the owner names ("" if none is left) for effectTarget to settle.
+        ctx.choice = QString();
         // Offer only suits the target can actually discard two of.
         QMap<Card::Suit, int> counts;
         foreach (const Card *card, target->getCards("he"))
@@ -1971,27 +1978,39 @@ public:
                                                     QVariant::fromValue(owner));
             if (suit != "cancel"
                 && room->askForDiscard(target, objectName(), 2, 2, true, true, "@thshengzhi:" + owner->objectName(),
-                                       ".|" + suit))
-                return false;
+                                       ".|" + suit)) {
+                ctx.choice = "paid";
+                return true;
+            }
         }
         QStringList phases;
-        const QList<Player::Phase> order = {Player::Start, Player::Judge, Player::Draw, Player::Play, Player::Discard,
-                                            Player::Finish};
-        foreach (Player::Phase phase, order)
+        foreach (Player::Phase phase, phaseOrder())
             if (target->getPhases().contains(phase) && !target->isSkipped(phase))
                 phases << phaseName(phase);
-        if (!phases.isEmpty() && owner->isAlive()) {
-            const QString chosen = room->askForChoice(owner, objectName(), phases.join("+"), QVariant::fromValue(target));
-            foreach (Player::Phase phase, order)
-                if (phaseName(phase) == chosen)
-                    target->skip(phase);
-        }
-        if (owner->isAlive())
-            room->damage(DamageStruct(objectName(), target->isAlive() ? target : nullptr, owner));
+        if (!phases.isEmpty() && owner->isAlive())
+            ctx.choice = room->askForChoice(owner, objectName(), phases.join("+"), QVariant::fromValue(target));
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        if (ctx.choice == "paid" || !target || !target->isAlive() || !owner || !owner->isAlive() || owner == target
+            || !isSourceAvailable(room, ctx) || target->getPhase() != Player::RoundStart)
+            return false;
+        foreach (Player::Phase phase, phaseOrder())
+            if (!ctx.choice.isEmpty() && phaseName(phase) == ctx.choice)
+                target->skip(phase);
+        room->damage(DamageStruct(objectName(), target, owner));
         return false;
     }
 
 private:
+    static QList<Player::Phase> phaseOrder()
+    {
+        return {Player::Start, Player::Judge, Player::Draw, Player::Play, Player::Discard, Player::Finish};
+    }
+
     static QString phaseName(Player::Phase phase)
     {
         switch (phase) {

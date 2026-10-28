@@ -225,6 +225,11 @@ public:
         }
         return result;
     }
+    static bool grantsTargets(const Card *card)
+    { return card && (card->isKindOf("BasicCard") || card->isNDTrick()) && !card->isKindOf("Nullification"); }
+    // cost adds the Collateral victims to the receipt payload; the stored receipt never carries them.
+    static QVariant receiptOf(const SkillContext &ctx)
+    { QVariantMap receipt = ctx.extra_data.toMap(); receipt.remove("victims"); return receipt; }
     static QString previousChoice(Room *room, const SkillContext &ctx)
     {
         const qint64 current = room->historyScopes().value("turn_id").toLongLong(); if (current <= 0) return {};
@@ -261,7 +266,7 @@ public:
         } else if (event == EventSkillEffectFinished) {
             const SkillContext ctx = data.value<SkillContext>();
             if (ctx.skill_name == objectName() && !ctx.activationRef.isValid() && ctx.extra_data.toMap().value("choice").toString() == "target") {
-                QVariantList receipts = room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList(); receipts.removeOne(ctx.extra_data); room->setTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects"), receipts);
+                QVariantList receipts = room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList(); receipts.removeOne(receiptOf(ctx)); room->setTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects"), receipts);
             }
         } else if (event == TurnBroken || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)) {
             // TurnBroken stays inside the interrupted turn. Drop that turn's receipts before another card resolves in it.
@@ -296,17 +301,40 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
-    { return ctx.activationRef.isValid() ? TriggerSkillV2::isSourceAvailable(room, ctx) : room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList().contains(ctx.extra_data); }
+    { return ctx.activationRef.isValid() ? TriggerSkillV2::isSourceAvailable(room, ctx) : room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList().contains(receiptOf(ctx)); }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     { return event == EventPhaseStart && player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Start ? TriggerList{{player, {objectName()}}} : TriggerList(); }
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (event == PreCardUsed) {
+            // Every grant is chosen here; effectTarget only settles it. Always accept: the red card spends the receipt.
+            ctx.targets.clear();
+            const CardUseStruct use = ctx.original_data->value<CardUseStruct>(); if (!grantsTargets(use.card)) return true;
+            const bool hadFlag = use.card->hasFlag("fumian_distance"); room->setCardFlag(use.card, "fumian_distance");
+            const auto clear = qScopeGuard([&] { if (!hadFlag) room->setCardFlag(use.card, "-fumian_distance"); });
+            const QList<ServerPlayer *> candidates = extraTargets(room, use); if (candidates.isEmpty()) return true;
+            QVariantMap victims;
+            for (ServerPlayer *extra : room->askForPlayersChosen(ctx.invoker, candidates, objectName(), 0, getEffectiveAmount(ctx), "@fumian:" + use.card->objectName())) {
+                if (!candidates.contains(extra) || ctx.targets.contains(extra)) continue;
+                if (use.card->isKindOf("Collateral")) {
+                    QList<ServerPlayer *> options;
+                    for (ServerPlayer *other : room->getOtherPlayers(extra)) if (use.card->targetFilter(QList<const Player *>{extra}, other, use.from)) options << other;
+                    if (options.isEmpty()) continue;
+                    ServerPlayer *victim = room->askForPlayerChosen(use.from, options, objectName(), "@fumian:" + use.card->objectName());
+                    if (!options.contains(victim)) continue;
+                    victims.insert(extra->objectName(), victim->objectName());
+                }
+                ctx.targets << extra;
+            }
+            if (!victims.isEmpty()) { QVariantMap payload = ctx.extra_data.toMap(); payload.insert("victims", victims); ctx.extra_data = payload; }
+            return true;
+        }
         if (event != EventPhaseStart) return true;
         if (!ctx.owner->askForSkillInvoke(this)) return false;
         const QString last = previousChoice(room, ctx); ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+target");
         ctx.extra_data = !last.isEmpty() && ctx.choice != last ? (objectName() == "xiaoxin_fumian" ? 3 : 2) : 1; return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == EventPhaseStart) {
             ServerPlayer *target = ctx.owner;
@@ -324,29 +352,21 @@ public:
         ServerPlayer *target = ctx.invoker; // The receipt recipient.
         if (event == DrawNCards) { DrawStruct draw = ctx.original_data->value<DrawStruct>(); if (draw.who == target) { draw.num += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(draw); } return false; }
         if (event != PreCardUsed) return false;
-        QVariantList receipts = room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList(); receipts.removeOne(ctx.extra_data); room->setTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects"), receipts);
-        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card || (!use.card->isKindOf("BasicCard") && !use.card->isNDTrick()) || use.card->isKindOf("Nullification")) return false;
-        const bool hadFlag = use.card->hasFlag("fumian_distance"); room->setCardFlag(use.card, "fumian_distance");
-        const auto clear = qScopeGuard([&] { if (!hadFlag) room->setCardFlag(use.card, "-fumian_distance"); });
-        const QList<ServerPlayer *> candidates = extraTargets(room, use); if (candidates.isEmpty()) return false;
-        const QList<ServerPlayer *> chosen = room->askForPlayersChosen(target, candidates, objectName(), 0, getEffectiveAmount(ctx), "@fumian:" + use.card->objectName());
-        for (ServerPlayer *extra : chosen) { SkillContext part = ctx; part.targets = {extra}; skillEffect(event, room, player, part, extra); }
+        // Spend the receipt before its grants settle, so no later red card in this window reuses it.
+        QVariantList receipts = room->getTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects")).toList(); receipts.removeOne(receiptOf(ctx)); room->setTag((objectName() == "xiaoxin_fumian" ? "XiaoxinFumianEffects" : "FumianEffects"), receipts);
         return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // effect already spent the receipt, which isSourceAvailable reads; recheck the user and this use instead.
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.card || (!use.card->isKindOf("BasicCard") && !use.card->isNDTrick()) || use.card->isKindOf("Nullification")) return false;
+        if (!ctx.invoker || !ctx.invoker->isAlive() || use.from != ctx.invoker || !grantsTargets(use.card)) return false;
         const bool hadFlag = use.card->hasFlag("fumian_distance"); room->setCardFlag(use.card, "fumian_distance");
         const auto clear = qScopeGuard([&] { if (!hadFlag) room->setCardFlag(use.card, "-fumian_distance"); });
         if (use.to.contains(target) || !extraTargets(room, use).contains(target)) return false;
         if (use.card->isKindOf("Collateral")) {
-            QList<ServerPlayer *> victims;
-            for (ServerPlayer *other : room->getOtherPlayers(target)) if (use.card->targetFilter(QList<const Player *>{target}, other, use.from)) victims << other;
-            if (victims.isEmpty()) return false;
-            ServerPlayer *victim = room->askForPlayerChosen(use.from, victims, objectName(), "@fumian:" + use.card->objectName());
-            if (!victims.contains(victim) || !use.card->targetFilter(QList<const Player *>{target}, victim, use.from)) return false;
+            ServerPlayer *victim = room->findPlayerByObjectName(ctx.extra_data.toMap().value("victims").toMap().value(target->objectName()).toString());
+            if (!victim || victim == target || !use.card->targetFilter(QList<const Player *>{target}, victim, use.from)) return false;
             // Collateral pairs the victim from attachTarget. A private tag name is never read.
             target->setTag("attachTarget", QVariant::fromValue(victim));
         }
@@ -769,12 +789,16 @@ public:
         } else target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), "@qingxian-invoke", true, true);
         if (!target) return false;
         ctx.targets = {target};
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), target->isWounded() ? "losehp+recover" : "losehp");
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        // A recover chosen in cost lapses if the target is no longer wounded.
+        if (ctx.choice != "losehp" && (ctx.choice != "recover" || !target->isWounded())) return false;
         room->broadcastSkillInvoke(objectName());
-        const QString choice = room->askForChoice(ctx.owner, objectName(), target->isWounded() ? "losehp+recover" : "losehp");
+        const QString choice = ctx.choice;
         bool club = false;
         if (choice == "losehp") {
             room->loseHp(HpLostStruct(target, getEffectiveAmount(ctx), objectName(), ctx.owner));
@@ -796,6 +820,7 @@ public:
             bool hasEquip = false;
             for (const Card *card : target->getCards("he")) if (card->isKindOf("EquipCard")) hasEquip = true;
             if (!hasEquip) { room->showAllCards(target); return false; }
+            // Result-dependent: the target discards from the cards held after the recover settles.
             const Card *discarded = room->askForDiscard(target, objectName(), 1, 1, false, true, "qingxian-discard", "EquipCard");
             if (discarded && discarded->subcardsLength() == 1) {
                 club = Sanguosha->getCard(discarded->getSubcards().first())->getSuit() == Card::Club;

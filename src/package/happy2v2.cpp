@@ -329,11 +329,75 @@ public:
         const int id = room->askForCardChosen(source, friend_player, "hej", objectName(),
                                               false, Card::MethodDiscard);
         if (id < 0) return false;
+        const QString color = cardColor(Sanguosha->getCard(id));
 
         QVariantMap state;
         state.insert("friend", friend_player->objectName());
         state.insert("card_id", id);
-        state.insert("color", cardColor(Sanguosha->getCard(id)));
+        state.insert("color", color);
+
+        // The discarded card never belongs to an opponent, so both options can be decided before paying.
+        QStringList choices;
+        if (!getDiscardTargets(room, source, color).isEmpty()) choices << "discard";
+        foreach (ServerPlayer *player, room->getOtherPlayers(source)) {
+            if (!source->isYourFriend(player) && !player->isKongcheng()) {
+                choices << "show";
+                break;
+            }
+        }
+        ctx.targets.clear();
+        if (!choices.isEmpty()) {
+            const QString choice = room->askForChoice(source, objectName(), choices.join("+"), id);
+            if (!choices.contains(choice)) return false;
+            state.insert("branch", choice);
+            const int amount = getEffectiveAmount(ctx);
+            if (choice == "discard") {
+                QVariantMap picks;
+                for (int i = 0; i < amount; ++i) {
+                    const QList<ServerPlayer *> discard_targets = getDiscardTargets(room, source, color, picks);
+                    if (discard_targets.isEmpty()) break;
+                    const bool optional = i > 0;
+                    const QString prompt = QString("@happycuorui_discard%1:%2").arg(optional ? "2" : "").arg(color);
+                    ServerPlayer *target = room->askForPlayerChosen(source, discard_targets,
+                                                                    optional ? "happycuorui2" : objectName(),
+                                                                    prompt, optional);
+                    if (!target || !discard_targets.contains(target)) break;
+                    QVariantList ids = picks.value(target->objectName()).toList();
+                    QList<int> disabled_ids;
+                    foreach (const Card *card, target->getCards("e")) {
+                        const int equip_id = card->getEffectiveId();
+                        if (cardColor(card) != color || !source->canDiscard(target, equip_id) || ids.contains(equip_id))
+                            disabled_ids << equip_id;
+                    }
+                    const int equip_id = room->askForCardChosen(source, target, "e", objectName(),
+                                                                false, Card::MethodDiscard, disabled_ids);
+                    if (equip_id < 0 || disabled_ids.contains(equip_id) || room->getCardOwner(equip_id) != target
+                        || room->getCardPlace(equip_id) != Player::PlaceEquip) break;
+                    ids << equip_id;
+                    picks.insert(target->objectName(), ids);
+                    if (!ctx.targets.contains(target)) ctx.targets << target;
+                }
+                state.insert("picks", picks);
+            } else {
+                QVariantMap counts;
+                for (int i = 0; i < amount; ++i) {
+                    QList<ServerPlayer *> show_targets;
+                    foreach (ServerPlayer *player, room->getOtherPlayers(source))
+                        if (!source->isYourFriend(player)
+                            && player->getHandcardNum() > counts.value(player->objectName()).toInt())
+                            show_targets << player;
+                    if (show_targets.isEmpty()) break;
+                    ServerPlayer *target = room->askForPlayerChosen(source, show_targets, "happycuorui3",
+                                                                    "@happycuorui_show");
+                    if (!target || !show_targets.contains(target)) break;
+                    counts.insert(target->objectName(), counts.value(target->objectName()).toInt() + 1);
+                    if (!ctx.targets.contains(target)) ctx.targets << target;
+                }
+                state.insert("counts", counts);
+                // The source settles last: it gains the matching cards shown to every opponent.
+                if (!ctx.targets.isEmpty()) ctx.targets << source;
+            }
+        }
         ctx.extra_data = state;
         room->broadcastSkillInvoke(objectName());
         return true;
@@ -357,92 +421,18 @@ public:
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    {
-        ServerPlayer *source = ctx.invoker ? ctx.invoker : ctx.owner;
-        if (!room || !source || !source->isAlive()) return false;
-        const QVariantMap state = ctx.extra_data.toMap();
-        const int id = state.value("card_id").toInt();
-        const QString color = state.value("color").toString();
-        if (color.isEmpty()) return false;
-
-        QList<ServerPlayer *> discard_targets = getDiscardTargets(room, source, color);
-        QStringList choices;
-        int hand = 0;
-        foreach (ServerPlayer *player, room->getOtherPlayers(source)) {
-            if (source->isYourFriend(player)) continue;
-            hand += player->getHandcardNum();
-        }
-        if (!discard_targets.isEmpty()) choices << "discard";
-        if (hand > 0) choices << "show";
-        if (choices.isEmpty()) return false;
-
-        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), id);
-        if (!choices.contains(choice)) return false;
-        ctx.manual_effect = true;
-        ctx.targets.clear();
-        QVariantMap mutable_state = state;
-        mutable_state.insert("branch", choice);
-        mutable_state.insert("color", color);
-        ctx.extra_data = mutable_state;
-
-        if (choice == "discard") {
-            const int amount = getEffectiveAmount(ctx);
-            for (int i = 0; i < amount && source->isAlive(); ++i) {
-                discard_targets = getDiscardTargets(room, source, color);
-                if (discard_targets.isEmpty()) break;
-                const bool optional = i > 0;
-                const QString reason = optional ? "happycuorui2" : objectName();
-                const QString prompt = QString("@happycuorui_discard%1:%2")
-                    .arg(optional ? "2" : "").arg(color);
-                ServerPlayer *target = room->askForPlayerChosen(source, discard_targets, reason, prompt, optional);
-                if (!target) break;
-                mutable_state.insert("optional", optional);
-                mutable_state.insert("reason", reason);
-                mutable_state.insert("prompt", prompt);
-                ctx.extra_data = mutable_state;
-                ctx.targets = {target};
-                skillEffect(EventPhaseStart, room, source, ctx, target);
-            }
-        } else {
-            QVariantList shown;
-            const int amount = getEffectiveAmount(ctx);
-            for (int i = 0; i < amount && source->isAlive(); ++i) {
-                QList<ServerPlayer *> targets;
-                foreach (ServerPlayer *player, room->getOtherPlayers(source)) {
-                    if (source->isYourFriend(player) || player->isKongcheng()) continue;
-                    bool unshown = false;
-                    for (int handId : player->handCards()) if (!shown.contains(handId)) { unshown = true; break; }
-                    if (unshown) targets << player;
-                }
-                if (targets.isEmpty()) break;
-                ServerPlayer *target = room->askForPlayerChosen(source, targets, "happycuorui3", "@happycuorui_show");
-                if (!target) break;
-                mutable_state.insert("shown_ids", shown);
-                ctx.extra_data = mutable_state;
-                ctx.targets = {target};
-                skillEffect(EventPhaseStart, room, source, ctx, target);
-                mutable_state = ctx.extra_data.toMap();
-                shown = mutable_state.value("shown_ids").toList();
-            }
-
-            mutable_state.insert("shown_ids", shown);
-            mutable_state.insert("branch", "obtain");
-            ctx.extra_data = mutable_state;
-            skillEffect(EventPhaseStart, room, source, ctx, source);
-        }
-        return false;
-    }
-
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
-        ServerPlayer *source = ctx.invoker ? ctx.invoker : ctx.owner;
-        if (!room || !source || !source->isAlive() || !target || !target->isAlive()) return false;
+        ServerPlayer *source = ctx.owner ? ctx.owner : ctx.invoker;
+        if (!room || !source || !source->isAlive() || (ctx.invoker && !ctx.invoker->isAlive())
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         QVariantMap state = ctx.extra_data.toMap();
         const QString color = state.value("color").toString();
+        const QString branch = state.value("branch").toString();
         if (color.isEmpty()) return false;
-        if (state.value("branch").toString() == "obtain") {
+        if (target == source) {
+            if (branch != "show") return false;
             DummyCard cards;
             const QVariantMap owners = state.value("shown_owners").toMap();
             for (const QVariant &value : state.value("shown_ids").toList()) {
@@ -453,35 +443,41 @@ public:
                     && room->getCardPlace(id) == Player::PlaceHand && cardColor(Sanguosha->getCard(id)) == color
                     && source->canGet(holder, id)) cards.addSubcard(id);
             }
-            if (cards.subcardsLength() > 0) room->obtainCard(target, &cards, objectName(), true);
+            if (cards.subcardsLength() > 0) room->obtainCard(source, &cards, objectName(), true);
             return false;
         }
-        room->doAnimate(1, source->objectName(), target->objectName());
-        if (state.value("branch").toString() == "discard") {
-            if (!source->canDiscard(target, "e")) return false;
-            QList<int> disabled_ids;
-            foreach (const Card *card, target->getCards("e"))
-                if (cardColor(card) != color || !source->canDiscard(target, card->getEffectiveId()))
-                    disabled_ids << card->getEffectiveId();
-            const int id = room->askForCardChosen(source, target, "e", objectName(),
-                                                  false, Card::MethodDiscard, disabled_ids);
-            if (id >= 0 && !disabled_ids.contains(id) && room->getCardOwner(id) == target
-                && room->getCardPlace(id) == Player::PlaceEquip && source->canDiscard(target, id)
-                && cardColor(Sanguosha->getCard(id)) == color) room->throwCard(id, target, source);
-        } else {
-            QVariantList shown = state.value("shown_ids").toList();
-            QList<int> hand;
-            foreach (int id, target->handCards())
-                if (!shown.contains(id)) hand << id;
-            if (hand.isEmpty()) return false;
-            const int id = hand.at(qsanRandomBounded(hand.length()));
-            shown << id;
-            state.insert("shown_ids", shown);
-            QVariantMap owners = state.value("shown_owners").toMap();
-            owners.insert(QString::number(id), target->objectName());
-            state.insert("shown_owners", owners);
-            ctx.extra_data = state;
-            room->showCard(target, id, QList<ServerPlayer *>(), objectName());
+        if (source->isYourFriend(target)) return false;
+        if (branch == "discard") {
+            const QVariantList ids = state.value("picks").toMap().value(target->objectName()).toList();
+            if (ids.isEmpty()) return false;
+            room->doAnimate(1, source->objectName(), target->objectName());
+            for (const QVariant &value : ids) {
+                const int id = value.toInt();
+                if (!source->isAlive() || !target->isAlive()) break;
+                if (room->getCardOwner(id) == target && room->getCardPlace(id) == Player::PlaceEquip
+                    && source->canDiscard(target, id) && cardColor(Sanguosha->getCard(id)) == color)
+                    room->throwCard(id, target, source);
+            }
+        } else if (branch == "show") {
+            const int count = state.value("counts").toMap().value(target->objectName()).toInt();
+            if (count <= 0) return false;
+            room->doAnimate(1, source->objectName(), target->objectName());
+            for (int i = 0; i < count && target->isAlive(); ++i) {
+                QVariantList shown = state.value("shown_ids").toList();
+                QList<int> hand;
+                foreach (int id, target->handCards())
+                    if (!shown.contains(id)) hand << id;
+                if (hand.isEmpty()) break;
+                const int id = hand.at(qsanRandomBounded(hand.length()));
+                shown << id;
+                state.insert("shown_ids", shown);
+                QVariantMap owners = state.value("shown_owners").toMap();
+                owners.insert(QString::number(id), target->objectName());
+                state.insert("shown_owners", owners);
+                // The source's settlement reads this record, so it must outlive this target.
+                ctx.extra_data = state;
+                room->showCard(target, id, QList<ServerPlayer *>(), objectName());
+            }
         }
         return false;
     }
@@ -494,13 +490,17 @@ private:
         return "no_suit";
     }
 
-    static QList<ServerPlayer *> getDiscardTargets(Room *room, ServerPlayer *source, const QString &color)
+    // Picks maps an opponent's name to the equipment ids already chosen from it.
+    static QList<ServerPlayer *> getDiscardTargets(Room *room, ServerPlayer *source, const QString &color,
+                                                   const QVariantMap &picks = QVariantMap())
     {
         QList<ServerPlayer *> result;
         foreach (ServerPlayer *player, room->getOtherPlayers(source)) {
             if (source->isYourFriend(player)) continue;
+            const QVariantList picked = picks.value(player->objectName()).toList();
             foreach (const Card *card, player->getCards("e")) {
-                if (cardColor(card) == color && source->canDiscard(player, card->getEffectiveId())) {
+                const int id = card->getEffectiveId();
+                if (cardColor(card) == color && source->canDiscard(player, id) && !picked.contains(id)) {
                     result << player;
                     break;
                 }

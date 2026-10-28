@@ -239,6 +239,29 @@ public:
     }
 };
 
+static QList<ServerPlayer *> vsGanglieTargets(Room *room, ServerPlayer *owner)
+{
+    QList<ServerPlayer *> targets;
+    const QString mode = room->getMode();
+    for (ServerPlayer *other : room->getOtherPlayers(owner))
+        if ((!mode.startsWith("06_") && !mode.startsWith("04_")) || AI::GetRelation3v3(owner, other) == AI::Enemy)
+            targets << other;
+    return targets;
+}
+
+// The settling judgement runs inside the accepted vsganglie event; that event's committed target is the record.
+static ServerPlayer *vsGanglieJudgedTarget(Room *room, ServerPlayer *owner)
+{
+    const qint64 judge = room->historyParent(room->currentHistoryEventId(), "judge", true).value("id").toLongLong();
+    if (judge <= 0) return nullptr;
+    const QVariantMap skill = room->historyParent(judge, "skill").value("data").toMap();
+    const QVariantList targets = skill.value("targets").toList();
+    if (skill.value("executing_skill").toString() != "vsganglie"
+        || skill.value("activation_owner").toString() != owner->objectName() || targets.length() != 1)
+        return nullptr;
+    return room->findPlayerByObjectName(targets.first().toString());
+}
+
 class VsGanglie : public TriggerSkillV2
 {
 public:
@@ -249,28 +272,57 @@ public:
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        QList<ServerPlayer *> targets;
-        const QString mode = room->getMode();
-        for (ServerPlayer *other : room->getOtherPlayers(ctx.owner))
-            if ((!mode.startsWith("06_") && !mode.startsWith("04_")) || AI::GetRelation3v3(ctx.owner, other) == AI::Enemy)
-                targets << other;
-        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName(), "vsganglie-invoke", true, true);
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, vsGanglieTargets(room, ctx.owner), objectName(), "vsganglie-invoke", true, true);
         if (!target) return false;
         ctx.targets = {target};
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx) || !vsGanglieTargets(room, ctx.owner).contains(target))
+            return false;
         room->broadcastSkillInvoke("nosganglie");
         JudgeStruct judge;
         judge.pattern = ".|heart";
         judge.good = false;
         judge.reason = objectName();
         judge.who = ctx.owner;
+        // A good judgement is settled by #vsganglie at FinishJudge, where asking the target is its cost.
         room->judge(judge);
-        if (target->isAlive() && judge.isGood()
-            && (target->getHandcardNum() < 2 || !room->askForDiscard(target, objectName(), 2, 2, true)))
-            room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
+        return false;
+    }
+};
+
+class VsGanglieSettle : public TriggerSkillV2
+{
+public:
+    VsGanglieSettle() : TriggerSkillV2("#vsganglie") { events << FinishJudge; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const JudgeStruct *judge = data.value<JudgeStruct *>();
+        return player && player->isAlive() && player->hasSkill(objectName()) && judge && judge->who == player
+            && judge->reason == "vsganglie" && judge->isGood() && vsGanglieJudgedTarget(room, player)
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *target = vsGanglieJudgedTarget(room, ctx.owner);
+        if (!target || !target->isAlive()) return false;
+        // Discarding two is the target's way out; only a target that does not discard is left to damage.
+        if (target->getHandcardNum() >= 2 && room->askForDiscard(target, "vsganglie", 2, 2, true)) return false;
+        ctx.targets = {target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx) || !vsGanglieTargets(room, ctx.owner).contains(target))
+            return false;
+        room->damage(DamageStruct("vsganglie", ctx.owner, target, getEffectiveAmount(ctx)));
         return false;
     }
 };
@@ -735,6 +787,8 @@ Special3v3Package::Special3v3Package()
 {
     General *vs_nos_xiahoudun = new General(this, "vs_nos_xiahoudun", "wei");
     vs_nos_xiahoudun->addSkill(new VsGanglie);
+    vs_nos_xiahoudun->addSkill(new VsGanglieSettle);
+    related_skills.insert("vsganglie", "#vsganglie");
 
     General *vs_nos_guanyu = new General(this, "vs_nos_guanyu", "shu");
     vs_nos_guanyu->addSkill("wusheng");

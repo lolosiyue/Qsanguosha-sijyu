@@ -303,15 +303,28 @@ public:
 		return TriggerList();
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		const QStringList names = reihouHuanjieNames();
-		if (!player || names.isEmpty())
+		if (!room || !player || names.isEmpty())
 			return false;
 		room->sendCompulsoryTriggerLog(player, objectName());
 		const QString chosen = room->askForChoice(player, objectName(), names.join("+"));
 		if (!names.contains(chosen))
 			return false;
+		ctx.choice = chosen;
+		ctx.targets = {player};
+		return true;
+	}
+
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+	{
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+			return false;
+		if (target != player || !reihouHuanjieNames().contains(ctx.choice))
+			return false;
+		const QString chosen = ctx.choice;
 		LogMessage log;
 		log.type = "#RhHuanjie";
 		log.from = player;
@@ -385,6 +398,7 @@ public:
 		if (!player || !ctx.original_data)
 			return false;
 		room->removeReihouCard(player);
+		// Choices follow Reihou removal hooks and each preceding settlement.
 		QStringList choices;
 		choices << "null" << "give";
 		QString choice = room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data);
@@ -940,8 +954,19 @@ public:
 
 	bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
-		if (event == EventAcquireSkill)
+		if (!room || !player)
+			return false;
+		if (event == EventAcquireSkill) {
+			const QList<ServerPlayer *> others = room->getOtherPlayers(player);
+			if (others.isEmpty())
+				return false;
+			ServerPlayer *target = room->askForPlayerChosen(player, others, objectName(), "@rhbaiming", false, true);
+			if (!target)
+				return false;
+			room->broadcastSkillInvoke(objectName());
+			ctx.targets = {target};
 			return true;
+		}
 		if (!player || !ctx.invoker || !player->askForSkillInvoke(objectName(), ctx.invoker))
 			return false;
 		room->broadcastSkillInvoke(objectName());
@@ -952,18 +977,9 @@ public:
 	{
 		if (!player || !room)
 			return false;
-		if (event == EventAcquireSkill) {
-			const QList<ServerPlayer *> others = room->getOtherPlayers(player);
-			if (others.isEmpty())
-				return false;
-			ServerPlayer *target = room->askForPlayerChosen(player, others, objectName(), "@rhbaiming", false, true);
-			if (!target)
-				return false;
-			room->broadcastSkillInvoke(objectName());
-			player->setTag(objectName(), target->objectName());
-			room->addPlayerMark(target, "@filth");
+		if (event == EventAcquireSkill)
 			return false;
-		}
+		// The victim's card choice must see the completed self-discard and its hooks.
 		ServerPlayer *victim = ctx.invoker;
 		if (!victim)
 			return false;
@@ -977,6 +993,19 @@ public:
 			}
 		} else
 			room->loseHp(HpLostStruct(victim, 1, objectName(), player));
+		return false;
+	}
+
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+	{
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+			return false;
+		if (target == player)
+			return false;
+		// Persist only the recipient whose acquisition effect actually settled.
+		player->setTag(objectName(), target->objectName());
+		room->addPlayerMark(target, "@filth");
 		return false;
 	}
 };
@@ -1273,7 +1302,8 @@ public:
 			const Card *card = room->askForCard(player, ".", "@rhchunyin", QVariant(), Card::MethodNone);
 			if (!card || card->getEffectiveId() < 0)
 				return false;
-			player->setTag("RhChunyinCard", card->getEffectiveId());
+			ctx.extra_data = QVariantMap{{"card_id", card->getEffectiveId()}};
+			ctx.targets = {player};
 			room->sendCompulsoryTriggerLog(player, objectName());
 			room->broadcastSkillInvoke(objectName());
 			return true;
@@ -1287,38 +1317,30 @@ public:
 			if (!target)
 				return false;
 			room->broadcastSkillInvoke(objectName());
-			player->setTag("RhChunyinTarget", target->objectName());
+			ctx.targets = {target};
 			return true;
 		}
+		ctx.targets = {player};
 		if (!player->askForSkillInvoke(objectName()))
 			return false;
 		room->broadcastSkillInvoke(objectName());
 		return true;
 	}
 
-	bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+	bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
 		if (event == EventAcquireSkill) {
-			if (!player->getTag("RhChunyinCard").isValid())
+			if (target != player)
 				return false;
-			const int id = player->getTag("RhChunyinCard").toInt();
-			player->removeTag("RhChunyinCard");
-			if (id >= 0)
+			const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+			if (reihouHolds(player, id))
 				player->addToPile("yin", id);
 			return false;
 		}
-		if (!ctx.original_data)
-			return false;
-		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-		if (use.from == player) {
-			ServerPlayer *target = room->findPlayerByObjectName(player->getTag("RhChunyinTarget").toString());
-			player->removeTag("RhChunyinTarget");
-			if (target)
-				room->drawCards(target, 1, objectName());
-		} else
-			room->drawCards(player, 1, objectName());
+		room->drawCards(target, 1, objectName());
 		return false;
 	}
 };
@@ -2408,11 +2430,31 @@ public:
 		if (!player || !room || !ctx.invoker || !player->askForSkillInvoke(objectName(), ctx.invoker))
 			return false;
 		room->broadcastSkillInvoke(objectName());
+		ServerPlayer *actor = ctx.invoker;
+		Slash *slash = new Slash(Card::NoSuit, 0);
+		slash->setSkillName("_rhsanglv");
+		slash->deleteLater();
+		if (!actor->isAlive() || actor->isCardLimited(slash, Card::MethodUse))
+			return false;
+		QList<ServerPlayer *> targets;
+		foreach (ServerPlayer *target, room->getAlivePlayers()) {
+			if (actor->canSlash(target, slash))
+				targets << target;
+		}
+		if (targets.isEmpty())
+			return false;
+		ServerPlayer *victim = room->askForPlayerChosen(actor, targets, objectName(), "@dummy-slash");
+		if (!victim)
+			return false;
+		ctx.targets = {victim};
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+			return false;
 		ServerPlayer *actor = ctx.invoker;
 		if (!room || !actor || !actor->isAlive())
 			return false;
@@ -2422,22 +2464,12 @@ public:
 			delete slash;
 			return false;
 		}
-		QList<ServerPlayer *> targets;
-		foreach (ServerPlayer *target, room->getAlivePlayers()) {
-			if (actor->canSlash(target, slash))
-				targets << target;
-		}
-		if (targets.isEmpty()) {
-			delete slash;
-			return false;
-		}
-		ServerPlayer *victim = room->askForPlayerChosen(actor, targets, objectName(), "@dummy-slash");
-		if (!victim) {
+		if (!actor->canSlash(target, slash)) {
 			delete slash;
 			return false;
 		}
 		slash->deleteLater();
-		room->useCard(CardUseStruct(slash, actor, victim));
+		room->useCard(CardUseStruct(slash, actor, target));
 		return false;
 	}
 };
@@ -2500,24 +2532,24 @@ public:
 		if (!victim)
 			return false;
 		room->broadcastSkillInvoke(objectName());
-		player->setTag("RhWuyinTarget", victim->objectName());
+		ctx.targets = {victim};
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
-		const QString name = player->getTag("RhWuyinTarget").toString();
-		player->removeTag("RhWuyinTarget");
 		ServerPlayer *actor = ctx.invoker;
-		ServerPlayer *target = room->findPlayerByObjectName(name);
-		if (!actor || !actor->isAlive() || !target || !target->isAlive())
+		if (!actor || !actor->isAlive() || actor == target)
 			return false;
 		Card *tiger = reihouLureTiger();
 		if (!tiger)
 			return false;
 		tiger->deleteLater();
+		if (actor->isCardLimited(tiger, Card::MethodUse) || actor->isProhibited(target, tiger))
+			return false;
 		room->useCard(CardUseStruct(tiger, actor, target));
 		return false;
 	}
@@ -2721,6 +2753,7 @@ public:
 		peach->setSkillName("_rhjinbei");
 		Analeptic *analeptic = new Analeptic(Card::NoSuit, 0);
 		analeptic->setSkillName("_rhjinbei");
+		// Available modes must see Reihou removal in cost and its nested hooks.
 		QStringList choices;
 		if (peach->isAvailable(actor))
 			choices << "peach";
@@ -2989,7 +3022,7 @@ public:
 		return TriggerList();
 	}
 
-	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!player || !room)
 			return false;
@@ -2998,17 +3031,20 @@ public:
 		if (!target)
 			return false;
 		room->broadcastSkillInvoke(objectName());
-		player->setTag(objectName(), target->objectName());
+		ctx.targets = {target};
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
-		ServerPlayer *target = room->findPlayerByObjectName(player->getTag(objectName()).toString());
-		if (target)
-			room->setPlayerMark(target, "@constellation", 1);
+		if (target == player)
+			return false;
+		// Keep the settled recipient for the existing skill-loss cleanup.
+		player->setTag(objectName(), target->objectName());
+		room->setPlayerMark(target, "@constellation", 1);
 		return false;
 	}
 };
@@ -3291,6 +3327,7 @@ public:
 		QList<int> allIds = move.card_ids;
 		QList<int> ids = move.card_ids;
 		QList<int> disabled;
+		// Redistribution is sequential: each ask sees the preceding obtain and its hooks.
 		while (!ids.isEmpty()) {
 			room->fillAG(allIds, player, disabled);
 			const bool only = allIds.length() == 1;
@@ -3591,13 +3628,6 @@ public:
 		if (!player || !room || !ctx.invoker || !player->askForSkillInvoke(objectName(), ctx.invoker))
 			return false;
 		room->broadcastSkillInvoke(objectName());
-		return true;
-	}
-
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-	{
-		if (!player || !room || !ctx.invoker)
-			return false;
 		const int marks = player->getMark("@time");
 		if (marks <= 0)
 			return false;
@@ -3608,9 +3638,22 @@ public:
 		const int n = choice.toInt();
 		if (n <= 0 || n > marks)
 			return false;
+		ctx.choice = choice;
+		ctx.targets = {ctx.invoker};
+		return true;
+	}
+
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+	{
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+			return false;
+		const int n = ctx.choice.toInt();
+		if (n <= 0 || n > player->getMark("@time"))
+			return false;
 		player->loseMark("@time", n);
-		if (ctx.invoker->isAlive())
-			ctx.invoker->gainMark("@time", n);
+		if (target->isAlive())
+			target->gainMark("@time", n);
 		return false;
 	}
 };
@@ -3677,6 +3720,7 @@ public:
 	{
 		if (!player || !room || !player->isAlive())
 			return false;
+		// Eligibility must see the completed Reihou removal in cost and its hooks.
 		Card *card = reihouDrowning();
 		if (!card)
 			return false;
@@ -3744,7 +3788,7 @@ public:
 		return TriggerList{{player, QStringList(objectName() + "*" + QString::number(count))}};
 	}
 
-	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!player || !room)
 			return false;
@@ -3752,20 +3796,16 @@ public:
 			"@rhxinmo", true, true);
 		if (!target)
 			return false;
-		player->setTag("RhXinmoTarget", target->objectName());
+		ctx.targets = {target};
 		room->broadcastSkillInvoke(objectName());
 		room->addPlayerMark(player, objectName());
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
-			return false;
-		const QString name = player->getTag("RhXinmoTarget").toString();
-		player->removeTag("RhXinmoTarget");
-		ServerPlayer *target = room->findPlayerByObjectName(name);
-		if (!target)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
 		target->drawCards(1, objectName());
 		if (player->isAlive() && !player->faceUp())
@@ -3810,24 +3850,29 @@ public:
 		if (!player || !room || !ctx.invoker || !player->askForSkillInvoke(objectName(), ctx.invoker))
 			return false;
 		room->broadcastSkillInvoke(objectName());
-		return true;
+		ctx.choice = room->askForChoice(player, objectName(), "reduce+increase");
+		ctx.targets = {ctx.invoker};
+		return ctx.choice == "reduce" || ctx.choice == "increase";
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room || !ctx.invoker)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
-		const QString choice = room->askForChoice(player, objectName(), "reduce+increase");
+		const QString choice = ctx.choice;
+		if (choice != "reduce" && choice != "increase")
+			return false;
 		LogMessage log;
 		log.type = "#RhFuyu";
 		log.from = player;
-		log.to << ctx.invoker;
+		log.to << target;
 		if (choice == "reduce") {
-			room->setPlayerFlag(ctx.invoker, "RhFuyuReduce");
+			room->setPlayerFlag(target, "RhFuyuReduce");
 			log.arg = "1";
 			log.arg2 = "-1";
 		} else {
-			room->setPlayerFlag(ctx.invoker, "RhFuyuIncrease");
+			room->setPlayerFlag(target, "RhFuyuIncrease");
 			log.arg = "2";
 			log.arg2 = "+1";
 		}
@@ -3892,7 +3937,7 @@ public:
 		return TriggerList();
 	}
 
-	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!player || !room)
 			return false;
@@ -3900,18 +3945,16 @@ public:
 			"@rhyaodao", true, true);
 		if (!target)
 			return false;
-		player->setTag("RhYaodaoTarget", target->objectName());
+		ctx.targets = {target};
 		room->broadcastSkillInvoke(objectName());
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
-			return true;
-		const QString name = player->getTag("RhYaodaoTarget").toString();
-		player->removeTag("RhYaodaoTarget");
-		ServerPlayer *target = room->findPlayerByObjectName(name);
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+			return false;
 		Package *pack = Sanguosha->getPackage("tenshi-reihou");
 		QList<const General *> pool;
 		if (pack) {
@@ -4344,6 +4387,7 @@ public:
 			return false;
 		CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 		QList<ServerPlayer *> victims = reihouFapoVictims(room, player, use);
+		// Later picks observe earlier target-list writes and quota marks.
 		while (!victims.isEmpty()) {
 			ServerPlayer *victim = room->askForPlayerChosen(player, victims, objectName(), "@rhfapo", true, true);
 			if (!victim)
@@ -4485,7 +4529,7 @@ public:
 		return TriggerList();
 	}
 
-	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!player || !room)
 			return false;
@@ -4493,20 +4537,20 @@ public:
 			"@rhzhangchi", true, true);
 		if (!target)
 			return false;
-		player->setTag(objectName(), target->objectName());
+		ctx.targets = {target};
 		room->broadcastSkillInvoke(objectName());
 		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (!player || !room)
+		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
+			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
-		ServerPlayer *target = room->findPlayerByObjectName(player->getTag(objectName()).toString());
-		if (target) {
-			room->setPlayerMark(target, "@knot", 1);
-			room->attachSkillToPlayer(target, "rhzhangchiv");
-		}
+		// Keep the settled recipient for the existing skill-loss cleanup.
+		player->setTag(objectName(), target->objectName());
+		room->setPlayerMark(target, "@knot", 1);
+		room->attachSkillToPlayer(target, "rhzhangchiv");
 		return false;
 	}
 };

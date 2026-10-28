@@ -369,14 +369,14 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive() || target->isKongcheng())
+        if (!ctx.owner || !ctx.owner->isAlive() || !target || !target->isAlive() || target->isKongcheng()
+            || !isSourceAvailable(room, ctx))
             return false;
         room->showAllCards(target);
         QSet<QString> types;
@@ -871,7 +871,7 @@ public:
                                                             "@thqinshao", true, true);
             if (!target)
                 return false;
-            ctx.extra_data = target->objectName();
+            ctx.targets = {target};
         } else if (!player->askForSkillInvoke(objectName())) {
             return false;
         }
@@ -879,17 +879,26 @@ public:
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    // X is recomputed at each settlement: the self draw has no target and settles here,
+    // the gift settles per chosen target in effectTarget (a self draw leaves X at -1).
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *player = ctx.owner;
         const int x = player->getHandcardNum() - qMax(player->getHp(), 0);
-        if (x > 0) {
-            ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-            if (target && target->isAlive())
-                target->drawCards(x, objectName());
-        } else if (x < -1) {
+        if (x < -1)
             player->drawCards(-x - 1, objectName());
-        }
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        if (!player || !player->isAlive() || !target || !target->isAlive() || target == player
+            || !isSourceAvailable(room, ctx))
+            return false;
+        const int x = player->getHandcardNum() - qMax(player->getHp(), 0);
+        if (x > 0)
+            target->drawCards(x, objectName());
         return false;
     }
 };

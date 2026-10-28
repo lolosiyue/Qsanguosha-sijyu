@@ -421,13 +421,23 @@ public:
         if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(to)))
             return false;
         room->broadcastSkillInvoke(objectName());
+        ServerPlayer *player = ctx.owner;
         ctx.targets = {to};
+        // The discard is decided here, before the judge; effectTarget throws it only on a black result.
+        if (to->isAlive() && player->canDiscard(to, "he")
+            && player->askForSkillInvoke("thwangshou_discard", "yes:" + to->objectName())) {
+            const int id = room->askForCardChosen(player, to, "he", objectName(), false, Card::MethodDiscard);
+            if (id >= 0 && room->getCardOwner(id) == to && player->canDiscard(to, id))
+                ctx.extra_data = id;
+        }
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
+        if (!target || !target->isAlive() || !player || !player->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         JudgeStruct judge;
         judge.pattern = ".|black";
         judge.good = false;
@@ -435,12 +445,14 @@ public:
         judge.reason = objectName();
         judge.who = target;
         room->judge(judge);
-        if (judge.isBad() && player->isAlive() && target->isAlive() && player->canDiscard(target, "he")
-            && player->askForSkillInvoke("thwangshou_discard", "yes:" + target->objectName())) {
-            const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
-            if (id >= 0)
-                room->throwCard(id, objectName(), target, player);
-        }
+        // No pick leaves extra_data invalid; QVariant's default 0 must not select physical card zero.
+        if (!judge.isBad() || !ctx.extra_data.isValid() || !player->isAlive() || !target->isAlive())
+            return false;
+        const int id = ctx.extra_data.toInt();
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) == target && (place == Player::PlaceHand || place == Player::PlaceEquip)
+            && player->canDiscard(target, id))
+            room->throwCard(id, objectName(), target, player);
         return false;
     }
 };
@@ -1738,18 +1750,26 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {target};
+        // The owner picks the card here; effectTarget discards it only if it is still in the target's area.
+        const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodDiscard);
+        if (id >= 0 && room->getCardOwner(id) == target && ctx.owner->canDiscard(target, id))
+            ctx.extra_data = id;
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        if (!player->isAlive() || !player->canDiscard(target, "hej"))
+        if (!target || !target->isAlive() || !player || !player->isAlive() || !isSourceAvailable(room, ctx)
+            || !ctx.extra_data.isValid())
             return false;
-        const int id = room->askForCardChosen(player, target, "hej", objectName(), false, Card::MethodDiscard);
-        if (id < 0)
+        const int id = ctx.extra_data.toInt();
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) != target
+            || (place != Player::PlaceHand && place != Player::PlaceEquip && place != Player::PlaceDelayedTrick)
+            || !player->canDiscard(target, id))
             return false;
-        room->throwCard(id, room->getCardPlace(id) == Player::PlaceDelayedTrick ? nullptr : target, player);
+        room->throwCard(id, place == Player::PlaceDelayedTrick ? nullptr : target, player);
         return false;
     }
 
@@ -1850,21 +1870,30 @@ public:
         if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker)))
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.targets = {ctx.invoker};
+        ServerPlayer *target = ctx.invoker;
+        ctx.targets = {target};
+        // The target picks here; effectTarget obtains it only if it is still a tassel.
+        const QList<int> ids = ctx.owner->getPile("tassel");
+        if (!ids.isEmpty() && target->isAlive()) {
+            room->fillAG(ids, target);
+            const int id = room->askForAG(target, ids, false, objectName());
+            room->clearAG(target);
+            if (id >= 0 && ids.contains(id))
+                ctx.extra_data = id;
+        }
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        const QList<int> ids = ctx.owner->getPile("tassel");
-        if (ids.isEmpty())
+        ServerPlayer *owner = ctx.owner;
+        if (!target || !target->isAlive() || target->getPhase() != Player::Play || !owner || !owner->isAlive()
+            || !isSourceAvailable(room, ctx) || !ctx.extra_data.isValid())
             return false;
-        room->fillAG(ids, target);
-        const int id = room->askForAG(target, ids, false, objectName());
-        room->clearAG(target);
-        if (id >= 0 && ctx.owner->getPile("tassel").contains(id))
+        const int id = ctx.extra_data.toInt();
+        if (owner->getPile("tassel").contains(id))
             room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
-                target->objectName(), ctx.owner->objectName(), objectName(), QString()));
+                target->objectName(), owner->objectName(), objectName(), QString()));
         return false;
     }
 };
@@ -2005,16 +2034,26 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {target};
+        // The owner picks the card here; effectTarget moves it only if the target still holds it.
+        if (target->isAlive() && ctx.owner->canMove(target, "he")) {
+            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodMove);
+            if (id >= 0 && room->getCardOwner(id) == target && ctx.owner->canMove(target, id))
+                ctx.extra_data = id;
+        }
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.owner->canMove(target, "he"))
+        ServerPlayer *owner = ctx.owner;
+        if (!target || !target->isAlive() || !owner || !owner->isAlive() || !isSourceAvailable(room, ctx)
+            || !ctx.extra_data.isValid())
             return false;
-        const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodMove);
-        if (id >= 0 && ctx.owner->canMove(target, id))
-            ctx.owner->addToPile("leaf", id, true);
+        const int id = ctx.extra_data.toInt();
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) == target && (place == Player::PlaceHand || place == Player::PlaceEquip)
+            && owner->canMove(target, id))
+            owner->addToPile("leaf", id, true);
         return false;
     }
 
@@ -2454,23 +2493,26 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {target};
-        return true;
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
+        // The suit is named here; effectTarget counts it from ctx.choice.
         const Card::Suit suit = room->askForSuit(ctx.owner, objectName());
         LogMessage log;
         log.type = "#ChooseSuit";
         log.from = ctx.owner;
         log.arg = Card::Suit2String(suit);
         room->sendLog(log);
-        if (target->isKongcheng())
+        ctx.choice = log.arg;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)
+            || ctx.choice.isEmpty() || target->isKongcheng())
             return false;
         room->showAllCards(target);
         int n = 0;
         foreach (const Card *card, target->getHandcards())
-            if (card->getSuit() == suit)
+            if (card->getSuitString() == ctx.choice)
                 ++n;
         if (n > 0)
             target->drawCards(qMin(n, 3), objectName());

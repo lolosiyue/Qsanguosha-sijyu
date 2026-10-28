@@ -363,6 +363,26 @@ public:
 			? TriggerList{{player, QStringList{objectName()}}} : TriggerList();
 	}
 
+    // Visible lord skills of lords not in play that the target does not own yet, minus those already picked.
+    static QStringList lordSkillChoices(Room *room, ServerPlayer *target, const QStringList &picked)
+    {
+        QStringList lords = Sanguosha->getLords();
+        for (ServerPlayer *player : room->getAlivePlayers()) {
+            lords.removeOne(player->getGeneralName());
+            if (player->getGeneral2()) lords.removeOne(player->getGeneral2Name());
+        }
+        QStringList choices;
+        for (const QString &lord : lords) {
+            const General *general = Sanguosha->getGeneral(lord);
+            if (!general) continue;
+            for (const Skill *skill : general->findChildren<const Skill *>()) {
+                if (skill->isLordSkill() && skill->isVisible() && !target->hasSkill(skill->objectName(), true)
+                    && !picked.contains(skill->objectName()) && !choices.contains(skill->objectName())) choices << skill->objectName();
+            }
+        }
+        return choices;
+    }
+
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner->askForSkillInvoke(objectName())) return false;
@@ -372,41 +392,49 @@ public:
             target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName());
         if (!target) return false;
         ctx.targets = {target};
-        return true;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
+        // Every pick is made here; the picks are payload, the affected player comes only from ctx.targets.
         if (ctx.choice == "modify") {
+            QStringList kingdoms = Sanguosha->getKingdoms();
+            kingdoms.removeOne("god");
+            kingdoms.removeOne(target->getKingdom());
+            if (kingdoms.isEmpty()) return true;
             const QVariant previous = room->getTag("Guixin2Modify");
             const auto restore = qScopeGuard([&] {
                 if (previous.isValid()) room->setTag("Guixin2Modify", previous);
                 else room->removeTag("Guixin2Modify");
             });
-            room->setTag("Guixin2Modify", QVariant::fromValue(target));
-            QStringList kingdoms = Sanguosha->getKingdoms();
-            kingdoms.removeOne("god");
-            kingdoms.removeOne(target->getKingdom());
-            if (!kingdoms.isEmpty())
-                room->changeKingdom(target, room->askForChoice(ctx.owner, objectName(), kingdoms.join("+")));
-            return false;
+            room->setTag("Guixin2Modify", QVariant::fromValue(target)); // AI projection for the kingdom ask only.
+            ctx.extra_data = QVariantMap{{"kingdom", room->askForChoice(ctx.owner, objectName(), kingdoms.join("+"))}};
+            return true;
         }
-        for (int i = 0; i < getEffectiveAmount(ctx) && target->isAlive(); ++i) {
-            QStringList lords = Sanguosha->getLords();
-            for (ServerPlayer *player : room->getAlivePlayers()) {
-                lords.removeOne(player->getGeneralName());
-                if (player->getGeneral2()) lords.removeOne(player->getGeneral2Name());
-            }
-            QStringList choices;
-            for (const QString &lord : lords) {
-                const General *general = Sanguosha->getGeneral(lord);
-                if (!general) continue;
-                for (const Skill *skill : general->findChildren<const Skill *>()) {
-                    if (skill->isLordSkill() && skill->isVisible() && !target->hasSkill(skill->objectName(), true)
-                        && !choices.contains(skill->objectName())) choices << skill->objectName();
-                }
-            }
+        // Each acquisition only removes its own skill from the next offer, so later picks can be made up front.
+        QStringList skills;
+        while (skills.length() < getEffectiveAmount(ctx)) {
+            const QStringList choices = lordSkillChoices(room, target, skills);
             if (choices.isEmpty()) break;
             const QString chosen = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+            if (!choices.contains(chosen)) break;
+            skills << chosen;
+        }
+        ctx.extra_data = QVariantMap{{"skills", skills}};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.owner || !ctx.owner->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        const QVariantMap payload = ctx.extra_data.toMap();
+        if (ctx.choice == "modify") {
+            const QString kingdom = payload.value("kingdom").toString();
+            if (!kingdom.isEmpty() && kingdom != "god" && kingdom != target->getKingdom())
+                room->changeKingdom(target, kingdom);
+            return false;
+        }
+        const QStringList skills = payload.value("skills").toStringList();
+        for (int i = 0; i < skills.length() && i < getEffectiveAmount(ctx); ++i) {
+            if (!target->isAlive() || !isSourceAvailable(room, ctx)) break;
+            const QString &chosen = skills.at(i);
+            // A pick gone stale since cost (owned already, or its lord now in play) is skipped, never re-asked.
+            if (!lordSkillChoices(room, target, QStringList()).contains(chosen)) continue;
             const int id = room->acquireSkill(target, chosen);
             if (id <= 0) continue;
             // Permanent acquisition retains the exact granting cause without tying its lifetime to it.

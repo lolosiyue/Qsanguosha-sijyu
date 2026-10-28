@@ -367,6 +367,7 @@ public:
             if (owner->canSlash(p, nullptr, false) && (!Config.EnableHegemony || p == target || p->isFriendWith(target))) targets << p;
         }
         if (targets.isEmpty()) return false;
+        // The Slash target choice follows the won Pindian; it cannot precede that result.
         ServerPlayer *to = room->askForPlayerChosen(owner, targets, "shuangren-slash", "@dummy-slash");
         if (!to) return false;
         Slash *slash = new Slash(Card::NoSuit, 0);
@@ -663,6 +664,7 @@ bool Yongsi::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *yuanshu
         log.arg2 = objectName();
         room->sendLog(log);
         room->notifySkillInvoked(yuanshu, objectName());
+        // Compulsory self-discard executes the drawback; there is no detachable pick.
         if (x > 0)
             room->askForDiscard(yuanshu, "yongsi", x, x, false, true);
     }
@@ -1392,6 +1394,7 @@ public:
             if (!target->canDiscard(target, "he")) return false;
             room->sendCompulsoryTriggerLog(target, objectName());
             const int count = qMax(0, getEffectiveAmount(ctx));
+            // The receipt holder's discard is the drawback execution, not a selection.
             if (count > 0) room->askForDiscard(target, objectName(), count, count, false, true, "@canshi-discard");
             return false;
         }
@@ -1548,16 +1551,33 @@ public:
         return TriggerList();
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *hanba, SkillContext &) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *hanba, SkillContext &ctx) const override
     {
         QList<ServerPlayer*> candidates = targets(room, hanba);
         if (candidates.isEmpty())
             return false;
 
-        room->broadcastSkillInvoke(objectName());
         ServerPlayer *target = room->askForPlayerChosen(hanba, candidates, objectName(), "@fentian-choose", false, true);
-        int id = room->askForCardChosen(hanba, target, "he", objectName());
-        hanba->addToPile("burn", id);
+        if (!target) return false;
+        const int id = room->askForCardChosen(hanba, target, "he", objectName());
+        if (id < 0) return false;
+        ctx.targets = {target};
+        ctx.extra_data = QVariantMap{{"card_id", id}};
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        // A stale frozen pick skips settlement; it never reopens selection.
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+        const Player::Place place = room->getCardPlace(id);
+        if (!card || card->hasFlag("using") || room->getCardOwner(id) != target
+            || (place != Player::PlaceHand && place != Player::PlaceEquip)) return false;
+        room->broadcastSkillInvoke(objectName());
+        ctx.owner->addToPile("burn", id);
         return false;
     }
 };
@@ -2256,17 +2276,25 @@ public:
     {
         ServerPlayer *target = room->askForPlayerChosen(player, targets(room, player), objectName(), "@wuniang-invoke", true, true);
         if (!target) return false;
+        const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodGet);
+        if (id < 0) return false;
         ctx.targets = QList<ServerPlayer *>{target};
+        ctx.extra_data = QVariantMap{{"card_id", id}};
         return true;
     }
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (ctx.choice == "guansuo") { target->drawCards(getEffectiveAmount(ctx), objectName()); return false; }
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
         room->broadcastSkillInvoke(objectName());
-        if (!player->canGet(target, "he")) return false;
-        int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodGet);
-        if (!player->canGet(target, id)) return false;
+        // A stale frozen pick skips settlement; it never reopens selection.
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+        const Player::Place place = room->getCardPlace(id);
+        if (!card || card->hasFlag("using") || room->getCardOwner(id) != target
+            || (place != Player::PlaceHand && place != Player::PlaceEquip) || !player->canGet(target, id)) return false;
         room->obtainCard(player, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
             player->objectName(), target->objectName(), objectName(), QString()), false);
         if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), objectName());
@@ -2581,6 +2609,7 @@ public:
     {
         const int count = getEffectiveAmount(ctx);
         if (target->isNude()) return false;
+        // The recipient's discard executes the receipt penalty, not a detachable pick.
         if (target->getCardCount() <= count) {
             DummyCard cards; cards.addSubcards(target->getCards("he")); room->throwCard(&cards, target);
         } else room->askForDiscard(target, "zhanyi_equip", count, count, false, true, "@zhanyiequip_discard");
@@ -2803,6 +2832,7 @@ public:
         ServerPlayer *player = ctx.invoker;
         const int count = qMin(player->getHandcardNum(), getEffectiveAmount(ctx));
         if (count <= 0) return false;
+        // The exchange follows the receipt-driven draw that settles just before it.
         const Card *chosen = room->askForExchange(player, "tunchu", count, count, false, "@tunchu-put");
         if (chosen) player->addToPile("food", chosen);
         return false;
@@ -4279,12 +4309,9 @@ public:
             return TriggerList{{player, {objectName()}}};
         return {};
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override {
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (!ctx.owner || !ctx.original_data || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.targets = {ctx.original_data->value<DamageStruct>().to};
-        return true;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        ServerPlayer *target = ctx.original_data->value<DamageStruct>().to;
         const QStringList available = equipment(ctx.owner, target);
         if (available.isEmpty()) return false;
         const QString selected = room->askForChoice(ctx.owner, "kuangfu_equip", available.join("+"), QVariant::fromValue(target));
@@ -4296,9 +4323,20 @@ public:
         if (ctx.owner->canDiscard(target, card->getEffectiveId())) choices << "throw";
         if (!ctx.owner->getEquip(index)) choices << "move";
         if (choices.isEmpty()) return false;
-        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        ctx.targets = {target};
+        ctx.extra_data = QVariantMap{{"equip_index", index}, {"card_id", card->getEffectiveId()}};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !target || !target->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        const QVariantMap payload = ctx.extra_data.toMap();
+        const int index = payload.value("equip_index", -1).toInt();
+        const QString choice = ctx.choice;
         // Interceptors and nested decisions may change equipment; recheck before moving it.
-        if (target->getEquip(index) != card || !ctx.owner->isAlive()) return false;
+        const Card *card = index >= 0 && index < S_EQUIP_AREA_LENGTH ? target->getEquip(index) : nullptr;
+        if (!card || card->getEffectiveId() != payload.value("card_id", -1).toInt()) return false;
         if (choice == "move" && !ctx.owner->getEquip(index)) {
             room->broadcastSkillInvoke(objectName(), 1, ctx.owner);
             room->moveCardTo(card, ctx.owner, Player::PlaceEquip);
@@ -5788,6 +5826,7 @@ public:
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
     {
+        // Each discard pick follows the preceding throw; the recipient follows the equip move.
         if (ctx.choice == "discard") {
             for (int i = 0; i < getEffectiveAmount(ctx) && ctx.owner->isAlive() && target->isAlive() && ctx.owner->canDiscard(target, "hej"); ++i) {
                 const int id = room->askForCardChosen(ctx.owner, target, "hej", objectName(), false, Card::MethodDiscard);

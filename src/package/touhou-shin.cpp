@@ -204,15 +204,14 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive())
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         room->damage(DamageStruct(objectName(), player, target));
         if (!target->isAlive())
@@ -422,7 +421,7 @@ public:
                                                             "@thlanzou", true, true);
             if (!target)
                 return false;
-            ctx.extra_data = target->objectName();
+            ctx.targets = {target};
         } else {
             if (!player->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.owner)))
                 return false;
@@ -433,17 +432,18 @@ public:
             log.to << ctx.owner;
             log.arg = objectName();
             room->sendLog(log);
-            ctx.extra_data = ctx.owner->objectName();
+            ctx.targets = {ctx.owner};
         }
         room->broadcastSkillInvoke(objectName());
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (target && target->isAlive())
-            target->drawCards(1, objectName());
+        ServerPlayer *player = ctx.owner;
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        target->drawCards(1, objectName());
         return false;
     }
 };
@@ -1172,7 +1172,7 @@ public:
             player->removeTag("ThWangyuSlash");
             if (!target)
                 return false;
-            ctx.extra_data = target->objectName();
+            ctx.targets = {target};
         } else {
             if (!player->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.owner)))
                 return false;
@@ -1183,18 +1183,19 @@ public:
             log.to << ctx.owner;
             log.arg = objectName();
             room->sendLog(log);
-            ctx.extra_data = ctx.owner->objectName();
+            ctx.targets = {ctx.owner};
         }
         room->broadcastSkillInvoke(objectName());
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
+        ServerPlayer *player = ctx.owner;
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (target && target->isAlive() && damage.card
-            && room->getCardPlace(damage.card->getEffectiveId()) == Player::PlaceTable)
+        if (damage.card && room->getCardPlace(damage.card->getEffectiveId()) == Player::PlaceTable)
             room->obtainCard(target, damage.card, objectName());
         return false;
     }
@@ -1344,15 +1345,15 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *owner = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive() || owner->getPile("frost").isEmpty())
+        if (!owner || !owner->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx)
+            || owner->getPile("frost").isEmpty())
             return false;
         DummyCard dummy(owner->getPile("frost"));
         room->obtainCard(target, &dummy, objectName());
@@ -1933,16 +1934,17 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
     // Each takes the other's pindian card; two reds heal the owner, two blacks feed the target.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive() || !player->canPindian(target))
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        if (!player->canPindian(target))
             return false;
         PindianStruct *pindian = player->PinDian(target, objectName());
         if (!pindian || !pindian->from_card || !pindian->to_card)
@@ -2697,16 +2699,17 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
     // A won pindian is followed by 调虎离山 on the target regardless of legality.
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive() || !player->canPindian(target))
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        if (!player->canPindian(target))
             return false;
         if (player->pindian(target, objectName())) {
             if (!player->isAlive() || !target->isAlive())
@@ -3251,7 +3254,7 @@ public:
             if (!target)
                 return false;
             room->broadcastSkillInvoke(objectName());
-            ctx.extra_data = target->objectName();
+            ctx.targets = {target};
             return true;
         }
         if (player != source && !player->askForSkillInvoke(objectName(), QVariant::fromValue(source)))
@@ -3269,20 +3272,8 @@ public:
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        ServerPlayer *source = ctx.owner;
-        if (event != CardAsked) {
-            ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-            if (!target || !target->isAlive())
-                return false;
-            foreach (ServerPlayer *p, room->getAllPlayers(true))
-                if (p->getMark("@assistant") > 0) {
-                    room->setPlayerMark(p, "@assistant", 0);
-                    room->setPlayerProperty(p, "thlingweisource", QString());
-                }
-            room->setPlayerMark(target, "@assistant", 1);
-            room->setPlayerProperty(target, "thlingweisource", source->objectName());
+        if (event != CardAsked)
             return false;
-        }
         if (!player->isAlive())
             return false;
         const QString pattern = ctx.original_data->toStringList().first();
@@ -3292,6 +3283,22 @@ public:
         card->setSkillName("_thlingwei");
         room->provide(card);
         return true;
+    }
+
+    // The chosen assistant replaces any earlier one.
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *source = ctx.owner;
+        if (!source || !source->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+            return false;
+        foreach (ServerPlayer *p, room->getAllPlayers(true))
+            if (p->getMark("@assistant") > 0) {
+                room->setPlayerMark(p, "@assistant", 0);
+                room->setPlayerProperty(p, "thlingweisource", QString());
+            }
+        room->setPlayerMark(target, "@assistant", 1);
+        room->setPlayerProperty(target, "thlingweisource", source->objectName());
+        return false;
     }
 };
 
@@ -3699,7 +3706,7 @@ public:
                                                        "@thyongye-add:::" + use.card->objectName(), true);
         if (!extra)
             return false;
-        ctx.extra_data = extra->objectName();
+        ctx.targets = {extra};
         return true;
     }
 
@@ -3726,12 +3733,18 @@ public:
             foreach (int id, ids)
                 room->setPlayerMark(player, "thcanfei_" + QString::number(Sanguosha->getCard(id)->getNumber()) + "-Clear", 1);
             room->setPlayerMark(player, "thcanfei_used-Clear", 1);
-            return false;
         }
-        ServerPlayer *extra = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!extra || !extra->isAlive())
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *extra) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        if (!player || !player->isAlive() || !extra || !extra->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.to.contains(extra))
+            return false;
         use.to << extra;
         room->sortByActionOrder(use.to);
         LogMessage log;
@@ -4010,15 +4023,14 @@ public:
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());
-        ctx.extra_data = target->objectName();
+        ctx.targets = {target};
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         ServerPlayer *player = ctx.owner;
-        ServerPlayer *target = room->findPlayerByObjectName(ctx.extra_data.toString());
-        if (!target || !target->isAlive())
+        if (!player || !player->isAlive() || !target || !target->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         room->showAllCards(player);
         QList<int> ids;

@@ -144,16 +144,25 @@ public:
             if (other->getHandcardNum() < owner->getHandcardNum()) { fewest = false; break; }
         return count + (fewest ? 1 : 0);
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner) return false;
         const int count = qualifiedConditions(ctx.owner);
         if (count < 0 || !ctx.owner->askForSkillInvoke(this)) return false;
         ctx.extra_data = count;
+        ctx.targets.clear();
+        // With no condition nothing can be kept, so the paired loss target is known before the reveal.
+        if (count == 0) {
+            ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), "@zuilun-lose");
+            if (target) ctx.targets << target;
+        }
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        // Only the no-keep loss branch hands the cost target to framework settlement.
+        const QList<ServerPlayer *> loseTargets = ctx.targets;
+        ctx.targets.clear();
         ServerPlayer *owner = ctx.invoker;
         if (!owner || !owner->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
         const int amount = getEffectiveAmount(ctx);
@@ -183,16 +192,17 @@ public:
                 if (room->getCardPlace(id) == Player::DrawPile && !room->getDrawPile().contains(id)) obtained << id;
             if (owner->isAlive() && !obtained.isEmpty()) { DummyCard cards(obtained); room->obtainCard(owner, &cards, objectName(), false); }
         } else if (count == 0 && owner->isAlive()) {
-            ServerPlayer *target = room->askForPlayerChosen(owner, room->getOtherPlayers(owner), objectName(), "@zuilun-lose");
             // The owner is the current player, so its loss precedes the chosen player's in action order.
             room->loseHp(HpLostStruct(owner, amount, objectName(), owner));
-            if (target) ctx.targets << target;
+            ctx.targets = loseTargets;
         }
         return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive()) return false;
+        // The paired loss stands even if the owner's own loss was fatal; the source and target are revalidated.
+        if (!target || !target->isAlive() || target == ctx.owner || getEffectiveAmount(ctx) <= 0
+            || !isSourceAvailable(room, ctx)) return false;
         room->loseHp(HpLostStruct(target, getEffectiveAmount(ctx), objectName(), ctx.invoker));
         return false;
     }
@@ -1048,7 +1058,7 @@ public:
             addAllInstances(result, player, objectName());
         return result;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.invoker) return false;
         const QVariant phase = room->historyScopes().value("phase_id");
@@ -1057,7 +1067,8 @@ public:
         QList<int> pool;
         for (;;) {
             const QVariantMap page = room->queryHistoryMoves(filter);
-            if (page.contains("error") || !page.value("complete").toBool() || !page.value("attribution_complete").toBool()) return false;
+            // Rule discards carry incomplete "gamerule" attribution; this filter names no owner or skill, so only completeness gates it.
+            if (page.contains("error") || !page.value("complete").toBool()) return false;
             if (!filter.contains("watermark")) filter["watermark"] = page.value("watermark");
             for (const QVariant &value : page.value("items").toList()) {
                 const QVariantMap move = value.toMap().value("data").toMap(); const int id = move.value("card_id", -1).toInt();
@@ -1068,6 +1079,9 @@ public:
             filter["after"] = page.value("next_after");
         }
         QList<ServerPlayer *> targets; for (ServerPlayer *p : room->getOtherPlayers(ctx.invoker)) if (p->hasLordSkillKingdom("qun", ctx.owner)) targets << p;
+        // Gift ids are payload keyed by recipient; recipient identity comes only from ctx.targets.
+        QVariantMap gifts;
+        ctx.targets.clear();
         while (!pool.isEmpty() && !targets.isEmpty() && ctx.invoker->isAlive()) {
             ServerPlayer *target = room->askForPlayerChosen(ctx.invoker, targets, objectName(), "leiweidi-give", true, true);
             if (!target) break;
@@ -1081,14 +1095,20 @@ public:
                 const int id = room->askForAG(ctx.invoker, pool, false, objectName());
                 if (!pool.removeOne(id)) break; selected << id;
             }
-            ctx.extra_data = ListI2V(selected);
-            skillEffect(event, room, player, ctx, target);
+            if (selected.isEmpty()) continue;
+            ctx.targets << target;
+            gifts.insert(target->objectName(), ListI2V(selected));
         }
-        return false;
+        ctx.extra_data = gifts;
+        return !ctx.targets.isEmpty();
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        QList<int> ids; for (int id : ListV2I(ctx.extra_data.toList())) if (room->getCardPlace(id) == Player::DiscardPile) ids << id;
+        if (!ctx.invoker || !ctx.invoker->isAlive() || !target || !target->isAlive() || !target->hasLordSkillKingdom("qun", ctx.owner)
+            || !isSourceAvailable(room, ctx)) return false;
+        QList<int> ids;
+        for (int id : ListV2I(ctx.extra_data.toMap().value(target->objectName()).toList()))
+            if (ids.size() < getEffectiveAmount(ctx) && room->getCardPlace(id) == Player::DiscardPile) ids << id;
         if (!ids.isEmpty()) {
             DummyCard cards(ids);
             room->obtainCard(target, &cards, CardMoveReason(CardMoveReason::S_REASON_RECYCLE, ctx.invoker->objectName(), target->objectName(), objectName(), ""), true);

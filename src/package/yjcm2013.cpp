@@ -428,13 +428,22 @@ bool QiaoshuiCard::targetFilter(const QList<const Player *> &targets, const Play
     return targets.isEmpty() && Self->canPindian(to_select);
 }
 
-void QiaoshuiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+void QiaoshuiCard::use(Room *, ServerPlayer *, QList<ServerPlayer *> &) const
 {
-    if (!source->canPindian(targets.first(), false)) return;
-    if (source->pindian(targets.first(), "qiaoshui"))
-        source->setFlags("QiaoshuiSuccess");
-    else
-        room->setPlayerCardLimitation(source, "use", "TrickCard", true);
+    // Selection only: the qiaoshui cost reads the target, effectTarget runs the pindian.
+}
+
+static QList<ServerPlayer *> qiaoshuiAddTargets(Room *room, ServerPlayer *jianyong, const CardUseStruct &use)
+{
+    QList<ServerPlayer *> targets;
+    if (use.card->isKindOf("AOE") || use.card->isKindOf("GlobalEffect")) return targets;
+    room->setPlayerFlag(jianyong, "QiaoshuiExtraTarget");
+    foreach (ServerPlayer *p, room->getAlivePlayers()) {
+        if (!use.to.contains(p) && jianyong->canUse(use.card, p))
+            targets << p;
+    }
+    room->setPlayerFlag(jianyong, "-QiaoshuiExtraTarget");
+    return targets;
 }
 
 class QiaoshuiViewAsSkill : public ZeroCardViewAsSkill
@@ -463,101 +472,119 @@ public:
     }
 };
 
-class Qiaoshui : public TriggerSkill
+class Qiaoshui : public TriggerSkillV2
 {
 public:
-    Qiaoshui() : TriggerSkill("qiaoshui")
+    Qiaoshui() : TriggerSkillV2("qiaoshui")
     {
         events << PreCardUsed << EventPhaseStart;
         view_as_skill = new QiaoshuiViewAsSkill;
     }
-    bool triggerable(const ServerPlayer *target) const
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *jianyong, QVariant &data) const override
     {
-        return target != nullptr && target->getPhase() == Player::Play;
+        if (!jianyong || !jianyong->isAlive() || jianyong->getPhase() != Player::Play || !jianyong->hasSkill(this))
+            return TriggerList();
+        if (event == EventPhaseStart) {
+            foreach (ServerPlayer *p, room->getOtherPlayers(jianyong)) {
+                if (jianyong->canPindian(p)) return TriggerList{{jianyong, {objectName()}}};
+            }
+            return TriggerList();
+        }
+        const CardUseStruct use = data.value<CardUseStruct>();
+        return jianyong->hasFlag("QiaoshuiSuccess") && use.card && (use.card->isNDTrick() || use.card->isKindOf("BasicCard"))
+            ? TriggerList{{jianyong, {objectName()}}} : TriggerList();
     }
-    bool trigger(TriggerEvent event, Room *room, ServerPlayer *jianyong, QVariant &data) const
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if(event==EventPhaseStart){
-			if (jianyong->hasSkill(objectName())) {
-				foreach (ServerPlayer *p, room->getOtherPlayers(jianyong)) {
-					if (jianyong->canPindian(p)) {
-						room->askForUseCard(jianyong, "@@qiaoshui", "@qiaoshui-card", 1);
-						break;
-					}
-				}
-			}
-		}else{
-			if (!jianyong->hasFlag("QiaoshuiSuccess")) return false;
-			CardUseStruct use = data.value<CardUseStruct>();
-			if (use.card->isNDTrick() || use.card->isKindOf("BasicCard")) {
-				jianyong->setFlags("-QiaoshuiSuccess");
-				QList<ServerPlayer *> available_targets;
-				if (!use.card->isKindOf("AOE") && !use.card->isKindOf("GlobalEffect")) {
-					room->setPlayerFlag(jianyong, "QiaoshuiExtraTarget");
-					foreach (ServerPlayer *p, room->getAlivePlayers()) {
-						if (use.to.contains(p)) continue;
-						if (jianyong->canUse(use.card,p))
-							available_targets << p;
-					}
-					room->setPlayerFlag(jianyong, "-QiaoshuiExtraTarget");
-				}
-				QStringList choices;
-				if (available_targets.length()>0) choices.append("add");
-				if (use.to.length() > 1) choices.append("remove");
-				choices << "cancel";
-				QString choice = room->askForChoice(jianyong, "qiaoshui", choices.join("+"), data);
-				if (choice == "cancel")
-					return false;
-				else if (choice == "add") {
-					ServerPlayer *extra = nullptr;
-					if (use.card->isKindOf("Collateral")){
-						QStringList tos;
-						tos << use.card->toString();
-						foreach(ServerPlayer *t, use.to)
-							tos << t->objectName();
-						tos << "qiaoshui";
-						room->setPlayerProperty(jianyong, "extra_collateral", tos.join("+"));
-						room->askForUseCard(jianyong, "@@qiaoshui!", "@qiaoshui-add:::collateral");
-						extra = jianyong->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
-						jianyong->removeTag("ExtraCollateralTarget");
-						if (!extra) {
-							QList<ServerPlayer *> victims;
-							extra = available_targets.at(qsanRandomBounded(available_targets.length()));
-							foreach (ServerPlayer *p, room->getOtherPlayers(extra)) {
-								if (extra->canSlash(p))
-									victims << p;
-							}
-							if(victims.length()>0)
-								extra->setTag("attachTarget", QVariant::fromValue(victims.at(qsanRandomBounded(victims.length()))));
-						}
-					}else{
-						extra = room->askForPlayerChosen(jianyong, available_targets, "qiaoshui", "@qiaoshui-add:::" + use.card->objectName());
-					}
-					if(extra){
-						LogMessage log;
-						log.type = "#QiaoshuiAdd";
-						log.from = jianyong;
-						log.to << extra;
-						log.card_str = use.card->toString();
-						log.arg = "qiaoshui";
-						room->sendLog(log);
-						use.to.append(extra);
-						room->sortByActionOrder(use.to);
-					}
-				} else {
-					ServerPlayer *removed = room->askForPlayerChosen(jianyong, use.to, "qiaoshui", "@qiaoshui-remove:::" + use.card->objectName());
-					use.to.removeOne(removed);
-					LogMessage log;
-					log.type = "#QiaoshuiRemove";
-					log.from = jianyong;
-					log.to << removed;
-					log.card_str = use.card->toString();
-					log.arg = "qiaoshui";
-					room->sendLog(log);
-				}
-				data = QVariant::fromValue(use);
-			}
-		}
+        ServerPlayer *jianyong = ctx.owner;
+        if (event == EventPhaseStart) {
+            const CardUseStruct use = room->askForUseCardStruct(jianyong, "@@qiaoshui", "@qiaoshui-card", 1);
+            if (!use.card || use.to.length() != 1) return false;
+            ctx.targets = use.to;
+            return true;
+        }
+        // One win covers one card: consume it before asking, so cancel cannot re-fire.
+        jianyong->setFlags("-QiaoshuiSuccess");
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        const QList<ServerPlayer *> available = qiaoshuiAddTargets(room, jianyong, use);
+        QStringList choices;
+        if (!available.isEmpty()) choices << "add";
+        if (use.to.length() > 1) choices << "remove";
+        choices << "cancel";
+        const QString choice = room->askForChoice(jianyong, objectName(), choices.join("+"), *ctx.original_data);
+        ServerPlayer *target = nullptr;
+        if (choice == "remove") {
+            target = room->askForPlayerChosen(jianyong, use.to, objectName(), "@qiaoshui-remove:::" + use.card->objectName());
+        } else if (choice == "add" && use.card->isKindOf("Collateral")) {
+            QStringList tos;
+            tos << use.card->toString();
+            foreach (ServerPlayer *t, use.to)
+                tos << t->objectName();
+            tos << objectName();
+            room->setPlayerProperty(jianyong, "extra_collateral", tos.join("+"));
+            room->askForUseCard(jianyong, "@@qiaoshui!", "@qiaoshui-add:::collateral");
+            target = jianyong->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+            jianyong->removeTag("ExtraCollateralTarget");
+            ServerPlayer *victim = nullptr;
+            if (target) {
+                // ExtraCollateralCard tags the pair at once; effectTarget attaches it when the target is added.
+                victim = target->getTag("attachTarget").value<ServerPlayer *>();
+                target->removeTag("attachTarget");
+            } else {
+                target = available.at(qsanRandomBounded(available.length()));
+                QList<ServerPlayer *> victims;
+                foreach (ServerPlayer *p, room->getOtherPlayers(target)) {
+                    if (target->canSlash(p))
+                        victims << p;
+                }
+                if (!victims.isEmpty())
+                    victim = victims.at(qsanRandomBounded(victims.length()));
+            }
+            ctx.extra_data = QVariantMap{{"victim", victim ? victim->objectName() : QString()}};
+        } else if (choice == "add") {
+            target = room->askForPlayerChosen(jianyong, available, objectName(), "@qiaoshui-add:::" + use.card->objectName());
+        }
+        if (!target) return false;
+        ctx.choice = choice;
+        ctx.targets = {target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *jianyong = ctx.owner;
+        if (!target || !target->isAlive() || !jianyong || !jianyong->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        if (event == EventPhaseStart) {
+            if (!jianyong->canPindian(target, false)) return false;
+            if (jianyong->pindian(target, objectName()))
+                jianyong->setFlags("QiaoshuiSuccess");
+            else
+                room->setPlayerCardLimitation(jianyong, "use", "TrickCard", true);
+            return false;
+        }
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        LogMessage log;
+        log.from = jianyong;
+        log.to << target;
+        log.card_str = use.card->toString();
+        log.arg = objectName();
+        if (ctx.choice == "remove") {
+            if (use.to.length() <= 1 || !use.to.contains(target)) return false;
+            use.to.removeOne(target);
+            log.type = "#QiaoshuiRemove";
+        } else {
+            if (!qiaoshuiAddTargets(room, jianyong, use).contains(target)) return false;
+            const QString victimName = ctx.extra_data.toMap().value("victim").toString();
+            if (use.card->isKindOf("Collateral") && !victimName.isEmpty()) {
+                ServerPlayer *victim = room->findPlayerByObjectName(victimName);
+                if (!victim || !target->canSlash(victim)) return false;
+                target->setTag("attachTarget", QVariant::fromValue(victim));
+            }
+            use.to.append(target);
+            room->sortByActionOrder(use.to);
+            log.type = "#QiaoshuiAdd";
+        }
+        room->sendLog(log);
+        *ctx.original_data = QVariant::fromValue(use);
         return false;
     }
 };
