@@ -199,7 +199,7 @@ void TenyearJieyinCard::onEffect(CardEffectStruct &effect) const
 	}
 	if (effect.from->canDiscard(effect.from, getEffectiveId()))
 		choices << "throw";
-	if (room->askForChoice(effect.from,"tenyearjieyin",choices.join("+"),QVariant::fromValue(effect))=="enter") {
+	if (room->askForChoice(effect.from,"tenyearjieyin",choices.join("+"),QVariant::fromValue(effect),QString(),":tenyearjieyin")=="enter") {
 		LogMessage log;
 		log.type = "$ZhijianEquip";
 		log.from = effect.to;
@@ -278,7 +278,7 @@ public:
         preview.from = ctx.invoker;
         preview.to = ctx.targets.first();
         preview.card = ctx.use_card;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant::fromValue(preview));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant::fromValue(preview), QString(), ":" + objectName());
         ctx.manual_effect = true;
         return choices.contains(ctx.choice);
     }
@@ -1762,7 +1762,7 @@ public:
         // The source's own choice stays here: the recover option follows its wounds at settlement.
         QStringList choices{"draw"};
         if (target->isWounded()) choices << "recover";
-        if (room->askForChoice(target, objectName(), choices.join("+")) == "draw")
+        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "draw")
             target->drawCards(getEffectiveAmount(ctx), objectName());
         else
             room->recover(target, RecoverStruct(objectName(), ctx.invoker, getEffectiveAmount(ctx)));
@@ -1946,7 +1946,7 @@ public:
         if (choices.size() > 1 && ctx.owner->getMark("zhongaoUptenyearkuanggu") > 0
             && ctx.owner->canDiscard(ctx.owner, "he")) choices << "beishui";
         ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"),
-            ctx.original_data ? *ctx.original_data : QVariant());
+            ctx.original_data ? *ctx.original_data : QVariant(), QString(), ":" + objectName());
         if (!choices.contains(ctx.choice)) return false;
         return true;
     }
@@ -1982,7 +1982,7 @@ void TenyearQimouCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer 
 	QStringList choices;
 	for (int i = 1; i <= source->getHp(); i++)
 		choices << QString::number(i);
-	QString choice = room->askForChoice(source, "tenyearqimou", choices.join("+"));
+	QString choice = room->askForChoice(source, "tenyearqimou", choices.join("+"), QVariant(), QString(), ":tenyearqimou");
 	int n = choice.toInt();
 	room->loseHp(HpLostStruct(source, n, "tenyearqimou", source));
 	if (source->isAlive()) {
@@ -2006,7 +2006,7 @@ public:
         QStringList choices;
         for (int n = 1; n <= ctx.initiator->getHp(); ++n) choices << QString::number(n);
         if (choices.isEmpty()) return false;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         return choices.contains(ctx.choice);
     }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
@@ -2300,7 +2300,7 @@ void TenyearTianxiangCard::onEffect(CardEffectStruct &effect) const
 {
 	if (effect.from->isDead() || effect.to->isDead()) return;
 	Room *room = effect.from->getRoom();
-	if (room->askForChoice(effect.from, this_skill_name, "damage+losehp") == "damage") {
+	if (room->askForChoice(effect.from, this_skill_name, "damage+losehp", QVariant(), QString(), ":" + this_skill_name) == "damage") {
 		room->damage(DamageStruct(this_skill_name, nullptr, effect.to));
 		if (effect.to->isDead()) return;
 		int n = qMin(5, effect.to->getLostHp());
@@ -2645,7 +2645,7 @@ public:
         }
         if (!room->askForSkillInvoke(ctx.owner, objectName())) return false;
         ctx.choice = suits.size() >= ctx.owner->getHp() ? "both"
-            : room->askForChoice(ctx.owner, objectName(), "draw+play");
+            : room->askForChoice(ctx.owner, objectName(), "draw+play", QVariant(), QString(), ":" + objectName());
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -3174,7 +3174,7 @@ public:
         for (const Card *card : ctx.owner->getCards("he"))
             if (!card->hasFlag("using") && ctx.owner->canDiscard(ctx.owner, card->getEffectiveId()))
                 legal << QString::number(card->getEffectiveId());
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), legal.isEmpty() ? "two+one" : "two+one+discard");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), legal.isEmpty() ? "two+one" : "two+one+discard", QVariant(), QString(), ":" + objectName());
         QVariantMap receipt{{"phase", phase}};
         if (ctx.choice == "discard") {
             const Card *card = room->askForExchange(ctx.owner, objectName(), 1, 1, true, "", false, legal.join(","));
@@ -3904,7 +3904,7 @@ public:
 
 			for (int i = 0; i < 2; i++) {
 				if (choices.isEmpty()) break;
-				QString choice = room->askForChoice(player, objectName(), choices.join("+"), data, excepts.join("+"));
+				QString choice = room->askForChoice(player, objectName(), choices.join("+"), data, excepts.join("+"), ":" + objectName());
 				if (choice == "cancel") break;
 				choices.removeOne(choice);
 				excepts << choice;
@@ -4690,7 +4690,7 @@ public:
 			choices << "remove";
 		if (choices.isEmpty()) return false;
 		choices << "cancel";
-		QString choice = room->askForChoice(player, objectName(), choices.join("+"), data);
+		QString choice = room->askForChoice(player, objectName(), choices.join("+"), data, QString(), ":" + objectName());
 		if (choice == "cancel") return false;
 
 		if (choice == "add") {
@@ -5523,7 +5523,7 @@ void TenyearXuanhuoCard::onEffect(CardEffectStruct &effect) const
 				room->obtainCard(effect.from, handcards, reason, false);
 			}
 		} else {
-			if (room->askForChoice(effect.to, "tenyearxuanhuo", "use+give", QVariant::fromValue(effect.from)) == "give") {
+			if (room->askForChoice(effect.to, "tenyearxuanhuo", "use+give", QVariant::fromValue(effect.from), QString(), ":tenyearxuanhuo") == "give") {
 				if (!effect.to->isKongcheng()) {
 					CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.to->objectName(), effect.from->objectName(), "tenyearxuanhuo", "");
 					room->obtainCard(effect.from, handcards, reason, false);
@@ -5557,7 +5557,7 @@ void TenyearXuanhuoCard::onEffect(CardEffectStruct &effect) const
 						room->obtainCard(effect.from, handcards, reason, false);
 					}
 				} else {
-					QString choice = room->askForChoice(effect.to, "tenyearxuanhuo", choices.join("+"));
+					QString choice = room->askForChoice(effect.to, "tenyearxuanhuo", choices.join("+"), QVariant(), QString(), ":tenyearxuanhuo");
 					Card *card = Sanguosha->cloneCard(choice);
 					card->setSkillName("_tenyearxuanhuo");
 					card->deleteLater();
@@ -5878,7 +5878,7 @@ void TenyearHuaiyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer
 		return;
 	}
 
-	QString to_discard = room->askForChoice(source, "tenyearhuaiyi", "black+red");
+	QString to_discard = room->askForChoice(source, "tenyearhuaiyi", "black+red", QVariant(), QString(), ":tenyearhuaiyi");
 	QList<int> *pile = nullptr;
 	if (to_discard == "black")
 		pile = &blacks;
@@ -6000,7 +6000,7 @@ public:
             target->drawCards(amount, objectName());
             return FinishSkill;
         }
-        const QString color = room->askForChoice(target, objectName(), "black+red");
+        const QString color = room->askForChoice(target, objectName(), "black+red", QVariant(), QString(), ":" + objectName());
         if (color != "black" && color != "red") return FinishSkill;
         QList<int> payment;
         for (int id : color == "red" ? red : black)
@@ -6481,7 +6481,7 @@ public:
         const QVariant phase = room->historyScopes().value("phase_id");
         const QVariant turn = room->historyScopes().value("turn_id");
         if (!phase.toLongLong() || !turn.toLongLong() || !ctx.owner->askForSkillInvoke(this)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "1+2+3");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "1+2+3", QVariant(), QString(), ":" + objectName());
         if (ctx.choice.toInt() < 1 || ctx.choice.toInt() > 3) return false;
         ctx.extra_data = QVariantMap{{"phase", phase}, {"turn", turn}};
         return true;
@@ -8268,7 +8268,7 @@ public:
         if (!ids.contains(QString::number(id))) return false;
         const QStringList available = choices(ctx.owner, ctx.invoker, id);
         if (available.isEmpty()) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), available.join("+"), QVariant::fromValue(ctx.invoker));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), available.join("+"), QVariant::fromValue(ctx.invoker), QString(), ":" + objectName());
         if (!available.contains(ctx.choice)) return false;
         ctx.extra_data = id;
         ctx.targets << ctx.invoker;
@@ -8371,7 +8371,7 @@ void TenyearJianyanCard::use(Room *room, ServerPlayer *source, QList<ServerPlaye
 	}
 	if (choice_list.isEmpty()) return;
 
-	QString choice = room->askForChoice(source, "tenyearjianyan", choice_list.join("+"));
+	QString choice = room->askForChoice(source, "tenyearjianyan", choice_list.join("+"), QVariant(), QString(), ":tenyearjianyan");
 	int index = choice_list.indexOf(choice);
 	QString pattern = pattern_list.at(index);
 
@@ -8446,7 +8446,7 @@ public:
         if (ctx.choice.isEmpty() && ctx.bypass_cost) {
             const QStringList available = choices(ctx);
             if (!ctx.invoker || available.isEmpty()) return false;
-            ctx.choice = ctx.owner->getRoom()->askForChoice(ctx.invoker, objectName(), available.join("+"));
+            ctx.choice = ctx.owner->getRoom()->askForChoice(ctx.invoker, objectName(), available.join("+"), QVariant(), QString(), ":" + objectName());
         }
         if (!isUsable(ctx) || !choices(ctx).contains(ctx.choice)) return false;
         QVariantMap receipt{{"committed", true}};
@@ -8484,7 +8484,7 @@ public:
     {
         const QStringList available = choices(ctx);
         if (available.isEmpty()) return false;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), available.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), available.join("+"), QVariant(), QString(), ":" + objectName());
         return available.contains(ctx.choice);
     }
     bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
@@ -9591,7 +9591,7 @@ void TenyearMingceCard::onEffect(CardEffectStruct &effect) const
 		throw triggerEvent;
 	}
 
-	QString choice = room->askForChoice(effect.to, "tenyearmingce", choicelist.join("+"));
+	QString choice = room->askForChoice(effect.to, "tenyearmingce", choicelist.join("+"), QVariant(), QString(), ":tenyearmingce");
 	if (target && target->hasFlag("TenyearMingceTarget")) target->setFlags("-TenyearMingceTarget");
 
 	if (choice == "use") {
@@ -9649,7 +9649,7 @@ public:
             if (ctx.choice.isEmpty()) {
                 QStringList choices;
                 for (int n = 1; n <= ctx.initiator->getHp(); ++n) choices << QString::number(n);
-                if (!choices.isEmpty()) ctx.choice = room->askForChoice(ctx.invoker, skillName, choices.join("+"));
+                if (!choices.isEmpty()) ctx.choice = room->askForChoice(ctx.invoker, skillName, choices.join("+"), QVariant(), QString(), ":" + skillName);
             }
             const int count = ctx.choice.toInt();
             if (count <= 0 || count > ctx.initiator->getHp()) ctx.is_canceled = true;
@@ -9737,7 +9737,7 @@ public:
             && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using")) return ContinueEffects;
         room->giveCard(payer, target, Sanguosha->getCard(id), objectName());
         if (!target->isAlive()) return ContinueEffects;
-        const QString choice = room->askForChoice(target, objectName(), victim ? "draw+use" : "draw");
+        const QString choice = room->askForChoice(target, objectName(), victim ? "draw+use" : "draw", QVariant(), QString(), ":" + objectName());
         if (choice == "use" && victim && victim->isAlive()) {
             std::unique_ptr<Slash> slash(new Slash(Card::NoSuit, 0));
             slash->setSkillName("_tenyearmingce");

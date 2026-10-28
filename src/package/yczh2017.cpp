@@ -331,7 +331,7 @@ public:
         }
         if (event != EventPhaseStart) return true;
         if (!ctx.owner->askForSkillInvoke(this)) return false;
-        const QString last = previousChoice(room, ctx); ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+target");
+        const QString last = previousChoice(room, ctx); ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+target", QVariant(), QString(), ":" + objectName());
         ctx.extra_data = !last.isEmpty() && ctx.choice != last ? (objectName() == "xiaoxin_fumian" ? 3 : 2) : 1; return true;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -494,7 +494,7 @@ void ZhongjianCard::onEffect(CardEffectStruct &effect) const
 		choices << "draw";
 		if (effect.from->canDiscard(effect.to, "he"))
 			choices << "discard";
-		if (room->askForChoice(effect.from, "zhongjian", choices.join("+")) == "draw")
+		if (room->askForChoice(effect.from, "zhongjian", choices.join("+"), QVariant(), QString(), ":zhongjian") == "draw")
 			effect.from->drawCards(1, "zhongjian");
 		else {
 			int card_id = room->askForCardChosen(effect.from, effect.to, "he", "zhongjian", false, Card::MethodDiscard);
@@ -581,7 +581,7 @@ public:
             if (objectName() == "olzhongjian") {
                 QList<ServerPlayer *> candidates; for (ServerPlayer *other : room->getOtherPlayers(ctx.invoker)) if (ctx.invoker->canDiscard(other, "he")) candidates << other;
                 if (!candidates.isEmpty()) discard = room->askForPlayerChosen(ctx.invoker, candidates, objectName(), "@olzhongjian-discard", true);
-            } else if (ctx.invoker->canDiscard(target, "he") && room->askForChoice(ctx.invoker, objectName(), "draw+discard") == "discard") discard = target;
+            } else if (ctx.invoker->canDiscard(target, "he") && room->askForChoice(ctx.invoker, objectName(), "draw+discard", QVariant(), QString(), ":" + objectName()) == "discard") discard = target;
             if (discard) { SkillContext reward = ctx; reward.choice = "discard"; reward.targets = {discard}; skillEffect(reward, discard); }
             else if (ctx.invoker->isAlive()) ctx.invoker->drawCards(amount, objectName());
         } else if (!sameNumber && ctx.invoker->isAlive() && ctx.invoker->getMaxCards() > 0 && amount > 0) {
@@ -705,7 +705,7 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner->askForSkillInvoke(this)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), ctx.owner->isWounded() ? "max+recover" : "max");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), ctx.owner->isWounded() ? "max+recover" : "max", QVariant(), QString(), ":" + objectName());
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -789,7 +789,7 @@ public:
         } else target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), "@qingxian-invoke", true, true);
         if (!target) return false;
         ctx.targets = {target};
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), target->isWounded() ? "losehp+recover" : "losehp");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), target->isWounded() ? "losehp+recover" : "losehp", QVariant(), QString(), ":" + objectName());
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
@@ -1083,7 +1083,7 @@ void WenguagiveCard::onUse(Room *room, CardUseStruct &card_use) const
 	
 		QStringList list;
 		list << card_use.from->objectName() << QString::number(subcards.first());
-		QString choice = room->askForChoice(p, "wengua", "top+bottom+cancel", list);
+		QString choice = room->askForChoice(p, "wengua", "top+bottom+cancel", list, QString(), ":wengua");
 		if (choice == "cancel") continue;
 		QList<ServerPlayer *> sp;
 		sp << card_use.from;
@@ -1148,7 +1148,7 @@ public:
         if (room->getCardOwner(id) != donor || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using")) return;
         if (target != donor) room->giveCard(donor, target, QList<int>{id}, "wengua");
         if (room->getCardOwner(id) != target || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using") || target->isDead()) return;
-        const QString choice = room->askForChoice(target, "wengua", target == donor ? "top+bottom" : "top+bottom+cancel", QStringList{donor->objectName(), QString::number(id)});
+        const QString choice = room->askForChoice(target, "wengua", target == donor ? "top+bottom" : "top+bottom+cancel", QStringList{donor->objectName(), QString::number(id)}, QString(), ":wengua");
         if (choice != "top" && choice != "bottom") return;
         if (room->getCardOwner(id) != target || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip) || Sanguosha->getCard(id)->hasFlag("using")) return;
         const QVariantMap before = room->queryHistoryMoves({{"from", target->objectName()}, {"limit", 1}});
@@ -1260,7 +1260,7 @@ static int jiexunChoose(Room *room, ServerPlayer *owner, const QList<int> &ids)
 {
     if (ids.isEmpty()) return 0; if (ids.size() == 1) return ids.first();
     QStringList choices; for (int id : ids) choices << SkillInstanceUtils::formatName("funan", id);
-    const int index = choices.indexOf(room->askForChoice(owner, "jiexun", choices.join("+"))); return index < 0 ? 0 : ids.at(index);
+    const int index = choices.indexOf(room->askForChoice(owner, "jiexun", choices.join("+"), QVariant(), QString(), ":jiexun")); return index < 0 ? 0 : ids.at(index);
 }
 static void jiexunUpgrade(Room *room, ServerPlayer *target, int id)
 {

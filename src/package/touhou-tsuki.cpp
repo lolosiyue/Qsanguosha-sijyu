@@ -1500,7 +1500,7 @@ public:
             choices << "slash";
         if (choices.isEmpty())
             return false;
-        if (room->askForChoice(owner, objectName(), choices.join("+")) == "slash") {
+        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "slash") {
             ServerPlayer *victim = room->askForPlayerChosen(owner, victims, objectName(), "@thzhehui-slash");
             if (!victim)
                 return false;
@@ -1732,7 +1732,7 @@ public:
         const Card *theirs = small;
         if (bigOwner != source && room->askForChoice(source, objectName(), "big+small",
                                                      QVariant(ListI2V(QList<int>{big->getEffectiveId(),
-                                                                                 small->getEffectiveId()})))
+                                                                                 small->getEffectiveId()})), QString(), ":" + objectName())
                                       == "small") {
             mine = small;
             theirs = big;
@@ -2301,7 +2301,7 @@ public:
         if (!available.isEmpty())
             choices << "add";
         choices << "remove";
-        if (room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data) == "add") {
+        if (room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data, QString(), ":" + objectName()) == "add") {
             ServerPlayer *extra = room->askForPlayerChosen(player, available, objectName(),
                                                            "@thyongye-add:::" + use.card->objectName());
             if (!extra)
@@ -2377,7 +2377,7 @@ public:
             choices << "nine";
         QList<int> gain;
         if (!choices.isEmpty() && player->isAlive())
-            gain = room->askForChoice(player, objectName(), choices.join("+"), QVariant(ListI2V(ids))) == "red" ? red : nine;
+            gain = room->askForChoice(player, objectName(), choices.join("+"), QVariant(ListI2V(ids)), QString(), ":" + objectName()) == "red" ? red : nine;
         QList<int> rest;
         foreach (int id, ids)
             if (!gain.contains(id) && room->getCardPlace(id) == Player::PlaceTable)

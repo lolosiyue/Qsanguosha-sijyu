@@ -63,7 +63,9 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *player = ctx.owner;
-        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw") == "recover")
+        if (player->isWounded()
+            && room->askForChoice(player, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName())
+                   == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -617,7 +619,8 @@ public:
             if (choices.isEmpty() || !player->isAlive())
                 break;
             choices << "cancel";
-            const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(ListI2V(ids)));
+            const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(ListI2V(ids)),
+                                                      QString(), ":" + objectName());
             if (choice == "red") {
                 redDone = true;
                 DummyCard dummy(red);
@@ -640,7 +643,9 @@ public:
             return false;
         DummyCard rest(ids);
         if (player->isAlive()
-            && room->askForChoice(player, objectName(), "get+discard", QVariant(ListI2V(ids))) == "get")
+            && room->askForChoice(player, objectName(), "get+discard", QVariant(ListI2V(ids)), QString(),
+                                  ":" + objectName())
+                   == "get")
             room->obtainCard(player, &rest, objectName());
         else
             room->throwCard(&rest, toPile, nullptr);
@@ -989,7 +994,9 @@ public:
         ServerPlayer *player = ctx.owner;
         room->broadcastSkillInvoke(objectName());
         room->doSuperLightbox(player, objectName());
-        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw") == "recover")
+        if (player->isWounded()
+            && room->askForChoice(player, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName())
+                   == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -1097,7 +1104,8 @@ public:
         QMap<QString, QList<int>> byType;
         foreach (int id, ids)
             byType[Sanguosha->getCard(id)->getType()] << id;
-        const QString type = room->askForChoice(player, objectName(), byType.keys().join("+"), QVariant(ListI2V(ids)));
+        const QString type = room->askForChoice(player, objectName(), byType.keys().join("+"), QVariant(ListI2V(ids)),
+                                                  QString(), ":" + objectName());
         ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(),
                                                         "@thshenzhou-give:::" + type, false, true);
         QList<int> given;
@@ -1219,7 +1227,11 @@ public:
             return ContinueEffects;
         Room *room = source->getRoom();
         if (target->isWounded()
-            && room->askForChoice(source, objectName(), "recover+draw", QVariant::fromValue(target)) == "recover")
+            && room->askForChoice(source, objectName(),
+                                  "recover=" + target->objectName() + "+draw=" + target->objectName(),
+                                  QVariant::fromValue(target), QString(), ":" + objectName())
+                       .section("=", 0, 0)
+                   == "recover")
             room->recover(target, RecoverStruct(objectName(), source));
         else
             target->drawCards(2, objectName());
@@ -1454,9 +1466,11 @@ public:
             return ContinueEffects;
         QStringList choices;
         if (source->canGet(target, "he"))
-            choices << "get";
-        choices << "hit";
-        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target));
+            choices << "get=" + target->objectName();
+        choices << "hit=" + target->objectName();
+        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target),
+                                                  QString(), ":" + objectName())
+                                   .section("=", 0, 0);
         if (choice == "get") {
             const int card = room->askForCardChosen(source, target, "he", objectName(), false, Card::MethodGet);
             if (card >= 0 && source->canGet(target, card))
@@ -1713,7 +1727,9 @@ public:
         choices << "damage";
         if (source->canGet(target, "he"))
             choices << "get";
-        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target)) == "get") {
+        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(),
+                               ":" + objectName())
+            == "get") {
             const int id = room->askForCardChosen(source, target, "he", objectName(), false, Card::MethodGet);
             if (id >= 0 && source->canGet(target, id))
                 room->obtainCard(source, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
@@ -1928,7 +1944,8 @@ public:
             choices << "recover";
         choices << "obtain";
         DummyCard dummy(ids);
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "recover") {
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName())
+            == "recover") {
             CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, QString(), objectName(), QString());
             room->throwCard(&dummy, reason, nullptr);
             room->recover(player, RecoverStruct(objectName(), player));
@@ -2404,7 +2421,8 @@ public:
         if (source->getHp() > 0)
             choices << "hp";
         choices << "maxhp";
-        if (room->askForChoice(source, objectName(), choices.join("+")) == "hp")
+        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName())
+            == "hp")
             room->loseHp(source, 1, true, source, objectName());
         else
             room->loseMaxHp(source, 1, objectName());
@@ -2602,7 +2620,7 @@ public:
             return false;
         room->broadcastSkillInvoke(objectName());
         const QString skill = room->askForChoice(player, objectName(), choices.value(target).join("+"),
-                                                 QVariant::fromValue(target));
+                                                 QVariant::fromValue(target), QString(), ":" + objectName());
         if (!choices.value(target).contains(skill))
             return false;
         player->setTag(currentKey(), QStringList{skill});

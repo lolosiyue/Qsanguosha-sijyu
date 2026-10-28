@@ -273,7 +273,8 @@ public:
         if (choices.isEmpty()) return false;
         // Slot names disclose no hidden general identity to the deceased chooser.
         ctx.choice = choices.size() == 1 ? choices.first()
-            : room->askForChoice(ctx.owner, objectName(), choices.join('+'), QVariant::fromValue(killer));
+            : room->askForChoice(ctx.owner, objectName(), choices.join('+'), QVariant::fromValue(killer), QString(),
+                                 ":" + objectName());
         ctx.targets = {killer};
         return choices.contains(ctx.choice);
     }

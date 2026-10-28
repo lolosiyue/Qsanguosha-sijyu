@@ -478,7 +478,7 @@ public:
         // An accepted invocation with no legal mode settles nothing, as before.
         if (choices.isEmpty())
             return true;
-        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = ctx.choice == "slash"
             ? room->askForPlayerChosen(player, slashTargets, "iknilan_slash", "@dummy-slash")
             : room->askForPlayerChosen(player, adjacent, "iknilan_damage", "@iknilan-damage");

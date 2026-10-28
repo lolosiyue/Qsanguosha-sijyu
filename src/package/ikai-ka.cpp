@@ -595,8 +595,9 @@ public:
         probe.setSkillName("_" + objectName());
         if (player != owner && player->isAlive() && owner->canSlash(player, &probe, false)
             && !owner->isCardLimited(&probe, Card::MethodUse))
-            choices << "slash";
-        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player)) == "slash")
+            choices << "slash=" + player->objectName();
+        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(),
+                               ":" + objectName()).section("=", 0, 0) == "slash")
             useSkillSlash(room, ctx, owner, player, objectName());
         else
             owner->drawCards(1, objectName());
@@ -779,7 +780,8 @@ public:
         }
         if (choices.isEmpty())
             return false;
-        const QString choice = room->askForChoice(player, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(),
+                                                  ":" + objectName());
         QList<int> ids;
         foreach (const Card *card, player->getHandcards())
             if (((choice == "black" && card->isBlack()) || (choice == "red" && card->isRed()))
@@ -2640,8 +2642,9 @@ public:
         ServerPlayer *owner = ctx.owner;
         QStringList choices{"draw"};
         if (player->isAlive() && owner->canDiscard(player, "he"))
-            choices << "discard";
-        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player)) == "discard") {
+            choices << "discard=" + player->objectName();
+        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(),
+                               ":" + objectName()).section("=", 0, 0) == "discard") {
             const int id = room->askForCardChosen(owner, player, "he", objectName(), false, Card::MethodDiscard);
             if (id >= 0)
                 room->throwCard(id, player, owner == player ? nullptr : owner);
@@ -2887,10 +2890,11 @@ public:
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        QStringList choices{"draw"};
+        QStringList choices{"draw=" + player->objectName()};
         if (player->canDiscard(player, "he"))
-            choices << "throw";
-        if (room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(player)) == "throw")
+            choices << "throw=" + player->objectName();
+        if (room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(),
+                               ":" + objectName()).section("=", 0, 0) == "throw")
             room->askForDiscard(player, objectName(), 1, 1, false, true);
         else
             player->drawCards(1, objectName());
@@ -3234,7 +3238,8 @@ public:
         const QStringList names = usableNames(room, player, ids);
         if (ids.isEmpty() || names.isEmpty())
             return false;
-        const QString name = room->askForChoice(player, objectName(), names.join("+"));
+        const QString name = room->askForChoice(player, objectName(), names.join("+"), QVariant(), QString(),
+                                                ":" + objectName());
         Card *card = Sanguosha->cloneCard(name, Card::SuitToBeDecided, -1);
         card->addSubcards(ids);
         card->setSkillName(objectName());
@@ -3492,7 +3497,9 @@ public:
             shown << target->getRandomHandCardId();
         room->showCard(target, shown, QList<ServerPlayer *>(), objectName());
         QList<int> taken = shown;
-        if (room->askForChoice(source, objectName(), "showcard+noshowcard", QVariant::fromValue(target)) == "noshowcard") {
+        const QString who = "=" + target->objectName();
+        if (room->askForChoice(source, objectName(), "showcard" + who + "+noshowcard" + who, QVariant::fromValue(target),
+                               QString(), ":" + objectName()).section("=", 0, 0) == "noshowcard") {
             taken = target->handCards();
             foreach (int id, shown)
                 taken.removeOne(id);
@@ -3591,7 +3598,9 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &) const override
     {
         if (event == EventPhaseStart) {
-            player->drawCards(room->askForChoice(player, objectName(), "draw1+draw2") == "draw1" ? 1 : 2, objectName());
+            player->drawCards(room->askForChoice(player, objectName(), "draw1+draw2", QVariant(), QString(),
+                                                 ":" + objectName()) == "draw1" ? 1 : 2,
+                              objectName());
             room->setPlayerMark(player, "iktianzuo-Clear", 1);
             return false;
         }
@@ -4047,7 +4056,7 @@ public:
                 choices.prepend("discard");
                 break;
             }
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "discard"
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "discard"
             && room->askForCard(player, "^BasicCard", "@iklianwu-discard", QVariant(), objectName())) {
         } else {
             room->loseHp(player, 1, true, player, objectName());
@@ -4765,7 +4774,7 @@ public:
         if (player->isWounded())
             choices << "recover";
         choices << "draw";
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "recover")
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "recover")
             room->recover(player, RecoverStruct(objectName(), ctx.owner));
         else
             player->drawCards(1, objectName());
@@ -4968,10 +4977,11 @@ public:
         if (!source || !target || !target->isAlive())
             return ContinueEffects;
         Room *room = source->getRoom();
-        QStringList choices{"draw"};
+        QStringList choices{"draw=" + target->objectName()};
         if (source->canDiscard(target, "h"))
-            choices << "discard";
-        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target)) == "discard") {
+            choices << "discard=" + target->objectName();
+        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(),
+                               ":" + objectName()).section("=", 0, 0) == "discard") {
             const int id = room->askForCardChosen(source, target, "h", objectName(), false, Card::MethodDiscard);
             if (id >= 0)
                 room->throwCard(id, target, source);
@@ -5152,7 +5162,8 @@ public:
         QStringList counts;
         for (int i = 1; i <= target->getHandcardNum(); ++i)
             counts << QString::number(i);
-        const int n = room->askForChoice(source, "ikdaolei_show", counts.join("+"), QVariant::fromValue(target)).toInt();
+        const int n = room->askForChoice(source, "ikdaolei_show", counts.join("+"), QVariant::fromValue(target),
+                                             QString(), ":" + objectName()).toInt();
         QList<int> hand = target->handCards();
         QList<int> shown;
         while (shown.length() < qMax(1, n) && !hand.isEmpty())
@@ -5366,7 +5377,8 @@ public:
                 choices << skill->objectName();
         if (choices.isEmpty())
             return false;
-        const QString lost = room->askForChoice(player, objectName(), choices.join("+"));
+        const QString lost = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(),
+                                                ":" + objectName());
         if (player->getTag("IkSheluoSkills").toMap().contains(lost))
             revokeTracked(room, player, "IkSheluoSkills", lost);
         else

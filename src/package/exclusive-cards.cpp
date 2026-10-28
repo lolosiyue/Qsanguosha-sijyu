@@ -838,7 +838,7 @@ public:
         if (!owner->isSkipped(Player::Judge)) choices << "judge";
         if (!owner->isSkipped(Player::Discard)) choices << "discard";
         if (choices.isEmpty() || !owner->askForSkillInvoke(objectName() + "$-1")) return false;
-        ctx.choice = room->askForChoice(owner, objectName(), choices.join('+'));
+        ctx.choice = room->askForChoice(owner, objectName(), choices.join('+'), QVariant(), QString(), ":" + objectName());
         ctx.targets << owner;
         return choices.contains(ctx.choice);
     }

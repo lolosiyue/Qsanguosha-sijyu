@@ -799,7 +799,9 @@ public:
 		}else
 			room->broadcastSkillInvoke("zhiba",1,sunce);
 		ctx.invoker->skillInvoked("zhiba",0,sunce);
-		if ((sunce->getMark("hunzi") > 0 || sunce->getMark("mobilehunzi") > 0) && room->askForChoice(sunce, "zhiba_pindian", "accept+reject") == "reject") {
+		if ((sunce->getMark("hunzi") > 0 || sunce->getMark("mobilehunzi") > 0) && room->askForChoice(sunce, "zhiba_pindian",
+			"accept=" + ctx.invoker->objectName() + "+reject=" + ctx.invoker->objectName(), QVariant(), QString(), ":zhiba")
+				.section("=", 0, 0) == "reject") {
 			LogMessage log;
 			log.type = "#ZhibaReject";
 			log.from = sunce;
@@ -823,7 +825,8 @@ public:
 					dummy->addSubcard(from_card_id);
 				if (room->getCardPlace(to_card_id) == Player::DiscardPile && from_card_id != to_card_id)
 					dummy->addSubcard(to_card_id);
-				if (dummy->subcardsLength()>0 && room->askForChoice(pindian->to, "zhiba_pindian_obtain", "obtainPindianCards+reject") != "reject")
+				if (dummy->subcardsLength()>0 && room->askForChoice(pindian->to, "zhiba_pindian_obtain", "obtainPindianCards+reject",
+					QVariant(), QString(), ":zhiba") != "reject")
 					room->obtainCard(pindian->to, dummy, objectName());
 				dummy->deleteLater();
 			}
@@ -1042,7 +1045,8 @@ public:
 
         room->setPlayerMark(jiangwei, "zhiji", 1);
         if (room->changeMaxHpForAwakenSkill(jiangwei, -getEffectiveAmount(ctx), objectName())) {
-            if (jiangwei->isWounded() && room->askForChoice(jiangwei, objectName(), "recover+draw") == "recover")
+            if (jiangwei->isWounded() && room->askForChoice(jiangwei, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName())
+                   == "recover")
                 room->recover(jiangwei, RecoverStruct("zhiji", jiangwei, getEffectiveAmount(ctx)));
             else
                 room->drawCards(jiangwei, 2 * getEffectiveAmount(ctx), objectName());
@@ -1081,7 +1085,8 @@ public:
         room->notifySkillInvoked(owner, objectName());
         room->setPlayerMark(owner, objectName(), 1);
         const int amount = getEffectiveAmount(ctx);
-        if (owner->isWounded() && room->askForChoice(owner, objectName(), "recover+draw") == "recover")
+        if (owner->isWounded() && room->askForChoice(owner, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName())
+               == "recover")
             room->recover(owner, RecoverStruct(objectName(), owner, amount));
         else owner->drawCards(2 * amount, objectName());
         if (!owner->isAlive() || !room->changeMaxHpForAwakenSkill(owner, -amount, objectName())) return false;
@@ -1832,7 +1837,7 @@ public:
                 skill_names << skill->objectName();
             }
             if (skill_names.isEmpty()) return;
-            skill_name = room->askForChoice(zuoci, "huashen", skill_names.join("+"));
+            skill_name = room->askForChoice(zuoci, "huashen", skill_names.join("+"), QVariant(), QString(), ":huashen");
         }
 
         // Prompts can run nested effects: a replaced selection must not retire
@@ -2159,7 +2164,8 @@ public:
         QStringList choices = choicesFor(ctx.invoker, ctx.activationRef);
         if (choices.isEmpty()) return false;
         choices << "cancel";
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(),
+                                        ":" + objectName());
         return choices.contains(ctx.choice) && ctx.choice != "cancel";
     }
     static void commitBranch(Room *room, const SkillContext &ctx)
@@ -2232,7 +2238,8 @@ public:
             const QStringList choices = JilveViewAsSkill::choicesFor(accepted.invoker, accepted.activationRef);
             if (choices.isEmpty()) accepted.is_canceled = true;
             else {
-                accepted.choice = room->askForChoice(accepted.invoker, objectName(), choices.join("+"));
+                accepted.choice = room->askForChoice(accepted.invoker, objectName(), choices.join("+"), QVariant(),
+                                                     QString(), ":" + objectName());
                 if (!choices.contains(accepted.choice)
                     || !JilveViewAsSkill::choicesFor(accepted.invoker, accepted.activationRef).contains(accepted.choice))
                     accepted.is_canceled = true;
@@ -2286,7 +2293,7 @@ public:
         player->setMark("JilveEvent", int(event));
         const auto restore = qScopeGuard([&] { player->setMark("JilveEvent", previous); });
         // The delegated choice historically follows payment; keep its prompts inside the effect.
-        const QString choice = room->askForChoice(player, "_jilve", skills.join("+"));
+        const QString choice = room->askForChoice(player, "_jilve", skills.join("+"), QVariant(), QString(), ":jilve");
         if (!skills.contains(choice)) return false;
         const TriggerSkill *skill = Sanguosha->getTriggerSkill(choice);
         if (dynamic_cast<const TriggerSkillV2 *>(skill)) {
@@ -2928,7 +2935,8 @@ public:
     {
         const QStringList choices = choicesFor(player, ctx.instanceID);
         if (choices.isEmpty() || !player->askForSkillInvoke(objectName() + "$-1", *ctx.original_data)) return false;
-        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(),
+                                        ":" + objectName());
         return choices.contains(ctx.choice);
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -3146,7 +3154,8 @@ public:
         if (event == EventAcquireSkill) return true;
         const QStringList choices = choicesFor(player, ctx.instanceID);
         if (choices.isEmpty() || !player->askForSkillInvoke(objectName() + "$-1", *ctx.original_data)) return false;
-        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(),
+                                        ":" + objectName());
         return choices.contains(ctx.choice);
     }
     bool pay(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override

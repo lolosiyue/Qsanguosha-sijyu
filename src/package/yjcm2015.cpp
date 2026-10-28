@@ -338,7 +338,7 @@ void HuaiyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
     if (reds.isEmpty() || blacks.isEmpty())
         return;
 
-    QString to_discard = room->askForChoice(source, "huaiyi", "black+red");
+    QString to_discard = room->askForChoice(source, "huaiyi", "black+red", QVariant(), QString(), ":huaiyi");
     QList<int> *pile = nullptr;
     if (to_discard == "black")
         pile = &blacks;
@@ -446,7 +446,7 @@ public:
             room->showAllCards(target);
             if (!target->isAlive()) return FinishSkill;
             if (red.isEmpty() || black.isEmpty()) return FinishSkill;
-            QList<int> ids = room->askForChoice(target, objectName(), "black+red") == "black" ? black : red;
+            QList<int> ids = room->askForChoice(target, objectName(), "black+red", QVariant(), QString(), ":" + objectName()) == "black" ? black : red;
             for (int id : QList<int>(ids))
                 if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand
                     || Sanguosha->getCard(id)->hasFlag("using")) ids.removeOne(id);
@@ -1186,7 +1186,7 @@ const Card *ZhenshanCard::validate(CardUseStruct &card_use) const
         QStringList use_list = Sanguosha->getSlashNames();
         if (use_list.isEmpty())
             use_list << "slash";
-        user_str = room->askForChoice(quancong, "zhenshan_slash", use_list.join("+"));
+        user_str = room->askForChoice(quancong, "zhenshan_slash", use_list.join("+"), QVariant(), QString(), ":zhenshan");
     }
 
     askForExchangeHand(quancong);
@@ -1206,11 +1206,11 @@ const Card *ZhenshanCard::validateInResponse(ServerPlayer *quancong) const
         QStringList use_list;
         use_list << "peach";
         if (Sanguosha->hasCard("analeptic")) use_list << "analeptic";
-        user_str = room->askForChoice(quancong, "zhenshan_saveself", use_list.join("+"));
+        user_str = room->askForChoice(quancong, "zhenshan_saveself", use_list.join("+"), QVariant(), QString(), ":zhenshan");
     } else if (user_string.contains("slash") || user_string.contains("Slash")) {
         QStringList use_list = Sanguosha->getSlashNames();
         if (use_list.isEmpty()) use_list << "slash";
-        user_str = room->askForChoice(quancong, "zhenshan_slash", use_list.join("+"));
+        user_str = room->askForChoice(quancong, "zhenshan_slash", use_list.join("+"), QVariant(), QString(), ":zhenshan");
     }
 
     askForExchangeHand(quancong);
@@ -1861,7 +1861,7 @@ const Card *HuomoCard::validate(CardUseStruct &card_use) const
         guhuo_list << "slash";
         if (!Config.BanPackages.contains("maneuvering"))
             guhuo_list = QStringList() << "normal_slash" << "thunder_slash" << "fire_slash";
-        to_guhuo = room->askForChoice(zhongyao, "huomo_slash", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(zhongyao, "huomo_slash", guhuo_list.join("+"), QVariant(), QString(), ":huomo");
     }
 
     CardMoveReason reason(CardMoveReason::S_REASON_PUT, zhongyao->objectName(), "huomo", "");
@@ -1905,13 +1905,13 @@ const Card *HuomoCard::validateInResponse(ServerPlayer *zhongyao) const
             guhuo_list << "peach";
         if (can_use_analeptic && !Config.BanPackages.contains("maneuvering"))
             guhuo_list << "analeptic";
-        to_guhuo = room->askForChoice(zhongyao, "huomo_saveself", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(zhongyao, "huomo_saveself", guhuo_list.join("+"), QVariant(), QString(), ":huomo");
     } else if (user_string == "slash") {
         QStringList guhuo_list;
         guhuo_list << "slash";
         if (!Config.BanPackages.contains("maneuvering"))
             guhuo_list = QStringList() << "normal_slash" << "thunder_slash" << "fire_slash";
-        to_guhuo = room->askForChoice(zhongyao, "huomo_slash", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(zhongyao, "huomo_slash", guhuo_list.join("+"), QVariant(), QString(), ":huomo");
     } else
         to_guhuo = user_string;
 
@@ -2210,7 +2210,7 @@ public:
         const int count = payment.value("range").toInt();
         const bool discarded = count > 0
             ? room->askForDiscard(target, objectName(), count, count, true, false, "@qingxi-throw:" + QString::number(count)) != nullptr
-            : room->askForChoice(target, objectName(), "discard+damage", *ctx.original_data) == "discard";
+            : room->askForChoice(target, objectName(), "discard+damage", *ctx.original_data, QString(), ":" + objectName()) == "discard";
         if (!discarded) {
             DamageStruct damage = ctx.original_data->value<DamageStruct>();
             damage.damage += getEffectiveAmount(ctx);

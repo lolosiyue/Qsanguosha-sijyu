@@ -386,7 +386,7 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner->askForSkillInvoke(objectName())) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "modify+obtain");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "modify+obtain", QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = ctx.owner;
         if (ctx.choice == "modify")
             target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName());
@@ -404,7 +404,8 @@ public:
                 else room->removeTag("Guixin2Modify");
             });
             room->setTag("Guixin2Modify", QVariant::fromValue(target)); // AI projection for the kingdom ask only.
-            ctx.extra_data = QVariantMap{{"kingdom", room->askForChoice(ctx.owner, objectName(), kingdoms.join("+"))}};
+            ctx.extra_data = QVariantMap{{"kingdom", room->askForChoice(ctx.owner, objectName(), kingdoms.join("+"), QVariant(),
+                                                                           QString(), ":" + objectName())}};
             return true;
         }
         // Each acquisition only removes its own skill from the next offer, so later picks can be made up front.
@@ -412,7 +413,8 @@ public:
         while (skills.length() < getEffectiveAmount(ctx)) {
             const QStringList choices = lordSkillChoices(room, target, skills);
             if (choices.isEmpty()) break;
-            const QString chosen = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+            const QString chosen = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), QString(),
+                                                      ":" + objectName());
             if (!choices.contains(chosen)) break;
             skills << chosen;
         }
@@ -1099,8 +1101,10 @@ public:
     {
         if (!ctx.owner->askForSkillInvoke(objectName())) return false;
         QStringList choices{"wind", "thunder", "water", "fire", "earth"};
-        choices.removeOne(ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "previous").toString());
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        const QString previous = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "previous").toString();
+        choices.removeOne(previous);
+        // The last effect stays visible but disabled; except is display-only, so it is also absent from choices.
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), previous, ":" + objectName());
         return choices.contains(ctx.choice);
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -1357,7 +1361,7 @@ public:
 			return false;
 		if (triggerEvent == GameStart) {
 			room->sendCompulsoryTriggerLog(player, this);
-			const QString gender = room->askForChoice(player, objectName(), "male+female");
+			const QString gender = room->askForChoice(player, objectName(), "male+female", QVariant(), QString(), ":" + objectName());
 			const bool is_male = player->isMale();
 			if (gender == "female" && is_male) {
 				room->setPlayerProperty(player, "avatarIcon", "luboyanf");
@@ -2543,7 +2547,7 @@ public:
         target->skillInvoked("ytyishe", 0, holder);
         room->fillAG({id});
         const auto clear = qScopeGuard([&] { room->clearAG(); });
-        if (room->askForChoice(holder, objectName(), "allow+disallow") == "allow") {
+        if (room->askForChoice(holder, objectName(), "allow+disallow", QVariant(), QString(), ":ytyishe") == "allow") {
             if (holder->isAlive() && target->isAlive() && holder->getPile("ytrice").contains(id)) {
                 holder->peiyin("ytyishe", 2);
                 room->giveCard(holder, target, Sanguosha->getCard(id), "ytyishe", true);
@@ -2664,7 +2668,8 @@ public:
             if (!ids.removeOne(id)) break;
             first = false;
             room->takeAG(target, id, false, {target});
-            if (capacity > 0 && room->askForChoice(target, objectName(), "put+obtain") == "put") {
+            if (capacity > 0 && room->askForChoice(target, objectName(), "put+obtain", QVariant(), QString(), ":" + objectName())
+                    == "put") {
                 rice << id;
                 --capacity;
             } else hand << id;

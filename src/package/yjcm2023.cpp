@@ -299,7 +299,7 @@ void GongqiaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 			choices << QString("EquipArea%1").arg(i);
 	}
 	if(choices.isEmpty()) return;
-	QString choice = room->askForChoice(source,"gongqiao",choices.join("+"));
+	QString choice = room->askForChoice(source,"gongqiao",choices.join("+"), QVariant(), QString(), ":gongqiao");
 	choice.remove("EquipArea");
 	int n = choice.toInt();
 	QString equipObjectName = zhizheEquipObjectNameByArea(n);
@@ -341,7 +341,7 @@ public:
 		for (int area = 0; area < 5; ++area)
 			if (ctx.invoker->hasEquipArea(area)) choices << QString("EquipArea%1").arg(area);
 		if (choices.isEmpty()) return false;
-		ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+		ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 		return choices.contains(ctx.choice);
 	}
 	bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
@@ -358,7 +358,7 @@ public:
             for (int area = 0; area < 5; ++area)
                 if (ctx.invoker->hasEquipArea(area)) choices << QString("EquipArea%1").arg(area);
             if (choices.isEmpty()) return FinishSkill;
-            ctx.choice = ctx.invoker->getRoom()->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+            ctx.choice = ctx.invoker->getRoom()->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
             if (!choices.contains(ctx.choice)) return FinishSkill;
         }
 		ServerPlayer *target = ctx.invoker;

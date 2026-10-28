@@ -1165,7 +1165,7 @@ public:
     {
         QStringList choices{"down", "cancel"};
         for (ServerPlayer *player : room->getAlivePlayers()) if (player->isWounded()) { choices.prepend("up"); break; }
-        ctx.choice = room->askForChoice(owner, objectName(), choices.join('+'));
+        ctx.choice = room->askForChoice(owner, objectName(), choices.join('+'), QVariant(), QString(), ":" + objectName());
         return ctx.choice != "cancel";
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override

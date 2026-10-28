@@ -2614,7 +2614,7 @@ void HRuleTheWorld::onEffect(CardEffectStruct &effect) const
         choices << "cancel";
         allchoices << choice1 << choice2 << "cancel";
 
-        QString choice = lordExChoice(room, p, objectName(), choices.join("+"), QVariant::fromValue(effect.to), QString(), allchoices.join("+"));
+        QString choice = lordExChoice(room, p, objectName(), choices.join("+"), QVariant::fromValue(effect.to), ":heg_rule_the_world", allchoices.join("+"));
 
         if (choice.startsWith("slash")) {
             if (completeEffect ||room->askForDiscard(p, objectName(), 1, 1, true, false, "@rule_the_world-slash::"+effect.to->objectName())) {
@@ -2808,7 +2808,7 @@ void HChaos::onEffect(CardEffectStruct &effect) const
     room->fillAG(effect.to->handCards(), effect.from);
     bool galleryOpen = true;
     const auto clearGallery = qScopeGuard([&] { if (galleryOpen) room->clearAG(effect.from); });
-    QString choice = lordExChoice(room, effect.from, objectName(), choices.join("+"), QVariant::fromValue(effect.to), QString(), allchoices.join("+"));
+    QString choice = lordExChoice(room, effect.from, objectName(), choices.join("+"), QVariant::fromValue(effect.to), ":heg_chaos", allchoices.join("+"));
     room->clearAG(effect.from);
     galleryOpen = false;
 

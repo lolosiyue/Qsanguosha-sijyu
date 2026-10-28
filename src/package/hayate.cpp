@@ -500,7 +500,8 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), "youdraw+hedraws");
+        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), "youdraw+hedraws", QVariant(), QString(),
+            ":" + objectName());
         ctx.targets << (ctx.choice == "youdraw" ? owner : ctx.invoker);
         return true;
     }
@@ -915,7 +916,8 @@ void HaremuCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &ta
     player->setTag("heremu_targets", used);
     room->obtainCard(target, this, CardMoveReason(CardMoveReason::S_REASON_GIVE, player->objectName(), target->objectName(), "haremu", QString()), true);
 
-    if (!target->hasClub() && room->askForChoice(target, "haremu", "haremu_accept+cancel", QVariant::fromValue(player)) == "haremu_accept"){
+    if (!target->hasClub() && room->askForChoice(target, "haremu", "haremu_accept=" + player->objectName() + "+cancel",
+            QVariant::fromValue(player), QString(), ":haremu").section("=", 0, 0) == "haremu_accept"){
         target->addClub("bekiyou");
     }
     else{
@@ -1003,8 +1005,8 @@ public:
         room->obtainCard(target, ctx.use_card, CardMoveReason(CardMoveReason::S_REASON_GIVE, ctx.initiator->objectName(),
             target->objectName(), objectName(), QString()), true);
         if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand || !target->isAlive()) return ContinueEffects;
-        if (!target->hasClub() && room->askForChoice(target, "haremu", "haremu_accept+cancel",
-            QVariant::fromValue(ctx.initiator)) == "haremu_accept") target->addClub("bekiyou");
+        if (!target->hasClub() && room->askForChoice(target, "haremu", "haremu_accept=" + ctx.initiator->objectName() + "+cancel",
+            QVariant::fromValue(ctx.initiator), QString(), ":haremu").section("=", 0, 0) == "haremu_accept") target->addClub("bekiyou");
         else {
             LogMessage log; log.type = "$refuse_club"; log.from = target; log.arg = "haremu"; room->sendLog(log);
         }
@@ -1214,17 +1216,19 @@ public:
         }
         if (!owner->isAlive()) return true;
         room->doLightbox(objectName() + "$", 800);
-        const bool hp = owner->getRoom()->askForChoice(owner, objectName(), "rennai_hp+rennai_handcardnum") == "rennai_hp";
+        const bool hp = owner->getRoom()->askForChoice(owner, objectName(), "rennai_hp+rennai_handcardnum", QVariant(), QString(),
+            ":" + objectName()) == "rennai_hp";
         QStringList choices;
         for (ServerPlayer *candidate : room->getAlivePlayers()) {
             const QString value = QString::number(hp ? candidate->getHp() : candidate->getHandcardNum());
             if (!choices.contains(value)) choices << value;
         }
         const QString kind = hp ? "hp" : "handcardnum";
-        const int value = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), kind).toInt();
+        const int value = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), kind, QString(), ":" + objectName()).toInt();
         SkillContext freeze = ctx;
         freeze.targets.clear();
-        freeze.choice = owner->getRoom()->askForChoice(owner, objectName(), "rennai_gain+rennai_lose", kind + '+' + QString::number(value));
+        freeze.choice = owner->getRoom()->askForChoice(owner, objectName(), "rennai_gain+rennai_lose", kind + '+' + QString::number(value),
+            QString(), ":" + objectName());
         for (ServerPlayer *candidate : room->getAlivePlayers())
             if ((hp ? candidate->getHp() : candidate->getHandcardNum()) == value) freeze.targets << candidate;
         // Every chosen recipient participates in the V2 target interception path.
@@ -1289,7 +1293,8 @@ public:
             ctx.targets.clear();
             for (ServerPlayer *target : victims) {
                 if (!target->isAlive() || target->getMark("@Frozen_Eu") <= 0 || !target->canDiscard(target, "e")
-                    || room->askForChoice(target, objectName(), "zhanfang_discard+cancel", *ctx.original_data) != "zhanfang_discard") continue;
+                    || room->askForChoice(target, objectName(), "zhanfang_discard+cancel", *ctx.original_data, QString(),
+                        ":" + objectName()) != "zhanfang_discard") continue;
                 const int id = room->askForCardChosen(target, target, "e", objectName(), false, Card::MethodDiscard);
                 if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceEquip
                     || !target->canDiscard(target, id)) continue;
@@ -1603,7 +1608,8 @@ public:
             if (!owner->isAlive()) return false;
             QList<int> hearts;
             for (const Card *card : target->getCards("he")) if (card->getSuit() == Card::Heart) hearts << card->getEffectiveId();
-            if (hearts.isEmpty() || room->askForChoice(target, objectName(), "guiyin_give+cancel", *ctx.original_data) != "guiyin_give") return false;
+            if (hearts.isEmpty() || room->askForChoice(target, objectName(), "guiyin_give=" + owner->objectName() + "+cancel",
+                *ctx.original_data, QString(), ":" + objectName()).section("=", 0, 0) != "guiyin_give") return false;
             room->fillAG(hearts, target);
             const int id = room->askForAG(target, hearts, true, objectName());
             room->clearAG(target);
@@ -1894,7 +1900,7 @@ public:
         QStringList choices{"1_Zuozhan", "2_Zuozhan", "3_Zuozhan", "4_Zuozhan"}, order;
         while (choices.size() > 1) {
             const QString choice = owner->getRoom()->askForChoice(owner, QString("zuozhan%1%from:").arg(order.size() + 1)
-                + ctx.invoker->objectName(), choices.join('+'));
+                + ctx.invoker->objectName(), choices.join('+'), QVariant(), order.join('+'), ":" + objectName());
             if (!choices.contains(choice)) return false;
             order << choice; choices.removeAll(choice);
         }
@@ -2006,7 +2012,8 @@ public:
     {
         if (target->hasClub()) return false;
         room->broadcastSkillInvoke(objectName());
-        if (room->askForChoice(target, objectName(), "nishen_accept+cancel", QVariant::fromValue(owner)) == "nishen_accept") {
+        if (room->askForChoice(target, objectName(), "nishen_accept+cancel", QVariant::fromValue(owner), QString(),
+                ":" + objectName()) == "nishen_accept") {
             target->addClub("sss");
             target->setTag("NishenMembership", QVariantMap{{"owner", ctx.sourceRef.ownerObjectName},
                 {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID}});
@@ -2048,7 +2055,7 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         if (!target->hasClub("sss")) return false;
-        if (target->isWounded() && room->askForChoice(target, "nishen", "draw+recover", *ctx.original_data) == "recover")
+        if (target->isWounded() && room->askForChoice(target, "nishen", "draw+recover", *ctx.original_data, QString(), ":nishen") == "recover")
             room->recover(target, RecoverStruct(ctx.invoker, nullptr, getEffectiveAmount(ctx)));
         else target->drawCards(2 * getEffectiveAmount(ctx), "nishen");
         return false;
@@ -2078,7 +2085,9 @@ public:
         owner->setTag("MengxianJudge", QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"execution", ctx.executionID}});
         do {
-            const QString choice = owner->getRoom()->askForChoice(owner, objectName(), owner->canDiscard(owner, "h") ? "basic+trick+equip" : "basic+trick");
+            const bool canEquip = owner->canDiscard(owner, "h");
+            const QString choice = owner->getRoom()->askForChoice(owner, objectName(), canEquip ? "basic+trick+equip" : "basic+trick",
+                QVariant(), canEquip ? QString() : "equip", ":" + objectName());
             if (choice == "equip") {
                 const int id = room->askForCardChosen(owner, owner, "h", objectName(), false, Card::MethodDiscard);
                 if (id < 0 || room->getCardOwner(id) != owner || room->getCardPlace(id) != Player::PlaceHand
@@ -2356,7 +2365,8 @@ public:
         }
         if (target->objectName() == selection.value("invite").toString() && !target->hasClub()) {
             room->broadcastSkillInvoke(objectName());
-            if (room->askForChoice(target, objectName(), "yuanwang_accept+cancel", QVariant::fromValue(owner)) == "yuanwang_accept") {
+            if (room->askForChoice(target, objectName(), "yuanwang_accept=" + owner->objectName() + "+cancel",
+                QVariant::fromValue(owner), QString(), ":" + objectName()).section("=", 0, 0) == "yuanwang_accept") {
                 target->addClub("sos"); if (!target->faceUp()) target->turnOver();
             } else {
                 LogMessage log; log.type = "$refuse_club"; log.from = target; log.arg = "sos"; room->sendLog(log);
@@ -3137,7 +3147,8 @@ public:
         if (event == Damaged) { ctx.choice = "clear"; ctx.targets << owner; return true; }
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         const int charge = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "charge").toInt();
-        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), charge > 0 ? "juhe_skip+juhe_lose" : "juhe_skip", *ctx.original_data);
+        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), charge > 0 ? "juhe_skip+juhe_lose" : "juhe_skip", *ctx.original_data,
+            charge > 0 ? QString() : "juhe_lose", ":" + objectName());
         ctx.targets << (ctx.choice == "juhe_skip" ? owner : room->askForPlayerChosen(owner, room->getAlivePlayers(), objectName()));
         return true;
     }
@@ -3190,9 +3201,10 @@ public:
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         int available = 0;
         for (int id : owner->handCards()) if (owner->canDiscard(owner, id)) ++available;
-        QStringList choices;
-        for (int n = 0; n <= qMin(2, available); ++n) choices << QString::number(n);
-        const int count = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), *ctx.original_data).toInt();
+        QStringList choices, excepts;
+        for (int n = 0; n <= 2; ++n) (n <= available ? choices : excepts) << QString::number(n);
+        const int count = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), *ctx.original_data,
+            excepts.join('+'), ":" + objectName()).toInt();
         const QList<int> selected = count > 0 ? room->askForCardsChosen(owner, owner, "h", objectName(), count, count,
             false, Card::MethodDiscard, {}, false) : QList<int>();
         if (selected.size() != count) return false;

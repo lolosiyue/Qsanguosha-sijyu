@@ -540,7 +540,7 @@ public:
     {
         QStringList choices{"draw", "cancel"};
         if (ctx.owner->isWounded()) choices.prepend("recover");
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         return ctx.choice != "cancel";
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -672,7 +672,7 @@ void MouzhuCard::onEffect(CardEffectStruct &effect) const
             delete duel;
             return;
         }
-        QString choice = room->askForChoice(target, "mouzhu", choicelist.join("+"));
+        QString choice = room->askForChoice(target, "mouzhu", choicelist.join("+"), QVariant(), QString(), ":mouzhu");
         CardUseStruct use;
         use.from = target;
         use.to << hejin;
@@ -721,7 +721,7 @@ public:
         if (!target->isLocked(&slash) && target->canSlash(owner, &slash, false)) choices << "slash";
         if (!target->isLocked(&duel) && !target->isProhibited(owner, &duel)) choices << "duel";
         if (choices.isEmpty()) return ContinueEffects;
-        const QString choice = room->askForChoice(target, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(target, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         Card *card = choice == "slash" ? static_cast<Card *>(new Slash(Card::NoSuit, 0)) : new Duel(Card::NoSuit, 0);
         card->setSkillName("_mouzhu");
         card->deleteLater();
@@ -1217,7 +1217,7 @@ void Drowning::onEffect(CardEffectStruct &effect) const
             room->damage(DamageStruct(this, effect.from->isAlive() ? effect.from : nullptr, effect.to, 1, DamageStruct::Thunder));
     } else {
         if (!effect.to->getEquips().isEmpty()
-            && room->askForChoice(effect.to, objectName(), "throw+damage", QVariant::fromValue(effect)) == "throw")
+            && room->askForChoice(effect.to, objectName(), "throw+damage", QVariant::fromValue(effect), QString(), ":" + objectName()) == "throw")
             effect.to->throwAllEquips();
         else
             room->damage(DamageStruct(this, effect.from->isAlive() ? effect.from : nullptr, effect.to, 1, DamageStruct::Thunder));

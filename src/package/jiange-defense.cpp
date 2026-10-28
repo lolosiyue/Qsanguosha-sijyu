@@ -1323,7 +1323,8 @@ public:
         if (enemy) choices << "damage";
         if (choices.isEmpty()) return false;
         choices << "cancel";
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), QString(),
+            ":" + objectName());
         if (ctx.choice == "cancel") return false;
         ctx.targets = {ctx.choice == "recover" ? friendMachine : enemy};
         return true;

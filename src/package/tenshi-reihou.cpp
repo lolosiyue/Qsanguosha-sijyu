@@ -309,7 +309,7 @@ public:
 		if (!room || !player || names.isEmpty())
 			return false;
 		room->sendCompulsoryTriggerLog(player, objectName());
-		const QString chosen = room->askForChoice(player, objectName(), names.join("+"));
+		const QString chosen = room->askForChoice(player, objectName(), names.join("+"), QVariant(), QString(), ":" + objectName());
 		if (!names.contains(chosen))
 			return false;
 		ctx.choice = chosen;
@@ -401,7 +401,7 @@ public:
 		// Choices follow Reihou removal hooks and each preceding settlement.
 		QStringList choices;
 		choices << "null" << "give";
-		QString choice = room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data);
+		QString choice = room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data, QString(), ":" + objectName());
 		while (choice != "cancel") {
 			if (!choices.contains(choice))
 				break;
@@ -431,7 +431,7 @@ public:
 				choices << "cancel";
 			if (choices.size() == 1)
 				break;
-			choice = room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data);
+			choice = room->askForChoice(player, objectName(), choices.join("+"), *ctx.original_data, QString(), ":" + objectName());
 		}
 		return false;
 	}
@@ -865,7 +865,7 @@ public:
 			return ContinueEffects;
 		QString choice = choices.first();
 		if (choices.length() != 1)
-			choice = room->askForChoice(from, objectName(), choices.join("+"));
+			choice = room->askForChoice(from, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 		if (choice == "lose")
 			room->loseHp(HpLostStruct(target, 1, objectName(), from));
 		else if (choice == "recover" && target->isAlive())
@@ -2766,7 +2766,7 @@ public:
 		}
 		QString choice = choices.first();
 		if (choices.length() != 1)
-			choice = room->askForChoice(actor, objectName(), choices.join("+"));
+			choice = room->askForChoice(actor, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 		if (choice == "peach") {
 			delete analeptic;
 			peach->deleteLater();
@@ -3214,7 +3214,7 @@ public:
 			return nullptr;
 		QString choice = choices.first();
 		if (from && choices.length() != 1)
-			choice = from->getRoom()->askForChoice(from, objectName(), choices.join("+"));
+			choice = from->getRoom()->askForChoice(from, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 		if (!choices.contains(choice))
 			return nullptr;
 		return reihouDelayedTrick(choice, request.selectedCardIds);
@@ -3634,7 +3634,7 @@ public:
 		QStringList choices;
 		for (int i = 1; i <= marks; ++i)
 			choices << QString::number(i);
-		const QString choice = room->askForChoice(player, objectName(), choices.join("+"));
+		const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 		const int n = choice.toInt();
 		if (n <= 0 || n > marks)
 			return false;
@@ -3850,7 +3850,7 @@ public:
 		if (!player || !room || !ctx.invoker || !player->askForSkillInvoke(objectName(), ctx.invoker))
 			return false;
 		room->broadcastSkillInvoke(objectName());
-		ctx.choice = room->askForChoice(player, objectName(), "reduce+increase");
+		ctx.choice = room->askForChoice(player, objectName(), "reduce+increase", QVariant(), QString(), ":" + objectName());
 		ctx.targets = {ctx.invoker};
 		return ctx.choice == "reduce" || ctx.choice == "increase";
 	}

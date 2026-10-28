@@ -1264,7 +1264,8 @@ bool GuhuoCard::guhuo(ServerPlayer *yuji) const
             room->sendCompulsoryTriggerLog(player, "chanyuan", true, true);
             choice = "noquestion";
         }
-        choice = room->askForChoice(player, "guhuo", choice, yuji->objectName()+":"+user_string);
+        choice = room->askForChoice(player, "guhuo", choice, yuji->objectName()+":"+user_string,
+            choice == "noquestion" ? QString("question") : QString(), ":guhuo");
         LogMessage log;
         log.type = "#GuhuoQuery";
         log.from = player;
@@ -1405,7 +1406,7 @@ const Card *GuhuoCard::validate(CardUseStruct &card_use) const
         }
 
         if (guhuo_list.isEmpty()) guhuo_list << "slash";
-        to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"), QVariant(), QString(), ":guhuo");
         yuji->setTag("GuhuoSlash", QVariant(to_guhuo));
     }
     room->broadcastSkillInvoke("guhuo");
@@ -1502,7 +1503,7 @@ const Card *GuhuoCard::validateInResponse(ServerPlayer *yuji) const
 
         if (guhuo_list.isEmpty())
             guhuo_list << "peach";
-        to_guhuo = room->askForChoice(yuji, "guhuo_saveself", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(yuji, "guhuo_saveself", guhuo_list.join("+"), QVariant(), QString(), ":guhuo");
         yuji->setTag("GuhuoSaveSelf", QVariant(to_guhuo));
     } else if (user_string.contains("slash") || user_string.contains("Slash")) {
         QStringList guhuo_list;
@@ -1515,7 +1516,7 @@ const Card *GuhuoCard::validateInResponse(ServerPlayer *yuji) const
 
         if (guhuo_list.isEmpty())
             guhuo_list << "slash";
-        to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"));
+        to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"), QVariant(), QString(), ":guhuo");
         yuji->setTag("GuhuoSlash", QVariant(to_guhuo));
     } else
         to_guhuo = user_string;
@@ -1628,7 +1629,11 @@ public:
         for (ServerPlayer *other : room->getOtherPlayers(ctx.invoker)) {
             QString choices = "noquestion+question";
             if ((nostalgia && other->getHp() <= 0) || (!nostalgia && other->hasSkill("chanyuan"))) choices = "noquestion";
-            const QString choice = room->askForChoice(other, objectName(), choices, ctx.invoker->objectName() + ":" + declaration);
+            const QVariant choiceData = ctx.invoker->objectName() + ":" + declaration;
+            const QString choice = nostalgia
+                ? room->askForChoice(other, objectName(), choices, choiceData)
+                : room->askForChoice(other, objectName(), choices, choiceData,
+                    choices == "noquestion" ? QString("question") : QString(), ":guhuo");
             LogMessage query; query.type = "#GuhuoQuery"; query.from = other; query.arg = choice; room->sendLog(query);
             room->setEmotion(other, choice == "question" ? "question" : "no-question");
             if (choice == "question" && choices.contains("+question")) { questioned << other; if (!nostalgia) break; }
@@ -2469,7 +2474,7 @@ void GongxinCard::onEffect(CardEffectStruct &effect) const
         int card_id = room->doGongxin(effect.from, effect.to, ids);
         if (card_id == -1) return;
 
-        QString result = room->askForChoice(effect.from, "gongxin", "discard+put");
+        QString result = room->askForChoice(effect.from, "gongxin", "discard+put", QVariant(), QString(), ":gongxin");
         effect.from->removeTag("gongxin");
         if (result == "discard") {
             CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, effect.from->objectName(), "", "gongxin", "");
@@ -2524,7 +2529,7 @@ public:
         });
         const int id = room->doGongxin(ctx.invoker, target, hearts);
         if (id < 0 || !hearts.contains(id) || !target->handCards().contains(id)) return ContinueEffects;
-        const QString choice = room->askForChoice(ctx.invoker, objectName(), "discard+put");
+        const QString choice = room->askForChoice(ctx.invoker, objectName(), "discard+put", QVariant(), QString(), ":gongxin");
         if (!target->handCards().contains(id)) return ContinueEffects;
         if (choice == "discard") {
             const CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE,

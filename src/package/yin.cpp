@@ -215,7 +215,7 @@ void FeijunCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
     if (!handp.isEmpty()) choices << "givehand";
     if (!equipp.isEmpty()) choices << "discardequip";
     if (choices.isEmpty()) return;
-    QString choice = room->askForChoice(source, "feijun", choices.join("+"), QVariant());
+    QString choice = room->askForChoice(source, "feijun", choices.join("+"), QVariant(), QString(), ":feijun");
     if (choice == "givehand") {
         ServerPlayer *target = room->askForPlayerChosen(source, handp, "feijun", "@feijun-choosehand");
         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, source->objectName(), target->objectName());
@@ -274,7 +274,7 @@ public:
         }
         QStringList choices; if (!hand.isEmpty()) choices << "givehand"; if (!equip.isEmpty()) choices << "discardequip";
         if (choices.isEmpty()) return FinishSkill;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = room->askForPlayerChosen(ctx.invoker, ctx.choice == "givehand" ? hand : equip, objectName(), ctx.choice == "givehand" ? "@feijun-choosehand" : "@feijun-chooseequip");
         if (!target) return FinishSkill;
         ctx.targets = {target}; ctx.extra_data = QVariantMap{{"new_target", newTarget(room, ctx, target)}};
@@ -391,7 +391,7 @@ public:
         if (!target) return false;
         ctx.targets = {target};
         ctx.choice = room->askForChoice(ctx.owner, objectName(),
-            ctx.owner->getMark("&orange") > 0 ? "losehp+losemark" : "losehp");
+            ctx.owner->getMark("&orange") > 0 ? "losehp+losemark" : "losehp", QVariant(), QString(), ":" + objectName());
         return ctx.choice == "losehp" || ctx.choice == "losemark";
     }
 
@@ -472,7 +472,7 @@ void KuizhuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
     QStringList choices;
     if (targets.length() <= source->getMark(kuizhu + "-Clear")) choices << "draw";
     if (n == source->getMark(kuizhu + "-Clear")) choices << "damage";
-    QString choice = room->askForChoice(source, kuizhu, choices.join("+"), QVariant());
+    QString choice = room->askForChoice(source, kuizhu, choices.join("+"), QVariant(), QString(), ":" + kuizhu);
     if (choice == "draw")
         room->setPlayerFlag(source, kuizhu + "_draw");
     else
@@ -545,7 +545,7 @@ public:
         if (!ctx.targets.isEmpty() && ctx.targets.size() <= count) choices << "draw";
         if (!ctx.targets.isEmpty() && hp == count) choices << "damage";
         if (choices.isEmpty()) return FinishSkill;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         const QString choice = ctx.choice;
         for (ServerPlayer *target : ctx.targets) { SkillContext recipient = ctx; skillEffect(recipient, target); }
         if (choice == "damage" && objectName() == "kuizhu" && ctx.targets.size() >= 2 && ctx.invoker->isAlive()) {

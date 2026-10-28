@@ -217,7 +217,7 @@ public:
         ctx.choice = "draw";
         if (ctx.owner->canDiscard(ctx.preferredTarget, "he"))
             ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+discard",
-                                           QVariant::fromValue(ctx.preferredTarget));
+                                           QVariant::fromValue(ctx.preferredTarget), QString(), ":" + objectName());
         if (ctx.choice == "draw") ctx.targets.clear();
         else {
             ctx.targets = {ctx.preferredTarget};
@@ -781,7 +781,8 @@ public:
         if (event == EventPhaseStart) {
             if (!ctx.owner->askForSkillInvoke(objectName() + "$1")) return false;
             QStringList choices{"draw"}; if (ctx.owner->isWounded()) choices << "recover";
-            ctx.choice = choices.size() == 1 ? choices.first() : room->askForChoice(ctx.owner, objectName(), choices.join("+")); return true;
+            ctx.choice = choices.size() == 1 ? choices.first() : room->askForChoice(ctx.owner, objectName(), choices.join("+"),
+                QVariant(), QString(), ":" + objectName()); return true;
         }
         const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
         ServerPlayer *current = room->getCurrent(); if (!current || current->isDead() || current == ctx.owner) return false;

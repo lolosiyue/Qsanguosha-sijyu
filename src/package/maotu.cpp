@@ -148,21 +148,21 @@ public:
     bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         if (event == GameStart) {
-            QStringList choices;
+            QStringList choices, excepts;
             for (int number = 1; number <= 8; ++number)
-                if (number != player->getHp() && number != player->getHandcardNum()) choices << QString::number(number);
+                (number != player->getHp() && number != player->getHandcardNum() ? choices : excepts) << QString::number(number);
             ctx.choice = "initialize";
-            ctx.extra_data = room->askForChoice(player, "mtliaoshi_num", choices.join("+")).toInt();
+            ctx.extra_data = room->askForChoice(player, "mtliaoshi_num", choices.join("+"), QVariant(), excepts.join("+"), ":" + objectName()).toInt();
             return true;
         }
         int discardable = 0;
         for (int id : player->handCards() + player->getEquipsId()) if (player->canDiscard(player, id)) ++discardable;
-        QStringList choices;
-        if (discardable >= 2) choices << "discard";
+        QStringList choices, excepts;
+        (discardable >= 2 ? choices : excepts) << "discard";
         choices << "lose" << "draw";
-        if (player->isWounded()) choices << "recover";
+        (player->isWounded() ? choices : excepts) << "recover";
         choices << "cancel";
-        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), excepts.join("+"), ":" + objectName());
         if (ctx.choice == "cancel") return false;
         ctx.extra_data = player->getSkillInstanceStateValue(objectName(), ctx.instanceID, "number", 1);
         return true;
@@ -382,7 +382,7 @@ public:
 
         QString choices = "draw";
         if (player->isWounded()) choices = "recover+draw";
-        QString choice = room->askForChoice(player, objectName(), choices);
+        QString choice = room->askForChoice(player, objectName(), choices, QVariant(), player->isWounded() ? QString() : "recover", ":" + objectName());
 
         if (choice == "draw")
             player->drawCards(2, objectName());
@@ -1095,7 +1095,7 @@ public:
         use.card = usecard;
         QVariant data = QVariant::fromValue(use);  //For AI
 
-        QString choice = room->askForChoice(from, "mtzhilie", choices.join("+"), data);
+        QString choice = room->askForChoice(from, "mtzhilie", choices.join("+"), data, QString(), ":mtzhilie");
 
         if (choice == "cancel")
             return ContinueEffects;
@@ -1637,14 +1637,12 @@ public:
         duel->setSkillName("_mtfuzhan");
         duel->deleteLater();
 
-        QStringList choices;
-        if (winner->canSlash(loser, slash, false))
-            choices << "slash=" + loser->objectName();
-        if (winner->canUse(duel, loser, true))
-            choices << "duel=" + loser->objectName();
+        QStringList choices, excepts;
+        (winner->canSlash(loser, slash, false) ? choices : excepts) << "slash=" + loser->objectName();
+        (winner->canUse(duel, loser, true) ? choices : excepts) << "duel=" + loser->objectName();
         if (choices.isEmpty()) return false;
 
-        QString choice = room->askForChoice(winner, objectName(), choices.join("+"), QVariant::fromValue(pindian));
+        QString choice = room->askForChoice(winner, objectName(), choices.join("+"), QVariant::fromValue(pindian), excepts.join("+"), ":" + objectName());
         Card *selected = choice.startsWith("slash") ? static_cast<Card *>(slash) : static_cast<Card *>(duel);
         for (int id : selected->getSubcards())
             if (room->getCardPlace(id) != Player::DiscardPile && room->getCardPlace(id) != Player::PlaceTable) return false;
@@ -2775,10 +2773,10 @@ public:
         if (!from || from->isDead()) return false;
         ctx.targets = {from};
         const int num = MTJiye::getQueshaoSuitsNum(p);
-        QStringList choices;
-        if (!p->getPile("yhjyye").isEmpty()) choices << "get=" + QString::number(num + 1);
+        QStringList choices, excepts;
+        (p->getPile("yhjyye").isEmpty() ? excepts : choices) << "get=" + QString::number(num + 1);
         choices << "draw=" + QString::number(num);
-        ctx.choice = room->askForChoice(from, objectName(), choices.join("+"), QVariant::fromValue(p));
+        ctx.choice = room->askForChoice(from, objectName(), choices.join("+"), QVariant::fromValue(p), excepts.join("+"), ":" + objectName());
         if (ctx.choice.startsWith("get")) {
             const QList<int> ye = p->getPile("yhjyye");
             if (ye.isEmpty()) return true;
@@ -3050,7 +3048,7 @@ public:
         choices << "add";
         if (user->isWounded())
             choices << "recover";
-        QString choice = room->askForChoice(user, objectName(), choices.join("+"));
+        QString choice = room->askForChoice(user, objectName(), choices.join("+"), QVariant(), user->isWounded() ? QString() : "recover", ":" + objectName());
         if (choice == "add")
             room->gainMaxHp(user, getEffectiveAmount(ctx), objectName());
         else
@@ -3227,7 +3225,7 @@ public:
         QStringList choices;
         choices << QString("hp2=%1=%2").arg(damage.to->objectName()).arg(hp);
         choices << QString("hand=%1=%2").arg(damage.to->objectName()).arg(hand);
-        QString choice = room->askForChoice(user, objectName(), choices.join("+"));
+        QString choice = room->askForChoice(user, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
 
         int maxhp = user->getMaxHp();
         if (choice.startsWith("hp2")) {
@@ -4633,7 +4631,7 @@ public:
         const QStringList names = ctx.extra_data.toMap().value("donors").toStringList();
         QString choice = "kanpo";
         if (player->getKingdom() != "shu" && !names.isEmpty())
-            choice = room->askForChoice(player, objectName(), "kanpo+bazhen", names.join("+"));
+            choice = room->askForChoice(player, objectName(), "kanpo+bazhen", names.join("+"), QString(), ":" + objectName());
         if ((player->getKingdom() == "shu" || choice == "kanpo") && !player->hasSkill("olkanpo", true))
             acquireTimedSkill(room, player, "olkanpo", ctx, "MTChushiGrants", player->objectName());
         if (player->getKingdom() == "shu" || choice == "bazhen") {
@@ -5303,11 +5301,11 @@ public:
         ServerPlayer *source = ctx.invoker;
         if (!source || source->isDead()) return FinishSkill;
         Room *room = source->getRoom();
-        QStringList choices;
-        if (!source->hasSkill("tenyearrende", true)) choices << "tenyearrende1";
-        if (!source->hasSkill("olsishu", true)) choices << "olsishu1";
+        QStringList choices, excepts;
+        (source->hasSkill("tenyearrende", true) ? excepts : choices) << "tenyearrende1";
+        (source->hasSkill("olsishu", true) ? excepts : choices) << "olsishu1";
         if (choices.isEmpty()) return FinishSkill;
-        QString choice = room->askForChoice(source, objectName(), choices.join("+"));
+        QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant(), excepts.join("+"), ":" + objectName());
         choice.chop(1);
         acquireTimedSkill(room, source, choice, ctx, "MTZhuizunGrants");
         return FinishSkill;

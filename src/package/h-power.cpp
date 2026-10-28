@@ -565,7 +565,8 @@ public:
             if (target->getGeneral2() && target->hasShownGeneral2())
                 choices << "deputy_general";
 
-            choice = room->askForChoice(player, "heg_tieqi_xh", choices.join("+"), QVariant::fromValue(target));
+            choice = room->askForChoice(player, "heg_tieqi_xh", choices.join("+"), QVariant::fromValue(target), QString(),
+                ":heg_tieqi_xh");
         } else {
             QStringList generals;
             if (target->hasShownGeneral1()) {
@@ -1482,7 +1483,11 @@ void HXuanhuoAttachCard::use(Room *room, ServerPlayer *source, QList<ServerPlaye
             skill_list << skill_name;
     }
     if (skill_list.isEmpty()) return;
-    QString skill_name = room->askForChoice(source, "heg_xuanhuo", skill_list.join("+"), QVariant(), "@heg_xuanhuo-choose", all_skills);
+    QStringList except_list = all_skills.split("+");
+    foreach (const QString &name, skill_list)
+        except_list.removeAll(name);
+    QString skill_name = room->askForChoice(source, "heg_xuanhuo", skill_list.join("+"), QVariant(), except_list.join("+"),
+        "@heg_xuanhuo-choose");
     skill_name = skill_name + "_xh";
     room->acquireSkillForSlot(source, skill_name, false, true, false);
     QStringList skillnames = source->getTag("XuanhuoSkills").toStringList();
@@ -1562,7 +1567,10 @@ public:
             }
         }
         if (choices.isEmpty()) return FinishSkill;
-        const QString choice = room->askForChoice(target, "heg_xuanhuo", choices.join('+'), QVariant(), "@heg_xuanhuo-choose", all);
+        QStringList except = all.split('+');
+        for (const QString &name : choices) except.removeAll(name);
+        const QString choice = room->askForChoice(target, "heg_xuanhuo", choices.join('+'), QVariant(), except.join('+'),
+            "@heg_xuanhuo-choose");
         if (!choices.contains(choice)) return FinishSkill;
         const QString name = choice + "_xh";
         const int id = room->acquireSkillFromEffect(target, name, ctx);
@@ -1890,7 +1898,7 @@ public:
         room->broadcastSkillInvoke(objectName(), player);
         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), skill_target->objectName());
         ctx.choice = room->askForChoice(player, objectName(), "nojink+adddamage", *ctx.original_data, QString(),
-            "@liegong-choice::" + skill_target->objectName());
+            ":" + objectName());
         ctx.targets = {skill_target};
         return true;
     }
@@ -1972,7 +1980,8 @@ public:
     {
         if (!ctx.owner || !ctx.owner->askForSkillInvoke(this)) return false;
         room->broadcastSkillInvoke(objectName(), ctx.owner);
-        ctx.choice = ctx.owner->isWounded() ? room->askForChoice(ctx.owner, objectName(), "recover+draw") : "draw";
+        ctx.choice = ctx.owner->isWounded() ? room->askForChoice(ctx.owner, objectName(), "recover+draw", QVariant(), QString(),
+            ":" + objectName()) : "draw";
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -2342,7 +2351,7 @@ public:
         ServerPlayer *current = room->getCurrent();
         if (current && current->isAlive() && current->getPhase() != Player::NotActive
             && room->askForChoice(ctx.owner, objectName(), "yes+no", data, QString(),
-                                  "@heg_zhuwei-choose:" + current->objectName()) == "yes")
+                                  ":" + objectName()) == "yes")
             ctx.targets = {current};
         return true;
     }
@@ -2880,8 +2889,10 @@ public:
             QStringList choices = getAvailableSkills(room, target, head);
             for (const QString &name : picked) choices.removeOne(name);
             if (choices.isEmpty()) break;
+            QStringList except = QString("tenyeartuxi+qiaobian+xiaoguo+heg_jieyue+heg_duanliang").split("+");
+            for (const QString &name : choices) except.removeAll(name);
             const QString name = room->askForChoice(target, "jianan_skill", choices.join("+"), *ctx.original_data,
-                "@jianan-skill", "tenyeartuxi+qiaobian+xiaoguo+heg_jieyue+heg_duanliang");
+                except.join("+"), "@jianan-skill");
             if (!choices.contains(name)) break;
             picked << name;
         }

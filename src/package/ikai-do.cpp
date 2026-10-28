@@ -416,7 +416,7 @@ public:
         Room *room = source->getRoom();
         const QStringList choices{"basic", "trick", "equip", "red", "black"};
         const QStringList patterns{"BasicCard", "TrickCard", "EquipCard", ".|red", ".|black"};
-        const QString choice = room->askForChoice(source, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         const QString pattern = patterns.value(choices.indexOf(choice), "BasicCard");
         LogMessage log;
         log.type = "#IkXingyuChoice";

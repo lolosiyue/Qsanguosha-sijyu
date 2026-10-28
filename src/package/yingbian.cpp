@@ -238,7 +238,8 @@ public:
             if (legal) choices << name;
         }
         if (choices.isEmpty() || !ctx.owner->askForSkillInvoke(this, *ctx.original_data, false)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), *ctx.original_data);
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), *ctx.original_data,
+            QString(), ":" + objectName());
         return choices.contains(ctx.choice);
     }
 

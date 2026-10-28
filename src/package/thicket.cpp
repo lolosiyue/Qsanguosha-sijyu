@@ -525,7 +525,7 @@ public:
                 const bool previous = to->hasFlag("YinghunTarget");
                 auto restore = qScopeGuard([&] { if (!previous) to->setFlags("-YinghunTarget"); });
                 to->setFlags("YinghunTarget");
-                QString choice = room->askForChoice(sunjian, objectName(), "d1tx+dxt1");
+                QString choice = room->askForChoice(sunjian, objectName(), "d1tx+dxt1", QVariant(), QString(), ":" + objectName());
                 if (!previous) to->setFlags("-YinghunTarget");
                 restore.dismiss();
                 if (choice == "d1tx") {
@@ -1144,7 +1144,7 @@ public:
         if (!dongzhuo || !dongzhuo->isAlive()) return false;
         room->sendCompulsoryTriggerLog(dongzhuo, objectName());
         // Losing HP is the compulsory result, not a payment that bypass_cost waives.
-        const QString result = room->askForChoice(dongzhuo, objectName(), "hp+maxhp");
+        const QString result = room->askForChoice(dongzhuo, objectName(), "hp+maxhp", QVariant(), QString(), ":" + objectName());
         int index = dongzhuo->isFemale() ? 2 : 1;
         if (dongzhuo->isJieGeneral("dongzhuo"))
             index = qsanRandomBounded(2) + 6;
@@ -1379,7 +1379,7 @@ public:
         room->sendCompulsoryTriggerLog(player, objectName());
         // This compulsory penalty remains effective even when activation costs are waived.
         if (player->getMark("&wrath") >= amount
-            && room->askForChoice(player, objectName(), "discard+losehp") == "discard")
+            && room->askForChoice(player, objectName(), "discard+losehp", QVariant(), QString(), ":" + objectName()) == "discard")
             player->loseMark("&wrath", amount);
         else
             room->loseHp(HpLostStruct(player, amount, objectName(), player));

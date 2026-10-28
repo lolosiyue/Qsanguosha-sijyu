@@ -54,7 +54,8 @@ public:
         room->broadcastSkillInvoke(objectName());
         ctx.targets = {ctx.invoker};
         // The target picks here; effectTarget only applies the recorded choice.
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), "jian+mo", QVariant::fromValue(ctx.owner));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), "jian+mo", QVariant::fromValue(ctx.owner),
+                                        QString(), ":" + objectName());
         return true;
     }
 
@@ -895,7 +896,7 @@ public:
             const QStringList choices = cardChoices(ctx.owner, to);
             if (!choices.isEmpty())
                 picks[to->objectName()] = room->askForChoice(ctx.owner, objectName(), choices.join("+"),
-                                                             QVariant::fromValue(to));
+                                                             QVariant::fromValue(to), QString(), ":" + objectName());
         }
         ctx.extra_data = picks;
         return true;
@@ -1227,7 +1228,8 @@ public:
         QStringList choices{"letdraw"};
         if (owner->canDiscard(target, "he"))
             choices << "discard";
-        ctx.choice = room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(owner));
+        ctx.choice = room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(owner),
+                                        QString(), ":" + objectName());
         if (ctx.choice == "discard") {
             const int id = room->askForCardChosen(owner, target, "he", objectName(), false, Card::MethodDiscard);
             if (id >= 0 && room->getCardOwner(id) == target && owner->canDiscard(target, id))
@@ -1672,7 +1674,8 @@ public:
                 QStringList choices{"draw"};
                 if (player->canDiscard(player, "he"))
                     choices << "discard";
-                const QString choice = room->askForChoice(p, objectName(), choices.join("+"), QVariant::fromValue(player));
+                const QString choice = room->askForChoice(p, objectName(), choices.join("+"), QVariant::fromValue(player),
+                                                          QString(), ":" + objectName());
                 LogMessage log;
                 log.type = "#ThFusheng";
                 log.from = p;
@@ -2484,7 +2487,8 @@ public:
         Room *room = source->getRoom();
         room->broadcastSkillInvoke("thfuyue");
         room->notifySkillInvoked(lord, "thfuyue");
-        if (room->askForChoice(lord, "thfuyue", "accept+reject", QVariant::fromValue(source)) != "accept"
+        if (room->askForChoice(lord, "thfuyue", "accept+reject", QVariant::fromValue(source),
+                               QString(), ":thfuyue") != "accept"
             || !source->canPindian(lord))
             return ContinueEffects;
         if (!source->pindian(lord, "thfuyue") && lord->isAlive())

@@ -442,7 +442,7 @@ public:
         if (!from || !from->isAlive()) return false;
         QStringList choices; choices << "damage"; if (from->getHandcardNum() > 1) choices << "throw";
         // The source's discard is itself the ask; only the damage branch is left to settlement.
-        if (room->askForChoice(ctx.owner, "neoganglie", choices.join("+")) == "throw") {
+        if (room->askForChoice(ctx.owner, "neoganglie", choices.join("+"), QVariant(), QString(), ":neoganglie") == "throw") {
             room->askForDiscard(from, "neoganglie", 2 * getEffectiveAmount(ctx), 2 * getEffectiveAmount(ctx));
             return false;
         }

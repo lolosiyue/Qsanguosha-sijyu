@@ -687,7 +687,8 @@ public:
         if (!source || !source->isAlive())
             return FinishSkill;
         Room *room = source->getRoom();
-        const QString choice = room->askForChoice(source, objectName(), "BasicCard+EquipCard+TrickCard");
+        const QString choice = room->askForChoice(source, objectName(), "BasicCard+EquipCard+TrickCard", QVariant(),
+                                                  QString(), ":" + objectName());
         LogMessage log;
         log.type = "#ThLeshi";
         log.from = source;
@@ -1438,7 +1439,9 @@ public:
             ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(),
                                                             "@thyuxin-target", true);
             if (target) {
-                if (target->isWounded() && room->askForChoice(target, objectName(), "recover+draw") == "recover")
+                if (target->isWounded()
+                    && room->askForChoice(target, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName())
+                           == "recover")
                     room->recover(target, RecoverStruct(objectName(), player));
                 else
                     target->drawCards(2, objectName());
@@ -1480,7 +1483,8 @@ public:
         if (!used)
             return false;
         ctx.choice = used->subcardsLength() < 2
-            ? room->askForChoice(ctx.owner, objectName(), m_skills.join("+")) : m_skills.join("+");
+            ? room->askForChoice(ctx.owner, objectName(), m_skills.join("+"), QVariant(), QString(), ":" + objectName())
+            : m_skills.join("+");
         ctx.targets = QList<ServerPlayer *>{ctx.owner};
         return true;
     }
@@ -1787,7 +1791,8 @@ public:
         }
         if (choices.isEmpty())
             return false;
-        const QString choice = room->askForChoice(player, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(),
+                                                  ":" + objectName());
         room->detachSkillFromPlayer(player, choice);
         player->drawCards(1, objectName());
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
@@ -2048,8 +2053,9 @@ public:
         ServerPlayer *owner = ctx.owner;
         QStringList choices{"draw"};
         if (player->isAlive() && owner->canDiscard(player, "he"))
-            choices << "throw";
-        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player)) == "throw") {
+            choices << "throw=" + player->objectName();
+        if (room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(),
+                               ":" + objectName()).section("=", 0, 0) == "throw") {
             const int id = room->askForCardChosen(owner, player, "he", objectName(), false, Card::MethodDiscard);
             if (id >= 0)
                 room->throwCard(id, player, owner);
@@ -2418,7 +2424,7 @@ public:
             kingdoms.removeAll(old);
             if (!kingdoms.isEmpty()) {
                 const QString kingdom = room->askForChoice(player, "thzhizun_kingdom", kingdoms.join("+"),
-                                                           QVariant::fromValue(target));
+                                                           QVariant::fromValue(target), QString(), ":" + objectName());
                 room->setPlayerProperty(target, "kingdom", kingdom);
                 LogMessage log;
                 log.type = "#ChangeKingdom";
@@ -2448,7 +2454,8 @@ public:
         if (choices.isEmpty() || !player->isAlive())
             return false;
         choices << "cancel";
-        const QString choice = room->askForChoice(player, "thzhizun_lordskills", choices.join("+"));
+        const QString choice = room->askForChoice(player, "thzhizun_lordskills", choices.join("+"), QVariant(), QString(),
+                                                  ":" + objectName());
         if (choice != "cancel")
             room->acquireSkillFromEffect(player, choice, ctx);
         return false;
@@ -2807,7 +2814,7 @@ public:
         QList<int> picked;
         if (!groups.isEmpty()) {
             const QString choice = room->askForChoice(source, objectName(), groups.keys().join("+"),
-                                                      QVariant(ListI2V(ids)));
+                                                      QVariant(ListI2V(ids)), QString(), ":" + objectName());
             picked = groups.value(choice);
         }
         QList<int> onTable;
@@ -2864,7 +2871,8 @@ public:
         if (!player->isAlive())
             return false;
         room->broadcastSkillInvoke(objectName());
-        player->gainMark(room->askForChoice(player, objectName(), "@mountain+@lake"));
+        player->gainMark(room->askForChoice(player, objectName(), "@mountain+@lake", QVariant(), QString(),
+                                            ":" + objectName()));
         return false;
     }
 };
@@ -2972,7 +2980,8 @@ public:
         const QStringList names = usableNames(room, owner, player);
         if (names.isEmpty())
             return false;
-        const QString choice = room->askForChoice(owner, objectName(), names.join("+"));
+        const QString choice = room->askForChoice(owner, objectName(), names.join("+"), QVariant(), QString(),
+                                                  ":" + objectName());
         const QList<int> pile = room->getDrawPile();
         foreach (int id, pile) {
             if (!owner->isAlive() || !player->isAlive())

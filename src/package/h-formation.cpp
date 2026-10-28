@@ -635,7 +635,8 @@ public:
         // The owner invokes Shoucheng; in identity mode the recipient may refuse the draw.
         // A refusal still counts as an invocation, so it is kept in ctx.choice rather than failing cost.
         ctx.choice = Config.EnableHegemony ? QString("accept")
-            : room->askForChoice(target, objectName(), "accept+reject", QVariant::fromValue(ctx.owner));
+            : room->askForChoice(target, objectName(), "accept+reject", QVariant::fromValue(ctx.owner), QString(),
+                ":" + objectName());
         ctx.targets = {target};
         return true;
     }
@@ -682,7 +683,7 @@ public:
         choices << "hidden_general";
 
     QString choice = room->askForChoice(ctx.invoker, "heg_shangyi",
-        choices.join("+"), QVariant::fromValue(target));
+        choices.join("+"), QVariant::fromValue(target), QString(), ":heg_shangyi");
     LogMessage log;
     log.type = "#KnownBothView";
     log.from = ctx.invoker;
@@ -1094,7 +1095,8 @@ public:
     {
         if (event == EventPhaseStart) return Guanxing::cost(event, room, player, ctx);
         if (!ctx.owner || !room->canShowGeneralForSkill(ctx.activationRef)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, "GuanxingShowGeneral", "show_both_generals+cancel");
+        ctx.choice = room->askForChoice(ctx.owner, "GuanxingShowGeneral", "show_both_generals+cancel", QVariant(), QString(),
+            ":" + objectName());
         return ctx.choice == "show_both_generals";
     }
 

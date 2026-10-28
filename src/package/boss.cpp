@@ -805,7 +805,7 @@ void JiwuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) co
     QStringList choices;
     for (const QString &skill : {QString("wansha"), QString("lieren"), QString("qiangxi"), QString("xuanfeng"), QString("tieji")})
         if (!source->hasSkill(skill, true)) choices << skill;
-    if (!choices.isEmpty()) room->acquireOneTurnSkills(source, "jiwu", room->askForChoice(source, "jiwu", choices.join("+")));
+    if (!choices.isEmpty()) room->acquireOneTurnSkills(source, "jiwu", room->askForChoice(source, "jiwu", choices.join("+"), QVariant(), QString(), ":jiwu"));
 }
 
 class JiwuClear : public TriggerSkillV2
@@ -858,7 +858,7 @@ public:
             for (const QString &skill : {QString("wansha"), QString("lieren"), QString("qiangxi"), QString("xuanfeng"), QString("tieji")})
                 if (!target->hasSkill(skill, true)) choices << skill;
             if (choices.isEmpty()) break;
-            const QString skill = room->askForChoice(target, objectName(), choices.join("+"));
+            const QString skill = room->askForChoice(target, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
             if (!choices.contains(skill) || target->hasSkill(skill, true)) break;
             const int instance = room->acquireSkill(target, skill);
             if (instance <= 0) continue;
@@ -1229,7 +1229,7 @@ void Lianjunshengyan::onEffect(CardEffectStruct &effect) const
 		CardUseStruct use = room->getUseStruct(this);
 		effect.from->drawCards(use.to.length(),objectName());
 	}else{
-		if(effect.to->getLostHp()>0&&room->askForChoice(effect.to,objectName(),"r+d")=="r"){
+		if(effect.to->getLostHp()>0&&room->askForChoice(effect.to,objectName(),"r+d",QVariant(),QString(),":" + objectName())=="r"){
 			room->recover(effect.to,RecoverStruct(effect.from,this));
 		}else
 			effect.to->drawCards(1,objectName());

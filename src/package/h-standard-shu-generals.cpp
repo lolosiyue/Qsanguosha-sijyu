@@ -363,7 +363,8 @@ public:
         if (target->hasShownGeneral1()) choices << "head_general";
         if (target->hasShownGeneral2()) choices << "deputy_general";
         const QString choice = !shouyue && !choices.isEmpty()
-            ? room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(target)) : QString();
+            ? room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(target),
+                QString(), ":" + objectName()) : QString();
         // Invalidate exact innate sources on the chosen shown general, never acquired skills.
         for (const SkillInstance &instance : target->getSkillInstances()) {
             if (instance.source != SourceInnate || instance.bindHead == 0) continue;
@@ -448,7 +449,8 @@ public:
         if (target->getHp() < ctx.owner->getHp()) return false;
         if (!invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target))) return false;
         ctx.targets = {target};
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "nojink+adddamage", *ctx.original_data);
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "nojink+adddamage", *ctx.original_data,
+            QString(), ":" + objectName());
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
@@ -687,7 +689,8 @@ public:
         // owner's wounds and therefore the next recipient's available options.
         QStringList choices{"drawcard"};
         if (ctx.owner && ctx.owner->isAlive() && ctx.owner->isWounded()) choices << "recover";
-        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(ctx.owner)) == "recover")
+        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(ctx.owner),
+            QString(), ":" + objectName()) == "recover")
             room->recover(ctx.owner, RecoverStruct(target, nullptr, getEffectiveAmount(ctx), objectName()));
         else target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;

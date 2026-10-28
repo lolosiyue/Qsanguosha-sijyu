@@ -1999,7 +1999,8 @@ public:
         QList<ServerPlayer *> candidates;
         for (ServerPlayer *target : room->getOtherPlayers(owner))
             if (owner->canSlash(target, false)) candidates << target;
-        ctx.choice = candidates.isEmpty() ? "discard" : room->askForChoice(owner, objectName(), "discard+slash");
+        ctx.choice = candidates.isEmpty() ? "discard" : room->askForChoice(owner, objectName(), "discard+slash",
+            QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = ctx.choice == "slash"
             ? room->askForPlayerChosen(owner, candidates, objectName(), "@dummy-slash") : ctx.invoker;
         if (!target) return false;

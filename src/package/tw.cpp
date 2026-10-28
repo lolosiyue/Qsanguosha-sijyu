@@ -33,7 +33,7 @@ public:
         if (!ctx.owner->askForSkillInvoke(this)) return false;
         const QString kingdom = ctx.owner->getKingdom();
         ctx.choice = room->askForChoice(ctx.owner, objectName(),
-            kingdom == "wei" ? "shu" : kingdom == "shu" ? "wei" : "wei+shu");
+            kingdom == "wei" ? "shu" : kingdom == "shu" ? "wei" : "wei+shu", QVariant(), QString(), ":" + objectName());
         return true;
     }
 

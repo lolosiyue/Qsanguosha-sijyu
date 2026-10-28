@@ -457,7 +457,7 @@ void JueyanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
     if (source->hasEquipArea(2) || source->hasEquipArea(3)) choices << "23";
     if (source->hasEquipArea(4)) choices << "4";
     if (choices.isEmpty()) return;
-    QString choice = room->askForChoice(source, "jueyan", choices.join("+"), QVariant());
+    QString choice = room->askForChoice(source, "jueyan", choices.join("+"), QVariant(), QString(), ":jueyan");
     if (choice == "0") {
         source->throwEquipArea(0);
         room->addSlashCishu(source, 3);
@@ -498,7 +498,7 @@ public:
         for (int area : {0, 1, 4}) if (ctx.invoker->hasEquipArea(area)) choices << QString::number(area);
         if (ctx.invoker->hasEquipArea(2) || ctx.invoker->hasEquipArea(3)) choices << "23";
         if (choices.isEmpty()) return false;
-        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"));
+        ctx.choice = room->askForChoice(ctx.invoker, objectName(), choices.join("+"), QVariant(), QString(), ":jueyan");
         return choices.contains(ctx.choice);
     }
     bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
@@ -1758,11 +1758,11 @@ public:
         if (skills.isEmpty() || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) return false;
         QStringList areas; for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) if (ctx.owner->hasEquipArea(i)) areas << QString::number(i);
         if (areas.isEmpty()) return false;
-        const QString selected = room->askForChoice(ctx.owner, objectName(), skills.join("+"));
+        const QString selected = room->askForChoice(ctx.owner, objectName(), skills.join("+"), QVariant(), QString(), ":duorui");
         if (!skills.contains(selected)) return false;
         QString skill; const int instance = SkillInstanceUtils::parseName(selected, skill);
         ctx.extra_data = QVariantMap{{"skill", skill}, {"instance", instance},
-            {"area", room->askForChoice(ctx.owner, "duorui_area", areas.join("+")).toInt()}};
+            {"area", room->askForChoice(ctx.owner, "duorui_area", areas.join("+"), QVariant(), QString(), ":duorui").toInt()}};
         ctx.targets << target; return true;
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -1837,7 +1837,7 @@ public:
             QStringList areas;
             for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) if (!target->hasEquipArea(i)) areas << QString::number(i);
             if (areas.isEmpty()) break;
-            const QString choice = room->askForChoice(ctx.invoker, "zhiti", areas.join("+"));
+            const QString choice = room->askForChoice(ctx.invoker, "zhiti", areas.join("+"), QVariant(), QString(), ":zhiti");
             if (areas.contains(choice) && !target->hasEquipArea(choice.toInt())) target->obtainEquipArea(choice.toInt());
         }
         return false;
@@ -2240,7 +2240,7 @@ public:
         for (const QVariant &v : target->getTag("DuoruiReceipts").toList()) if (v.toMap().value("ol").toBool()) return false;
         const QStringList skills = duoruiChoices(target, true);
         if (skills.isEmpty() || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) return false;
-        const QString selected = room->askForChoice(ctx.owner, objectName(), skills.join("+"));
+        const QString selected = room->askForChoice(ctx.owner, objectName(), skills.join("+"), QVariant(), QString(), ":olduorui");
         if (!skills.contains(selected)) return false;
         QString skill; const int instance = SkillInstanceUtils::parseName(selected, skill);
         ctx.extra_data = QVariantMap{{"skill", skill}, {"instance", instance}}; ctx.targets << target; return true;

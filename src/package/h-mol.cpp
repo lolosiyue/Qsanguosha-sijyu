@@ -1193,7 +1193,7 @@ public:
         const QList<int> pile = ctx.owner->getPile("kerchief"); if (pile.isEmpty()) return false;
         QList<ServerPlayer *> others;
         for (ServerPlayer *other : room->getOtherPlayers(ctx.owner)) if (other->getHp() <= ctx.owner->getHp()) others << other;
-        ctx.choice = others.isEmpty() ? "self" : room->askForChoice(ctx.owner, objectName(), "self+give");
+        ctx.choice = others.isEmpty() ? "self" : room->askForChoice(ctx.owner, objectName(), "self+give", QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = ctx.choice == "give" ? room->askForPlayerChosen(ctx.owner, others, objectName(), "@juedi") : ctx.owner;
         if (!target) return false;
         QVariantList cards; for (int id : pile) cards << id;
@@ -1915,7 +1915,7 @@ public:
         }
         // Paying both leaves the victim no choice; otherwise it picks now, an equipment-less victim takes the damage.
         if (!ctx.extra_data.toMap().contains("card_id"))
-            ctx.choice = damage.to->getEquips().isEmpty() ? "damage" : room->askForChoice(damage.to, "zhuidu_choice", "throw+damage", *ctx.original_data);
+            ctx.choice = damage.to->getEquips().isEmpty() ? "damage" : room->askForChoice(damage.to, "zhuidu_choice", "throw+damage", *ctx.original_data, QString(), ":zhuidu_choice");
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override

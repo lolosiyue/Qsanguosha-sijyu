@@ -410,7 +410,7 @@ public:
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (!ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "jia3+jian3+cancel", *ctx.original_data);
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "jia3+jian3+cancel", *ctx.original_data, QString(), ":" + objectName());
         return ctx.choice != "cancel";
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
@@ -514,7 +514,7 @@ public:
             const bool flagged = target->hasFlag("YinghunTarget");
             target->setFlags("YinghunTarget");
             const auto clear = qScopeGuard([&] { if (!flagged) target->setFlags("-YinghunTarget"); });
-            ctx.choice = room->askForChoice(ctx.owner, objectName(), "d1tx+dxt1");
+            ctx.choice = room->askForChoice(ctx.owner, objectName(), "d1tx+dxt1", QVariant(), QString(), ":" + objectName());
         }
         return true;
     }
@@ -779,7 +779,7 @@ public:
         }
         // Even a target with neither option has its damage prevented, as in the identity version.
         if (choices.isEmpty()) return true;
-        const QString choice = room->askForChoice(target, objectName(), choices.join('+'), *ctx.original_data);
+        const QString choice = room->askForChoice(target, objectName(), choices.join('+'), *ctx.original_data, QString(), ":" + objectName());
         if (choice == "discard") {
             target->throwAllEquips();
             if (target->isAlive()) room->loseHp(HpLostStruct(target, 1, objectName(), ctx.owner));
@@ -788,7 +788,7 @@ public:
             QStringList stripped = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "stripped_targets").toStringList();
             stripped << target->objectName();
             ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "stripped_targets", stripped);
-            const QString name = room->askForChoice(target, "heg_chuanxin_lose", skills.join('+'), *ctx.original_data);
+            const QString name = room->askForChoice(target, "heg_chuanxin_lose", skills.join('+'), *ctx.original_data, QString(), ":heg_chuanxin_lose");
             room->detachSkillFromPlayer(target, name);
         }
         return true;
@@ -953,7 +953,7 @@ public:
             else {
                 QStringList choices;
                 for (int i = 0; i <= maximum; ++i) choices << QString::number(i);
-                ctx.extra_data = room->askForChoice(ctx.owner, "heg_hongfa_num", choices.join('+'), *ctx.original_data).toInt();
+                ctx.extra_data = room->askForChoice(ctx.owner, "heg_hongfa_num", choices.join('+'), *ctx.original_data, QString(), ":heg_hongfa_num").toInt();
             }
             return ctx.extra_data.toInt() > 0;
         }

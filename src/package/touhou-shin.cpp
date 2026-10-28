@@ -161,7 +161,7 @@ public:
         if (target->canDiscard(target, "he") && target->getCardCount() >= ids.length())
             choices << "discard";
         choices << "turnover";
-        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant(ListI2V(ids))) == "discard") {
+        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant(ListI2V(ids)), QString(), ":" + objectName()) == "discard") {
             DummyCard shown(ids);
             room->throwCard(&shown, source, target);
             if (target->isAlive())
@@ -231,7 +231,7 @@ public:
             choices << "obtain";
         if (choices.isEmpty())
             return false;
-        if (room->askForChoice(target, objectName(), choices.join("+")) == "damage") {
+        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "damage") {
             ServerPlayer *victim = room->askForPlayerChosen(target, victims, "thfeiman-damage", "@thfeiman-damage");
             if (victim)
                 room->damage(DamageStruct(objectName(), target, victim, 1, DamageStruct::Fire));
@@ -481,7 +481,7 @@ public:
         if (!player->isAlive() || player->isKongcheng())
             return false;
         player->setTag("ThXinqiTarget", QVariant::fromValue(owner));
-        const QString choice = room->askForChoice(player, objectName(), "show+cancel", *ctx.original_data);
+        const QString choice = room->askForChoice(player, objectName(), "show+cancel", *ctx.original_data, QString(), ":" + objectName());
         player->removeTag("ThXinqiTarget");
         if (choice == "show") {
             room->showAllCards(player, owner);
@@ -565,7 +565,7 @@ public:
             card = player->getRandomHandCard();
         if (!card)
             return false;
-        const QString choice = room->askForChoice(owner, objectName(), "basic+equip+trick", QVariant::fromValue(player));
+        const QString choice = room->askForChoice(owner, objectName(), "basic+equip+trick", QVariant::fromValue(player), QString(), ":" + objectName());
         LogMessage log;
         log.type = "#ThNengwu";
         log.from = owner;
@@ -1449,7 +1449,7 @@ public:
         if (room->getCardPlace(id) == Player::DiscardPile)
             choices << "obtain";
         choices << "skip";
-        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(victim)) == "obtain") {
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(victim), QString(), ":" + objectName()) == "obtain") {
             room->obtainCard(victim, id, objectName());
             if (room->getCardOwner(id) == victim)
                 room->setPlayerCardLimitation(victim, "use,response", QString::number(id), false, objectName());
@@ -2850,7 +2850,7 @@ public:
         player->drawCards(1, "recast");
         if (!player->isAlive())
             return FinishSkill;
-        if (room->askForChoice(player, objectName(), "attackrange+slashnum") == "attackrange")
+        if (room->askForChoice(player, objectName(), "attackrange+slashnum", QVariant(), QString(), ":" + objectName()) == "attackrange")
             room->addPlayerMark(player, "threnmo_range-Clear");
         else
             room->addPlayerMark(player, "threnmo_num-Clear");
@@ -3859,7 +3859,7 @@ public:
                 choices << name;
         if (choices.isEmpty())
             return false;
-        const QString choice = room->askForChoice(owner, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(owner, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         LogMessage log;
         log.type = "#ThChuanyu";
         log.from = owner;

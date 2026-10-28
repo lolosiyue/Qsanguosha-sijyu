@@ -2833,7 +2833,8 @@ public:
                 choices << "2"; break;
             }
         if (ctx.invoker && ctx.invoker->isAlive()) choices << "3=" + ctx.invoker->objectName();
-        const QString chosen = room->askForChoice(target, objectName(), choices.join("+"), *ctx.original_data);
+        const QString chosen = room->askForChoice(target, objectName(), choices.join("+"), *ctx.original_data,
+            QString(), ":" + objectName()).section("=", 0, 0);
         if (chosen == "1") {
             CardUseStruct use = ctx.original_data->value<CardUseStruct>();
             if (!use.no_respond_list.contains(target->objectName())) use.no_respond_list << target->objectName();
@@ -2845,7 +2846,7 @@ public:
                 const Card *physical = Sanguosha->getEngineCard(discarded->getSubcards().first());
                 if (physical) suits.removeOne(physical->getSuitString());
             }
-        } else if (chosen.startsWith("3=") && ctx.invoker->isAlive() && target->isAlive()) {
+        } else if (chosen == "3" && ctx.invoker->isAlive() && target->isAlive()) {
             ServerPlayer *receiver = ctx.invoker;
             QList<int> ids;
             const int count = qMin(2 * getEffectiveAmount(ctx), target->getCardCount());
@@ -3175,7 +3176,8 @@ public:
         for (const QString &skill : candidates) choices << "1=" + skill;
         const int damage = qBound(1, gap, 3) * getEffectiveAmount(ctx);
         choices << QString("2=%1").arg(damage);
-        const QString selected = room->askForChoice(target, objectName(), choices.join("+"), *ctx.original_data);
+        const QString selected = room->askForChoice(target, objectName(), choices.join("+"), *ctx.original_data,
+            QString(), ":" + objectName());
         if (!choices.contains(selected)) return false;
         if (selected.startsWith("1=")) {
             QString name;

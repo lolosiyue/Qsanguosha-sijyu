@@ -460,7 +460,7 @@ public:
             for (const QString &change : changes) {
                 QStringList choices;
                 for (const QString &suit : available) choices << change + "=" + suit;
-                QString suit = room->askForChoice(ctx.owner, objectName(), choices.join("+")).section('=', -1);
+                QString suit = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()).section('=', -1);
                 if (!available.contains(suit)) suit = available.first();
                 assigned << suit;
                 available.removeOne(suit);
@@ -1116,7 +1116,7 @@ void ShujianCard::onEffect(CardEffectStruct &effect) const
 	Card*dc = Sanguosha->cloneCard("dismantlement");
 	dc->setSkillName("_shujian");
 	QString p = "shujian1="+QString::number(x)+"+shujian2="+QString::number(x);
-	if(to->canUse(dc)&&room->askForChoice(to,getSkillName(),p,QVariant::fromValue(from)).contains("shujian2")){
+	if(to->canUse(dc)&&room->askForChoice(to,getSkillName(),p,QVariant::fromValue(from),QString(),":" + getSkillName()).contains("shujian2")){
 		for (int i = 0; i < x; i++) {
 			room->askForUseCard(to,"@@shujian","shujian0:");
 		}
@@ -1256,7 +1256,7 @@ public:
         const int count = remaining * amount;
         Dismantlement preview(Card::NoSuit, 0);
         const QString choices = "shujian1=" + QString::number(count) + "+shujian2=" + QString::number(count);
-        if (target->canUse(&preview) && room->askForChoice(target, objectName(), choices, QVariant::fromValue(source)).startsWith("shujian2")) {
+        if (target->canUse(&preview) && room->askForChoice(target, objectName(), choices, QVariant::fromValue(source), QString(), ":" + objectName()).startsWith("shujian2")) {
             // This is a turn ban, not merely the remainder of this Play phase.
             ctx.initiator->setSkillInstanceStateValue(ctx.activationRef.key.skillName, ctx.activationRef.key.instanceID,
                 "blocked_turn", room->historyScopes().value("turn_id"));

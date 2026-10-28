@@ -278,7 +278,7 @@ void JujianCard::onEffect(CardEffectStruct &effect) const
         choicelist << "recover";
     if (!effect.to->faceUp() || effect.to->isChained())
         choicelist << "reset";
-    QString choice = room->askForChoice(effect.to, "jujian", choicelist.join("+"));
+    QString choice = room->askForChoice(effect.to, "jujian", choicelist.join("+"), QVariant(), QString(), ":jujian");
 
     if (choice == "draw")
         effect.to->drawCards(2, "jujian");
@@ -315,7 +315,7 @@ public:
         QStringList choices{"draw"};
         if (target->isWounded()) choices << "recover";
         if (!target->faceUp() || target->isChained()) choices << "reset";
-        const QString choice = room->askForChoice(target, objectName(), choices.join('+'));
+        const QString choice = room->askForChoice(target, objectName(), choices.join('+'), QVariant(), QString(), ":" + objectName());
         if (choice == "recover") {
             RecoverStruct recovery(objectName(), ctx.invoker);
             recovery.recover = getEffectiveAmount(ctx);
@@ -813,7 +813,7 @@ void MingceCard::onEffect(CardEffectStruct &effect) const
         throw triggerEvent;
     }
 
-    QString choice = room->askForChoice(effect.to, "mingce", choicelist.join("+"));
+    QString choice = room->askForChoice(effect.to, "mingce", choicelist.join("+"), QVariant(), QString(), ":mingce");
     if (target && target->hasFlag("MingceTarget")) target->setFlags("-MingceTarget");
 
     if (choice == "use") {
@@ -892,7 +892,7 @@ public:
         room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
             ctx.initiator->objectName(), target->objectName(), objectName(), ""));
         if (!target->isAlive()) return ContinueEffects;
-        if (room->askForChoice(target, objectName(), victim ? "draw+use" : "draw") == "use") {
+        if (room->askForChoice(target, objectName(), victim ? "draw+use" : "draw", QVariant(), QString(), ":" + objectName()) == "use") {
             SkillContext attack = ctx;
             attack.choice = "attack";
             attack.extra_data = target->objectName();
@@ -1337,7 +1337,7 @@ public:
         }
         room->doSuperLightbox(target, objectName());
         if (!room->changeMaxHpForAwakenSkill(target, -1, objectName()) || !target->isAlive()) return false;
-        if (target->isWounded() && room->askForChoice(target, objectName(), "recover+draw") == "recover") {
+        if (target->isWounded() && room->askForChoice(target, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName()) == "recover") {
             RecoverStruct recover(objectName(), target);
             recover.recover = getEffectiveAmount(ctx);
             room->recover(target, recover);
@@ -1891,7 +1891,7 @@ public:
         QStringList choices{"nothing"};
         if (!slashes.isEmpty()) choices << "slash";
         if (!damages.isEmpty()) choices << "damage";
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join('+'));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join('+'), QVariant(), QString(), ":" + objectName());
         ServerPlayer *target = nullptr;
         if (ctx.choice == "slash") target = room->askForPlayerChosen(ctx.owner, slashes, "nosxuanfeng_slash", "@dummy-slash");
         else if (ctx.choice == "damage") target = room->askForPlayerChosen(ctx.owner, damages, "nosxuanfeng_damage", "@nosxuanfeng-damage");
@@ -2730,7 +2730,7 @@ void NosPaiyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 					choice = "hand_area+judge_area";
 			}
 		}
-		choice = room->askForChoice(source,"nospaiyi",choice,QVariant::fromValue(p));
+		choice = room->askForChoice(source,"nospaiyi",choice,QVariant::fromValue(p),QString(),":nospaiyi");
 		if(choice=="equip_area")
 			room->moveCardTo(c,p,Player::PlaceEquip,CardMoveReason(CardMoveReason::S_REASON_PUT, source->objectName(), p->objectName(), "nospaiyi", QString()));
 		else if(choice=="judge_area")
@@ -2795,7 +2795,7 @@ public:
             if (equip && target->hasEquipArea(equip->location()) && !target->getEquip(equip->location())) choices << "equip_area";
             else if (card->isKindOf("DelayedTrick") && !target->containsTrick(card->objectName())) choices << "judge_area";
         }
-        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target));
+        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
         if (!choices.contains(choice) || !target->isAlive() || !source->getPile("nospower").contains(id)
             || card->hasFlag("using")) return ContinueEffects;
         Player::Place place = Player::PlaceHand;

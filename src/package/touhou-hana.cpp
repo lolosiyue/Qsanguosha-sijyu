@@ -208,7 +208,7 @@ protected:
 
     void awaken(Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw") == "recover")
+        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName()) == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -705,7 +705,7 @@ public:
         payer->addToPile("joke", id, false);
         const QStringList options = choices(source, target);
         if (!options.isEmpty() && source->isAlive()) {
-            const QString choice = room->askForChoice(source, objectName(), options.join("+"), QVariant::fromValue(target));
+            const QString choice = room->askForChoice(source, objectName(), options.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
             Card *card = choice == "duel" ? static_cast<Card *>(new Duel(Card::NoSuit, 0))
                                           : static_cast<Card *>(new Slash(Card::NoSuit, 0));
             card->setSkillName("_thxihua");
@@ -1354,7 +1354,7 @@ public:
             return ContinueEffects;
         Room *room = source->getRoom();
         const QString choice = room->askForChoice(source, objectName(), "BasicCard+EquipCard+TrickCard",
-                                                  QVariant::fromValue(target));
+                                                  QVariant::fromValue(target), QString(), ":" + objectName());
         LogMessage log;
         log.type = "#ThGuaitan";
         log.from = source;
@@ -1600,7 +1600,7 @@ public:
             return ContinueEffects;
         source->setTag("ThXianfaTarget", QVariant::fromValue(target));
         const QString choice = room->askForChoice(source, objectName(), "start+judge+draw+discard+finish",
-                                                  QVariant::fromValue(target));
+                                                  QVariant::fromValue(target), QString(), ":" + objectName());
         source->removeTag("ThXianfaTarget");
         LogMessage log;
         log.type = "#ThXianfaChoose";
@@ -1690,7 +1690,7 @@ protected:
     // Upstream grants its own 迷途; the local 无言 is the same rule.
     void awaken(Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw") == "recover")
+        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName()) == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -1975,7 +1975,7 @@ public:
                 suits << Card::Suit2String(it.key());
         if (!suits.isEmpty()) {
             const QString suit = room->askForChoice(target, objectName(), suits.join("+") + "+cancel",
-                                                    QVariant::fromValue(owner));
+                                                    QVariant::fromValue(owner), QString(), ":" + objectName());
             if (suit != "cancel"
                 && room->askForDiscard(target, objectName(), 2, 2, true, true, "@thshengzhi:" + owner->objectName(),
                                        ".|" + suit)) {
@@ -1988,7 +1988,7 @@ public:
             if (target->getPhases().contains(phase) && !target->isSkipped(phase))
                 phases << phaseName(phase);
         if (!phases.isEmpty() && owner->isAlive())
-            ctx.choice = room->askForChoice(owner, objectName(), phases.join("+"), QVariant::fromValue(target));
+            ctx.choice = room->askForChoice(owner, objectName(), phases.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
         return true;
     }
 
@@ -2246,7 +2246,7 @@ public:
         if (event == CardOffset) {
             ServerPlayer *target = ctx.original_data->value<CardEffectStruct>().to;
             if (!player->canDiscard(player, "he")
-                || room->askForChoice(target, objectName(), "discard+draw", QVariant::fromValue(player)) == "draw")
+                || room->askForChoice(target, objectName(), "discard+draw", QVariant::fromValue(player), QString(), ":" + objectName()) == "draw")
                 player->drawCards(1, objectName());
             else
                 room->askForDiscard(player, objectName(), 1, 1, false, true);

@@ -66,7 +66,7 @@ return {
 	["~ikhualan"] = "选择一至三张手牌→点击确定",
 	["#ikhualan-draw"] = "花岚（摸牌）",
 	["ikhualan:draw"] = "摸一张牌",
-	["ikhualan:slash"] = "对其使用一张无视距离的【杀】",
+	["ikhualan:slash"] = "对 %src 使用一张无视距离的【杀】",
 
 	["#wind047"] = "焰弓的空舰",
 	["wind047"] = "加贺",--风 - 空 - 3血
@@ -267,7 +267,7 @@ return {
 	["ikqiyi"] = "凄翼",
 	[":ikqiyi"] = "在你的回合，每当一名角色回复1点体力后，你可以摸一张牌或弃置该角色的一张牌。",
 	["ikqiyi:draw"] = "摸一张牌",
-	["ikqiyi:discard"] = "弃置该角色的一张牌",
+	["ikqiyi:discard"] = "弃置 %src 的一张牌",
 	
 	["#snow036"] = "天赐的艺术家",
 	["snow036"] = "椎名真白",--雪 - 幻 - 3血
@@ -298,8 +298,8 @@ return {
 	["illustrator:snow046"] = "和泉つばす",
 	["iklianxiao"] = "恋咲",
 	[":iklianxiao"] = "你或你的攻击范围内的角色的弃牌阶段结束时，若该角色于出牌阶段内没有对你使用过牌，你可以选择一项：1.令其摸一张牌；2.令其弃一张牌。",
-	["iklianxiao:draw"] = "令其摸一张牌",
-	["iklianxiao:throw"] = "令其弃一张牌",
+	["iklianxiao:draw"] = "令 %src 摸一张牌",
+	["iklianxiao:throw"] = "令 %src 弃一张牌",
 
 	["#snow048"] = "喧哄的问题儿",
 	["snow048"] = "三枝叶留佳",--雪 - 空 - 4血
@@ -361,6 +361,8 @@ return {
 	["@iklihun-showcard"] = "请展示任意数量的手牌",
 	["showcard"] = "获得其展示的手牌",
 	["noshowcard"] = "获得未展示的手牌",
+	["iklihun:showcard"] = "获得 %src 展示的手牌",
+	["iklihun:noshowcard"] = "获得 %src 未展示的手牌",
 
 	["#snow057"] = "玄翡的帝女",
 	["snow057"] = "久远",--雪 - 空 - 3血
@@ -533,8 +535,8 @@ return {
 	["illustrator:luna054"] = "ゆゆ",
 	["iksuyi"] = "塑忆",
 	[":iksuyi"] = "出牌阶段限一次，你可以选择一名其他角色并选择一项：令该角色摸一张牌；或弃置该角色一张手牌。",
-	["iksuyi:draw"] = "令该角色摸一张牌",
-	["iksuyi:discard"] = "弃置该角色一张手牌",
+	["iksuyi:draw"] = "令 %src 摸一张牌",
+	["iksuyi:discard"] = "弃置 %src 一张手牌",
 	["ikyihui"] = "遗惠",
 	[":ikyihui"] = "当你死亡时，你可以选择一名其他角色，令该角色获得技能“塑忆”和“遗惠”。",
 	["@ikyihui"] = "你可以发动“遗惠”",

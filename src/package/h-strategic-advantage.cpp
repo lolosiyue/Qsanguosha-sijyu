@@ -562,7 +562,7 @@ bool HDrowning::targetFilter(const QList<const Player *> &targets, const Player 
 void HDrowning::onEffect(CardEffectStruct &effect) const{
     Room *room = effect.to->getRoom();
     if (!effect.to->getEquips().isEmpty()
-        && room->askForChoice(effect.to, objectName(), "throw+damage", QVariant::fromValue(effect)) == "throw")
+        && room->askForChoice(effect.to, objectName(), "throw+damage", QVariant::fromValue(effect), QString(), ":" + objectName()) == "throw")
         effect.to->throwAllEquips();
     else
         room->damage(DamageStruct(this, effect.from && effect.from->isAlive() ? effect.from : nullptr, effect.to, 1, DamageStruct::Thunder));
@@ -811,7 +811,7 @@ void HFightTogether::onUse(Room *room, CardUseStruct &card_use) const{
 
     if (choices.isEmpty()) return;
 
-    QString choice = room->askForChoice(source, objectName(), choices.join("+"));
+    QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
     if (choice == "recast") {
         CardMoveReason reason(CardMoveReason::S_REASON_RECAST, card_use.from->objectName());
         reason.m_skillName = getSkillName();
@@ -921,7 +921,7 @@ void HAllianceFeast::onEffect(CardEffectStruct &effect) const{
         if (effect.to->isWounded())
             choices << "recover";
         choices << "draw";
-        QString choice = room->askForChoice(effect.to, objectName(), choices.join("+"));
+        QString choice = room->askForChoice(effect.to, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         if (choice == "recover") {
             RecoverStruct recover;
             recover.who = effect.from;
@@ -1089,9 +1089,9 @@ void HImperialOrder::onEffect(CardEffectStruct &effect) const{
     QStringList choices;
     if (!positions.isEmpty()) choices << "show";
     choices << "losehp";
-    const QString choice = room->askForChoice(effect.to, objectName(), choices.join("+"));
+    const QString choice = room->askForChoice(effect.to, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
     if (choice == "show") {
-        const QString position = room->askForChoice(effect.to, "GameRule_AskForGeneralShow", positions.join("+"));
+        const QString position = room->askForChoice(effect.to, "GameRule_AskForGeneralShow", positions.join("+"), QVariant(), QString(), ":GameRule_AskForGeneralShow");
         const bool head = position == "showhead";
         if (positions.contains(position) && effect.to->canShowGeneral(head ? "h" : "d")) {
             effect.to->showGeneral(head);

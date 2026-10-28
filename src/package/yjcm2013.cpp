@@ -511,7 +511,8 @@ public:
         if (!available.isEmpty()) choices << "add";
         if (use.to.length() > 1) choices << "remove";
         choices << "cancel";
-        const QString choice = room->askForChoice(jianyong, objectName(), choices.join("+"), *ctx.original_data);
+        const QString choice = room->askForChoice(jianyong, objectName(), choices.join("+"), *ctx.original_data,
+            QString(), ":" + objectName());
         ServerPlayer *target = nullptr;
         if (choice == "remove") {
             target = room->askForPlayerChosen(jianyong, use.to, objectName(), "@qiaoshui-remove:::" + use.card->objectName());

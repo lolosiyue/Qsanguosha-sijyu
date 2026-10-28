@@ -83,7 +83,7 @@ return {
 	["@mobilezaiqi"] = "你可以对至多 %src 名角色发动“再起”",
 	["~mobilezaiqi"] = "选择目标角色→点“确定”",
 	["mobilezaiqi:draw"] = "摸一张牌",
-	["mobilezaiqi:recover"] = "令其回复1点体力",
+	["mobilezaiqi:recover"] = "令%src回复1点体力",
 	
 	["mobile_zhurong"] = "界祝融[手杀]",
 	["&mobile_zhurong"] = "界祝融",

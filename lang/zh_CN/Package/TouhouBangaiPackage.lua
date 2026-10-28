@@ -99,7 +99,7 @@ return {
 	[":thqiongfa"] = "武将牌横置的角色的结束阶段开始时，你可以令其选择一项：弃置由你指定的另一名角色的一张牌或令你摸一张牌。然后其重置其武将牌。",
 	["#ThQiongfa"] = "%from 选择了 %to 作为被弃牌的目标",
 	["@thqiongfa"] = "你可以弃置其他角色的一张牌，或点“取消”摸一张牌",
-	["thqiongfa:discard"] = "弃置其指定的一名角色的一张牌",
+	["thqiongfa:discard"] = "弃置%src的一张牌",
 	["thqiongfa:cancel"] = "令其摸一张牌",
 	
 	["#bangai009"] = "魔闪的极星",

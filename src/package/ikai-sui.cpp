@@ -61,7 +61,7 @@ public:
         }
         if (target->getHandcardNum() >= target->getMaxHp()
             && (target == player
-                || room->askForChoice(player, objectName(), "draw+turnover", QVariant::fromValue(target)) == "turnover")) {
+                || room->askForChoice(player, objectName(), "draw+turnover", QVariant::fromValue(target), QString(), ":" + objectName()) == "turnover")) {
             target->turnOver();
             return false;
         }
@@ -108,7 +108,7 @@ public:
         if (player->isWounded())
             choices << "recover";
         choices << "draw";
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "recover")
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -792,7 +792,7 @@ public:
         if (target->canDiscard(target, "h"))
             choices << "discard";
         choices << "draw";
-        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target)) == "discard")
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName()) == "discard")
             room->askForDiscard(target, objectName(), 1, 1);
         else
             target->drawCards(1, objectName());
@@ -971,7 +971,7 @@ public:
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
     {
-        if (room->askForChoice(player, objectName(), "add+draw") == "add")
+        if (room->askForChoice(player, objectName(), "add+draw", QVariant(), QString(), ":" + objectName()) == "add")
             room->setPlayerMark(player, "ikguangyou-Clear", 1);
         else
             player->drawCards(player->getMaxHp(), objectName());
@@ -1069,7 +1069,7 @@ public:
         const bool equipped = room->getCardOwner(id) == target && room->getCardPlace(id) == Player::PlaceEquip;
         if (equipped && source->canDiscard(target, id))
             choices << "recover";
-        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target));
+        const QString choice = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
         if (choice == "discard") {
             ServerPlayer *victim = room->askForPlayerChosen(source, near, objectName(), "@ikxinban-discard:" + target->objectName());
             const int cid = victim ? room->askForCardChosen(source, victim, "hej", objectName(), false, Card::MethodDiscard) : -1;
@@ -1340,7 +1340,7 @@ public:
                     choices << skill;
             if (choices.isEmpty())
                 continue;
-            const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target));
+            const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
             grantTracked(room, target, key(player), choice);
         }
         return false;
@@ -1740,7 +1740,7 @@ public:
                 choices.removeOne("obtain");
             if (choices.isEmpty())
                 break;
-            const QString choice = room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player));
+            const QString choice = room->askForChoice(owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(), ":" + objectName());
             choices.removeOne(choice);
             if (choice == "obtain") {
                 const int id = room->askForCardChosen(owner, player, "he", objectName(), false, Card::MethodGet);
@@ -1890,7 +1890,7 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
     {
         room->sendCompulsoryTriggerLog(player, objectName());
-        const QString choice = room->askForChoice(player, objectName(), "hp+maxhp");
+        const QString choice = room->askForChoice(player, objectName(), "hp+maxhp", QVariant(), QString(), ":" + objectName());
         room->broadcastSkillInvoke(objectName());
         if (choice == "hp")
             room->loseHp(player, 1, true, player, objectName());
@@ -1968,7 +1968,7 @@ public:
         QStringList choices{"null"};
         if (transferable(room, use, owner))
             choices << "draw";
-        if (room->askForChoice(owner, objectName(), choices.join("+"), *ctx.original_data) == "null") {
+        if (room->askForChoice(owner, objectName(), choices.join("+"), *ctx.original_data, QString(), ":" + objectName()) == "null") {
             if (!use.nullified_list.contains("_ALL_TARGETS"))
                 use.nullified_list << "_ALL_TARGETS";
             *ctx.original_data = QVariant::fromValue(use);
@@ -2460,7 +2460,7 @@ public:
     {
         ServerPlayer *owner = ctx.owner;
         ServerPlayer *drawer = owner;
-        if (owner != player && room->askForChoice(owner, objectName(), "draw+letdraw", QVariant::fromValue(player)) == "letdraw")
+        if (owner != player && room->askForChoice(owner, objectName(), "draw+letdraw", QVariant::fromValue(player), QString(), ":" + objectName()) == "letdraw")
             drawer = player;
         drawer->drawCards(1, objectName());
         room->setPlayerMark(drawer, "ikciyu_" + owner->objectName(), 1);
@@ -2539,7 +2539,7 @@ public:
                 choices << area;
         if (choices.isEmpty())
             return ContinueEffects;
-        const QString area = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target));
+        const QString area = room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
         QList<int> ids = area == "h" ? target->handCards() : (area == "e" ? target->getEquipsId() : target->getJudgingAreaID());
         QList<int> thrown;
         foreach (int id, ids)
@@ -3028,7 +3028,7 @@ public:
             choices << "obtain";
         if (choices.isEmpty())
             return ContinueEffects;
-        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(source)) == "discard") {
+        if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(source), QString(), ":" + objectName()) == "discard") {
             const int id = room->askForCardChosen(source, target, "e", objectName(), false, Card::MethodDiscard);
             if (id >= 0)
                 room->throwCard(id, target, source);
@@ -3261,7 +3261,7 @@ public:
         QStringList choices{"reduce"};
         if (!from->isNude() && from != player)
             choices << "show";
-        if (room->askForChoice(from, objectName(), choices.join("+"), QVariant::fromValue(player)) == "show") {
+        if (room->askForChoice(from, objectName(), choices.join("+"), QVariant::fromValue(player), QString(), ":" + objectName()) == "show") {
             if (!from->isKongcheng())
                 room->showAllCards(from);
             const Card *card = room->askForExchange(from, objectName(), 1, 1, true, "@ikzhizhai:" + player->objectName());
@@ -3512,7 +3512,7 @@ public:
             choices << "up";
         if (number > 1)
             choices << "down";
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), *ctx.original_data);
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), *ctx.original_data, QString(), ":" + objectName());
         room->broadcastSkillInvoke(objectName());
         return true;
     }
@@ -3727,7 +3727,7 @@ public:
                 continue;
             room->broadcastSkillInvoke(objectName());
             const QString choice = player->canDiscard(p, "he")
-                ? room->askForChoice(player, objectName(), "draw+discard", QVariant::fromValue(p))
+                ? room->askForChoice(player, objectName(), "draw+discard", QVariant::fromValue(p), QString(), ":" + objectName())
                 : QString("draw");
             if (choice == "draw") {
                 player->drawCards(1, objectName());

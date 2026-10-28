@@ -225,7 +225,8 @@ protected:
     {
         if (!room->changeMaxHpForAwakenSkill(player, -1, objectName()) || !player->isAlive())
             return;
-        if (player->isWounded() && room->askForChoice(player, objectName(), "recover+draw") == "recover")
+        if (player->isWounded()
+            && room->askForChoice(player, objectName(), "recover+draw", QVariant(), QString(), ":" + objectName()) == "recover")
             room->recover(player, RecoverStruct(objectName(), player));
         else
             player->drawCards(2, objectName());
@@ -561,7 +562,7 @@ public:
         const int x = qMax(player->getLostHp(), 1);
         // The mode is offered only for settlement-time X; interception can change lost HP.
         const bool drawMany = x > 1
-            && room->askForChoice(player, objectName(), "d1tx+dxt1", QVariant::fromValue(target)) == "dxt1";
+            && room->askForChoice(player, objectName(), "d1tx+dxt1", QVariant::fromValue(target), QString(), ":" + objectName()) == "dxt1";
         target->drawCards(drawMany ? x : 1, objectName());
         // The executing discard must see the completed draw and its movement hooks.
         if (target->isAlive())

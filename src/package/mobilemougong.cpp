@@ -115,12 +115,12 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "gaibian+bubian");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "gaibian+bubian", QVariant(), "", ":" + objectName());
         return ctx.choice == "gaibian" || ctx.choice == "bubian";
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (ctx.choice.isEmpty()) ctx.choice = room->askForChoice(ctx.invoker, objectName(), "gaibian+bubian");
+        if (ctx.choice.isEmpty()) ctx.choice = room->askForChoice(ctx.invoker, objectName(), "gaibian+bubian", QVariant(), "", ":" + objectName());
         ServerPlayer *target = ctx.invoker;
         if (!target || !target->isAlive()) return false;
         int count = 0; for (ServerPlayer *p : room->getAlivePlayers()) count += p->getEquips().size();
@@ -623,7 +623,7 @@ public:
             if (!available.removeOne(id)) break; selected << id;
         }
         if (!target->isAlive()) return false;
-        if (room->askForChoice(target, objectName(), "mobilemouwansha1+mobilemouwansha2", QVariant::fromValue(ctx.invoker)) == "mobilemouwansha1") {
+        if (room->askForChoice(target, objectName(), "mobilemouwansha1+mobilemouwansha2", QVariant::fromValue(ctx.invoker), "", ":" + objectName()) == "mobilemouwansha1") {
             for (int id : selected) {
                 if (!ctx.invoker->isAlive() || room->getCardOwner(id) != target) continue;
                 const QList<ServerPlayer *> recipients = room->getOtherPlayers(target); if (recipients.isEmpty()) break;
@@ -661,7 +661,7 @@ public:
             for (int id : self->getValidSkillInstanceIds(name))
                 if (!self->getSkillInstanceStateValue(name, id, "upgraded").toBool()) choices << SkillInstanceUtils::formatName(name, id);
         if (choices.isEmpty()) return FinishSkill;
-        const QString selected = room->askForChoice(self, objectName(), choices.join("+"));
+        const QString selected = room->askForChoice(self, objectName(), choices.join("+"), QVariant(), "", ":" + objectName());
         if (!choices.contains(selected)) return FinishSkill;
         for (const QString &name : {QString("mobilemouwansha"), QString("mobilemouweimu")})
             for (int id : self->getSkillInstanceIds(name)) if (SkillInstanceUtils::formatName(name, id) == selected) {
@@ -995,9 +995,9 @@ void MobileMouDuanliangCard::onEffect(CardEffectStruct &effect) const
 	Room *room = from->getRoom();
 
 	QString str = "=" + to->objectName();
-	QString choice1 = room->askForChoice(from, "mobilemouduanliang", "weicheng" + str + "+leigu" + str, QVariant::fromValue(to));
+	QString choice1 = room->askForChoice(from, "mobilemouduanliang", "weicheng" + str + "+leigu" + str, QVariant::fromValue(to), "", ":mobilemouduanliang");
 	str = "=" + from->objectName();
-	QString choice2 = room->askForChoice(to, "mobilemouduanliang", "weicheng2" + str + "+leigu2" + str, QVariant::fromValue(from));
+	QString choice2 = room->askForChoice(to, "mobilemouduanliang", "weicheng2" + str + "+leigu2" + str, QVariant::fromValue(from), "", ":mobilemouduanliang");
 
 	choice1 = choice1.split("=").first();
 	choice2 = choice2.split("=").first();
@@ -1058,9 +1058,9 @@ public:
         ServerPlayer *owner = ctx.invoker;
         Room *room = owner->getRoom();
         const QString first = room->askForChoice(owner, objectName(),
-            "weicheng=" + target->objectName() + "+leigu=" + target->objectName(), QVariant::fromValue(target)).section('=', 0, 0);
+            "weicheng=" + target->objectName() + "+leigu=" + target->objectName(), QVariant::fromValue(target), "", ":" + objectName()).section('=', 0, 0);
         const QString second = room->askForChoice(target, objectName(),
-            "weicheng2=" + owner->objectName() + "+leigu2=" + owner->objectName(), QVariant::fromValue(owner)).section('=', 0, 0);
+            "weicheng2=" + owner->objectName() + "+leigu2=" + owner->objectName(), QVariant::fromValue(owner), "", ":" + objectName()).section('=', 0, 0);
         if (second.startsWith(first)) {
             owner->peiyin(objectName(), 4);
             return ContinueEffects;
@@ -1163,7 +1163,7 @@ public:
         for (ServerPlayer *p : room->getOtherPlayers(ctx.owner)) { if (p->getHp() < ctx.owner->getHp()) hp << p; if (p->containsTrick("supply_shortage")) judge << p; }
         QStringList choices; if (!hp.isEmpty()) choices << "hp"; if (!judge.isEmpty()) choices << "judge";
         if (choices.isEmpty()) return false; choices << "cancel";
-        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant(), "", ":" + objectName());
         if (choice == "hp") { ServerPlayer *target = room->askForPlayerChosen(ctx.owner, hp, objectName(), "@mobilemoushipo-target"); if (target) ctx.targets << target; }
         else if (choice == "judge") ctx.targets = judge;
         return !ctx.targets.isEmpty();
@@ -1237,8 +1237,8 @@ public:
         room->filterCards(target, target->getCards("he"), true);
         CardUseStruct use = ctx.original_data->value<CardUseStruct>(); if (!use.no_respond_list.contains(target->objectName())) use.no_respond_list << target->objectName(); *ctx.original_data = QVariant::fromValue(use);
         // The guess pair stays here: the owner sees how earlier targets' guesses resolved.
-        const QString mine = room->askForChoice(ctx.invoker, objectName(), "zhiqu=" + target->objectName() + "+raozhen=" + target->objectName(), QVariant::fromValue(target)).section('=', 0, 0);
-        const QString theirs = room->askForChoice(target, objectName(), "zhiqu2=" + ctx.invoker->objectName() + "+raozhen2=" + ctx.invoker->objectName(), QVariant::fromValue(ctx.invoker)).section('=', 0, 0);
+        const QString mine = room->askForChoice(ctx.invoker, objectName(), "zhiqu=" + target->objectName() + "+raozhen=" + target->objectName(), QVariant::fromValue(target), "", ":" + objectName()).section('=', 0, 0);
+        const QString theirs = room->askForChoice(target, objectName(), "zhiqu2=" + ctx.invoker->objectName() + "+raozhen2=" + ctx.invoker->objectName(), QVariant::fromValue(ctx.invoker), "", ":" + objectName()).section('=', 0, 0);
         if (theirs.startsWith(mine) || !target->isAlive() || !ctx.invoker->isAlive()) return false;
         if (mine == "zhiqu" && ctx.invoker->canGet(target, "he")) {
             const int id = room->askForCardChosen(ctx.invoker, target, "he", objectName(), false, Card::MethodGet);
@@ -1298,7 +1298,7 @@ void MobileMouXingshangCard::onEffect(CardEffectStruct &effect) const
 	if(effect.from->getMark("&mobilemouxingshang_song")>3&&tos.length()>0
 	&&effect.from==effect.to&&effect.from->hasSkill("mobilemouxingshang",true))
 		choices << "mobilemouxingshang0=4";
-	QString choice = room->askForChoice(effect.from,"mobilemouxingshang",choices.join("+"),QVariant::fromValue(effect.to));
+	QString choice = room->askForChoice(effect.from,"mobilemouxingshang",choices.join("+"),QVariant::fromValue(effect.to), "", ":mobilemouxingshang");
 	if(choice.contains("=2")){
 		effect.from->loseMark("&mobilemouxingshang_song",2);
 		effect.to->drawCards(3,"mobilemouxingshang");
@@ -1319,7 +1319,7 @@ void MobileMouXingshangCard::onEffect(CardEffectStruct &effect) const
 		}
 	}else{
 		effect.from->loseMark("&mobilemouxingshang_song",4);
-		choice = room->askForChoice(effect.from,"mobilemouxingshangZhuisi",tos.join("+"));
+		choice = room->askForChoice(effect.from,"mobilemouxingshangZhuisi",tos.join("+"), QVariant(), "", ":mobilemouxingshang");
 		ServerPlayer *t = room->findChild<ServerPlayer *>(choice.split("=").last());
 		room->setPlayerProperty(t,"ZhuisiPlayer",true);
 		QStringList sks;
@@ -1356,10 +1356,10 @@ public:
         if (song >= 3 && target->getMaxHp() <= 9) choices << "mobilemouxingshang0=3";
         if (song >= 4 && target == ctx.initiator && ctx.initiator->hasSkill(objectName(), true) && !dead.isEmpty()) choices << "mobilemouxingshang0=4";
         if (choices.isEmpty()) return false;
-        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"), QVariant::fromValue(target)); if (!choices.contains(choice)) return false;
+        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"), QVariant::fromValue(target), "", ":" + objectName()); if (!choices.contains(choice)) return false;
         ctx.choice = choice.section('=', 1); ctx.extra_data = QVariantMap();
         if (ctx.choice == "4") {
-            const QString selected = room->askForChoice(ctx.initiator, "mobilemouxingshangZhuisi", dead.join("+")); if (!dead.contains(selected)) return false;
+            const QString selected = room->askForChoice(ctx.initiator, "mobilemouxingshangZhuisi", dead.join("+"), QVariant(), "", ":mobilemouxingshang"); if (!dead.contains(selected)) return false;
             QVariantMap receipt{{"dead", selected.section('=', 1)}}; QVariantList detach;
             for (const SkillInstance &instance : ctx.initiator->getSkillInstances()) if (QStringList{"mobilemouxingshang", "mobilemoufangzhu", "mobilemousongwei"}.contains(instance.skillName)) detach << QVariantMap{{"skill", instance.skillName}, {"instance", instance.instanceID}};
             receipt["detach"] = detach; ctx.extra_data = receipt;
@@ -1435,7 +1435,7 @@ void MobileMouFangzhuCard::onEffect(CardEffectStruct &effect) const
 		choices << "mobilemouxingshang0=6";
 	if(effect.from->getMark("&mobilemouxingshang_song")>7)
 		choices << "mobilemouxingshang0=8";
-	QString choice = room->askForChoice(effect.from,"mobilemoufangzhu",choices.join("+"),QVariant::fromValue(effect.to));
+	QString choice = room->askForChoice(effect.from,"mobilemoufangzhu",choices.join("+"),QVariant::fromValue(effect.to), "", ":mobilemoufangzhu");
 	if(choice.contains("=2")){
 		effect.from->loseMark("&mobilemouxingshang_song",2);
 		room->setPlayerMark(effect.to,"&mobilemoufangzhu+2-SelfClear",1);
@@ -1470,7 +1470,7 @@ public:
         if (!ctx.initiator || ctx.targets.size() != 1) return false;
         QStringList choices; for (int count : {2, 4, 6, 8}) if (ctx.initiator->getMark("&mobilemouxingshang_song") >= count) choices << "mobilemouxingshang0=" + QString::number(count);
         if (choices.isEmpty()) return false;
-        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"), QVariant::fromValue(ctx.targets.first()));
+        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"), QVariant::fromValue(ctx.targets.first()), "", ":" + objectName());
         if (!choices.contains(choice)) return false; ctx.choice = choice.section('=', 1);
         if (ctx.choice == "4") {
             ServerPlayer *exception = room->askForPlayerChosen(ctx.initiator, room->getOtherPlayers(ctx.targets.first()), objectName(), "mobilemoufangzhu4:" + ctx.targets.first()->objectName());
@@ -1671,7 +1671,7 @@ public:
             for (int i = 0; i < count && !remaining.isEmpty(); ++i) {
                 QStringList keys;
                 for (Player::Phase phase : remaining) keys << phaseKey(phase);
-                const QString choice = room->askForChoice(target, objectName(), keys.join("+"));
+                const QString choice = room->askForChoice(target, objectName(), keys.join("+"), QVariant(), "", ":" + objectName());
                 Player::Phase picked = remaining.first();
                 for (Player::Phase phase : remaining)
                     if (phaseKey(phase) == choice) picked = phase;
@@ -1861,7 +1861,7 @@ public:
         ServerPlayer *target = ctx.invoker;
         QVariantMap receipt = ctx.extra_data.toMap(); receipt.remove("id");
         const qint64 serial = room->getTag("MobileMouGongqiSequence").toLongLong() + 1; room->setTag("MobileMouGongqiSequence", serial); receipt["serial"] = serial;
-        if (receipt.value("suit").toString().isEmpty()) receipt["suit"] = room->askForChoice(ctx.invoker, objectName(), "spade+heart+club+diamond");
+        if (receipt.value("suit").toString().isEmpty()) receipt["suit"] = room->askForChoice(ctx.invoker, objectName(), "spade+heart+club+diamond", QVariant(), "", ":" + objectName());
         receipt["owner"] = ctx.activationRef.ownerObjectName; receipt["skill"] = ctx.activationRef.key.skillName; receipt["instance"] = ctx.activationRef.key.instanceID;
         receipt["source_owner"] = ctx.sourceRef.ownerObjectName; receipt["source_skill"] = ctx.sourceRef.key.skillName; receipt["source_instance"] = ctx.sourceRef.key.instanceID; receipt["amount"] = getEffectiveAmount(ctx);
         QVariantList receipts = target->getTag("MobileMouGongqiPhases").toList(); receipts << receipt; target->setTag("MobileMouGongqiPhases", receipts);
@@ -1921,7 +1921,7 @@ void MobileMouJiefanCard::onEffect(CardEffectStruct &effect) const
 		if(p->inMyAttackRange(effect.to)) tps << p;
 	}
 	QString choice = "mobilemoujiefan1+mobilemoujiefan2="+QString::number(tps.length())+"+beishui";
-	choice = room->askForChoice(effect.to,"mobilemoujiefan",choice,QVariant::fromValue(effect));
+	choice = room->askForChoice(effect.to,"mobilemoujiefan",choice,QVariant::fromValue(effect), "", ":mobilemoujiefan");
 	if(!choice.contains("mobilemoujiefan2")){
 		foreach (ServerPlayer *p, tps)
 			room->askForDiscard(p,"mobilemoujiefan",1,1,false,true);
@@ -1959,7 +1959,7 @@ public:
         QList<ServerPlayer *> participants;
         for (ServerPlayer *p : room->getAlivePlayers()) if (p->inMyAttackRange(target)) participants << p;
         const QString choice = room->askForChoice(target, objectName(),
-            "mobilemoujiefan1+mobilemoujiefan2=" + QString::number(participants.size()) + "+beishui", QVariant::fromValue(ctx));
+            "mobilemoujiefan1+mobilemoujiefan2=" + QString::number(participants.size()) + "+beishui", QVariant::fromValue(ctx), "", ":" + objectName());
         // The disabling state belongs to the declared activation, even after an invoker takeover.
         if (choice == "beishui") {
             ServerPlayer *holder = room->findPlayerByObjectName(ctx.activationRef.ownerObjectName, true);
@@ -2783,7 +2783,7 @@ public:
         const QStringList names = ctx.owner->getSkillInstanceStateValue(ctx.activationRef.key.skillName, ctx.activationRef.key.instanceID, "names").toStringList();
         if (event == CardEffected) { ctx.choice = ctx.original_data->value<CardEffectStruct>().card->objectName(); if (names.contains(ctx.choice)) return false; }
         else { if (names.isEmpty() || !room->askForSkillInvoke(ctx.owner, objectName() + "$-1", names)) return false;
-            ctx.choice = room->askForChoice(ctx.owner, objectName(), names.join("+")); if (!names.contains(ctx.choice)) return false; }
+            ctx.choice = room->askForChoice(ctx.owner, objectName(), names.join("+"), QVariant(), "", ":" + objectName()); if (!names.contains(ctx.choice)) return false; }
         return true;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -2791,7 +2791,7 @@ public:
         if (ctx.choice.isEmpty()) {
             if (event == CardEffected) ctx.choice = ctx.original_data->value<CardEffectStruct>().card->objectName();
             else { const QStringList names = ctx.owner->getSkillInstanceStateValue(ctx.activationRef.key.skillName, ctx.activationRef.key.instanceID, "names").toStringList();
-                if (names.isEmpty()) return false; ctx.choice = room->askForChoice(ctx.invoker, objectName(), names.join("+")); }
+                if (names.isEmpty()) return false; ctx.choice = room->askForChoice(ctx.invoker, objectName(), names.join("+"), QVariant(), "", ":" + objectName()); }
         }
         // Both the activation and its return receipt act on the holder itself.
         ServerPlayer *target = ctx.invoker;
@@ -3376,8 +3376,8 @@ public:
         if (!ctx.bypass_cost && !room->askForSkillInvoke(ctx.owner, objectName())) return false;
         QStringList counts; const int cap = qMin(ctx.owner->getMark("&charge_num"), 4 - ctx.owner->getPile("&mou_hu").size());
         for (int i = 1; i <= cap; ++i) counts << QString::number(i); if (counts.isEmpty()) return false;
-        const QString selected = room->askForChoice(ctx.owner, objectName(), counts.join("+")); if (!counts.contains(selected)) return false;
-        ctx.extra_data = selected.toInt(); ctx.choice = room->askForChoice(ctx.owner, objectName(), "mouyicong1+mouyicong2");
+        const QString selected = room->askForChoice(ctx.owner, objectName(), counts.join("+"), QVariant(), "", ":" + objectName()); if (!counts.contains(selected)) return false;
+        ctx.extra_data = selected.toInt(); ctx.choice = room->askForChoice(ctx.owner, objectName(), "mouyicong1+mouyicong2", QVariant(), "", ":" + objectName());
         return ctx.choice == "mouyicong1" || ctx.choice == "mouyicong2";
     }
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -4173,7 +4173,7 @@ public:
         const auto restore = qScopeGuard([&] { target->setProperty("mobilemoushensu_prompt", saved); room->notifyProperty(target, target, "mobilemoushensu_prompt"); });
         QStringList choices{"mobilemoushensu1", "mobilemoushensu2", "mobilemoushensu3"}; QSet<int> skipped; bool repeated = false; QStringList previous;
         while (target->isAlive() && choices.size() > (choices.contains("cancel") ? 1 : 0)) {
-            const QString choice = room->askForChoice(target, objectName(), choices.join("+")); if (choice == "cancel" || !choices.contains(choice)) break; choices.removeOne(choice);
+            const QString choice = room->askForChoice(target, objectName(), choices.join("+"), QVariant(), "", ":" + objectName()); if (choice == "cancel" || !choices.contains(choice)) break; choices.removeOne(choice);
             QList<Player::Phase> phases; if (choice == "mobilemoushensu1") phases << Player::Judge << Player::Draw; else if (choice == "mobilemoushensu2") phases << Player::Draw << Player::Play; else phases << Player::Play << Player::Discard;
             for (Player::Phase phase : phases) { if (skipped.contains(int(phase))) repeated = true; skipped.insert(int(phase)); target->skip(phase); }
             const QString prompt = choice + "|" + previous.join("+"); target->setProperty("mobilemoushensu_prompt", prompt); room->notifyProperty(target, target, "mobilemoushensu_prompt");

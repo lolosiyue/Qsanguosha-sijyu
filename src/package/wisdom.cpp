@@ -777,7 +777,8 @@ public:
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getAlivePlayers(), objectName(), "@jincui", true, true);
         if (!target) return false;
         ctx.targets = {target};
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+throw", QVariant::fromValue(target));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "draw+throw", QVariant::fromValue(target), QString(),
+            ":" + objectName());
         return true;
     }
 
@@ -1089,7 +1090,8 @@ public:
         if (!ctx.invoker || ctx.invoker->getMark("forbid_shien") > 0 || ctx.invoker->hasFlag("forbid_shien")) return false;
         if (!room->askForSkillInvoke(ctx.invoker, objectName(), QVariant::fromValue(ctx.owner))) {
             // These remain the user's global prompt preferences, not a skill-instance quota.
-            const QString choice = room->askForChoice(ctx.invoker, "forbid_shien", "yes+no+maybe");
+            const QString choice = room->askForChoice(ctx.invoker, "forbid_shien", "yes+no+maybe", QVariant(), QString(),
+                ":" + objectName());
             if (choice == "yes") room->setPlayerMark(ctx.invoker, "forbid_shien", 1);
             else if (choice == "maybe") room->setPlayerFlag(ctx.invoker, "forbid_shien");
             return false;

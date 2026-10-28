@@ -1372,7 +1372,7 @@ public:
                 && ctx.owner->canMove(ctx.invoker, ctx.invoker->getEquip(i)->getEffectiveId()))
                 choices << QString::number(i);
         choices << "draw" << "cancel";
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(ctx.invoker));
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(ctx.invoker), QString(), ":" + objectName());
         if (!choices.contains(ctx.choice) || ctx.choice == "cancel") return false;
         if (ctx.choice != "draw") {
             const Card *card = ctx.invoker->getEquip(ctx.choice.toInt());
@@ -1888,7 +1888,7 @@ void PindiCard::onEffect(CardEffectStruct &effect) const
     choices << "draw";
     if (!effect.to->isNude())
         choices << "discard";
-    QString choice = room->askForChoice(effect.from, "pindi", choices.join("+"));
+    QString choice = room->askForChoice(effect.from, "pindi", choices.join("+"), QVariant(), QString(), ":pindi");
     int n = effect.from->getMark("&pindi-PlayClear");
     if (choice == "draw")
         effect.to->drawCards(n, "pindi");
@@ -1980,7 +1980,7 @@ public:
         if (!ctx.initiator->isAlive()) return ContinueEffects;
         QStringList choices{"draw"};
         if (!target->isNude()) choices << "discard";
-        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"));
+        const QString choice = room->askForChoice(ctx.initiator, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         const int count = ctx.extra_data.toMap().value("count").toInt() * getEffectiveAmount(ctx);
         if (target->isAlive() && count > 0) {
             if (choice == "discard") room->askForDiscard(target, objectName(), count, count, false, true);
@@ -2116,7 +2116,7 @@ public:
             room->broadcastSkillInvoke(objectName());
 
             QList<int> give_list = jink_ids;
-            if (room->askForChoice(player, objectName(), choices.join("+"), data) == "slash")
+            if (room->askForChoice(player, objectName(), choices.join("+"), data, QString(), ":" + objectName()) == "slash")
                 give_list = slash_ids;
             room->giveCard(player, target, give_list, objectName(), true);
 
@@ -2351,7 +2351,7 @@ public:
 
             for (int i = 1; i <= 2; i++) {
                 if (choices.isEmpty()) break;
-                QString choice = room->askForChoice(player, objectName(), choices.join("+"), data, excepts.join("+"));
+                QString choice = room->askForChoice(player, objectName(), choices.join("+"), data, excepts.join("+"), ":" + objectName());
                 if (choice == "cancel") break;
                 choices.removeOne(choice);
                 excepts << choice;

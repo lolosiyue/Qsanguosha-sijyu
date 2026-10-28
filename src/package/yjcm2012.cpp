@@ -85,7 +85,7 @@ public:
             QStringList numbers;
             for (int i = 1; i <= lost; ++i) numbers << QString::number(i);
             if (numbers.isEmpty()) return false;
-            ctx.extra_data = qBound(1, room->askForChoice(ctx.owner, objectName() + "_draw", numbers.join("+")).toInt(), lost);
+            ctx.extra_data = qBound(1, room->askForChoice(ctx.owner, objectName() + "_draw", numbers.join("+"), QVariant(), QString(), "@miji-draw").toInt(), lost);
         }
         return true;
     }
@@ -340,7 +340,7 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), "jiang+chi+cancel");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), "jiang+chi+cancel", QVariant(), QString(), "@jiangchi-choice");
         if (ctx.choice != "jiang" && ctx.choice != "chi") return false;
         return true;
     }
@@ -1248,7 +1248,7 @@ public:
         if (!voluntaryGift && room->getCardOwner(id) == recipient && room->getCardPlace(id) == Player::PlaceHand) room->showCard(recipient, id, QList<ServerPlayer *>(), objectName());
         const bool reward = voluntaryGift ? giver->getHandcardNum() == recipient->getHandcardNum() : nonSpade;
         if (reward && ctx.invoker->isAlive()) {
-            if (voluntaryGift && ctx.invoker->isWounded() && room->askForChoice(ctx.invoker, objectName(), "draw+recover") == "recover")
+            if (voluntaryGift && ctx.invoker->isWounded() && room->askForChoice(ctx.invoker, objectName(), "draw+recover", QVariant(), QString(), "@olanxu-choice") == "recover")
                 room->recover(ctx.invoker, RecoverStruct(ctx.invoker, nullptr, getEffectiveAmount(ctx), objectName()));
             else ctx.invoker->drawCards(getEffectiveAmount(ctx), objectName());
         }
@@ -2198,8 +2198,9 @@ void OlAnxuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
     room->obtainCard(playerB, card, CardMoveReason(CardMoveReason::S_REASON_GIVE, playerA->objectName(), playerB->objectName(), "olanxu", QString()));
 
     if (playerA->getHandcardNum() == playerB->getHandcardNum()) {
-        QString choices = source->getLostHp() > 0 ? "draw+recover" : "draw";
-        QString choice = room->askForChoice(source, "olanxu", choices);
+        const bool wounded = source->getLostHp() > 0;
+        QString choice = room->askForChoice(source, "olanxu", wounded ? "draw+recover" : "draw", QVariant(),
+            wounded ? QString() : "recover", "@olanxu-choice");
         if (choice == "draw")
             room->drawCards(source, 1, "olanxu");
         else if (choice == "recover") {
@@ -2259,7 +2260,10 @@ public:
 		if (player->isDead()) return false;
 		use.nullified_list << player->objectName();
 		data = QVariant::fromValue(use);
-		QString ch = room->askForChoice(player, objectName(), "obtain+miji", data);
+		const bool canObtain = use.from && use.from->isAlive() && player->canGet(use.from, "he");
+		const QString obtainKey = use.from ? "obtain=" + use.from->objectName() : QString();
+		QString ch = room->askForChoice(player, objectName(), canObtain ? obtainKey + "+miji" : "miji", data,
+			canObtain ? QString() : obtainKey, "@olzhenlie-choice").section("=", 0, 0);
 		if (ch == "obtain" && use.from && player->canGet(use.from, "he")) {
 			int id = room->askForCardChosen(player, use.from, "he", objectName(), false, Card::MethodGet);
 			if (id >= 0 && player->canGet(use.from, id)) room->obtainCard(player, id, objectName(), false);

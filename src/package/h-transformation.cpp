@@ -2500,16 +2500,19 @@ public:
                 skill_list << "heg_shelie";
             if (n > 3)
                 skill_list << "heg_duoshi_flamemap";
-            QString all_choices = "heg_yingzi_flamemap+heg_haoshi_flamemap+heg_shelie+heg_duoshi_flamemap+cancel";
+            const QStringList all_choices = {"heg_yingzi_flamemap", "heg_haoshi_flamemap", "heg_shelie", "heg_duoshi_flamemap", "cancel"};
             if (!skill_list.isEmpty()) {
                 skill_list << "cancel";
-                QString skill1 = room->askForChoice(player, objectName(), skill_list.join("+"), QVariant(), "@heg_flamemap-choose", all_choices);
+                QStringList except_choices = all_choices;
+                for (const QString &skill : skill_list) except_choices.removeOne(skill);
+                QString skill1 = room->askForChoice(player, objectName(), skill_list.join("+"), QVariant(), except_choices.join("+"), "@heg_flamemap-choose");
                 if (skill1 == "cancel") return true;
                 QStringList acquired_skills;
                 acquired_skills << skill1 + "!";
                 skill_list.removeOne(skill1);
                 if (n > 4) {
-                    QString skill2 = room->askForChoice(player, objectName(), skill_list.join("+"), QVariant(), "@heg_flamemap-choose", all_choices);
+                    except_choices << skill1;
+                    QString skill2 = room->askForChoice(player, objectName(), skill_list.join("+"), QVariant(), except_choices.join("+"), "@heg_flamemap-choose");
                     if (skill2 != "cancel")
                         acquired_skills << skill2 + "!";
                 }

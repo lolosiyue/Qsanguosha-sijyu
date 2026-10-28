@@ -127,7 +127,7 @@ static int jiaozhaoChooseInstance(Room *room, ServerPlayer *owner, const QList<i
     if (ids.isEmpty()) return 0;
     if (ids.size() == 1) return ids.first();
     QStringList choices; for (int id : ids) choices << SkillInstanceUtils::formatName("jiaozhao", id);
-    const QString choice = room->askForChoice(owner, "danxin", choices.join("+"));
+    const QString choice = room->askForChoice(owner, "danxin", choices.join("+"), QVariant(), QString(), ":danxin");
     const int index = choices.indexOf(choice); return index < 0 ? 0 : ids.at(index);
 }
 static void jiaozhaoSetLevel(Room *room, ServerPlayer *owner, int id, int level)
@@ -339,7 +339,7 @@ public:
         int level = id > 0 ? ctx.owner->getSkillInstanceStateValue("jiaozhao", id, "level").toInt() : 0;
         if (id <= 0) for (const QVariant &entry : ctx.owner->getTag("DanxinFutureUpgrades").toList())
             if (entry.toMap().value("origin").toMap() == origin) level += entry.toMap().value("amount").toInt();
-        ctx.choice = level >= 2 ? "draw" : room->askForChoice(ctx.owner, objectName(), "draw+up");
+        ctx.choice = level >= 2 ? "draw" : room->askForChoice(ctx.owner, objectName(), "draw+up", QVariant(), QString(), ":" + objectName());
         ctx.extra_data = QVariantMap{{"origin", origin}, {"jiaozhao_id", id}}; return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -421,7 +421,8 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner->askForSkillInvoke(this)) return false;
-        ctx.choice = room->askForChoice(ctx.owner, objectName(), ctx.owner->isWounded() ? "draw+recover" : "draw");
+        ctx.choice = room->askForChoice(ctx.owner, objectName(), ctx.owner->isWounded() ? "draw+recover" : "draw", QVariant(),
+                                          QString(), ":" + objectName());
         return true;
     }
 
@@ -584,7 +585,7 @@ void DuliangCard::onEffect(CardEffectStruct &effect) const
     if (!effect.from->canGet(effect.to, card_id)) return;
     CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName(), effect.to->objectName(), "duliang", QString());
     room->obtainCard(effect.from, Sanguosha->getCard(card_id), reason, room->getCardPlace(card_id) != Player::PlaceHand);
-    if (room->askForChoice(effect.from, "duliang", "watch+draw") == "draw")
+    if (room->askForChoice(effect.from, "duliang", "watch+draw", QVariant(), QString(), ":duliang") == "draw")
         room->addPlayerMark(effect.to, "&duliang");
     else {
         QList<int> ids = room->getNCards(2);
@@ -640,7 +641,7 @@ public:
                 CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.invoker->objectName(), target->objectName(), objectName(), QString()), false);
         }
         if (!target->isAlive() || !ctx.invoker->isAlive()) return ContinueEffects;
-        if (room->askForChoice(ctx.invoker, objectName(), "watch+draw") == "draw") {
+        if (room->askForChoice(ctx.invoker, objectName(), "watch+draw", QVariant(), QString(), ":" + objectName()) == "draw") {
             const int serial = room->getTag("DuliangNextReceipt").toInt() + 1;
             room->setTag("DuliangNextReceipt", serial);
             QVariantList receipts = target->getTag("DuliangReceipts").toList();
@@ -1526,17 +1527,15 @@ const Card *TaoluanCard::validate(CardUseStruct &card_use) const
 
     QString tl = user_string;
     if (user_string == "slash" && Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE) {
-        QStringList tl_list;
-        if (card_use.from->getMark(this_skill_name + "_slash") <= 0)
-            tl_list << "slash";
+        QStringList tl_list, used;
+        (card_use.from->getMark(this_skill_name + "_slash") <= 0 ? tl_list : used) << "slash";
         if (!Config.BanPackages.contains("maneuvering")) {
-            if (card_use.from->getMark(this_skill_name + "_thunder_slash") <= 0)
-                tl_list << "thunder_slash";
-            if (card_use.from->getMark(this_skill_name + "_fire_slash") <= 0)
-                tl_list << "fire_slash";
+            (card_use.from->getMark(this_skill_name + "_thunder_slash") <= 0 ? tl_list : used) << "thunder_slash";
+            (card_use.from->getMark(this_skill_name + "_fire_slash") <= 0 ? tl_list : used) << "fire_slash";
         }
         if (tl_list.isEmpty()) return nullptr;
-        tl = room->askForChoice(card_use.from, "taoluan_slash", tl_list.join("+"));
+        // Used kinds stay visible but disabled; except is display-only, so they are also absent from tl_list.
+        tl = room->askForChoice(card_use.from, "taoluan_slash", tl_list.join("+"), QVariant(), used.join("+"), ":" + this_skill_name);
     }
     if (card_use.from->getMark(this_skill_name + "_" + tl) > 0) return nullptr;
 
@@ -1558,25 +1557,21 @@ const Card *TaoluanCard::validateInResponse(ServerPlayer *zhangrang) const
 
     QString tl = user_string;
     if (user_string == "peach+analeptic") {
-        QStringList tl_list;
-        if (zhangrang->getMark(this_skill_name + "_peach") <= 0)
-            tl_list << "peach";
-        if (!Config.BanPackages.contains("maneuvering") && zhangrang->getMark(this_skill_name + "_analeptic") <= 0)
-            tl_list << "analeptic";
+        QStringList tl_list, used;
+        (zhangrang->getMark(this_skill_name + "_peach") <= 0 ? tl_list : used) << "peach";
+        if (!Config.BanPackages.contains("maneuvering"))
+            (zhangrang->getMark(this_skill_name + "_analeptic") <= 0 ? tl_list : used) << "analeptic";
         if (tl_list.isEmpty()) return nullptr;
-        tl = room->askForChoice(zhangrang, "taoluan_saveself", tl_list.join("+"));
+        tl = room->askForChoice(zhangrang, "taoluan_saveself", tl_list.join("+"), QVariant(), used.join("+"), ":" + this_skill_name);
     } else if (user_string == "slash") {
-        QStringList tl_list;
-        if (zhangrang->getMark(this_skill_name + "_slash") <= 0)
-            tl_list << "slash";
+        QStringList tl_list, used;
+        (zhangrang->getMark(this_skill_name + "_slash") <= 0 ? tl_list : used) << "slash";
         if (!Config.BanPackages.contains("maneuvering")) {
-            if (zhangrang->getMark(this_skill_name + "_thunder_slash") <= 0)
-                tl_list << "thunder_slash";
-            if (zhangrang->getMark(this_skill_name + "_fire_slash") <= 0)
-                tl_list << "fire_slash";
+            (zhangrang->getMark(this_skill_name + "_thunder_slash") <= 0 ? tl_list : used) << "thunder_slash";
+            (zhangrang->getMark(this_skill_name + "_fire_slash") <= 0 ? tl_list : used) << "fire_slash";
         }
         if (tl_list.isEmpty()) return nullptr;
-        tl = room->askForChoice(zhangrang, "taoluan_slash", tl_list.join("+"));
+        tl = room->askForChoice(zhangrang, "taoluan_slash", tl_list.join("+"), QVariant(), used.join("+"), ":" + this_skill_name);
     }
 
     if (zhangrang->getMark(this_skill_name + "_" + tl) > 0) return nullptr;

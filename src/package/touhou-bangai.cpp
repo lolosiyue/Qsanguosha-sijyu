@@ -98,7 +98,8 @@ public:
         room->moveCardTo(card, nullptr, Player::PlaceTable, turnover, true);
         if (room->getCardPlace(card->getEffectiveId()) != Player::PlaceTable)
             return false;
-        if (room->askForChoice(player, objectName(), "draw+discard", QVariant::fromValue(card)) == "draw") {
+        if (room->askForChoice(player, objectName(), "draw+discard", QVariant::fromValue(card), QString(), ":" + objectName())
+            == "draw") {
             CardMoveReason put(CardMoveReason::S_REASON_PUT, player->objectName(), objectName(), QString());
             room->moveCardTo(card, nullptr, Player::DrawPile, put, true);
         } else {
@@ -455,7 +456,8 @@ public:
         }
         if (types.isEmpty())
             return FinishSkill;
-        const QString type = room->askForChoice(source, objectName(), types.join("+"), QVariant(ListI2V(ids)));
+        const QString type = room->askForChoice(source, objectName(), types.join("+"), QVariant(ListI2V(ids)), QString(),
+                                                  ":" + objectName());
         QList<int> gain;
         foreach (int id, ids)
             if (Sanguosha->getCard(id)->getType() == type && room->getCardPlace(id) == Player::PlaceTable)
@@ -1113,7 +1115,9 @@ public:
                 log.to << victim;
                 room->sendLog(log);
                 player->setTag("ThQiongfaSource", QVariant::fromValue(owner));
-                const QString choice = room->askForChoice(player, objectName(), "discard+cancel", QVariant::fromValue(victim));
+                const QString choice = room->askForChoice(player, objectName(), "discard=" + victim->objectName() + "+cancel",
+                                                          QVariant::fromValue(victim), QString(), ":" + objectName())
+                                           .section("=", 0, 0);
                 player->removeTag("ThQiongfaSource");
                 if (choice == "discard") {
                     const int id = room->askForCardChosen(player, victim, "he", objectName(), false, Card::MethodDiscard);
@@ -1364,7 +1368,8 @@ public:
         if (!target->isAlive())
             return ContinueEffects;
         if (source->canDiscard(target, "he")
-            && room->askForChoice(source, objectName(), "discard+lose", QVariant::fromValue(target)) == "discard") {
+            && room->askForChoice(source, objectName(), "discard+lose", QVariant::fromValue(target), QString(), ":" + objectName())
+                   == "discard") {
             const int n = qMin(2, target->getCards("he").length());
             const QList<int> ids = room->askForCardsChosen(source, target, "he", objectName(), n, n, false,
                                                            Card::MethodDiscard, QList<int>(), false);

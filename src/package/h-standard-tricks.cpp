@@ -47,7 +47,8 @@ void HegNullification::use(Room *room, ServerPlayer *source, QList<ServerPlayer 
         && effect.card->isNDTrick() && !effect.card->isKindOf("Nullification");
     QString selection;
     if (factionChoice) {
-        selection = room->askForChoice(source, objectName(), "single+all", QVariant::fromValue(effect));
+        selection = room->askForChoice(source, objectName(), "single+all", QVariant::fromValue(effect), QString(),
+            ":" + objectName());
         LogMessage log;
         log.type = "#HegNullificationSelection";
         log.from = source;
@@ -266,7 +267,7 @@ void HKnownBoth::onEffect(CardEffectStruct &effect) const {
     if (choices.isEmpty()) return;
     effect.to->setFlags("KnownBothTarget");// For AI
     QString choice = room->askForChoice(effect.from, objectName(),
-        choices.join("+"), QVariant::fromValue(effect.to));
+        choices.join("+"), QVariant::fromValue(effect.to), QString(), ":" + objectName());
     effect.to->setFlags("-KnownBothTarget");
     if (!choices.contains(choice)) return;
     LogMessage log;

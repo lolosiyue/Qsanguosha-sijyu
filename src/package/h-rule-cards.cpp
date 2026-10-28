@@ -33,7 +33,7 @@ void firstShowEffect(Room *room, ServerPlayer *player, ServerPlayer *target, boo
     target->setFlags("XianquTarget");
     const auto clearFlag = qScopeGuard([target] { target->setFlags("-XianquTarget"); });
     const QString choice = room->askForChoice(player, "heg_firstshow_see", choices.join("+"),
-                                              QVariant::fromValue(target));
+                                              QVariant::fromValue(target), QString(), ":heg_firstshow_see");
     if (!choices.contains(choice)) return;
 
     LogMessage log;
@@ -207,7 +207,7 @@ public:
         if (careerist && (player->getHandcardNum() < 4 || !player->hasShownAllGenerals()
             || hasConcealedOpponent(player))) choices << "firstshow";
         const QString choice = choices.size() == 1 ? choices.first()
-            : room->askForChoice(player, objectName(), choices.join("+"));
+            : room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
         if (!choices.contains(choice)) return false;
         QVariantMap state{{"choice", choice}};
         if (choice == "firstshow") {

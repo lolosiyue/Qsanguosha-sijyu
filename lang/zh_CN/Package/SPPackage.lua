@@ -8930,7 +8930,7 @@ return {
 	["jieyan:bottom"] = "牌堆底",
 	["xiaoshi:losehp"] = "失去1点体力",
 	["xiaoshi:draw"] = "令一名目标摸牌",
-	["olzhenlie:obtain"] = "获得其一张牌",
+	["olzhenlie:obtain"] = "获得%src一张牌",
 	["olzhenlie:miji"] = "本回合结束阶段发动秘计",
 	["ol_yimou:slash"] = "获得一张杀",
 	["ol_yimou:give"] = "交给其他角色一张手牌",
@@ -9225,6 +9225,8 @@ return {
     ["xcx_zhengren:give"] = "交给其一张牌",
     ["xcx_zhengren:discard"] = "弃置两张牌，其摸等量牌",
     ["xcx_zhengren:exchange"] = "交换最多花色手牌与其最少花色手牌",
+    ["@xcx_zhengren-choice"] = "诤仁：选择一项令当前回合角色执行",
+    ["@xcx_zhengren-suit"] = "诤仁：选择用于交换的花色",
 
     ["xcx_ji_caozhi"] = "小程序·极曹植",
     ["xcx_ji_zhangfei"] = "小程序·极张飞",

@@ -347,7 +347,8 @@ public:
         }
         ctx.targets.clear();
         if (!choices.isEmpty()) {
-            const QString choice = room->askForChoice(source, objectName(), choices.join("+"), id);
+            const QString choice = room->askForChoice(source, objectName(), choices.join("+"), id, QString(),
+                                                     ":" + objectName());
             if (!choices.contains(choice)) return false;
             state.insert("branch", choice);
             const int amount = getEffectiveAmount(ctx);

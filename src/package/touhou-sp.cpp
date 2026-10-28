@@ -560,7 +560,7 @@ public:
         if (choices.isEmpty())
             return true;
         player->setTag("ThModaoData", QVariant::fromValue(target));
-        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target));
+        const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName());
         player->removeTag("ThModaoData");
         QList<int> mine;
         QList<int> theirs;
@@ -747,7 +747,7 @@ public:
         QStringList choices{"draw"};
         if (!player->isKongcheng())
             choices << "discard";
-        if (room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(player)) == "discard")
+        if (room->askForChoice(ctx.owner, objectName(), choices.join("+"), QVariant::fromValue(player), QString(), ":" + objectName()) == "discard")
             room->askForDiscard(player, objectName(), 1, 1);
         else
             player->drawCards(1, objectName());
@@ -847,7 +847,7 @@ public:
                 choices << "thhuanlong3";
             if (!first)
                 choices << "cancel";
-            const QString choice = room->askForChoice(player, objectName(), choices.join("+"));
+            const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName());
             if (choice == "cancel")
                 break;
             LogMessage log;
@@ -959,7 +959,7 @@ public:
         }
         const QStringList names = basicNames(player, pattern);
         if (card->getSuit() == Card::Club && !names.isEmpty() && player->askForSkillInvoke("thyudu_use", "change")) {
-            const QString name = names.size() == 1 ? names.first() : room->askForChoice(player, objectName(), names.join("+"));
+            const QString name = names.size() == 1 ? names.first() : room->askForChoice(player, objectName(), names.join("+"), QVariant(), QString(), ":" + objectName());
             Card *converted = Sanguosha->cloneCard(name, card->getSuit(), card->getNumber());
             if (converted) {
                 converted->addSubcard(card);
@@ -1986,7 +1986,7 @@ public:
         if (source->canDiscard(target, "he"))
             choices << "recover";
         choices << "damage";
-        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target)) == "recover") {
+        if (room->askForChoice(source, objectName(), choices.join("+"), QVariant::fromValue(target), QString(), ":" + objectName()) == "recover") {
             if (source == target) {
                 room->askForDiscard(target, objectName(), 1, 1, false, true);
             } else {
@@ -2048,7 +2048,7 @@ public:
                 skills << skill;
         if (skills.isEmpty() || !player->isAlive())
             return false;
-        room->acquireSkillFromEffect(player, room->askForChoice(player, objectName(), skills.join("+")), ctx);
+        room->acquireSkillFromEffect(player, room->askForChoice(player, objectName(), skills.join("+"), QVariant(), QString(), ":" + objectName()), ctx);
         return false;
     }
 };
@@ -2140,7 +2140,7 @@ public:
         QStringList choices{"play"};
         if (!others.isEmpty())
             choices << "view";
-        if (room->askForChoice(player, objectName(), choices.join("+")) == "view") {
+        if (room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) == "view") {
             ServerPlayer *target = room->askForPlayerChosen(player, others, objectName(), "@ikmeiying");
             if (target)
                 room->showAllCards(target, player);
@@ -2674,7 +2674,7 @@ private:
             if (!others.isEmpty())
                 groups << others.join("+");
         }
-        const QString name = room->askForChoice(declarer, objectName(), groups.join("|"));
+        const QString name = room->askForChoice(declarer, objectName(), groups.join("|"), QVariant(), QString(), ":" + objectName());
         LogMessage log;
         log.type = "#RhHuanjie";
         log.from = declarer;
@@ -2755,7 +2755,7 @@ public:
         else if (step == 1)
             choices << "change2";
         choices << "draw";
-        const QString choice = choices.size() > 1 ? room->askForChoice(player, objectName(), choices.join("+")) : "draw";
+        const QString choice = choices.size() > 1 ? room->askForChoice(player, objectName(), choices.join("+"), QVariant(), QString(), ":" + objectName()) : "draw";
         if (choice == "change1" || choice == "change2")
             room->setPlayerMark(player, "thhuanyao_step", step + 1);
         else
