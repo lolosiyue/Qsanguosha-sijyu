@@ -395,6 +395,11 @@ public:
     { ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), "@daiyan-invoke", true, true); if (!target) return false; ctx.targets = {target}; return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const bool repeated = previousTarget(room, ctx, target);
         // Prior targets come from the exact previous turn's accepted invocation facts, including a turn with no use.
         for (ServerPlayer *other : room->getAllPlayers(true)) room->setPlayerMark(other, "&daiyan+#" + ctx.owner->objectName(), 0);

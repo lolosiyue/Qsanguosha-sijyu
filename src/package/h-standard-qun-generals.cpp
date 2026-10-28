@@ -208,8 +208,14 @@ public:
         room->sendLog(log);
         return room->askForChoice(player, "luanji_draw", "yes+no", *ctx.original_data, QString(), "@heg_luanji-draw") == "yes";
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         // The paid card retains its source even after that skill instance is removed.
         target->drawCards(getEffectiveAmount(ctx), "heg_luanji");
         return false;

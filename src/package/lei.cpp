@@ -314,8 +314,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!room || !ctx.owner) return false;
-        if (!target) return false;
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         room->broadcastSkillInvoke(objectName());
         if (ctx.choice == "draw") target->drawCards(getEffectiveAmount(ctx), objectName());
         else room->askForDiscard(target, objectName(), getEffectiveAmount(ctx), getEffectiveAmount(ctx), false, true);

@@ -294,7 +294,12 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
-        if (event != CardOffset || !ctx.owner || !target || !target->isAlive()) return false;
+        if (event != CardOffset) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (ctx.choice == "damage")
             room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
         else

@@ -49,7 +49,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive()) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         for (int i = 0; i < getEffectiveAmount(ctx) && ctx.owner->isAlive() && target->isAlive()
              && ctx.owner->canDiscard(target, "he"); ++i) {
             const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);

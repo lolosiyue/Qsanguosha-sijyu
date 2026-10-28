@@ -2137,6 +2137,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (getEffectiveAmount(ctx) <= 0) return false;
         QVariantList receipts = ctx.owner->property("heg_zhidao_receipts").toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},

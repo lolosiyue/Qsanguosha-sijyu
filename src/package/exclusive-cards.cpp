@@ -844,6 +844,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         room->setEmotion(owner, "treasure/_xishu");
         target->skip(ctx.choice == "judge" ? Player::Judge : Player::Discard);
         return false;

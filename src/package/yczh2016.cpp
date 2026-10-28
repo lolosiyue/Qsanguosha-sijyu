@@ -1736,6 +1736,10 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive())
+            return false;
         const QVariantMap receipt = ctx.extra_data.toMap();
         const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
         QStringList types{"BasicCard", "TrickCard", "EquipCard"}; const int type = receipt.value("type_id").toInt(); if (type >= 1 && type <= 3) types.removeAt(type - 1);

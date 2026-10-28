@@ -122,7 +122,12 @@ public:
     { if (ctx.owner) ctx.owner->peiyin(this); return false; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.original_data || !target || !target->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
+        if (!ctx.original_data || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx)
+            || getEffectiveAmount(ctx) <= 0)
+            return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         ServerPlayer *original = originalTarget(room, use);
         if (!original || !use.card || !ctx.owner || !ctx.owner->isAlive() || use.to.contains(target)

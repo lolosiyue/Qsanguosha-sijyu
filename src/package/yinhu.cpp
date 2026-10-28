@@ -2628,6 +2628,11 @@ public:
 
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
+		if (!target || !target->isAlive()
+			|| !ctx.invoker || !ctx.invoker->isAlive()
+			|| !ctx.owner || !ctx.owner->isAlive()
+			|| !isSourceAvailable(room, ctx))
+			return false;
 		if (!target->isAlive() || !ctx.owner->canGet(target, "he")) return false;
 		room->broadcastSkillInvoke(this);
 		const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodGet);

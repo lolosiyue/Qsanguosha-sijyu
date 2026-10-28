@@ -634,6 +634,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         room->broadcastSkillInvoke(objectName());
         target->drawCards(ctx.extra_data.toInt() * getEffectiveAmount(ctx), objectName());
         return false;

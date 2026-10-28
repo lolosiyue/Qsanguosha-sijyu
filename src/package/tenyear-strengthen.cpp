@@ -1486,7 +1486,12 @@ public:
         *ctx.original_data = QVariant::fromValue(draw);
         return false;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (ctx.owner->isAlive() && target && ctx.owner->canGet(target, "h")) {
             // Preserve the sole canonical extraction effect and its move reason.
             CardEffectStruct effect;

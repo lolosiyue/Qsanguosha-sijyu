@@ -1788,6 +1788,11 @@ public:
     { if (!isUsable(ctx)) return false; addUsage(ctx); return true; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *t) const override
     {
+        if (!t || !t->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         player->peiyin(this);
 
         t->drawCards(getEffectiveAmount(ctx), objectName());

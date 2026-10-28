@@ -1609,6 +1609,11 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         room->setPlayerMark(target, "drank", 0);
         if (ctx.owner->canGet(target, "h")) {
             const int id = room->askForCardChosen(ctx.owner, target, "h", objectName(), false, Card::MethodGet);

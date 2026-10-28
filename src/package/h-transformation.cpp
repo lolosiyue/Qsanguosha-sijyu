@@ -1652,6 +1652,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const qint64 id = ctx.extra_data.toLongLong();
         if (id <= 0 || damageEvent(room) != id) return false;
         QVariantMap receipts = target->property("heg_zhiman_receipts").toMap();

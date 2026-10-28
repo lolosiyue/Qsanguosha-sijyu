@@ -111,7 +111,12 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!room || !target || !ctx.owner || !ctx.original_data) return false;
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !ctx.original_data
+            || !isSourceAvailable(room, ctx))
+            return false;
         QVariant &data = *ctx.original_data;
         ServerPlayer *xuchu = ctx.invoker;
         DamageStruct damage = data.value<DamageStruct>();

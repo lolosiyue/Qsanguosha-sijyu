@@ -763,8 +763,13 @@ public:
             CardMoveReason(CardMoveReason::S_REASON_TRANSFER, ctx.owner->objectName(), objectName(), ""));
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (!ctx.original_data) return false;
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
         damage.from = target;

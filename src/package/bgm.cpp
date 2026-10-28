@@ -2296,6 +2296,12 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         room->doAnimate(1, player->objectName(), target->objectName());
         room->broadcastSkillInvoke(objectName(), event == CardResponded ? 1 : 2);
         for (int i = 0; i < getEffectiveAmount(ctx) && player->isAlive() && target->isAlive()

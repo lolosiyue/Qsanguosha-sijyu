@@ -82,6 +82,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const int count = qMin(getEffectiveAmount(ctx), target->getMaxHp()) - target->getHandcardNum();
         if (count > 0) { room->broadcastSkillInvoke(objectName()); target->drawCards(count, objectName()); }
         return false;

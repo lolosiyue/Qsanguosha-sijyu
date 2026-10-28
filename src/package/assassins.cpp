@@ -1014,7 +1014,11 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
     {
-        if (!room || !ctx.owner || !ctx.original_data || !target) return false;
+        if (!room || !ctx.original_data || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         if (target != use.from) return false;
         DummyCard dummy;

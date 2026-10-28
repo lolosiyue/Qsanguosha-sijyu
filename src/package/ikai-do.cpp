@@ -665,6 +665,12 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *from) const override
     {
+        if (!from || !from->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+
         if (!ctx.owner->canGet(from, "hej"))
             return false;
         const int id = room->askForCardChosen(ctx.owner, from, "hej", objectName(), false, Card::MethodGet);

@@ -51,6 +51,11 @@ public:
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const QString key = ctx.sourceRef.ownerObjectName + ":" + QString::number(ctx.sourceRef.key.instanceID);
         QVariantMap receipts = target->property("heg_hengjiang_receipts").toMap();
         QVariantMap receipt = receipts.value(key).toMap();

@@ -818,6 +818,11 @@ public:
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
         ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (getEffectiveAmount(ctx) <= 0) return false;
         if (event == AskForRetrial) {
             JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();

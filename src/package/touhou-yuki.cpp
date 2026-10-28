@@ -2124,6 +2124,11 @@ public:
 
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         ServerPlayer *owner = ctx.owner;
         room->recover(target, RecoverStruct(objectName(), owner, damage.damage));

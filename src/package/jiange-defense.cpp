@@ -223,6 +223,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         // Targets selected in cost remain visible to V2 confirmation and interception.
         room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
         return false;

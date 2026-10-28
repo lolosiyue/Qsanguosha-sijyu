@@ -11290,6 +11290,11 @@ public:
 	}
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
+		if (!target || !target->isAlive()
+			|| !ctx.invoker || !ctx.invoker->isAlive()
+			|| !ctx.owner || !ctx.owner->isAlive()
+			|| !isSourceAvailable(room, ctx))
+			return false;
 		room->broadcastSkillInvoke(objectName());
 		room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
 		return false;

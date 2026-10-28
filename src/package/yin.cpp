@@ -1402,8 +1402,15 @@ public:
         ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "conversion_state", 1);
         room->setChangeSkillState(ctx.owner, objectName(), 1); room->broadcastSkillInvoke(objectName()); return false;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    { target->drawCards(getEffectiveAmount(ctx), objectName()); return false; }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        target->drawCards(getEffectiveAmount(ctx), objectName()); return false;
+    }
 };
 class OLMingren : public Mingren
 {

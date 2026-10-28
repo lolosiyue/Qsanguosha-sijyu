@@ -315,6 +315,11 @@ public:
         return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (ctx.owner && ctx.owner->isAlive() && target && target->isAlive()
             && ctx.owner->canDiscard(target, "he")) {
             room->broadcastSkillInvoke(objectName(), target->isLord() ? 2 : 1, ctx.owner);

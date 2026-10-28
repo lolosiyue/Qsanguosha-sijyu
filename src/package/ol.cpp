@@ -6487,8 +6487,13 @@ public:
 		if (!use.card || use.to.isEmpty()) return false;
 		ctx.targets = use.to; return true;
 	}
-	bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
+		if (!target || !target->isAlive()
+			|| !ctx.invoker || !ctx.invoker->isAlive()
+			|| !ctx.owner || !ctx.owner->isAlive()
+			|| !isSourceAvailable(room, ctx))
+			return false;
 		target->drawCards(getEffectiveAmount(ctx), objectName());
 		return false;
 	}

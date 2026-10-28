@@ -1111,7 +1111,12 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!ctx.owner || !target || target->isKongcheng()) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx)
+            || target->isKongcheng())
+            return false;
         const Card *card = nullptr;
         if (target == ctx.owner) card = room->askForCardShow(target, ctx.owner, objectName());
         else {

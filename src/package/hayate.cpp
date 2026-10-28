@@ -781,6 +781,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         room->recover(target, RecoverStruct(owner, nullptr, getEffectiveAmount(ctx)), true);
         return false;
     }

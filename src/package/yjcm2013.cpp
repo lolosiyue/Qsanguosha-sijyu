@@ -1027,7 +1027,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive()) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const QList<int> ids = room->drawCardsList(target, getEffectiveAmount(ctx), objectName(), true, true);
         for (int id : ids) {
             if (!target->isAlive()) break;

@@ -1503,7 +1503,11 @@ public:
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive() || !ctx.owner) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (event == EventPhaseStart) {
             room->broadcastSkillInvoke(objectName()); room->showAllCards(ctx.owner, target);
             room->setFixedDistance(target, ctx.owner, 1);

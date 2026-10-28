@@ -42,8 +42,15 @@ public:
         ctx.targets = {target};
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &, ServerPlayer *target) const override
-    { room->broadcastSkillInvoke(objectName()); target->turnOver(); return false; }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
+        room->broadcastSkillInvoke(objectName()); target->turnOver(); return false;
+    }
 };
 
 class BossShanbeng : public TriggerSkillV2

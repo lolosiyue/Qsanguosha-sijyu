@@ -693,6 +693,11 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const int hp = ctx.owner->getHp();
         room->broadcastSkillInvoke(objectName());
         const int recovery = qMin(hp + getEffectiveAmount(ctx), target->getLostHp());

@@ -400,7 +400,12 @@ public:
         if (target) ctx.targets = {target};
         return target;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *target) const override {
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         const int n = qMin(5, target->getMaxHp()) - target->getHandcardNum();
         if (n > 0) target->drawCards(n, objectName());
         return false;

@@ -476,8 +476,13 @@ public:
         return false;
     }
 
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!room || !target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (event == EventPhaseStart && !target->isChained()) room->setPlayerChained(target);
         return false;
     }

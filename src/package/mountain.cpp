@@ -331,7 +331,11 @@ public:
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive()) return false;
+        if (!target || !target->isAlive()
+            || !ctx.invoker || !ctx.invoker->isAlive()
+            || !ctx.owner || !ctx.owner->isAlive()
+            || !isSourceAvailable(room, ctx))
+            return false;
         if (ctx.choice == "club") {
             const int count = 2 * getEffectiveAmount(ctx);
             room->askForDiscard(target, objectName(), count, count, false, true);
