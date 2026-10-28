@@ -133,7 +133,8 @@ int Card::getId() const
 
 quint64 Card::lifetimeGeneration() const
 {
-    const auto token = globalCardLifetimeManager().observeLive(this);
+    const auto token = globalCardLifetimeManager().observeLive(this, false,
+                                                               const_cast<Card *>(this));
     return token ? token->generation : 0;
 }
 

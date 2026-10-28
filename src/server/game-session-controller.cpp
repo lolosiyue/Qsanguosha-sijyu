@@ -80,12 +80,19 @@ bool GameSessionController::isTerminal() const
     return m_state == State::Finished || m_state == State::Aborted;
 }
 
-void GameSessionController::abort(TerminationCause cause)
+void GameSessionController::abort(TerminationCause cause, const QString &reason)
 {
     if (isTerminal())
         return;
-    if (transitionTo(State::Aborted))
-        m_terminationCause = cause;
+    const bool preparationFailed = cause == TerminationCause::InitializationFailure
+        && m_state != State::Playing;
+    if (!transitionTo(State::Aborted))
+        return;
+    m_terminationCause = cause;
+    // Publish only after the terminal state is visible, including to finished() callbacks.
+    if (preparationFailed)
+        emit m_room.preparation_failed(reason.isEmpty()
+            ? QStringLiteral("Game initialization failed") : reason);
 }
 
 void GameSessionController::markGameReadyCompleted()
@@ -778,8 +785,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			diagnostic.message = reason;
 			diagnostic.fatal = true;
 			m_room.doBroadcastNotify(S_COMMAND_WARN, diagnostic.toVariant());
-			abort(TerminationCause::InitializationFailure);
-			emit m_room.preparation_failed(reason);
+			abort(TerminationCause::InitializationFailure, reason);
 			return;
 		}
 
@@ -1223,9 +1229,8 @@ void GameSessionController::assignRoles()
 
 void GameSessionController::startGame()
 {
-	if (m_state == State::Waiting && !requestStart())
-		return;
-	if (m_state != State::Preparing)
+	// Draft workers emit finished() even when preparation aborted.
+	if (isTerminal() || m_state != State::Preparing)
 		return;
 	LuaRuntime::Binding luaBinding(m_room.m_runtime->lua());
 	GameRng::Binding rngBinding(m_room.m_runtime->rng());

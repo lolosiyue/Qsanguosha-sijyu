@@ -21,6 +21,15 @@ void RoomState::clear()
     m_flags.clear();
 }
 
+bool RoomState::isProjectableCard(const Card *card) const
+{
+    // Compare identities before dereferencing a possibly retired history pointer.
+    for (const WrappedCard *wrapper : m_cards) {
+        if (wrapper && (card == wrapper || card == wrapper->getRealCard())) return true;
+    }
+    return false;
+}
+
 Card *RoomState::getCard(int cardId) const
 {
 	/*if (m_cards.contains(cardId)){

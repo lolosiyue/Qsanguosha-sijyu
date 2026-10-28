@@ -82,6 +82,8 @@ struct CardLifetimeGauge {
     quint64 external_direct_destroy = 0;
     quint64 unapproved_card_raw_delete = 0;
     quint64 card_delete_bypass = 0;
+    quint64 unarmed_entries = 0;  // live && !physical && object.isNull()
+    quint64 phantom_live = 0;     // live && physical && object.isNull()
     quint64 peak_managed_cards = 0;
     quint64 peak_pending_delete = 0;
     quint64 peak_wrapper_count = 0;
@@ -118,8 +120,11 @@ public:
     CardLifetimeMode mode() const;
     QThread *ownerThread() const;
 
+    // A non-null object arms the entry like observeCard(): QPointer, association and
+    // destroyed hook, so ~Card and reconciliation can retire it.
     std::shared_ptr<const CardLifetimeToken> observeLive(const void *card,
-                                                         bool originalOwner = false);
+                                                         bool originalOwner = false,
+                                                         QObject *object = nullptr);
     std::shared_ptr<const CardLifetimeToken> observeCard(Card *card,
                                                          bool originalOwner = false);
     std::shared_ptr<const CardLifetimeToken> recordFactoryClone(Card *card);

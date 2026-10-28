@@ -685,8 +685,18 @@ static QJsonValue playerName(const ServerPlayer *player)
 struct AIStateRefs
 {
     QSet<const void *> players;
+    const RoomState *roomState = nullptr;
     mutable QSet<const void *> cards; // Physical cards, collected on first use.
     bool player(const void *value) const { return !value || players.contains(value); }
+    bool isProjectable(const Card *value) const
+    {
+        if (!value) return true;
+        // Catalog cards are stable; a lifetime-manager live bit alone is not proof
+        // that a historical pointer can still be followed safely.
+        for (int id = 0; id < Sanguosha->getCardCount(); ++id)
+            if (value == Sanguosha->getEngineCard(id)) return true;
+        return roomState && roomState->isProjectableCard(value);
+    }
     bool card(const Card *value) const
     {
         if (!value || globalCardLifetimeManager().isLive(value)) return true;
@@ -703,6 +713,7 @@ struct AIStateRefs
 static AIStateRefs liveStateRefs(const Room &room)
 {
     AIStateRefs refs;
+    refs.roomState = &const_cast<Room &>(room).roomRuntime()->state();
     for (const ServerPlayer *player : room.getPlayers()) refs.players.insert(player);
     return refs;
 }
@@ -725,7 +736,7 @@ static bool makeAIOwnStateValue(const QVariant &source, QJsonValue &target, int 
     // stale auxiliary Card pointers before refs validates the projected fields.
     if (source.userType() == qMetaTypeId<CardUseStruct>()) {
         const CardUseStruct &use = *static_cast<const CardUseStruct *>(source.constData());
-        if (!refs.player(use.from) || !refs.card(use.card)) return false;
+        if (!refs.player(use.from) || !refs.isProjectable(use.card)) return false;
         for (const ServerPlayer *to : use.to) if (!refs.player(to)) return false;
         QJsonArray targets;
         for (const ServerPlayer *to : use.to) targets.append(playerName(to));

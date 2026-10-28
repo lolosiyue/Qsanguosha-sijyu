@@ -3091,12 +3091,16 @@ public:
 	{
 		return selected.length() == 1;
 	}
-	const Card *createCard(const ActiveSkillRequest &) const override
+	const Card *createCard(const ActiveSkillRequest &request) const override
 	{
+		if (!cardSelectionFeasible(request)) return nullptr;
 		ActiveSkillCard *card = new ActiveSkillCard;
+		card->setActiveSkill(this);
 		card->setSkillName(objectName());
+		card->addSubcards(request.selectedCardIds);
 		return card;
 	}
+	QString historyKey(const ActiveSkillRequest &) const override { return "BiweiCard"; }
 	EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
 	{
 		if (target && target->isAlive() && ctx.use_card && ctx.use_card->subcardsLength() > 0) {

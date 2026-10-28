@@ -29,6 +29,7 @@ public:
         return m_isClient;
     }
     Card *getCard(int cardId) const;
+    bool isProjectableCard(const Card *card) const;
     inline void setCurrentPlayer(Player *player)
     {
         m_currentPlayer = player;

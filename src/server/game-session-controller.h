@@ -48,7 +48,7 @@ public:
     bool hasGameStarted() const;
     bool isPlaying() const;
     bool isTerminal() const;
-    void abort(TerminationCause cause);
+    void abort(TerminationCause cause, const QString &reason = QString());
     void markGameReadyCompleted();
 
     void run();

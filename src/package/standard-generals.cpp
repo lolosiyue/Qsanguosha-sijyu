@@ -775,6 +775,14 @@ bool Hujia::effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) 
     return false;
 }
 
+// Selection, candidate count and settlement share canGet; a client sees only the count of
+// a redacted hand, so it keeps the non-empty check there and the server's canGet decides.
+static bool tuxiCanGetHand(const Player *zhangliao, const Player *target)
+{
+    if (!zhangliao || !target || target->isKongcheng()) return false;
+    return target->getHandcards().isEmpty() || zhangliao->canGet(target, "h");
+}
+
 class TuxiViewAsSkill : public ViewAsSkillV2
 {
 public:
@@ -794,7 +802,7 @@ public:
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
                          const Player *target) const override
     {
-        return request.initiator && target && target != request.initiator && !target->isKongcheng()
+        return request.initiator && target && target != request.initiator && tuxiCanGetHand(request.initiator, target)
             && selected.size() < standardPrompt(request.initiator, request.activationRef).value("limit").toInt()
             && target->getHandcardNum() >= request.initiator->getHandcardNum();
     }
@@ -868,7 +876,7 @@ private:
     {
         int num = 0;
         foreach(ServerPlayer *p, room->getOtherPlayers(zhangliao)){
-            if (p->getHandcardNum() >= zhangliao->getHandcardNum())
+            if (p->getHandcardNum() >= zhangliao->getHandcardNum() && tuxiCanGetHand(zhangliao, p))
                 num++;
         }
         return qMin(num, n);

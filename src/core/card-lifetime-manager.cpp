@@ -144,54 +144,82 @@ CardLifetimeMutexProfile CardLifetimeManager::mutexProfile() const
 }
 
 std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::observeLive(const void *card,
-                                                                            bool originalOwner)
+                                                                            bool originalOwner,
+                                                                            QObject *object)
 {
     if (!card)
         return {};
-    std::lock_guard<ProfiledMutex> lock(m_mutex);
-    auto found = m_entries.find(card);
-    if (found != m_entries.end()) {
-        if (found->token->live)
-            return found->token;
-        if (found->destructorWon) {
-            const auto staleToken = found->token;
-            Entry staleEntry = std::move(found.value());
-            m_entries.erase(found);
-            m_deadEntries.insert(staleToken.get(), std::move(staleEntry));
-            reapDeadLocked(staleToken);
-        } else if (found->physical) {
-            ++m_gauge.stale_access;
-            return {};
-        } else {
-            ++m_gauge.stale_access;
-            m_entries.erase(found);
+    QThread *const affinity = object ? object->thread() : nullptr;
+    std::shared_ptr<const CardLifetimeToken> token;
+    bool connectDestroyed = false;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        auto found = m_entries.find(card);
+        if (found != m_entries.end() && !found->token->live) {
+            if (found->destructorWon) {
+                const auto staleToken = found->token;
+                Entry staleEntry = std::move(found.value());
+                m_entries.erase(found);
+                m_deadEntries.insert(staleToken.get(), std::move(staleEntry));
+                reapDeadLocked(staleToken);
+            } else if (found->physical) {
+                ++m_gauge.stale_access;
+                return {};
+            } else {
+                ++m_gauge.stale_access;
+                m_entries.erase(found);
+            }
+            found = m_entries.end();
         }
-    }
-    Entry entry;
-    entry.token = std::make_shared<CardLifetimeToken>();
-    entry.token->address = card;
-    entry.token->generation = m_nextGeneration++;
-    entry.token->originalOwner = originalOwner;
-    entry.token->state = originalOwner ? CardLifetimeState::ObservedDefinition
-                                       : CardLifetimeState::ObservedExternal;
-    entry.domain = currentDomain;
-    entry.runtimeIdentity = currentRuntimeIdentity;
-    entry.runtimeGeneration = currentRuntimeGeneration;
-    entry.runtimeState = currentRuntimeState;
-    if (currentDomain) {
-        for (auto baseline = m_domainBaselines.cbegin();
-             baseline != m_domainBaselines.cend(); ++baseline) {
-            const quint64 baselineGeneration = baseline.value().value(card, 0);
-            if (baselineGeneration != 0 && baselineGeneration == entry.token->generation) {
-                entry.baselineDomain = baseline.key();
-                break;
+        if (found == m_entries.end()) {
+            Entry entry;
+            entry.token = std::make_shared<CardLifetimeToken>();
+            entry.token->address = card;
+            entry.token->generation = m_nextGeneration++;
+            entry.token->originalOwner = originalOwner;
+            entry.token->state = originalOwner ? CardLifetimeState::ObservedDefinition
+                                               : CardLifetimeState::ObservedExternal;
+            entry.domain = currentDomain;
+            entry.runtimeIdentity = currentRuntimeIdentity;
+            entry.runtimeGeneration = currentRuntimeGeneration;
+            entry.runtimeState = currentRuntimeState;
+            if (currentDomain) {
+                for (auto baseline = m_domainBaselines.cbegin();
+                     baseline != m_domainBaselines.cend(); ++baseline) {
+                    const quint64 baselineGeneration = baseline.value().value(card, 0);
+                    if (baselineGeneration != 0
+                        && baselineGeneration == entry.token->generation) {
+                        entry.baselineDomain = baseline.key();
+                        break;
+                    }
+                }
+            }
+            found = m_entries.insert(card, std::move(entry));
+            ++m_gauge.managed_live;
+            updatePeaksLocked();
+        }
+        // Arm the entry: without the QPointer, association and destroyed hook,
+        // ~Card cannot find it and the token would stay live after the card dies.
+        if (object) {
+            found->object = object;
+            found->affinityThread = affinity;
+            if (!found->physical) {
+                found->physical = true;
+                connectDestroyed = true;
             }
         }
+        token = found->token;
     }
-    m_entries.insert(card, std::move(entry));
-    ++m_gauge.managed_live;
-    updatePeaksLocked();
-    return m_entries.find(card)->token;
+    if (object) {
+        QMutexLocker associationLock(&associationMutex);
+        cardAssociations.insert(card, this);
+    }
+    if (connectDestroyed)
+        QObject::connect(object, &QObject::destroyed, [card] {
+            CardLifetimeManager::notifyDestroyedCard(
+                static_cast<Card *>(const_cast<void *>(card)));
+        });
+    return token;
 }
 
 bool CardLifetimeManager::requestNativeDelete(Card *card)
@@ -280,36 +308,19 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::observeCard(Card *
 {
     if (!card)
         return {};
-    const QThread *affinity = card->thread();
-    const auto token = observeLive(card, originalOwner);
+    const auto token = observeLive(card, originalOwner, card);
     if (!token)
         return {};
-    bool connectDestroyed = false;
-    {
+    if (originalOwner) {
         std::lock_guard<ProfiledMutex> lock(m_mutex);
         const auto found = m_entries.find(card);
-        if (found != m_entries.end() && found->token.get() == token.get()) {
-            if (originalOwner && found->token->state == CardLifetimeState::ObservedExternal) {
-                found->token->originalOwner = true;
-                found->token->state = CardLifetimeState::ObservedDefinition;
-                clearUnclaimedLocked(found.value());
-            }
-            found->object = card;
-            found->affinityThread = const_cast<QThread *>(affinity);
-            if (!found->physical) {
-                found->physical = true;
-                connectDestroyed = true;
-            }
+        if (found != m_entries.end() && found->token.get() == token.get()
+            && found->token->state == CardLifetimeState::ObservedExternal) {
+            found->token->originalOwner = true;
+            found->token->state = CardLifetimeState::ObservedDefinition;
+            clearUnclaimedLocked(found.value());
         }
     }
-    {
-        QMutexLocker associationLock(&associationMutex);
-        cardAssociations.insert(card, this);
-    }
-    if (connectDestroyed)
-        QObject::connect(card, &QObject::destroyed, [card] {
-            CardLifetimeManager::notifyDestroyedCard(card);
-        });
     return token;
 }
 
@@ -658,7 +669,13 @@ void CardLifetimeManager::notifyDestroyed(Card *card)
 void CardLifetimeManager::reconcileDestroyedLocked()
 {
     for (auto it = m_entries.begin(); it != m_entries.end();) {
-        if (!it->physical || it->object || it->destructorWon) {
+        if (it->destructorWon || !it->object.isNull()) {
+            ++it;
+            continue;
+        }
+        // Never-armed entries had no QObject to watch; leave them to their owner
+        // and report them through unarmed_entries instead of guessing they died.
+        if (!it->physical) {
             ++it;
             continue;
         }
@@ -797,6 +814,10 @@ bool CardLifetimeManager::retireAdopted(
     }
     ++m_gauge.native_delete_requested;
     updatePeaksLocked();
+    // drainImpl() needs pending && live while the QObject survives; once the
+    // armed QPointer is null the card is gone, so retire the token now.
+    if (found->physical && found->object.isNull())
+        reconcileDestroyedLocked();
     return true;
 }
 
@@ -949,8 +970,8 @@ bool CardLifetimeManager::addChangeEdge(Card *source, const Card *target)
 {
     if (!source || !target)
         return false;
-    const auto sourceToken = observeLive(source);
-    const auto targetToken = observeLive(target);
+    const auto sourceToken = observeLive(source, false, source);
+    const auto targetToken = observeLive(target, false, const_cast<Card *>(target));
     if (!sourceToken || !targetToken)
         return false;
     std::lock_guard<ProfiledMutex> lock(m_mutex);
@@ -1813,7 +1834,16 @@ CardLifetimeGauge CardLifetimeManager::gauge() const
 {
     std::lock_guard<ProfiledMutex> lock(m_mutex);
     const_cast<CardLifetimeManager *>(this)->reconcileDestroyedLocked();
-    return m_gauge;
+    CardLifetimeGauge result = m_gauge;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
+        if (!it->token->live || !it->object.isNull())
+            continue;
+        if (it->physical)
+            ++result.phantom_live;
+        else
+            ++result.unarmed_entries;
+    }
+    return result;
 }
 
 CardLifetimeGauge CardLifetimeManager::gaugeForDomain(const void *domain) const
@@ -1825,6 +1855,8 @@ CardLifetimeGauge CardLifetimeManager::gaugeForDomain(const void *domain) const
             continue;
         if (it->token->live)
             ++result.managed_live;
+        if (it->token->live && it->object.isNull())
+            ++(it->physical ? result.phantom_live : result.unarmed_entries);
         if (it->factoryUnclaimed)
             ++result.factory_unclaimed;
         if (it->unknownUnclaimed)
@@ -1906,6 +1938,8 @@ CardLifetimeGauge CardLifetimeManager::gaugeForRuntime(const void *domain,
             continue;
         if (it->token->live)
             ++result.managed_live;
+        if (it->token->live && it->object.isNull())
+            ++(it->physical ? result.phantom_live : result.unarmed_entries);
         if (it->factoryUnclaimed)
             ++result.factory_unclaimed;
         if (it->unknownUnclaimed)

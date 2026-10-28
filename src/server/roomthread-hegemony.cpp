@@ -40,7 +40,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
     Config.Enable2ndGeneral = true;
     const QList<ServerPlayer *> players = room->getPlayers();
     if (players.isEmpty()) {
-        session->abort(GameSessionController::TerminationCause::InitializationFailure);
+        session->abort(GameSessionController::TerminationCause::InitializationFailure,
+                       QStringLiteral("Hegemony preparation failed: no players"));
         return;
     }
 
@@ -98,7 +99,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         }
         if (pair.isEmpty()) {
             qWarning("HEG preparation cannot reserve a legal distinct pair for every seat.");
-            session->abort(GameSessionController::TerminationCause::InitializationFailure);
+            session->abort(GameSessionController::TerminationCause::InitializationFailure,
+                           QStringLiteral("Hegemony preparation failed: cannot reserve a legal distinct pair for seat %1").arg(seat + 1));
             return;
         }
         available.removeOne(pair.first());
@@ -131,7 +133,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         }
         // One request commits both slots. The server owns pair legality for every UI.
         if (request.hegemonyPairs.isEmpty()) {
-            session->abort(GameSessionController::TerminationCause::InitializationFailure);
+            session->abort(GameSessionController::TerminationCause::InitializationFailure,
+                           QStringLiteral("Hegemony preparation failed: no legal hegemony pairs for %1").arg(player->objectName()));
             return;
         }
         const QString defaultPair = GeneralSelector::getInstance()->selectHegemonyPair(request.hegemonyPairs);
@@ -160,7 +163,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
             reply = legalPairs.at(seat).first();
         const QStringList names = reply.split('+');
         if (names.size() != 2) {
-            session->abort(GameSessionController::TerminationCause::InitializationFailure);
+            session->abort(GameSessionController::TerminationCause::InitializationFailure,
+                           QStringLiteral("Hegemony preparation failed: invalid pair reply for %1").arg(player->objectName()));
             return;
         }
         const QString head = names.first(), deputy = names.last();
@@ -169,7 +173,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         // general. Within one pair the two names must still be distinct.
         if ((!freePair && !legalPair(head, deputy))
             || (!Config.FreeChoose && (chosen.contains(head) || chosen.contains(deputy)))) {
-            session->abort(GameSessionController::TerminationCause::InitializationFailure);
+            session->abort(GameSessionController::TerminationCause::InitializationFailure,
+                           QStringLiteral("Hegemony preparation failed: illegal or duplicate pair for %1").arg(player->objectName()));
             return;
         }
         chosen << head << deputy;
