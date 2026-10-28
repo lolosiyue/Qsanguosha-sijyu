@@ -672,43 +672,39 @@ public:
         return use.from && !player->willBeFriendWith(use.from) && !use.from->isNude()
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isUsable(ctx)) return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        if (!use.from) return false;
-        return ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from));
-    }
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        // Reserve the exact instance before any effect interception or nested callbacks.
-        if (!isUsable(ctx)) return false;
-        addUsage(ctx);
+        if (!use.from || !ctx.owner->canDiscard(use.from, "he")
+            || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from))) return false;
+        // "弃置其一张牌▶" is the cost: pay throws this pick; the effect is the owner's own discard.
+        ctx.extra_data = QVariantMap{{"card_id", room->askForCardChosen(ctx.owner, use.from, "he", objectName(), false, Card::MethodDiscard)}};
+        ctx.targets = {ctx.owner};
         return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        // The owner's mandatory discard follows the target effect and its movement hooks.
-        // Framework target draining has no post-target callback; defer this sequence as a unit.
-        skillEffect(event, room, owner, ctx, ctx.original_data->value<CardUseStruct>().from);
-        const int count = getEffectiveAmount(ctx);
-        if (count > 0 && ctx.owner->isAlive())
-            room->askForDiscard(ctx.owner, "qiao_discard", count, count, false, true, "@qiao-discard");
-        return false;
+        if (!isUsable(ctx)) return false;
+        ServerPlayer *from = ctx.original_data->value<CardUseStruct>().from;
+        const int id = ctx.extra_data.toMap().value("card_id", -1).toInt();
+        // Interceptors after cost may move the pick; a stale card cannot pay.
+        if (!from || from->isDead() || id < 0 || room->getCardOwner(id) != from
+            || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)
+            || Sanguosha->getCard(id)->hasFlag("using") || !ctx.owner->canDiscard(from, id)) return false;
+        // Reserve the exact instance before the payment's movement hooks.
+        addUsage(ctx);
+        CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, ctx.owner->objectName(),
+            from->objectName(), objectName(), QString());
+        room->throwCard(Sanguosha->getCard(id), reason, from, ctx.owner);
+        return true;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || target != ctx.owner || !isSourceAvailable(room, ctx)) return false;
         const int count = getEffectiveAmount(ctx); if (count <= 0) return false;
-        for (int i = 0; i < count && target->isAlive() && ctx.owner->isAlive()
-            && ctx.owner->canDiscard(target, "he"); ++i) {
-            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
-            if (id < 0 || room->getCardOwner(id) != target
-                || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip)
-                || Sanguosha->getCard(id)->hasFlag("using") || !ctx.owner->canDiscard(target, id)) break;
-            CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, ctx.owner->objectName(),
-                target->objectName(), objectName(), QString());
-            room->throwCard(Sanguosha->getCard(id), reason, target, ctx.owner);
-        }
+        // Mandatory discard executes the settlement after owner-target interception.
+        room->askForDiscard(target, "qiao_discard", count, count, false, true, "@qiao-discard");
         return false;
     }
 };

@@ -2828,13 +2828,12 @@ public:
         ctx.choice = ids.isEmpty() || ids.contains(-1) ? "damage" : "queue";
         ctx.extra_data = ListI2V(ids); ctx.targets = {ctx.choice == "damage" ? damage.to : damage.from == ctx.owner ? damage.to : damage.from}; return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *actor, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event != EventPhaseChanging) return false;
-        // Receipt is consumed before interception; availability uses exact receipt membership.
-        // Defer dispatch and choice/use together: accepted-use scope and legal cards are settlement-dependent.
-        consume(room,ctx.extra_data.toMap().value("serial")); ctx.manual_effect = true;
-        skillEffect(event,room,actor,ctx,ctx.invoker); return false;
+        // Receipt is consumed before interception; framework dispatch then reaches ctx.targets ({actor}).
+        // Choice/use stay in effectTarget: the actor chooses inside accepted-use scope, legal cards are settlement-dependent.
+        consume(room,ctx.extra_data.toMap().value("serial")); return false;
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {

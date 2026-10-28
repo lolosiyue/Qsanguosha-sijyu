@@ -1182,17 +1182,27 @@ public:
 		    && player->getPhase() == Player::Finish ? TriggerList{{player, {objectName()}}} : TriggerList();
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+	bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		QList<ServerPlayer *> targets;
-		int hand = player->getHandcardNum();
+		const int hand = ctx.owner->getHandcardNum();
 		foreach (ServerPlayer *p, room->getAlivePlayers()) {
 			if (p->getHandcardNum() < hand)
 				targets << p;
 		}
 		if (targets.isEmpty()) return false;
-		ServerPlayer *t = room->askForPlayerChosen(player, targets, objectName(), "@yhceri-invoke", true, true);
+		ServerPlayer *t = room->askForPlayerChosen(ctx.owner, targets, objectName(), "@yhceri-invoke", true, true);
 		if (!t) return false;
+		ctx.targets = {t};
+		return true;
+	}
+
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *t) const override
+	{
+		ServerPlayer *player = ctx.owner;
+		if (!player || !player->isAlive() || !t || !t->isAlive() || !isSourceAvailable(room, ctx)) return false;
+		const int hand = player->getHandcardNum();
+		if (t->getHandcardNum() >= hand) return false;
 		room->broadcastSkillInvoke(this);
 
 		int n = t->getHandcardNum();
@@ -1217,6 +1227,7 @@ public:
 
 		if (t->isDead()) return false;
 
+		// The recipient chooses after the actual exchange and its move hooks; the result selects obtain vs damage.
 		QString choice = room->askForChoice(t, objectName(), "3,4,5+6,8,10+5,12,13", QVariant::fromValue(player), QString(), ":" + objectName());
 
 		log.type = "#FumianFirstChoice";

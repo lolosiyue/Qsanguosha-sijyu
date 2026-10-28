@@ -211,6 +211,16 @@ public:
         if (event == CardOffset) {
             // The liability removes the original user's cards; the dodging player chooses them.
             ctx.targets = {ctx.owner};
+            // Only the first pick moves here; the receipt is still consumed at settlement so a
+            // canceled effect keeps its liability. Nothing reads receipts during this prompt.
+            const CardEffectStruct offset = ctx.original_data->value<CardEffectStruct>();
+            int id = -1;
+            if (isSourceAvailable(room, ctx) && getEffectiveAmount(ctx) > 0
+                && offset.to->canDiscard(ctx.owner, "he"))
+                id = room->askForCardChosen(offset.to, ctx.owner, "he", "moukui", false, Card::MethodDiscard);
+            QVariantMap payload = ctx.extra_data.toMap();
+            payload.insert("card_id", id);
+            ctx.extra_data = payload;
             return true;
         }
         if (!ctx.owner->askForSkillInvoke(this, QVariant::fromValue(ctx.preferredTarget))) return false;
@@ -311,14 +321,14 @@ public:
             }
             if (!found) return false;
             // Consume before discard callbacks can re-enter this continuation.
-            // Keep even the first pick here: chooser != owner, and prompt callbacks must
-            // observe the consumed receipt; later picks also depend on earlier discards.
             setMoukuiReceipts(room, offset.card, receipts);
             room->removePlayerMark(offset.to, "moukui" + offset.card->toString());
             room->broadcastSkillInvoke("moukui", 3);
             for (int i = 0; i < amount && target->isAlive() && offset.to->isAlive()
                  && offset.to->canDiscard(target, "he"); ++i) {
-                const int id = room->askForCardChosen(offset.to, target, "he", "moukui", false, Card::MethodDiscard);
+                // Later picks depend on the preceding discard and its movement callbacks.
+                const int id = i == 0 ? ctx.extra_data.toMap().value("card_id", -1).toInt()
+                    : room->askForCardChosen(offset.to, target, "he", "moukui", false, Card::MethodDiscard);
                 if (!discardableMaterial(room, offset.to, target, id)) break;
                 room->throwCard(id, "moukui", target, offset.to);
             }

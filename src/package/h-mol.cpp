@@ -467,6 +467,16 @@ public:
         for (int id : holder->getPile("heg_drive")) types.removeAll(type(Sanguosha->getCard(id)));
         return types;
     }
+    static QStringList shownSkills(ServerPlayer *target)
+    {
+        QStringList skills;
+        for (const Skill *skill : target->getVisibleSkillList()) for (int candidateId : target->getSkillInstanceIds(skill->objectName())) {
+            const SkillInstance *instance = target->findSkillInstance(skill->objectName(), candidateId);
+            if (instance && ((instance->bindHead == 1 && target->hasShownGeneral1()) || (instance->bindHead == 2 && target->hasShownGeneral2())))
+                skills << SkillInstanceUtils::formatName(skill->objectName(), candidateId);
+        }
+        return skills;
+    }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
         if (event != EventPhaseChanging || data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
@@ -509,7 +519,34 @@ public:
             if (!ctx.owner->getPile("heg_drive").contains(id) || cards.contains(id)) return false;
             cards << id; types << type(Sanguosha->getCard(id));
         }
-        ctx.extra_data = QVariantMap{{"cards", cards}, {"types", types}};
+        // One pick per removed card, each with its sub-pick. The limits all hit the turn player and recover hits an
+        // ally of the owner (never the turn player), so each target settles its own branches without an index.
+        QVariantMap payload{{"cards", cards}, {"types", types}};
+        QStringList choices{"cardlimit", "skilllimit", "recover"}, items;
+        QList<ServerPlayer *> targets;
+        for (int i = 0; i < types.size() && !choices.isEmpty(); ++i) {
+            const QString selected = room->askForChoice(ctx.owner, "sidi_choice", choices.join("+"), QVariant(), "cardlimit+skilllimit+recover", "@sidi-choice::" + ctx.invoker->objectName());
+            if (!choices.removeOne(selected)) break;
+            items << selected;
+            if (selected == "recover") {
+                QList<ServerPlayer *> friends;
+                for (ServerPlayer *candidate : room->getOtherPlayers(ctx.owner))
+                    if (candidate != ctx.invoker && candidate->isFriendWith(ctx.owner) && candidate->canRecover()) friends << candidate;
+                if (friends.isEmpty()) continue;
+                if (ServerPlayer *target = room->askForPlayerChosen(ctx.invoker, friends, "sidi_recover", "@sidi-recover")) targets << target;
+                continue;
+            }
+            if (!targets.contains(ctx.invoker)) targets << ctx.invoker;
+            if (selected == "cardlimit") {
+                payload.insert("cardtype", room->askForChoice(ctx.owner, "sidi_cardtype", types.join("+"), QVariant(), "BasicCard+EquipCard+TrickCard", "@sidi-cardtype::" + ctx.invoker->objectName()));
+            } else {
+                const QStringList skills = shownSkills(ctx.invoker);
+                if (!skills.isEmpty()) payload.insert("skill", room->askForChoice(ctx.owner, "sidi_skill", skills.join("+"), QVariant(), QString(), "@sidi-skill::" + ctx.invoker->objectName()));
+            }
+        }
+        ctx.choice = items.join("+");
+        ctx.extra_data = payload;
+        ctx.targets = targets;
         return true;
     }
     bool pay(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -521,28 +558,6 @@ public:
         }
         room->throwCard(&cards, CardMoveReason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, ctx.owner->objectName(), objectName(), ""), nullptr);
         return true;
-    }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
-    {
-        if (event == Damaged) return false;
-        // Deferred: each removed card buys one branch picked in turn, two branches can hit the invoker and the
-        // recover candidates are read after the earlier branches settle; one framework choice cannot carry this.
-        ctx.manual_effect = true;
-        QStringList choices{"cardlimit", "skilllimit", "recover"};
-        const QStringList types = ctx.extra_data.toMap().value("types").toStringList();
-        for (int i = 0; i < types.size() && !choices.isEmpty() && ctx.invoker->isAlive(); ++i) {
-            const QString selected = room->askForChoice(ctx.owner, "sidi_choice", choices.join("+"), QVariant(), "cardlimit+skilllimit+recover", "@sidi-choice::" + ctx.invoker->objectName());
-            if (!choices.removeOne(selected)) break;
-            SkillContext child = ctx; child.choice = selected;
-            if (selected == "recover") {
-                QList<ServerPlayer *> friends;
-                for (ServerPlayer *candidate : room->getOtherPlayers(ctx.owner)) if (candidate->isFriendWith(ctx.owner) && candidate->canRecover()) friends << candidate;
-                if (friends.isEmpty()) continue;
-                ServerPlayer *target = room->askForPlayerChosen(ctx.invoker, friends, "sidi_recover", "@sidi-recover");
-                if (target) skillEffect(event, room, owner, child, target);
-            } else skillEffect(event, room, owner, child, ctx.invoker);
-        }
-        return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
@@ -561,35 +576,36 @@ public:
             if (!cards.isEmpty()) ctx.owner->addToPile("heg_drive", cards);
             return false;
         }
-        if (ctx.choice == "recover") { room->recover(target, RecoverStruct(objectName(), ctx.invoker, amount)); return false; }
-        const qint64 serial = room->getTag("HSidiSerial").toLongLong() + 1; room->setTag("HSidiSerial", serial);
-        const QString token = QString("heg_sidi:%1").arg(serial);
-        QVariantMap receipt{{"target", target->objectName()}, {"token", token}, {"turn", room->historyScopes().value("turn_id")},
-            {"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
-            {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID}};
-        QString selected, name; int id = 0;
-        if (ctx.choice == "cardlimit") {
-            const QStringList types = ctx.extra_data.toMap().value("types").toStringList();
-            selected = room->askForChoice(ctx.owner, "sidi_cardtype", types.join("+"), QVariant(), "BasicCard+EquipCard+TrickCard", "@sidi-cardtype::" + target->objectName());
-            if (!types.contains(selected)) return false;
-            receipt.insert("kind", "card");
-        } else {
-            QStringList skills;
-            for (const Skill *skill : target->getVisibleSkillList()) for (int candidateId : target->getSkillInstanceIds(skill->objectName())) {
-                const SkillInstance *instance = target->findSkillInstance(skill->objectName(), candidateId);
-                if (instance && ((instance->bindHead == 1 && target->hasShownGeneral1()) || (instance->bindHead == 2 && target->hasShownGeneral2())))
-                    skills << SkillInstanceUtils::formatName(skill->objectName(), candidateId);
-            }
-            if (skills.isEmpty()) return false;
-            selected = room->askForChoice(ctx.owner, "sidi_skill", skills.join("+"), QVariant(), QString(), "@sidi-skill::" + target->objectName());
-            if (!skills.contains(selected)) return false;
-            id = SkillInstanceUtils::parseName(selected, name);
-            if (id <= 0 || !target->hasSkillInstance(name, id)) return false;
-            receipt.insert("kind", "skill"); receipt.insert("disabled_skill", name); receipt.insert("disabled_instance", id);
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        const QStringList items = ctx.choice.split("+");
+        if (target != ctx.invoker) {
+            if (items.contains("recover") && target->isFriendWith(ctx.owner)) room->recover(target, RecoverStruct(objectName(), ctx.invoker, amount));
+            return false;
         }
-        QVariantList receipts = room->getTag("HSidiApplied").toList(); receipts << receipt; room->setTag("HSidiApplied", receipts);
-        if (ctx.choice == "cardlimit") room->setPlayerCardLimitation(target, "use", selected, false, token);
-        else room->addSkillInvalidity(target, name, token, objectName(), id);
+        const QVariantMap payload = ctx.extra_data.toMap();
+        for (const QString &item : items) {
+            QString selected, name; int id = 0;
+            if (item == "cardlimit") {
+                selected = payload.value("cardtype").toString();
+                if (!payload.value("types").toStringList().contains(selected)) continue;
+            } else if (item == "skilllimit") {
+                // The skill was picked in cost; it must still be a shown skill of the turn player.
+                selected = payload.value("skill").toString();
+                if (!shownSkills(target).contains(selected)) continue;
+                id = SkillInstanceUtils::parseName(selected, name);
+                if (id <= 0 || !target->hasSkillInstance(name, id)) continue;
+            } else continue;
+            const qint64 serial = room->getTag("HSidiSerial").toLongLong() + 1; room->setTag("HSidiSerial", serial);
+            const QString token = QString("heg_sidi:%1").arg(serial);
+            QVariantMap receipt{{"target", target->objectName()}, {"token", token}, {"turn", room->historyScopes().value("turn_id")},
+                {"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
+                {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID}};
+            if (item == "cardlimit") receipt.insert("kind", "card");
+            else { receipt.insert("kind", "skill"); receipt.insert("disabled_skill", name); receipt.insert("disabled_instance", id); }
+            QVariantList receipts = room->getTag("HSidiApplied").toList(); receipts << receipt; room->setTag("HSidiApplied", receipts);
+            if (item == "cardlimit") room->setPlayerCardLimitation(target, "use", selected, false, token);
+            else room->addSkillInvalidity(target, name, token, objectName(), id);
+        }
         return false;
     }
 };
