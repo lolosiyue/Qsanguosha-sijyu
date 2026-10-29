@@ -26,6 +26,8 @@ private:
 #include "scenario.h"
 #include <memory>
 
+#include <atomic>
+
 enum class SkillDeclarationReason;
 struct SkillDeclarationCandidate;
 
@@ -630,7 +632,17 @@ public:
     // Opt-in selectors can supply exact sources and decision makers without a
     // second dispatcher. False keeps the ordinary owner-indexed collection.
     virtual bool collectTriggerContexts(TriggerEvent, Room *, ServerPlayer *, QVariant &,
-                                        QList<SkillContext> &) const { return false; }
+                                        QList<SkillContext> &) const
+    {
+        m_defaultCollector.store(true, std::memory_order_relaxed);
+        return false;
+    }
+    // False once this definition is known to keep the default collector above, so
+    // the dispatcher skips the collect callback and its per-candidate bookkeeping.
+    virtual bool canCollectTriggerContexts() const
+    {
+        return !m_defaultCollector.load(std::memory_order_relaxed);
+    }
     virtual bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &) const { return false; }
     virtual bool usesEventPriority() const { return false; }
     // A global skill whose record reads only the event, not its holder, records
@@ -688,6 +700,9 @@ protected:
     int m_baseAmount;
     bool m_recordOnce = false;
     bool m_ruleResolution = false;
+
+private:
+    mutable std::atomic<bool> m_defaultCollector{false};
 };
 
 class RetrialSkill : public TriggerSkill

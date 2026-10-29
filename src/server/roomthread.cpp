@@ -24,6 +24,14 @@
 
 #include <algorithm>
 #include <chrono>
+#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+#define QSAN_PERF_TSC 1
+#endif
 #include <cstdio>
 #include <exception>
 #include <memory>
@@ -65,11 +73,26 @@ QString EventTriplet::toString() const
 namespace {
 // RoomThreadPerfTrace helpers. The hook counts Lua -> C function calls on the
 // room state; thread_local keeps rooms on different threads apart.
-qint64 perfNowNs()
+qint64 perfWallNs()
 {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(
 		std::chrono::steady_clock::now().time_since_epoch()).count();
 }
+
+// Timers read the TSC directly: QueryPerformanceCounter costs ~400 ns here,
+// which is comparable to the per-candidate work being measured. Raw ticks are
+// scaled to nanoseconds against the wall clock when a snapshot is emitted.
+qint64 perfNowNs()
+{
+#ifdef QSAN_PERF_TSC
+	return qint64(__rdtsc());
+#else
+	return perfWallNs();
+#endif
+}
+
+thread_local qint64 perfTraceTickStart = 0;
+thread_local qint64 perfTraceWallStart = 0;
 
 thread_local quint64 perfLuaCCalls = 0;
 
@@ -735,7 +758,7 @@ QVariantMap RoomThread::triggerDispatchProfile() const
 				{QStringLiteral("global"), qint64(s.global)}};
 		}
 	}
-	return QVariantMap{
+	QVariantMap result{
 		{QStringLiteral("game_ns"), profile.gameStartNs ? qint64(perfNowNs() - profile.gameStartNs) : 0},
 		{QStringLiteral("top_level_inclusive_ns"), qint64(profile.topLevelInclusiveNs)},
 		{QStringLiteral("sort_ns"), qint64(profile.sortNs)},
@@ -752,6 +775,13 @@ QVariantMap RoomThread::triggerDispatchProfile() const
 		{QStringLiteral("sort_memo_hits"), qint64(profile.sortMemoHits)},
 		{QStringLiteral("sort_memo_misses"), qint64(profile.sortMemoMisses)},
 		{QStringLiteral("sort_memo_resets"), qint64(profile.sortMemoResets)},
+		{QStringLiteral("dbg_has_skill_calls"), qint64(profile.dbgHasSkillCalls)},
+		{QStringLiteral("dbg_has_skill_ns"), qint64(profile.dbgHasSkillNs)},
+		{QStringLiteral("dbg_owns_ns"), qint64(profile.dbgOwnsNs)},
+		{QStringLiteral("dbg_shown_ns"), qint64(profile.dbgShownNs)},
+		{QStringLiteral("dbg_invalid_ns"), qint64(profile.dbgInvalidNs)},
+		{QStringLiteral("dbg_cand_total"), qint64(profile.dbgCandTotal)},
+		{QStringLiteral("dbg_gen_changed"), qint64(profile.dbgGenChanged)},
 		{QStringLiteral("hit_pairs"), qint64(profile.hitPairs)},
 		{QStringLiteral("hit_instances"), qint64(profile.hitInstances)},
 		{QStringLiteral("hit_validity_ns"), qint64(profile.hitValidityNs)},
@@ -777,6 +807,34 @@ QVariantMap RoomThread::triggerDispatchProfile() const
 		{QStringLiteral("main_table_candidate_visit_count"),
 		 qint64(m_triggerDispatchProfile.mainTableCandidateVisitCount)}
 	};
+	// Timers hold raw perfNowNs() ticks; "*_lua_outer_ns" comes from the wall clock.
+	const qint64 ticks = perfNowNs() - perfTraceTickStart;
+	const double tickNs = perfTraceTickStart && ticks > 0
+		? double(perfWallNs() - perfTraceWallStart) / double(ticks) : 1.0;
+	const std::function<void(QVariantMap &)> scaleTicks = [&](QVariantMap &map) {
+		for (auto it = map.begin(); it != map.end(); ++it) {
+			const QString &key = it.key();
+			if (it->typeId() == QMetaType::QVariantMap) {
+				QVariantMap inner = it->toMap();
+				scaleTicks(inner);
+				*it = inner;
+			} else if (it->typeId() == QMetaType::QVariantList) {
+				QVariantList list = it->toList();
+				for (QVariant &entry : list) {
+					if (entry.typeId() != QMetaType::QVariantMap) continue;
+					QVariantMap inner = entry.toMap();
+					scaleTicks(inner);
+					entry = inner;
+				}
+				*it = list;
+			} else if ((key == QLatin1String("ns") || key.endsWith(QLatin1String("_ns")))
+				&& !key.endsWith(QLatin1String("_lua_outer_ns"))) {
+				*it = qint64(double(it->toLongLong()) * tickNs);
+			}
+		}
+	};
+	scaleTicks(result);
+	return result;
 }
 
 void RoomThread::markDistanceCacheDirty()
@@ -1396,6 +1454,8 @@ void RoomThread::run()
 	});
 	if (m_perfTraceEnabled) {
 		m_triggerDispatchProfile.gameStartNs = perfNowNs();
+		perfTraceTickStart = m_triggerDispatchProfile.gameStartNs;
+		perfTraceWallStart = perfWallNs();
 		m_triggerDispatchProfile.luaProtectedCallsAtStart = LuaRuntime::protectedCallCount();
 		m_triggerDispatchProfile.luaCCallsAtStart = perfLuaCCalls;
 		if (room->getLuaState())
@@ -1571,8 +1631,28 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	// the middle of a sort invalidates the memo at once. The include-lose form
 	// (addTriggerSkill) is ownership only and stays live.
 	RoomRuntime *memoRuntime = targetRoom->roomRuntime();
+	// v2cand diagnostic: break one hasSkill call into its three component
+	// lookups plus the call itself; only runs with RoomThreadPerfTrace on.
+	const auto dbgProbeHasSkill = [&](ServerPlayer *player, const QString &name, bool lose) {
+		++m_triggerDispatchProfile.dbgHasSkillCalls;
+		const qint64 t0 = perfNowNs();
+		(void)player->ownsSkill(name);
+		const qint64 t1 = perfNowNs();
+		(void)player->hasShownSkill(name);
+		const qint64 t2 = perfNowNs();
+		(void)player->isSkillInvalid(name);
+		const qint64 t3 = perfNowNs();
+		m_triggerDispatchProfile.dbgOwnsNs += quint64(t1 - t0);
+		m_triggerDispatchProfile.dbgShownNs += quint64(t2 - t1);
+		m_triggerDispatchProfile.dbgInvalidNs += quint64(t3 - t2);
+		const bool has = player->hasSkill(name, lose);
+		m_triggerDispatchProfile.dbgHasSkillNs += quint64(perfNowNs() - t3);
+		return has;
+	};
 	const auto memoHasSkill = [&](ServerPlayer *player, const QString &name) {
-		if (includeLose || !memoRuntime) return player->hasSkill(name, includeLose);
+		if (includeLose || !memoRuntime)
+			return m_perfTraceEnabled ? dbgProbeHasSkill(player, name, includeLose)
+				: player->hasSkill(name, includeLose);
 		const quint64 memoGeneration = SkillSet::generation();
 		const quint64 memoRevision = memoRuntime->stateRevision();
 		if (m_sortMemoRoom != targetRoom || m_sortMemoGeneration != memoGeneration
@@ -1590,7 +1670,8 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 			return cached.value();
 		}
 		if (m_perfTraceEnabled) ++m_triggerDispatchProfile.sortMemoMisses;
-		const bool has = player->hasSkill(name, false);
+		const bool has = m_perfTraceEnabled ? dbgProbeHasSkill(player, name, false)
+			: player->hasSkill(name, false);
 		// Keep the entry only if hasSkill itself left both counters untouched.
 		if (SkillSet::generation() == memoGeneration && memoRuntime->stateRevision() == memoRevision)
 			m_sortHasSkillMemo.insert(key, has);
@@ -1618,6 +1699,10 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
         if (m_perfTraceEnabled) m_triggerDispatchProfile.sortPriorityNs += quint64(perfOwnerStartNs - perfPriorityStartNs);
 		const QString skillName = skill->objectName();
 		const auto candidates = owners.value(skillName);
+		if (m_perfTraceEnabled) {
+			m_triggerDispatchProfile.dbgCandTotal += candidates.size();
+			if (SkillSet::generation() != generation) ++m_triggerDispatchProfile.dbgGenChanged;
+		}
 		foreach (ServerPlayer *player, players) {
 			// A callback may acquire a skill while priorities are being queried.
 			if ((SkillSet::generation() != generation || candidates.contains(player))
@@ -1750,27 +1835,27 @@ bool RoomThread::triggerSkillSources(TriggerEvent event, Room *room, ServerPlaye
 }
 
 namespace {
+template <typename T>
+void restoreTypedPhysicalIdentity(QVariant &data, const QVariant &physicalIdentity)
+{
+    const PhysicalEquipSource &admitted = static_cast<const T *>(physicalIdentity.constData())->physicalEquipSource;
+    if (static_cast<const T *>(data.constData())->physicalEquipSource == admitted) return;
+    static_cast<T *>(data.data())->physicalEquipSource = admitted;
+}
+
 // Restore between author callbacks, so the next interceptor observes admission
 // identity while retaining mutations to cancellation, targets and effect values.
+// Only the four structs carrying physicalEquipSource qualify; the stored type is
+// compared directly, since no QVariant converter targets these structs and the
+// canConvert probes dominated the per-candidate cost.
 void restorePhysicalEquipmentIdentity(QVariant &data, const QVariant &physicalIdentity)
 {
-    if (physicalIdentity.canConvert<SkillContext>() && data.canConvert<SkillContext>()) {
-        SkillContext updated = data.value<SkillContext>();
-        updated.physicalEquipSource = physicalIdentity.value<SkillContext>().physicalEquipSource;
-        data = QVariant::fromValue(updated);
-    } else if (physicalIdentity.canConvert<CardUseStruct>() && data.canConvert<CardUseStruct>()) {
-        CardUseStruct updated = data.value<CardUseStruct>();
-        updated.physicalEquipSource = physicalIdentity.value<CardUseStruct>().physicalEquipSource;
-        data = QVariant::fromValue(updated);
-    } else if (physicalIdentity.canConvert<CardEffectStruct>() && data.canConvert<CardEffectStruct>()) {
-        CardEffectStruct updated = data.value<CardEffectStruct>();
-        updated.physicalEquipSource = physicalIdentity.value<CardEffectStruct>().physicalEquipSource;
-        data = QVariant::fromValue(updated);
-    } else if (physicalIdentity.canConvert<CardResponseStruct>() && data.canConvert<CardResponseStruct>()) {
-        CardResponseStruct updated = data.value<CardResponseStruct>();
-        updated.physicalEquipSource = physicalIdentity.value<CardResponseStruct>().physicalEquipSource;
-        data = QVariant::fromValue(updated);
-    }
+    const int typeId = physicalIdentity.typeId();
+    if (typeId == QMetaType::UnknownType || data.typeId() != typeId) return;
+    if (typeId == qMetaTypeId<SkillContext>()) restoreTypedPhysicalIdentity<SkillContext>(data, physicalIdentity);
+    else if (typeId == qMetaTypeId<CardUseStruct>()) restoreTypedPhysicalIdentity<CardUseStruct>(data, physicalIdentity);
+    else if (typeId == qMetaTypeId<CardEffectStruct>()) restoreTypedPhysicalIdentity<CardEffectStruct>(data, physicalIdentity);
+    else if (typeId == qMetaTypeId<CardResponseStruct>()) restoreTypedPhysicalIdentity<CardResponseStruct>(data, physicalIdentity);
 }
 }
 
@@ -1973,10 +2058,14 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         const qint64 perfCollectStartNs = perfEvent ? perfNowNs() : 0;
         QList<SkillContext> supplied;
         bool collected = false;
-        invokeOrigin(v2, QStringLiteral("v2-collect"), nullptr,
-                     [&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); });
+        // The default collector is a no-op; only definitions with a selector pay
+        // for the callback origin and cascade checkpoint.
+        if (v2->canCollectTriggerContexts()) {
+            invokeOrigin(v2, QStringLiteral("v2-collect"), nullptr,
+                         [&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); });
+            checkTriggerDispatchAbort();
+        }
         const qint64 perfRestoreStartNs = perfEvent ? perfNowNs() : 0;
-        checkTriggerDispatchAbort();
         restoreIdentity();
         if (perfEvent) {
             m_triggerDispatchProfile.candStepNs += quint64(perfCollectStartNs - perfStepStartNs);

@@ -149,6 +149,7 @@ public:
                                 QVariant &data, QList<SkillContext> &contexts) const override;
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool usesEventPriority() const override { return m_rule; }
+    bool canCollectTriggerContexts() const override { return m_rule; }
     bool prepareSource(Room *room, SkillContext &ctx) const override;
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override;
 
