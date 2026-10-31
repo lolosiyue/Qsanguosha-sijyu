@@ -313,24 +313,23 @@ public:
 		if (!names.contains(chosen))
 			return false;
 		ctx.choice = chosen;
-		ctx.targets = {player};
 		return true;
 	}
 
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
-		if (!room || !player || !player->isAlive() || !ctx.owner || !ctx.owner->isAlive()
-			|| !target || !target->isAlive() || !isSourceAvailable(room, ctx))
+		ServerPlayer *owner = ctx.owner;
+		if (!room || !owner || !owner->isAlive() || !isSourceAvailable(room, ctx))
 			return false;
-		if (target != player || !reihouHuanjieNames().contains(ctx.choice))
+		if (!reihouHuanjieNames().contains(ctx.choice))
 			return false;
 		const QString chosen = ctx.choice;
 		LogMessage log;
 		log.type = "#RhHuanjie";
-		log.from = player;
+		log.from = owner;
 		log.arg = chosen;
 		room->sendLog(log);
-		room->setPlayerProperty(player, "rhhuanjie", chosen);
+		room->setPlayerProperty(owner, "rhhuanjie", chosen);
 		return false;
 	}
 };

@@ -1330,7 +1330,6 @@ public:
         SkillContext ctx;
         ctx.skill_name = objectName();
         ctx.owner = ctx.invoker = ctx.initiator = player;
-        ctx.targets << player;
         ctx.original_data = &data;
         ctx.current_event = event;
         ctx.amount = event == DamageComplete ? data.value<DamageStruct>().damage : getBaseAmount();
@@ -1347,11 +1346,11 @@ public:
         return damage.to == ctx.owner && damage.transfer && damage.transfer_reason == "shichou";
     }
 
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx,
-                      ServerPlayer *target) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
+        if (!player || !player->isAlive() || !isSourceAvailable(room, ctx)) return false;
         if (event == DamageComplete) {
-            target->drawCards(getEffectiveAmount(ctx), "shichou");
+            player->drawCards(getEffectiveAmount(ctx), "shichou");
         } else {
             player->loseAllMarks("@hate_to");
             for (ServerPlayer *owner : room->getAllPlayers(true)) {
@@ -2687,14 +2686,11 @@ public:
         return wangyuanji->askForSkillInvoke(objectName()+"$-1");
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *wangyuanji, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *, ServerPlayer *wangyuanji, SkillContext &ctx) const override
     {
-        return skillEffect(event, room, wangyuanji, ctx, wangyuanji);
-    }
-
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        target->drawCards(qMax(0, target->getMaxHp() - target->getHandcardNum()) * getEffectiveAmount(ctx), objectName());
+        if (!wangyuanji || !wangyuanji->isAlive() || !wangyuanji->hasSkill(objectName())
+            || wangyuanji->getHandcardNum() >= wangyuanji->getMaxHp()) return false;
+        wangyuanji->drawCards((wangyuanji->getMaxHp() - wangyuanji->getHandcardNum()) * getEffectiveAmount(ctx), objectName());
         return false;
     }
 };
@@ -3138,13 +3134,10 @@ public:
             ? TriggerList{{gongsunzan, {objectName()}}} : TriggerList();
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *gongsunzan, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *gongsunzan, SkillContext &ctx) const override
     {
-        return skillEffect(event, room, gongsunzan, ctx, gongsunzan);
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *gongsunzan) const override
-    {
+        if (!gongsunzan || !gongsunzan->isAlive() || !gongsunzan->hasSkill(objectName())
+            || gongsunzan->getPile("retinue").isEmpty()) return false;
         room->sendCompulsoryTriggerLog(gongsunzan, objectName());
         const int n = gongsunzan->getPile("retinue").length();
         room->setPlayerMark(gongsunzan, "tuqi_dist-Clear", n * getEffectiveAmount(ctx));

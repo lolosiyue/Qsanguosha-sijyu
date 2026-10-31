@@ -1565,7 +1565,7 @@ public:
             const QVariantMap receipt = receipts.at(i).toMap();
             SkillContext ctx = dreamContinuation(room, objectName(), event, player, data, receipt);
             if (!ctx.owner || !ctx.sourceRef.isValid()) continue;
-            ctx.preferredTarget = player; ctx.targets = {player}; out << ctx;
+            out << ctx;
         }
         return true;
     }
@@ -1601,9 +1601,16 @@ public:
         ctx.extra_data = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "anjie_instances").toList();
         return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (event == PreHpRecover) return false;
+        if (event == PreHpRecover) {
+            if (!player || !player->isAlive() || !ctx.original_data || !isSourceAvailable(room, ctx)) return false;
+            const int amount = getEffectiveAmount(ctx);
+            if (amount <= 0) return false;
+            RecoverStruct recover = ctx.original_data->value<RecoverStruct>(); recover.recover += amount;
+            *ctx.original_data = QVariant::fromValue(recover);
+            return false;
+        }
         if (event == EventPhaseStart && !room->sendShimingLog(ctx.activationRef, true)) return false;
         ServerPlayer *target = ctx.owner;
         const int amount = getEffectiveAmount(ctx);
@@ -1626,14 +1633,6 @@ public:
                 use.card->tag.insert("IfLitianRecovery", receipts);
             }
         }
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    {
-        const int amount = getEffectiveAmount(ctx);
-        if (amount <= 0) return false;
-        RecoverStruct recover = ctx.original_data->value<RecoverStruct>(); recover.recover += amount;
-        *ctx.original_data = QVariant::fromValue(recover);
         return false;
     }
 };
@@ -2747,8 +2746,14 @@ public:
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event != EventPhaseStart) {
-            ctx.targets = {ctx.original_data->value<DamageStruct>().to};
+        if (event == DamageCaused) {
+            if (!ctx.owner || !ctx.owner->isAlive() || !ctx.original_data || !isSourceAvailable(room, ctx)) return false;
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            const int amount = getEffectiveAmount(ctx);
+            if (!damage.to || !damage.to->isAlive() || damage.damage <= 0 || amount <= 0) return false;
+            room->sendCompulsoryTriggerLog(ctx.owner, this);
+            damage.damage += amount;
+            ctx.original_data->setValue(damage);
             return false;
         }
         DummyCard obtained;
@@ -2762,16 +2767,6 @@ public:
             obtained.addSubcard(id);
         }
         if (!obtained.getSubcards().isEmpty()) room->obtainCard(ctx.owner, &obtained, objectName());
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
-        ServerPlayer *target) const override
-    {
-        DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (damage.to != target) return false;
-        room->sendCompulsoryTriggerLog(ctx.owner, this);
-        damage.damage += getEffectiveAmount(ctx);
-        ctx.original_data->setValue(damage);
         return false;
     }
 };

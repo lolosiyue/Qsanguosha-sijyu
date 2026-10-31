@@ -5674,13 +5674,26 @@ public:
             : damage.to == player && damage.nature == DamageStruct::Thunder;
         return eligible ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
-    bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override
     {
-        if (event == DamageCaused) ctx.targets = {ctx.original_data->value<DamageStruct>().to};
         return true;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (event == DamageCaused) {
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            if (!ctx.owner || ctx.owner->isDead() || !damage.to || damage.to->isDead()
+                || damage.from != ctx.owner) return false;
+            room->sendCompulsoryTriggerLog(ctx.owner, this);
+            if (damage.nature == DamageStruct::Thunder)
+                ctx.owner->damageRevises(*ctx.original_data, getEffectiveAmount(ctx));
+            else {
+                damage.nature = DamageStruct::Thunder;
+                ctx.original_data->setValue(damage);
+            }
+            mobileJimieProgress(ctx.owner, "first");
+            return false;
+        }
         // Thunder damage inflicted on the holder itself is converted into cards.
         if (event != DamageInflicted) return false;
         ServerPlayer *target = ctx.owner;
@@ -5693,22 +5706,6 @@ public:
         target->drawCards(prevented * getEffectiveAmount(ctx), objectName());
         mobileJimieProgress(ctx.owner, "second");
         return true;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
-                      ServerPlayer *target) const override
-    {
-        DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        // A redirected skill target cannot mutate a different pending damage recipient.
-        if (damage.to != target) return false;
-        room->sendCompulsoryTriggerLog(ctx.owner, this);
-        if (damage.nature == DamageStruct::Thunder)
-            ctx.owner->damageRevises(*ctx.original_data, getEffectiveAmount(ctx));
-        else {
-            damage.nature = DamageStruct::Thunder;
-            ctx.original_data->setValue(damage);
-        }
-        mobileJimieProgress(ctx.owner, "first");
-        return false;
     }
 };
 

@@ -404,7 +404,7 @@ public:
             ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(), SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
             ctx.owner = room->findPlayerByObjectName(ctx.sourceRef.ownerObjectName, true);
             if (!ctx.owner) continue;
-            ctx.targets = {player}; ctx.amount = receipt.value("amount").toInt();
+            ctx.amount = receipt.value("amount").toInt();
             ctx.extra_data = QVariantMap{{"key", it.key()}, {"receipt", receipt}}; ctx.current_event = event; ctx.original_data = &data;
             contexts << ctx;
         }
@@ -422,15 +422,15 @@ public:
         if (receipts.isEmpty()) ctx.invoker->removeTag("cangji");
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (!ctx.invoker || !ctx.invoker->isAlive()) return false;
         QList<int> ids;
         for (const QVariant &value : ctx.extra_data.toMap().value("cards").toList()) {
             const int id = value.toInt();
             if (room->getCardPlace(id) == Player::PlaceTable && Sanguosha->getCard(id)->getTypeId() == Card::TypeEquip) ids << id;
         }
-        // The accepted equipment settlement has its own recipient interception at debut.
-        if (!ids.isEmpty()) room->moveCardsAtomic(CardsMoveStruct(ids, target, Player::PlaceEquip, CardMoveReason()), true);
+        if (!ids.isEmpty()) room->moveCardsAtomic(CardsMoveStruct(ids, ctx.invoker, Player::PlaceEquip, CardMoveReason()), true);
         return false;
     }
 };

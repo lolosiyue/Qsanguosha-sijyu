@@ -575,14 +575,10 @@ public:
         room->broadcastSkillInvoke(objectName(), ctx.owner);
         return true;
     }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (ctx.owner && ctx.invoker && ctx.invoker->isAlive()) skillEffect(ctx.current_event, ctx.invoker->getRoom(), ctx.invoker, ctx, ctx.owner);
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        HFormationGrantClear::grant(room, target, "kanpo", ctx.invoker->objectName(), ctx);
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()) return false;
+        HFormationGrantClear::grant(room, ctx.owner, "kanpo", ctx.invoker->objectName(), ctx);
         return false;
     }
 };

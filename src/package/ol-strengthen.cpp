@@ -3495,10 +3495,11 @@ public:
             || !ctx.invoker->askForSkillInvoke(this, ctx.owner)) return false;
         return true;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const int amount = getEffectiveAmount(ctx);
-        if (amount <= 0) return false;
+        if (amount <= 0 || !ctx.owner || !ctx.owner->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !isSourceAvailable(room, ctx)) return false;
         LogMessage log;
         log.type = "#InvokeOthersSkill";
         log.from = ctx.invoker;
@@ -3508,14 +3509,8 @@ public:
         room->broadcastSkillInvoke(ctx.owner->lordSkillVoice("jiuyuan"));
         room->notifySkillInvoked(ctx.owner, ctx.owner->lordSkillVoice(objectName()));
         room->recover(ctx.owner, RecoverStruct(objectName(), ctx.invoker, amount));
-        if (ctx.invoker->isAlive()) skillEffect(event, room, owner, ctx, ctx.invoker);
+        if (ctx.invoker->isAlive() && amount > 0) ctx.invoker->drawCards(amount, objectName());
         return true;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        const int amount = getEffectiveAmount(ctx);
-        if (amount > 0) target->drawCards(amount, objectName());
-        return false;
     }
 };
 
@@ -8094,27 +8089,24 @@ public:
     }
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == ConfirmDamage) {
-            ctx.targets << ctx.original_data->value<DamageStruct>().to;
-            return true;
-        }
+        if (event == ConfirmDamage) return true;
         const Card *card = room->askForCard(ctx.owner, "..", objectName(), *ctx.original_data, Card::MethodNone);
         if (!card || card->getEffectiveId() < 0 || card->isVirtualCard()
             || !ctx.owner->hasCard(card) || card->hasFlag("using")) return false;
         ctx.extra_data = QVariantMap{{"card", card->getEffectiveId()}};
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        const int amount = getEffectiveAmount(ctx);
-        if (amount <= 0) return false;
-        DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (damage.to == target) { damage.damage += amount; ctx.original_data->setValue(damage); }
-        return false;
-    }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == ConfirmDamage) return false;
+        if (event == ConfirmDamage) {
+            const int amount = getEffectiveAmount(ctx);
+            if (amount <= 0 || !isSourceAvailable(room, ctx)) return false;
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            if (!damage.from || !damage.from->isAlive() || !damage.to || !damage.to->isAlive()) return false;
+            damage.damage += amount;
+            ctx.original_data->setValue(damage);
+            return false;
+        }
         ServerPlayer *target = ctx.owner;
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;

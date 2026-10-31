@@ -470,7 +470,7 @@ public:
             const QVariantMap receipt = entry.toMap();
             const int serial = receipt.value("serial").toInt();
             if (serial <= 0 || !damage.tips.contains("leiji_receipt:" + QString::number(serial))) continue;
-            SkillContext ctx; ctx.skill_name = objectName(); ctx.instanceID = serial; ctx.owner = ctx.initiator = ctx.invoker = player; ctx.targets = {player};
+            SkillContext ctx; ctx.skill_name = objectName(); ctx.instanceID = serial; ctx.owner = ctx.initiator = ctx.invoker = player;
             ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(), SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_id").toInt()));
             ctx.amount = receipt.value("amount").toInt(); ctx.extra_data = receipt; ctx.current_event = event; ctx.original_data = &data; contexts << ctx;
         }
@@ -478,15 +478,15 @@ public:
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
     { return !ctx.activationRef.isValid() && ctx.owner && ctx.owner->isAlive() && ctx.owner->getTag("LeijiReceipts").toList().contains(ctx.extra_data); }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         // Recovery belongs to this accepted damage, even after Leiji's source is retired.
         QVariantList receipts = ctx.owner->getTag("LeijiReceipts").toList();
-        if (!receipts.removeOne(ctx.extra_data)) ctx.targets.clear();
-        ctx.owner->setTag("LeijiReceipts", receipts); return false;
+        if (!receipts.removeOne(ctx.extra_data)) return false;
+        ctx.owner->setTag("LeijiReceipts", receipts);
+        if (ctx.owner->isAlive()) room->recover(ctx.owner, RecoverStruct("leiji", ctx.owner, getEffectiveAmount(ctx)));
+        return false;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    { room->recover(target, RecoverStruct("leiji", target, getEffectiveAmount(ctx))); return false; }
 };
 HuangtianCard::HuangtianCard()
 {

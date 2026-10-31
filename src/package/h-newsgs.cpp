@@ -680,7 +680,6 @@ public:
             || !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(use.from))) return false;
         // "弃置其一张牌▶" is the cost: pay throws this pick; the effect is the owner's own discard.
         ctx.extra_data = QVariantMap{{"card_id", room->askForCardChosen(ctx.owner, use.from, "he", objectName(), false, Card::MethodDiscard)}};
-        ctx.targets = {ctx.owner};
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -699,12 +698,12 @@ public:
         room->throwCard(Sanguosha->getCard(id), reason, from, ctx.owner);
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner || !ctx.owner->isAlive() || target != ctx.owner || !isSourceAvailable(room, ctx)) return false;
+        if (!ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const int count = getEffectiveAmount(ctx); if (count <= 0) return false;
-        // Mandatory discard executes the settlement after owner-target interception.
-        room->askForDiscard(target, "qiao_discard", count, count, false, true, "@qiao-discard");
+        // Mandatory discard executes the settlement on the owner.
+        room->askForDiscard(ctx.owner, "qiao_discard", count, count, false, true, "@qiao-discard");
         return false;
     }
 };
@@ -1687,11 +1686,12 @@ public:
     }
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ctx.targets = {ctx.original_data->value<DamageStruct>().to}; return false; }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
     {
+        if (!ctx.original_data) return false;
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage);
+        const int amount = getEffectiveAmount(ctx);
+        if (!damage.to || !damage.to->isAlive() || amount <= 0) return false;
+        damage.damage += amount; *ctx.original_data = QVariant::fromValue(damage);
         return false;
     }
 };
@@ -2590,13 +2590,15 @@ public:
         return true;
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *actor, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        ctx.extra_data = false;
-        ServerPlayer *victim = ctx.original_data->value<DamageStruct>().to;
-        skillEffect(event, room, actor, ctx, victim);
-        if (!ctx.extra_data.toBool()) return false;
+        if (!ctx.original_data) return false;
+        DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        ServerPlayer *victim = damage.to;
         const int amount = getEffectiveAmount(ctx);
+        if (!victim || !victim->isAlive() || amount <= 0) return false;
+        damage.damage += damage.damage * amount;
+        *ctx.original_data = QVariant::fromValue(damage);
         if (victim->hasShownAllGenerals()) {
             room->loseHp(HpLostStruct(ctx.owner, amount, objectName(), ctx.owner));
             if (ctx.owner->isAlive() && ctx.owner->hasSkillInstance(ctx.activationRef.key.skillName, ctx.activationRef.key.instanceID))
@@ -2604,13 +2606,6 @@ public:
         } else if (victim->hasShownOneGeneral()) {
             room->askForDiscard(ctx.owner, "anyong_discard", 2 * amount, 2 * amount, false, false, "@anyong-discard");
         }
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    {
-        const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
-        DamageStruct damage = ctx.original_data->value<DamageStruct>(); damage.damage += damage.damage * amount;
-        *ctx.original_data = QVariant::fromValue(damage); ctx.extra_data = true;
         return false;
     }
 };
@@ -3655,17 +3650,15 @@ public:
     ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.invoker; }
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     { return room->getTag("HNewsgsApplied").toList().contains(ctx.extra_data); }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *actor, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        // Consume before hooks: cancellation cannot postpone a one-shot consequence.
+        // Consume first: cancellation cannot postpone a one-shot consequence.
         newsgsConsume(room, ctx.extra_data.toMap());
-        skillEffect(event, room, actor, ctx, ctx.original_data->value<DamageStruct>().to);
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
-        DamageStruct damage = ctx.original_data->value<DamageStruct>(); damage.damage += amount;
+        if (!ctx.original_data) return false;
+        DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        const int amount = getEffectiveAmount(ctx);
+        if (!damage.to || !damage.to->isAlive() || amount <= 0) return false;
+        damage.damage += amount;
         *ctx.original_data = QVariant::fromValue(damage);
         return false;
     }

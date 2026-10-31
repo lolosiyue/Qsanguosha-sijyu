@@ -59,12 +59,11 @@ public:
     Wuzang() : TriggerSkillV2("wuzang") { events << EventPhaseStart; frequency = Compulsory; setBaseAmount(5); }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     { return player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Draw ? TriggerList{{player, {objectName()}}} : TriggerList(); }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
-    { return skillEffect(event, room, owner, ctx, owner); }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         room->sendCompulsoryTriggerLog(owner, this);
-        target->drawCards(qMax(target->getHp() / 2, getEffectiveAmount(ctx)), objectName());
+        owner->drawCards(qMax(owner->getHp() / 2, getEffectiveAmount(ctx)), objectName());
         return true; // This executed effect replaces the original draw phase.
     }
 };
@@ -314,9 +313,13 @@ public:
         const QStringList targets = mingwanDamageTargets(room, player, &complete);
         return complete && !targets.isEmpty() ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override { ctx.targets << owner; return true; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
-    { room->sendCompulsoryTriggerLog(owner, this); target->drawCards(getEffectiveAmount(ctx), objectName()); return false; }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
+    {
+        if (!owner || !owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        room->sendCompulsoryTriggerLog(owner, this);
+        owner->drawCards(getEffectiveAmount(ctx), objectName());
+        return false;
+    }
 };
 
 class MingwanZ : public ProhibitSkillV2
@@ -422,9 +425,8 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override { ctx.targets << owner; return true; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override {
-        if (target != ctx.invoker) return false;
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
+        if (!player || !player->isAlive() || !ctx.original_data || !isSourceAvailable(room, ctx)) return false;
         room->broadcastSkillInvoke(objectName());
         room->sendCompulsoryTriggerLog(player, objectName());
         DrawStruct draw = ctx.original_data->value<DrawStruct>();
@@ -832,16 +834,15 @@ public:
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
-    { ctx.targets << owner; return true; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
         const SkillInstance *helper = owner->findSkillInstance(ctx.sourceRef.key.skillName, ctx.sourceRef.key.instanceID);
         if (!helper) return false;
         const SkillInstanceRef parent = helper->parentRef;
         ServerPlayer *source = room->findPlayerByObjectName(parent.ownerObjectName, true);
         if (source && parent.key.skillName == "juyuan" && source->hasSkillInstance("juyuan", parent.key.instanceID))
-            source->setSkillInstanceCorrectStateValue("juyuan", parent.key.instanceID, "hp", target->getHp());
+            source->setSkillInstanceCorrectStateValue("juyuan", parent.key.instanceID, "hp", owner->getHp());
         return false;
     }
 };

@@ -437,14 +437,10 @@ public:
 
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        ctx.targets = {ctx.original_data->value<DamageStruct>().to};
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
+        if (!ctx.original_data || !ctx.owner || !ctx.owner->isAlive()) return false;
         QVariant &data = *ctx.original_data;
         DamageStruct damage = data.value<DamageStruct>();
-        if (damage.to != target) return false;
+        if (damage.to != ctx.owner) return false;
         damage.damage -= getEffectiveAmount(ctx);
         data = QVariant::fromValue(damage);
         if (damage.damage <= 0)
