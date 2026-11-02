@@ -642,7 +642,7 @@ public:
                 ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(),
                     SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
                 ctx.amount = receipt.value("amount").toInt() * (damage.from == damage.to ? 2 : 1);
-                ctx.extra_data = receipt; ctx.targets = {damage.to}; ctx.original_data = &data; ctx.current_event = event;
+                ctx.extra_data = receipt; ctx.original_data = &data; ctx.current_event = event;
                 contexts << ctx;
             }
         }
@@ -650,8 +650,14 @@ public:
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
     { return ctx.owner && ctx.owner->getTag("MTFuyiReceipts").toList().contains(ctx.extra_data); }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    { ctx.owner->damageRevises(*ctx.original_data, getEffectiveAmount(ctx)); return false; }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!isSourceAvailable(room, ctx)) return false;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.to || !damage.to->isAlive()) return false;
+        ctx.owner->damageRevises(*ctx.original_data, getEffectiveAmount(ctx));
+        return false;
+    }
 };
 
 class MTFuyiTurn : public TriggerSkillV2
@@ -687,7 +693,7 @@ public:
                 ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(),
                     SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
                 ctx.amount = receipt.value("amount", 1).toInt();
-                ctx.extra_data = receipt; ctx.targets = {holder}; ctx.original_data = &data; ctx.current_event = event;
+                ctx.extra_data = receipt; ctx.original_data = &data; ctx.current_event = event;
                 contexts << ctx;
             }
         }
@@ -695,18 +701,15 @@ public:
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
     { return ctx.owner && ctx.owner->getTag("MTFuyiReceipts").toList().contains(ctx.extra_data); }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (!isSourceAvailable(room, ctx) || !ctx.owner->isAlive()) return false;
         QVariantList receipts = ctx.owner->getTag("MTFuyiReceipts").toList();
         const int index = receipts.indexOf(ctx.extra_data);
         if (index < 0) return false;
         QVariantMap receipt = receipts.at(index).toMap(); receipt.insert("pending_turn", false); receipts[index] = receipt;
         ctx.owner->setTag("MTFuyiReceipts", receipts);
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        room->scheduleExtraTurn(target, ctx.sourceRef, {}, getEffectiveAmount(ctx));
+        room->scheduleExtraTurn(ctx.owner, ctx.sourceRef, {}, getEffectiveAmount(ctx));
         return false;
     }
 };
@@ -4275,15 +4278,16 @@ public:
         ServerPlayer *player = ctx.invoker;
         if (!player || player->isDead()) return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        ctx.targets = {damage.to};
         return p->askForSkillInvoke(this, QString("damage:%1:%2:%3").arg(player->objectName())
             .arg(damage.to->objectName()).arg(damage.damage + 1));
     }
 
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *p, SkillContext &ctx, ServerPlayer *) const override
+    bool effect(TriggerEvent, Room *, ServerPlayer *p, SkillContext &ctx) const override
     {
-        p->peiyin(this);
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!p || !p->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
+            || !damage.to || !damage.to->isAlive()) return false;
+        p->peiyin(this);
         damage.damage += getEffectiveAmount(ctx);
         *ctx.original_data = QVariant::fromValue(damage);
         return false;
@@ -5491,7 +5495,6 @@ public:
         QString prompt;
         if (ctx.choice == "damage") {
             const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-            ctx.targets = {damage.to};
             prompt = QString("damage:%1:%2").arg(damage.to->objectName())
                 .arg(qMax(history.value("damage").toInt(), damage.damage) + amount);
         } else {
@@ -5515,12 +5518,18 @@ public:
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
-        if (ctx.choice == "damage") return false;
+        if (!owner || !owner->isAlive()) return false;
         const QVariantMap history = peaks(room, owner);
         if (history.isEmpty()) return false;
         const int amount = getEffectiveAmount(ctx);
         owner->peiyin(this);
-        if (ctx.choice == "hand") {
+        if (ctx.choice == "damage") {
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            if (!damage.to || !damage.to->isAlive()) return false;
+            // This skill intentionally includes the pending damage value in its peak, independently of committed damage history.
+            damage.damage = qMax(history.value("damage").toInt(), damage.damage) + amount;
+            *ctx.original_data = QVariant::fromValue(damage);
+        } else if (ctx.choice == "hand") {
             owner->drawCards(qMax(0, history.value("hand").toInt() + amount - owner->getHandcardNum()), objectName());
         } else {
             const int maximum = history.value("maxhp").toInt() + amount;
@@ -5529,18 +5538,6 @@ public:
             if (owner->isAlive() && owner->getHp() < hp)
                 room->recover(owner, RecoverStruct(objectName(), owner, hp - owner->getHp()));
         }
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *) const override
-    {
-        const QVariantMap history = peaks(room, owner);
-        if (history.isEmpty()) return false;
-        const int amount = getEffectiveAmount(ctx);
-        owner->peiyin(this);
-        DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        // This skill intentionally includes the pending damage value in its peak, independently of committed damage history.
-        damage.damage = qMax(history.value("damage").toInt(), damage.damage) + amount;
-        *ctx.original_data = QVariant::fromValue(damage);
         return false;
     }
 };

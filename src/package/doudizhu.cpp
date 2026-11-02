@@ -331,13 +331,9 @@ public:
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive()) return false;
         room->sendCompulsoryTriggerLog(owner, objectName(), true, true);
-        ctx.targets << owner;
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        target->drawCards(getEffectiveAmount(ctx), objectName());
+        owner->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
 };
@@ -1585,12 +1581,8 @@ public:
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive()) return false;
         room->sendCompulsoryTriggerLog(owner, this);
-        ctx.targets << owner;
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
         QList<int> chosen;
         for (int id : Sanguosha->getRandomCards()) {
             if (chosen.size() >= getEffectiveAmount(ctx)) break;
@@ -1600,7 +1592,7 @@ public:
         }
         if (!chosen.isEmpty()) {
             DummyCard cards(chosen);
-            room->obtainCard(target, &cards, objectName());
+            room->obtainCard(owner, &cards, objectName());
         }
         return false;
     }
@@ -2746,7 +2738,6 @@ public:
             room->takeAG(owner, id, false, {owner});
         }
         ctx.extra_data = selected;
-        ctx.targets << owner;
         return !selected.isEmpty();
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -2761,8 +2752,9 @@ public:
         ctx.original_data->setValue(draw);
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive()) return false;
         QList<int> obtained;
         for (const QVariant &value : ctx.extra_data.toList()) {
             const int selected = value.toInt();
@@ -2774,7 +2766,7 @@ public:
                 if (!obtained.contains(id) && Sanguosha->getCard(id)->objectName() == name) { obtained << id; ++count; }
             }
         }
-        if (!obtained.isEmpty()) { DummyCard cards(obtained); room->obtainCard(target, &cards, objectName()); }
+        if (!obtained.isEmpty()) { DummyCard cards(obtained); room->obtainCard(owner, &cards, objectName()); }
         return false;
     }
 };
@@ -3356,11 +3348,11 @@ public:
             && move.reason.m_skillName != "InitialHandCards" && move.reason.m_reason == CardMoveReason::S_REASON_DRAW
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override { ctx.targets << owner; return true; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
+        if (!owner || !owner->isAlive()) return false;
         room->sendCompulsoryTriggerLog(owner, this);
-        room->damage(DamageStruct(objectName(), nullptr, target, getEffectiveAmount(ctx)));
+        room->damage(DamageStruct(objectName(), nullptr, owner, getEffectiveAmount(ctx)));
         return false;
     }
 };

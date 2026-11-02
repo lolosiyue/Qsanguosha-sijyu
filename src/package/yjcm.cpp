@@ -226,19 +226,12 @@ public:
             ? TriggerList{{owner, {objectName()}}} : TriggerList();
     }
 
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner || !ctx.original_data) return false;
-        SkillContext prevent = ctx;
-        prevent.extra_data = false;
-        skillEffect(event, room, player, prevent, ctx.original_data->value<DamageStruct>().to);
-        return prevent.extra_data.toBool();
-    }
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        if (!target || !target->isAlive() || !ctx.owner || !ctx.original_data || getEffectiveAmount(ctx) <= 0) return false;
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.original_data
+            || !isSourceAvailable(room, ctx) || getEffectiveAmount(ctx) <= 0) return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (!damage.card) return false;
+        if (!damage.card || !damage.to || !damage.to->isAlive()) return false;
         // The causing and receiving branches preserve their own source identity.
         LogMessage log;
         log.type = event == DamageInflicted ? "#WuyanGood" : "#WuyanBad";
@@ -248,8 +241,7 @@ public:
         room->sendLog(log);
         room->broadcastSkillInvoke(objectName(), event == DamageInflicted ? 2 : 1);
         room->notifySkillInvoked(ctx.owner, objectName());
-        ctx.extra_data = true;
-        return false;
+        return true;
     }
 };
 
@@ -964,24 +956,20 @@ public:
         return ctx.owner && ctx.owner->isAlive()
             && ctx.owner->getTag("ZhichiEffects").toList().contains(ctx.extra_data);
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        SkillContext prevent = ctx;
-        prevent.extra_data = false;
-        skillEffect(event, room, player, prevent, ctx.original_data->value<CardEffectStruct>().to);
-        return prevent.extra_data.toBool();
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        if (!target || !target->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
+        if (!ctx.original_data || !isSourceAvailable(room, ctx) || getEffectiveAmount(ctx) <= 0) return false;
+        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        ServerPlayer *target = effect.to;
+        if (!target || !target->isAlive() || target != ctx.owner || target != player || !effect.card
+            || (!effect.card->isKindOf("Slash") && !effect.card->isNDTrick())) return false;
         target->peiyin("zhichi", target->isJieGeneral() ? 4 : 2);
         LogMessage log;
         log.type = "#ZhichiAvoid";
         log.from = target;
         log.arg = "zhichi";
         room->sendLog(log);
-        ctx.extra_data = true;
-        return false;
+        return true;
     }
 };
 

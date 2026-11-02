@@ -277,13 +277,10 @@ public:
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        ctx.targets = {ctx.original_data->value<DamageStruct>().to};
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
+        if (!ctx.original_data || !ctx.owner || !ctx.owner->isAlive()) return false;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
         // Whole-damage prevention is boolean; the paid material remains in the letter pile.
-        return ctx.original_data->value<DamageStruct>().to == target;
+        return damage.to && damage.to->isAlive() && getEffectiveAmount(ctx) > 0;
     }
 };
 class HLiangfan : public TriggerSkillV2
@@ -944,11 +941,19 @@ public:
         return ctx.extra_data.isValid() && ctx.owner->getPile("rice").contains(id)
             && !Sanguosha->getCard(id)->hasFlag("using");
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
         if (event == AskForRetrial) {
-            const JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
-            return judge && skillEffect(event, room, player, ctx, judge->who);
+            if (!ctx.original_data) return false;
+            const int id = ctx.extra_data.toInt();
+            JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+            if (!ctx.extra_data.isValid() || !judge || !judge->who || !judge->who->isAlive()
+                || !judge->card || !ctx.owner->getPile("rice").contains(id)
+                || Sanguosha->getCard(id)->hasFlag("using")) return false;
+            room->broadcastSkillInvoke(objectName(), ctx.owner);
+            room->retrial(Sanguosha->getCard(id), ctx.owner, judge, objectName(), true);
+            return false;
         }
         ServerPlayer *target = ctx.owner;
         room->broadcastSkillInvoke(objectName(), ctx.owner);
@@ -961,15 +966,6 @@ public:
             if (room->getCardOwner(id) == target
                 && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)) valid << id;
         if (!valid.isEmpty()) target->addToPile("rice", valid);
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    {
-        room->broadcastSkillInvoke(objectName(), ctx.owner);
-        const int id = ctx.extra_data.toInt();
-        JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
-        if (ctx.extra_data.isValid() && judge && ctx.owner->getPile("rice").contains(id))
-            room->retrial(Sanguosha->getCard(id), ctx.owner, judge, objectName(), true);
         return false;
     }
 };
@@ -2971,24 +2967,19 @@ public:
     { return ctx.owner->askForSkillInvoke(this, *ctx.original_data); }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { if (ctx.owner->isKongcheng()) return false; room->showAllCards(ctx.owner); return true; }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (!ctx.owner || !ctx.owner->isAlive() || getEffectiveAmount(ctx) <= 0) return false;
         QList<ServerPlayer *> candidates;
         for (ServerPlayer *other : room->getOtherPlayers(ctx.owner))
             if (other->getHandcardNum() <= ctx.owner->getHandcardNum()) candidates << other;
         if (candidates.isEmpty()) return false;
         ServerPlayer *other = room->askForPlayerChosen(ctx.owner, candidates, "zhaoxin-exchange", "@zhaoxin-exchange");
         if (!other) return false;
-        SkillContext second = ctx;
-        second.extra_data = false;
-        skillEffect(event, room, player, second, other);
-        // Exchange is atomic and requires the other affected player to accept its own hook.
-        if (getEffectiveAmount(ctx) > 0 && second.extra_data.toBool() && ctx.owner->isAlive() && other->isAlive()
+        if (getEffectiveAmount(ctx) > 0 && ctx.owner->isAlive() && other->isAlive()
             && other->getHandcardNum() <= ctx.owner->getHandcardNum()) room->swapCards(ctx.owner, other, "h", objectName(), false);
         return false;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    { ctx.extra_data = getEffectiveAmount(ctx) > 0; return false; }
 };
 
 class HShicai : public TriggerSkillV2
@@ -4967,14 +4958,18 @@ public:
 
         if (invoke) {
             room->broadcastSkillInvoke(objectName(), player);
-            ctx.targets = {data.value<DamageStruct>().to};
             return true;
         }
         return false;
     }
 
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
-    { return getEffectiveAmount(ctx) > 0; }
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.original_data || !ctx.owner || !ctx.owner->isAlive() || ctx.owner->getKingdom() != "wei") return false;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        return damage.to && damage.to->isAlive() && damage.card
+            && damage.card->getTypeId() == Card::TypeTrick && getEffectiveAmount(ctx) > 0;
+    }
 };
 
 HJianyanCard::HJianyanCard()

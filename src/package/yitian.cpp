@@ -1027,15 +1027,16 @@ public:
             ctx.is_forced = true; // Mandatory continuation of an already accepted effect.
             ctx.original_data = &data;
             ctx.extra_data = receipt;
-            ctx.targets = {player};
             out << ctx;
         }
         return true;
     }
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     { return room->getTag("WulingEffects").toList().contains(ctx.extra_data); }
-    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        ServerPlayer *target = ctx.invoker;
+        if (!target || !target->isAlive() || !ctx.original_data) return false;
         const QString effect = ctx.extra_data.toMap().value("effect").toString();
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
@@ -2245,16 +2246,11 @@ public:
         }
         return TriggerList{{player, QStringList{objectName()}}};
     }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (ctx.original_data) ctx.targets = {ctx.original_data->value<DamageStruct>().to};
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.original_data || !ctx.owner) return false;
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (damage.to != target) return false;
+        if (!damage.to || !damage.to->isAlive()) return false;
         const int bonus = qMin(3, ctx.owner->getMark("@struggle")) * getEffectiveAmount(ctx);
         if (bonus > 0) {
             room->sendCompulsoryTriggerLog(ctx.owner, this);
@@ -2768,13 +2764,13 @@ public:
 		return ctx.owner && ctx.original_data && ctx.owner->askForSkillInvoke(this, *ctx.original_data);
 	}
 
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-    { ctx.targets = {ctx.original_data->value<DamageStruct>().to}; return false; }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!player || !ctx.original_data)
 			return false;
 		DamageStruct damage = ctx.original_data->value<DamageStruct>();
+		if (!damage.to || !damage.to->isAlive())
+			return false;
 		LogMessage log;
 		log.type = "#YitianSolace";
 		log.from = player;

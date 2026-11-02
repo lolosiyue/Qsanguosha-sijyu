@@ -622,12 +622,11 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.targets << owner;
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
-        if (target != owner || !owner->hasSkillInstance(objectName(), ctx.instanceID)) return false;
+        if (!owner || !owner->isAlive() || !owner->hasSkillInstance(objectName(), ctx.instanceID)) return false;
         ServerPlayer *previous = room->getAuraPlayer();
         if (previous && previous->getHandcardNum() > owner->getHandcardNum()) return false;
         owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "active", true);
@@ -2074,11 +2073,11 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.targets << owner; return true;
+        return true;
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
-        if (target != owner) return false;
+        if (!owner || !owner->isAlive()) return false;
         const QVariant previous = owner->getTag("MengxianJudge");
         auto restore = qScopeGuard([&] { if (previous.isValid()) owner->setTag("MengxianJudge", previous); else owner->removeTag("MengxianJudge"); });
         // A pending judgement keeps the original source even if retrial removes its grant.

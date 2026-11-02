@@ -1485,15 +1485,13 @@ public:
         ctx.choice = used->subcardsLength() < 2
             ? room->askForChoice(ctx.owner, objectName(), m_skills.join("+"), QVariant(), QString(), ":" + objectName())
             : m_skills.join("+");
-        ctx.targets = QList<ServerPlayer *>{ctx.owner};
         return true;
     }
 
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *player = ctx.owner;
-        if (!player || !player->isAlive() || !ctx.invoker || !ctx.invoker->isAlive()
-            || target != player || !isSourceAvailable(room, ctx))
+        if (!player || !player->isAlive() || !ctx.invoker || !ctx.invoker->isAlive() || !isSourceAvailable(room, ctx))
             return false;
         foreach (const QString &skill, ctx.choice.split("+"))
             if (m_skills.contains(skill))

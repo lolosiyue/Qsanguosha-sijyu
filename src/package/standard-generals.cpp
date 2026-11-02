@@ -1290,13 +1290,10 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override { return hasStandardReceipt(ctx, receiptName); }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
-        return skillEffect(event, room, player, ctx, ctx.original_data->value<DamageStruct>().to);
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.to || !damage.to->isAlive()) return false;
         LogMessage log;
         log.type = "#LuoyiBuff";
         log.from = ctx.owner;

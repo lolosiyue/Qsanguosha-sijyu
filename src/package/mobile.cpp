@@ -9241,21 +9241,22 @@ public:
 			ctx.original_data = &data;
 			ctx.current_event = event;
 			ctx.extra_data = receipt;
-			ctx.targets = {damage.to};
 			contexts << ctx;
 		}
 		return true;
 	}
-	ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.targets.value(0); }
+	ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.preferredTarget; }
 	bool isSourceAvailable(Room *, const SkillContext &ctx) const override
 	{
 		const Card *card = ctx.original_data ? ctx.original_data->value<DamageStruct>().card : nullptr;
 		return ctx.owner && card && card->getTag("mobile_newfengpo_receipts").toList().contains(ctx.extra_data);
 	}
-	bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
+		if (!isSourceAvailable(room, ctx)) return false;
 		// A receipt belongs to one use event, so reuse of a physical card cannot inherit the bonus.
 		DamageStruct damage = ctx.original_data->value<DamageStruct>();
+		if (!damage.to || !damage.to->isAlive()) return false;
 		damage.damage += getEffectiveAmount(ctx);
 		ctx.original_data->setValue(damage);
 		return false;
@@ -11828,7 +11829,6 @@ public:
 		ServerPlayer *target = ctx.original_data->value<DamageStruct>().to;
 		if (!target || target->isDead() || !ctx.owner->canDiscard(ctx.owner, "e")
 			|| !ctx.owner->askForSkillInvoke(this, QVariant::fromValue(target))) return false;
-		ctx.targets = {target};
 		return true;
 	}
 	bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -11838,8 +11838,11 @@ public:
 		ctx.owner->throwAllEquips(objectName());
 		return true;
 	}
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &, ServerPlayer *) const override
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
+		if (!ctx.owner || !ctx.owner->isAlive() || !isSourceAvailable(room, ctx) || !ctx.original_data) return false;
+		const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+		if (!damage.to || !damage.to->isAlive()) return false;
 		room->broadcastSkillInvoke(objectName());
 		return true;
 	}
