@@ -271,6 +271,18 @@ bool containsBounds(const QRectF &outer, const QRectF &inner)
         && inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
 }
 
+// The same fold acceptance computeResponsive applies; a usable fold keeps the
+// Book/Tabletop profiles ahead of the TV gate.
+bool foldUsable(const ResponsiveInput &input)
+{
+    return (input.fold.separating
+            || (input.fold.occluding && input.fold.bounds.width() > 0.0
+                && input.fold.bounds.height() > 0.0))
+        && input.fold.posture != FoldPosture::None
+        && input.fold.bounds.width() >= 0.0 && input.fold.bounds.height() >= 0.0
+        && containsBounds(input.stableRect, input.fold.bounds);
+}
+
 QRectF inset(const QRectF &rect, double amount)
 {
     const double xInset = qMin(amount, rect.width() / 2.0);
@@ -284,6 +296,12 @@ Profile chooseProfile(const ResponsiveInput &input, bool foldValid)
         return input.fold.posture == FoldPosture::Book ? Profile::Book : Profile::Tabletop;
 
     const QRectF &basis = input.stableRect;
+    // Ten-foot sessions serve a couch: BP on plus a landscape viewport of at
+    // least 1280x720 selects the TV profile; smaller, portrait or folded
+    // windows keep the existing responsive hierarchy untouched.
+    if (selectsTenFoot(input))
+        return Profile::TenFoot;
+
     const bool wasExpanded = input.hasPreviousProfile
         && input.previousProfile == Profile::ExpandedSplit;
     const double expandedWidth = wasExpanded ? 976.0 : 1000.0;
@@ -451,6 +469,17 @@ bool placeHorseshoe(ResponsiveResult &result, int photoCount, const QSize &photo
 }
 }
 
+bool selectsTenFoot(const ResponsiveInput &input)
+{
+    // Single source of truth for the TV gate, fold precedence included so
+    // fold devices never inherit TV-scoped sizing. Large rooms return from
+    // computeResponsive before chooseProfile is reached; the predicate must
+    // mirror that or large-room inputs would inherit TV sizing.
+    return input.bigPicture && !input.largeRoom && !foldUsable(input)
+        && input.stableRect.width() >= input.stableRect.height()
+        && input.stableRect.width() >= 1280.0 && input.stableRect.height() >= 720.0;
+}
+
 ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame)
 {
     ResponsiveResult result;
@@ -592,7 +621,9 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
     result.profile = chooseProfile(input, foldValid);
     result.valid = true;
     const double gap = input.gap;
-    const double touch = qMax(48.0, input.minimumTouchTarget);
+    // Ten-foot confirm/cancel must stay hittable from a couch, not a desk.
+    const double touch = result.profile == Profile::TenFoot
+        ? qMax(64.0, input.minimumTouchTarget) : qMax(48.0, input.minimumTouchTarget);
     QRectF available = input.availableRect;
     if (hasBoundedFoldFallback)
         available = available.intersected(foldFallbackPane);
@@ -693,9 +724,17 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
     result.seatPresentation = SeatPresentation::Ring;
     const QRectF seatArea = result.tableRect;
     const bool portraitSeats = input.stableRect.height() > input.stableRect.width();
-    const bool placed = portraitSeats && input.photoCount > 0
-        ? placeHorseshoe(result, input.photoCount, input.smallPhotoSize, gap)
-        : placeRing(result, input.photoCount, input.smallPhotoSize, gap);
+    bool placed = false;
+    if (result.profile == Profile::TenFoot) {
+        // The TV profile keeps every seat in one readable top row; the ribbon's
+        // paging (firstVisibleSeat) preserves access to overflow opponents.
+        placed = placeRibbon(result, input.photoCount, input.smallPhotoSize, gap,
+                             seatArea, input.firstVisibleSeat);
+    } else if (portraitSeats && input.photoCount > 0) {
+        placed = placeHorseshoe(result, input.photoCount, input.smallPhotoSize, gap);
+    } else {
+        placed = placeRing(result, input.photoCount, input.smallPhotoSize, gap);
+    }
     if (!placed) {
         result.photos.clear();
         result.tableRect = seatArea;

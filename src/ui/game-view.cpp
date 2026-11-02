@@ -560,7 +560,15 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         largeRoom = roomScene->largeRoomRequired();
 #endif
         input.largeRoom = largeRoom;
-        const bool responsiveRoom = largeRoom || (m_responsiveEnabled
+        // Big-picture sessions route the TV through the responsive pipeline so
+        // the TenFoot profile can take over; the shared predicate keeps this
+        // gate identical to the engine's, and the opt-in responsive contract
+        // below is unchanged.
+        input.bigPicture = qsanBigPictureModeActive();
+        const bool tenFoot = !largeRoom
+            && RoomLayoutEngine::selectsTenFoot(input);
+        const bool responsiveRoom = largeRoom || tenFoot
+            || (m_responsiveEnabled
             && (input.stableRect.height() > input.stableRect.width()
                 || input.fold.posture != RoomLayoutEngine::FoldPosture::None
                 || input.fold.separating || input.fold.occluding));

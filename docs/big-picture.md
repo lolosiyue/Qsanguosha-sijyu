@@ -49,6 +49,14 @@ When the mode is on:
   an input that first reveals missing focus does not immediately select it.
   BP target Left/Right traversal follows visible seat geometry; Up/Down and
   shoulders retain the controller-only group/command navigation.
+- On landscape viewports of at least 1280x720 the room switches to the
+  `TenFoot` layout profile: opponents sit in one paged row across the top of
+  the table, seat cards drop the decorative frame art (portrait, names, HP,
+  hand count, role, equipment, judgement and marks remain), the controller
+  legend renders at the top of the table band clear of the hand row, the
+  pile and seat targets, and confirm/cancel keep >= 64 px touch targets.
+  Smaller or portrait windows keep the existing responsive profiles or the
+  legacy desktop layout.
 - Gamepad use hides the pointer in BP; deliberate mouse motion, a mouse button
   or physical keyboard input restores it. Synthetic keys do not switch modes.
 - Closing a BP session preserves the saved desktop window size, position and
@@ -147,9 +155,28 @@ by the spatial filter.
 
 - Custom QML remains subject to the existing `controller_ui` contract in
   native controller sessions; arbitrary QML is not automatically navigable.
-- The table's `TenFoot` layout profile and seat-card simplification remain
-  future work; this integration adds the ring and legend to the current layout.
-  Details and game menus retain the existing controller-only implementations.
+- The table's `TenFoot` layout profile now applies during BP sessions on
+  landscape viewports of at least 1280x720 (the shared `selectsTenFoot`
+  predicate; large rooms and usable folds take their existing paths). At a
+  logical ~1280x706 (720p panel minus menu bar) the gate does not trigger and
+  the session falls back to the pre-existing BP desktop layout — observed,
+  not a TenFoot render. A 1920x1080 BP screenshot shows the TenFoot seat row,
+  hand and dashboard. The black lower backdrop was traced to TenFoot using
+  table-band height for later background updates and corrected to main-area
+  height; full-coverage recovery is confirmed on captures (2026-10-28).
+- Known defect (blocking TenFoot acceptance): when the BP viewport equals the
+  monitor's native logical size (observed 2750x1129 at DPR 1.25) the
+  GL-rendered region stays at the transient safe-area-margined size of the
+  first fit (~2515x892), so the bottom zone — dashboard, hand row and prompts
+  — is never displayed for the whole session while gameplay continues; the
+  missing area is filled by the view background brush. Offscreen scene
+  rendering shows every item intact, and BP-off legacy at the same window
+  size is unaffected, so this is specific to the BP responsive entry path.
+  The TV legend (gated on an active request via
+  `DesktopGamePresentation::updateFocusLayer`) and couch-distance seat
+  readability cannot be accepted until this is fixed; physical gamepad
+  hardware was not exercised. Evidence and open items live in
+  memory/work/zcode-tenfoot-20261027/ and memory/work/zcode-tenfoot-20261028/.
 - `PageUp`/`PageDown` group semantics are stubs (focus cycling) until
   per-request zones exist.
 - The pre-`QApplication` screen probe for the 4K rule reads `xdpyinfo`

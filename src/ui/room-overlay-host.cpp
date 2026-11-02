@@ -142,7 +142,8 @@ bool RoomOverlayHost::logShown() const { return m_logVisible || m_layout.logAlwa
 bool RoomOverlayHost::logToggleEnabled() const
 {
     return !m_layout.logAlwaysVisible
-        && (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom)
+        && (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom
+            || m_layout.profile == RoomLayoutEngine::Profile::TenFoot)
         && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape;
 }
 
@@ -271,7 +272,8 @@ void RoomOverlayHost::updateGeometry()
     QRect pane = widgetRect(m_layout.mainRect);
     if (pane.isEmpty()) pane = QRect(0, 0, width(), height());
     const QRect header = widgetRect(m_layout.headerRect);
-    const bool active = (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom) && m_layout.valid
+    const bool active = (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom
+                         || m_layout.profile == RoomLayoutEngine::Profile::TenFoot) && m_layout.valid
         && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape;
     const QRect inspectorRect = widgetRect(m_layout.inspectorRect);
     const bool permanentSplit = !inspectorRect.isEmpty()

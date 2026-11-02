@@ -1649,6 +1649,7 @@ void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &inp
         prompt_box->shift();
         for (Photo *photo : photos) {
             photo->setOpacity(1.0);
+            photo->setSeatTrim(false);
             setPortraitAnimationVisible(photo, true);
         }
         m_responsiveLayout = RoomLayoutEngine::ResponsiveResult();
@@ -1664,7 +1665,11 @@ void RoomScene::applyResponsiveLayout()
     input.selfSeat = Self ? Self->getSeat() : 0;
     input.promptHeight = prompt_box->boundingRect().height() + 16.0;
     const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
-    input.smallPhotoSize = legacy.smallPhotoSize * scale;
+    // Only the TenFoot TV profile enlarges the photo footprint; every other
+    // BP responsive profile (fold, portrait, small windows) keeps the
+    // desktop-sized seats it had before big-picture routing existed.
+    const qreal photoScale = RoomLayoutEngine::selectsTenFoot(input) ? qMax(scale, 1.5) : scale;
+    input.smallPhotoSize = legacy.smallPhotoSize * photoScale;
     const bool portrait = input.stableRect.height() > input.stableRect.width();
     const bool nativeChrome = input.largeRoom
         && !portrait;
@@ -1739,7 +1744,7 @@ void RoomScene::applyResponsiveLayout()
     table.tableCenter = layout.tableCenter;
     table.photoBaseSize = legacy.smallPhotoSize;
     table.photoScale = nativeChrome
-        ? qreal(input.smallPhotoSize.width()) / legacy.smallPhotoSize.width() : scale;
+        ? qreal(input.smallPhotoSize.width()) / legacy.smallPhotoSize.width() : photoScale;
     table.floatingArea = QRect(QPoint(0, 0), layout.tableRect.size().toSize());
     table.discardPileSize = QSize(qMax(1, int(layout.tableRect.width() / 2)),
                                   qMax(1, int(layout.tableRect.height() / 3)));
@@ -1751,6 +1756,9 @@ void RoomScene::applyResponsiveLayout()
         photos[i]->setScale(1.0);
         bool visible = i < layout.photos.size() && layout.photos[i].visible;
         // Canonical Photos own drafts and eligibility; the overview is a separate value projection.
+        // Ten-foot sessions trim decorative frame art; public seat state stays.
+        photos[i]->setSeatTrim(layout.profile == RoomLayoutEngine::Profile::TenFoot
+                               && input.bigPicture);
 
         if (input.largeRoom) visible = false;
         table.photos.append(place);
@@ -1784,7 +1792,10 @@ void RoomScene::applyResponsiveLayout()
         return;
     }
     m_tablew = qMax(1, int(layout.mainRect.width()));
-    m_tableh = qMax(1, int(layout.tableRect.height()));
+    // Ten-foot keeps the desktop contract that the backdrop covers the whole
+    // usable scene; other responsive profiles keep the table-band sizing.
+    m_tableh = qMax(1, layout.profile == RoomLayoutEngine::Profile::TenFoot
+        ? int(layout.mainRect.height()) : int(layout.tableRect.height()));
     if (m_tableBgPixmapOrig.width() <= 1 || m_tableBgPixmapOrig.height() <= 1)
         m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
     m_tableBg->setPixmap(scaledPixmapForDevice(m_tableBgPixmapOrig, layout.mainRect.size().toSize(), m_pixmapDeviceScale));

@@ -586,8 +586,21 @@ void DesktopGamePresentation::updateFocusLayer()
         m_legend = legend;
     }
     m_legend->setEntries(entries);
-    const QRectF scene = m_scene->sceneRect();
     const QRectF size = m_legend->boundingRect();
+    const auto &layout = m_scene->responsiveLayout();
+    if (layout.valid && layout.profile == RoomLayoutEngine::Profile::TenFoot
+        && layout.tableRect.height() >= size.height() + 8.0) {
+        // Ten-foot rooms host the legend at the top of the table band, under
+        // the seat row: player targets and the pile centre both stay clear.
+        const qreal scale = qMin(qreal(1), qMax(qreal(0.1),
+            (layout.tableRect.width() - 16.0) / qMax(qreal(1), size.width())));
+        m_legend->setScale(scale);
+        m_legend->setPos(layout.tableRect.center().x() - size.width() * scale / 2.0,
+                         layout.tableRect.top() + 4.0);
+        m_legend->show();
+        return;
+    }
+    const QRectF scene = m_scene->sceneRect();
     qreal bottom = scene.bottom() - 8;
     if (m_scene->dashboard && m_scene->dashboard->isVisible())
         bottom = qMin(bottom, m_scene->dashboard->sceneBoundingRect().top() - 24);

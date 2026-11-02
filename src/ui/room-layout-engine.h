@@ -34,7 +34,8 @@ enum class Profile
     ExpandedSplit,
     Book,
     Tabletop,
-    LargeRoom
+    LargeRoom,
+    TenFoot
 };
 
 enum class Handedness
@@ -77,6 +78,9 @@ struct ResponsiveInput
     Handedness handedness = Handedness::None;
     int photoCount = 0; // Other players; placement order is the input index order.
     bool largeRoom = false; // Desktop only; never indexes legacy seat tables.
+    // Big-picture (TV) session: landscape viewports >= 1280x720 select TenFoot,
+    // smaller or portrait windows keep the existing responsive hierarchy.
+    bool bigPicture = false;
     int selfSeat = 0;
     QSize smallPhotoSize;
     QSizeF inspectorMinimumSize = QSizeF(320.0, 0.0);
@@ -232,6 +236,11 @@ struct Result
 Result compute(const Input &input);
 ResponsiveResult computeResponsive(const ResponsiveInput &input);
 ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame);
+// True when computeResponsive will pick the TenFoot TV profile for this input
+// (BP on, no usable fold, landscape viewport >= 1280x720). Callers that must
+// pre-size inputs before the profile is computed (the photo footprint) share
+// this gate so profile-scoped behaviour stays in one place.
+bool selectsTenFoot(const ResponsiveInput &input);
 }
 
 #endif

@@ -230,6 +230,8 @@ void Photo::repaintAll(bool all)
 	hideSkillName();
 	PlayerCardContainer::repaintAll(all);
 	_adjustComponentZValues();
+	// Skin reloads repaint and re-show the native frame; re-assert the trim.
+	_applySeatTrim();
 }
 
 void Photo::_adjustComponentZValues(bool killed)
@@ -465,9 +467,32 @@ void Photo::setTargetTip(const QString &tip)
     m_targetTipItem->setVisible(!tip.isEmpty());
 }
 
+void Photo::setSeatTrim(bool trimmed)
+{
+    if (m_seatTrimmed == trimmed) return;
+    m_seatTrimmed = trimmed;
+    _applySeatTrim();
+}
+
+void Photo::_applySeatTrim()
+{
+    // The frame art is the only purely decorative photo layer; kingdom colour
+    // stays readable through the hand-card backdrop and role combo, so every
+    // public state (portrait, names, HP, hand count, equips, judgement) remains.
+    if (_m_mainFrame)
+        _m_mainFrame->setVisible(!m_seatTrimmed);
+}
+
 void Photo::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
     painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+    if (m_seatTrimmed) {
+        // Translucent backdrop replaces the trimmed frame art so seat text
+        // stays readable over any table skin on a TV.
+        painter->setPen(QPen(QColor(255, 255, 255, 36), 1.0));
+        painter->setBrush(QColor(10, 16, 26, 140));
+        painter->drawRoundedRect(boundingRect().adjusted(2.0, 2.0, -2.0, -2.0), 10.0, 10.0);
+    }
 }
 
 QGraphicsItem *Photo::getMouseClickReceiver()

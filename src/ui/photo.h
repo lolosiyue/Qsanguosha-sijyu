@@ -56,6 +56,11 @@ public:
     void setGiftHighlight(bool highlight);
     bool isGiftHighlighted() const;
 
+    // Ten-foot presentation: drop the ornate frame art, keep every public
+    // control (portrait, names, HP, hand count, role, equips, judgement).
+    void setSeatTrim(bool trimmed);
+    bool isSeatTrimmed() const { return m_seatTrimmed; }
+
 public slots:
     void updatePhase();
     void hideEmotion();
@@ -132,6 +137,8 @@ protected:
 
 private:
     QString m_targetTip;
+    bool m_seatTrimmed = false;
+    void _applySeatTrim();
     QGraphicsSimpleTextItem *m_targetTipItem = nullptr;
     QString m_overviewGeneral;
     QString m_overviewKingdom;

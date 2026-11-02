@@ -68,6 +68,7 @@ QString profileName(RoomLayoutEngine::Profile profile)
     case RoomLayoutEngine::Profile::Book: return QStringLiteral("book");
     case RoomLayoutEngine::Profile::Tabletop: return QStringLiteral("tabletop");
     case RoomLayoutEngine::Profile::LargeRoom: return QStringLiteral("large-room");
+    case RoomLayoutEngine::Profile::TenFoot: return QStringLiteral("ten-foot");
     case RoomLayoutEngine::Profile::LegacyLandscape: break;
     }
     return QStringLiteral("landscape");

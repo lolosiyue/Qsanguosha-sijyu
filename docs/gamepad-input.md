@@ -12,7 +12,9 @@ bindings (South select, West confirm, East cancel, Start menu), rather than
 the superseded branch's A/B/X semantics. Input-mode tracking ignores synthetic
 keys and restores the pointer on deliberate mouse/keyboard use. TV-only
 presentation follows `qsanBigPictureModeActive()`; existing controller gameplay
-remains available with BP off.
+remains available with BP off. In the TenFoot room profile the legend renders
+at the top of the table band, under the paged seat row, so it never covers the
+hand row, the pile or seat targets.
 
 New gamepad requests obtain enabled initial focus when the queued presentation
 refresh runs. Querying actions for a current input never creates an unseen
