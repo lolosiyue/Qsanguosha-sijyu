@@ -11,16 +11,18 @@ native SDL3 input path shared with controller-only gameplay. Design rationale an
 
 | Mechanism | Effect |
 | --- | --- |
-| Command line `QSanguosha --big-picture` | Enables the mode for this launch. |
-| Home Settings → 大屏模式 (`BigPicture/Enabled`) | Save persists the mode for the next launch; Cancel discards the draft. |
-| Environment `QSAN_BIG_PICTURE=1` | Force-enables; `QSAN_BIG_PICTURE=0` force-disables, overriding both of the above. |
+| Command line `QSanguosha --big-picture` | Enables the mode for this launch and locks the settings toggle. |
+| Home Settings or in-game Configure → 大屏模式 (`BigPicture/Enabled`) | Applies immediately as a preview; Save persists it and Cancel restores the previous mode. |
+| Environment `QSAN_BIG_PICTURE=1` | Force-enables and locks the toggle; `QSAN_BIG_PICTURE=0` force-disables, overriding both of the above. |
 
 `--big-picture` is parsed before `QApplication` exists and normalizes to
 `QSAN_BIG_PICTURE=1`; the persisted key is read with the same early lightweight
 `QSettings` path `Config` uses later.
-The home page uses this same resolved launch mode, including CLI and environment
-overrides. Ordinary visual settings retain their immediate preview and Cancel
-behavior; changing the saved BP toggle does not replace a launch override.
+The live mode is held per process, so a child instance resolves its own mode
+instead of inheriting an unsaved preview. Switching applies the stylesheet, input
+filters, pointer policy, fullscreen, home TV styling and room layout at once.
+Leaving fullscreen restores the desktop placement saved on entry. Skin fonts follow
+at the next room, and `QT_SCALE_FACTOR=2` only changes at the next launch.
 
 When the mode is on:
 
@@ -50,13 +52,17 @@ When the mode is on:
   BP target Left/Right traversal follows visible seat geometry; Up/Down and
   shoulders retain the controller-only group/command navigation.
 - On landscape viewports of at least 1280x720 the room switches to the
-  `TenFoot` layout profile: opponents sit in one paged row across the top of
-  the table, seat cards drop the decorative frame art (portrait, names, HP,
-  hand count, role, equipment, judgement and marks remain), the controller
-  legend renders at the top of the table band clear of the hand row, the
-  pile and seat targets, and confirm/cancel keep >= 64 px touch targets.
-  Smaller or portrait windows keep the existing responsive profiles or the
-  legacy desktop layout.
+  `TenFoot` layout profile. It lays out a scene based on 1280x720 (wider or
+  taller viewports extend it) and the view zooms the whole scene, so at 1080p
+  the dashboard, hand, pile, seats and skin fonts all render at 1.5x. Opponents
+  sit in one row across the top of the table, using the largest of the Normal
+  layout or a scaled Small layout that fits every seat; only beyond that does
+  the row page. `Config.UIScale` does not apply in this profile. Seat cards drop
+  the decorative frame art (portrait, names, HP, hand count, role, equipment,
+  judgement and marks remain), the controller legend renders at the top of the
+  table band clear of the hand row, the pile and seat targets, and
+  confirm/cancel keep >= 64 scene-unit touch targets. Smaller or portrait
+  windows keep the existing responsive profiles or the legacy desktop layout.
 - Gamepad use hides the pointer in BP; deliberate mouse motion, a mouse button
   or physical keyboard input restores it. Synthetic keys do not switch modes.
 - Closing a BP session preserves the saved desktop window size, position and
@@ -155,6 +161,13 @@ by the spatial filter.
 
 - Custom QML remains subject to the existing `controller_ui` contract in
   native controller sessions; arbitrary QML is not automatically navigable.
+- The home pages take the pad directly: the D-pad reaches QML's own KeyNavigation
+  first and walks the tab chain when nothing accepts the key; a closed combo box
+  always moves focus, and South picks the highlighted row of an open one. LB/RB and
+  LT/RT switch home tabs in BP. QML text fields (search, server name) cannot be
+  edited by pad: South does nothing there. On 2026-11-03 a virtual pad went from the
+  desktop home to saving 大屏模式, and from the BP home through quick join and the
+  game menu to a started game; physical hardware is still untested.
 - The table's `TenFoot` layout profile now applies during BP sessions on
   landscape viewports of at least 1280x720 (the shared `selectsTenFoot`
   predicate; large rooms and usable folds take their existing paths). At a
@@ -164,19 +177,29 @@ by the spatial filter.
   hand and dashboard. The black lower backdrop was traced to TenFoot using
   table-band height for later background updates and corrected to main-area
   height; full-coverage recovery is confirmed on captures (2026-10-28).
-- Known defect (blocking TenFoot acceptance): when the BP viewport equals the
-  monitor's native logical size (observed 2750x1129 at DPR 1.25) the
-  GL-rendered region stays at the transient safe-area-margined size of the
-  first fit (~2515x892), so the bottom zone — dashboard, hand row and prompts
-  — is never displayed for the whole session while gameplay continues; the
-  missing area is filled by the view background brush. Offscreen scene
-  rendering shows every item intact, and BP-off legacy at the same window
-  size is unaffected, so this is specific to the BP responsive entry path.
-  The TV legend (gated on an active request via
-  `DesktopGamePresentation::updateFocusLayer`) and couch-distance seat
-  readability cannot be accepted until this is fixed; physical gamepad
-  hardware was not exercised. Evidence and open items live in
-  memory/work/zcode-tenfoot-20261027/ and memory/work/zcode-tenfoot-20261028/.
+- The missing-bottom-zone defect reported on 2026-10-28 (viewport 2750x1129 at
+  DPR 1.25) did not reproduce on 2026-11-02: a window capture of the virtual
+  scene build on the same 3440x1440 panel shows the dashboard, hand row and
+  pile. A DPI-unaware `CopyFromScreen` capture of that build still loses the
+  bottom zone, because it only sees the top-left 80 % of the panel. The
+  pre-virtual-scene build was not retested. Capture QA frames with a DPI-aware
+  process and `PrintWindow`.
+- On 2026-11-02 an 08p room was played through the SDL virtual gamepad
+  (`--controller-virtual-input`) on Windows, with `--auto-robots`. The legend
+  shows during active requests and Left/Right walks the seat row in screen
+  order. A second run used only D-pad, South and East, as a TV remote would:
+  every request it met was answered and accepted, with `command:confirm`
+  reached by D-pad. Neither run reached game over. A remote has no Start, so the
+  game menu stays out of its reach, and the legend describes a pad.
+- The legend and status hint name the buttons printed on the connected pad
+  (`SDL_GetGamepadButtonLabel`), falling back to the Xbox layout. Only the Xbox
+  labels have been seen on screen; PlayStation and Switch labels were not exercised.
+- A TV remote that reaches the game as a keyboard (arrows, Enter, Esc) cannot play
+  yet: arrows need focus that only Tab creates, Up/Down stay inside a group, and
+  selecting needs Space. No remote input path exists or has been tested.
+- Still not accepted: a real 16:9 panel and physical gamepad or remote hardware.
+  Earlier evidence lives in memory/work/zcode-tenfoot-20261027/ and
+  memory/work/zcode-tenfoot-20261028/.
 - `PageUp`/`PageDown` group semantics are stubs (focus cycling) until
   per-request zones exist.
 - The pre-`QApplication` screen probe for the 4K rule reads `xdpyinfo`
@@ -184,5 +207,6 @@ by the spatial filter.
   native Wayland session, compositor scaling is left untouched. Where neither
   probe reports the true physical panel (nested compositors, remote desktops),
   automatic `QT_SCALE_FACTOR=2` may not trigger; set it manually if needed.
-- The Settings BP toggle is saved for the next launch. Fullscreen, application
-  scaling, skin overlays and the home TV mode stay consistent during this launch.
+- A room that switches mode live keeps its skin fonts until the next room, and a
+  4K panel at 100 % OS scaling keeps its launch scale for home and dialogs until
+  restart.

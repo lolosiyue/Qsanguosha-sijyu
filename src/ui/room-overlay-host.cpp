@@ -124,6 +124,10 @@ void RoomOverlayHost::setPresentation(DesktopGamePresentation *presentation)
 void RoomOverlayHost::setLayoutResult(const RoomLayoutEngine::ResponsiveResult &layout)
 {
     m_layout = layout;
+    // Layouts arrive in scene units; this overlay places widgets in viewport pixels.
+    const double zoom = layout.viewScale;
+    for (QRectF *rect : {&m_layout.mainRect, &m_layout.headerRect, &m_layout.inspectorRect, &m_layout.seatsRect})
+        *rect = QRectF(rect->topLeft() * zoom, rect->size() * zoom);
     updateGeometry();
 }
 

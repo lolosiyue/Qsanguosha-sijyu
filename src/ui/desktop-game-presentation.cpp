@@ -27,6 +27,7 @@
 #include <QTextDocumentFragment>
 #include <QTextDocument>
 #include <QTimer>
+#include <QVariantMap>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QStatusBar>
@@ -47,6 +48,15 @@ void RoomScene::showGameControlPanel()
 }
 
 namespace {
+// ControllerRouter publishes the connected pad's names; the Xbox layout is the fallback.
+QString padButton(const QObject *window, const QString &role)
+{
+    static const QHash<QString, QString> fallback{{"south", "A"}, {"west", "X"}, {"east", "B"}, {"north", "Y"},
+                                                  {"shoulders", "LB / RB"}, {"menu", "Start"}};
+    const QString name = window ? window->property("controllerButtons").toMap().value(role).toString() : QString();
+    return name.isEmpty() ? fallback.value(role) : name;
+}
+
 // A focus outline only: gameplay selection continues to live in native items.
 class TableKeyboardMarker final : public QGraphicsObject
 {
@@ -232,7 +242,9 @@ void DesktopGamePresentation::updateKeyboardCursor()
         QString label = m_keyboardId;
         for (const auto &entries : {m_model.cards, m_model.players, m_model.skills, m_model.actions})
             for (const auto &entry : entries) if (entry.id == m_keyboardId) label = entry.label;
-        status->showMessage(tr("Controller focus: %1 — South: select; West: confirm; East: back").arg(label));
+        const QObject *window = m_scene->mainWindow();
+        status->showMessage(tr("Controller focus: %1 — %2: select; %3: confirm; %4: back")
+            .arg(label, padButton(window, "south"), padButton(window, "west"), padButton(window, "east")));
     }
     QGraphicsObject *item = nullptr;
     Dashboard *dashboard = m_scene->dashboard;
@@ -374,9 +386,12 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
                 center += anchor;
             }
             if (!anchors.isEmpty()) center /= anchors.size();
+            // Ribbon seats share one row and so one angle from the centre; order them by x.
+            const bool row = m_scene->responsiveLayout().seatPresentation == RoomLayoutEngine::SeatPresentation::Ribbon
+                && !(m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible());
             for (const auto &anchor : anchors) {
                 const QPointF delta = anchor.first - center;
-                ring.append({qAtan2(-delta.x(), delta.y()), anchor.second});
+                ring.append({row ? anchor.first.x() : qAtan2(-delta.x(), delta.y()), anchor.second});
             }
             std::sort(ring.begin(), ring.end());
             for (int i = 0; i < ring.size(); ++i) {
@@ -569,16 +584,18 @@ void DesktopGamePresentation::updateFocusLayer()
         return;
     }
     const bool keyboard = tracker && tracker->mode() == InputModeTracker::Mode::Keyboard;
+    const QObject *window = m_scene->mainWindow();
     QList<TableButtonLegend::Entry> entries;
-    entries.append({keyboard ? QStringLiteral("← / →") : QStringLiteral("D-pad"), tr("Move")});
+    entries.append({keyboard ? QStringLiteral("← / →") : tr("D-pad"), tr("Move")});
     if (!m_model.cards.isEmpty() || !m_model.players.isEmpty() || !m_model.actions.isEmpty() || !m_model.skills.isEmpty())
-        entries.append({keyboard ? QStringLiteral("Space") : QStringLiteral("South"), tr("Select")});
+        entries.append({keyboard ? QStringLiteral("Space") : padButton(window, "south"), tr("Select")});
     if (m_model.canConfirm)
-        entries.append({keyboard ? QStringLiteral("Enter") : QStringLiteral("West"), tr("Confirm")});
+        entries.append({keyboard ? QStringLiteral("Enter") : padButton(window, "west"), tr("Confirm")});
     if (m_model.canCancel)
-        entries.append({keyboard ? QStringLiteral("Esc") : QStringLiteral("East"), tr("Cancel")});
-    entries.append({keyboard ? QStringLiteral("Tab") : QStringLiteral("LB / RB"), tr("Switch group")});
-    if (!keyboard) entries.append({QStringLiteral("Start"), tr("Game menu")});
+        entries.append({keyboard ? QStringLiteral("Esc") : padButton(window, "east"), tr("Cancel")});
+    if (!keyboard) entries.append({padButton(window, "north"), tr("Details")});
+    entries.append({keyboard ? QStringLiteral("Tab") : padButton(window, "shoulders"), tr("Switch group")});
+    if (!keyboard) entries.append({padButton(window, "menu"), tr("Game menu")});
     if (!m_legend) {
         auto *legend = new TableButtonLegend;
         legend->setZValue(10001);
@@ -648,6 +665,14 @@ void DesktopGamePresentation::submitIntent(const QString &kind, const QString &i
         if (!m_liveConsumers.isEmpty()) m_forcePresentation = true;
         applyIntent(kind, id, selected, generation, revision, requestId);
     });
+}
+
+void DesktopGamePresentation::syncBigPictureMode()
+{
+    m_tvFocus = qsanBigPictureModeActive();
+    if (!m_tvFocus && m_legend) m_legend->hide();
+    updateKeyboardCursor();
+    refresh();
 }
 
 void DesktopGamePresentation::scheduleRefresh()

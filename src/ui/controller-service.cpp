@@ -102,6 +102,42 @@ bool ControllerService::hasConnectedDevice() const { return d->pad && SDL_Gamepa
 QString ControllerService::error() const { return d->failure; }
 quint64 ControllerService::deviceEpoch() const { return d->epoch; }
 
+QVariantMap ControllerService::buttonLabels() const
+{
+    if (!d->pad) return {};
+    const auto face = [this](SDL_GamepadButton button) -> QString {
+        switch (SDL_GetGamepadButtonLabel(d->pad, button)) {
+        case SDL_GAMEPAD_BUTTON_LABEL_A: return QStringLiteral("A");
+        case SDL_GAMEPAD_BUTTON_LABEL_B: return QStringLiteral("B");
+        case SDL_GAMEPAD_BUTTON_LABEL_X: return QStringLiteral("X");
+        case SDL_GAMEPAD_BUTTON_LABEL_Y: return QStringLiteral("Y");
+        case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return QStringLiteral("✕");
+        case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return QStringLiteral("○");
+        case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return QStringLiteral("□");
+        case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return QStringLiteral("△");
+        default: return {};
+        }
+    };
+    QVariantMap labels{{"south", face(SDL_GAMEPAD_BUTTON_SOUTH)}, {"west", face(SDL_GAMEPAD_BUTTON_WEST)},
+                       {"east", face(SDL_GAMEPAD_BUTTON_EAST)}, {"north", face(SDL_GAMEPAD_BUTTON_NORTH)}};
+    switch (SDL_GetGamepadType(d->pad)) {
+    case SDL_GAMEPAD_TYPE_PS3: case SDL_GAMEPAD_TYPE_PS4: case SDL_GAMEPAD_TYPE_PS5:
+        labels.insert("shoulders", QStringLiteral("L1 / R1"));
+        labels.insert("menu", QStringLiteral("Options"));
+        break;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+        labels.insert("shoulders", QStringLiteral("L / R"));
+        labels.insert("menu", QStringLiteral("+"));
+        break;
+    default:
+        break;
+    }
+    return labels;
+}
+
 void ControllerService::poll()
 {
     SDL_PumpEvents();

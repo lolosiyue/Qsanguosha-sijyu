@@ -506,6 +506,7 @@ protected:
     QSanSkinScheme _sm_currentSkin;
     JsonObject _m_skinList;
     QString _m_skinName;
+    bool _m_skinBigPicture = false;
 };
 
 #define G_ROOM_SKIN (QSanSkinFactory::getInstance().getCurrentSkinScheme().getRoomSkin())

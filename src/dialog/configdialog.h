@@ -21,6 +21,7 @@ private:
     Ui::ConfigDialog *ui;
     SettingsSession *m_session;
     QCheckBox *m_responsiveLayout = nullptr;
+    QCheckBox *m_bigPicture = nullptr;
     QComboBox *m_oneHandedness = nullptr;
     QLineEdit *m_portraitBackground = nullptr;
     void showFont(QLineEdit *lineedit, const QFont &font);

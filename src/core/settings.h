@@ -206,12 +206,17 @@ void applyColorScheme(int scheme);
 // normal restores the base palette.
 void applyVisualMode(const QString &mode);
 
-// True while this process runs in big-picture (10-foot) mode: the
-// QSAN_BIG_PICTURE environment variable (a "0"/"false" value forces off),
-// --big-picture (main.cpp normalizes it into the env var before
-// QApplication), or the persisted BigPicture/Enabled key. Safe to call before
-// QApplication exists.
+// True while this process runs in big-picture (10-foot) mode: the mode set by
+// qsanSetBigPictureMode(), else the QSAN_BIG_PICTURE environment variable (a
+// "0"/"false" value forces off), --big-picture (main.cpp normalizes it into the
+// env var before QApplication), or the persisted BigPicture/Enabled key. Safe to
+// call before QApplication exists.
 bool qsanBigPictureModeActive();
+// Sets the mode for this process only, so child processes resolve their own.
+void qsanSetBigPictureMode(bool enabled);
+// Launch options fixed the mode; settings must not change or persist it.
+void qsanLockBigPictureMode();
+bool qsanBigPictureModeLocked();
 
 // Format the current Config state as UTF-8 for CrashHandler::setGameConfig().
 // Settings::init() calls this at the end so crash reports use current settings.

@@ -512,7 +512,10 @@ Item {
                             GroupTitle { text: qsTr("大屏模式") }
                             SettingCheck {
                                 key: "BigPicture/Enabled"
-                                text: qsTr("啟用大屏模式（重新啟動後完全生效）")
+                                enabled: !settingsSession.bigPictureLocked
+                                text: settingsSession.bigPictureLocked
+                                      ? qsTr("大屏模式（已由啟動參數指定）")
+                                      : qsTr("啟用大屏模式（4K 螢幕未開系統縮放時，首頁和對話框要重新啟動才會改變大小）")
                             }
 
                             GroupTitle { text: qsTranslate("ConfigDialog", "Font setup") }

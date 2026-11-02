@@ -2,6 +2,7 @@
 
 #include "controller-action.h"
 #include <QObject>
+#include <QVariantMap>
 #include <memory>
 
 // QApplication owns this adapter. SDL never owns a Qt window or pumps Qt events.
@@ -15,6 +16,8 @@ public:
     bool hasConnectedDevice() const;
     QString error() const;
     quint64 deviceEpoch() const;
+    // Names printed on the connected pad: south, west, east, north, shoulders, menu.
+    QVariantMap buttonLabels() const;
     // Diagnostic injection attaches a real SDL virtual gamepad. It does not emit
     // semantic actions, call RoomScene helpers or write to a game socket.
     bool attachVirtualDevice();

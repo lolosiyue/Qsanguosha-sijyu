@@ -1,4 +1,8 @@
 #include "mainwindow.h"
+#if !defined(QSAN_XP_LEGACY)
+#include "desktop-game-presentation.h"
+#include "input/input-mode-tracker.h"
+#endif
 #include "startscene.h"
 #include "roomscene.h"
 #include "server.h"
@@ -342,6 +346,11 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui->actionConfigure, SIGNAL(triggered()), config_dialog, SLOT(show()));
 	connect(settingsSession, &SettingsSession::backgroundChanged, this, &MainWindow::changeBackground);
 	connect(settingsSession, &SettingsSession::uiScaleChanged, this, &MainWindow::setUiScale);
+#if !defined(QSAN_XP_LEGACY)
+	// Queued: the toggle runs inside a QML click handler or a closing dialog.
+	connect(settingsSession, &SettingsSession::bigPictureChanged,
+		this, &MainWindow::applyBigPictureMode, Qt::QueuedConnection);
+#endif
 #if !QSAN_ENABLE_QML
 	// Without the QML home, "reloading" the home page refits the start scene.
 	connect(settingsSession, &SettingsSession::backgroundChanged, this, &MainWindow::reloadHomePage);
@@ -457,7 +466,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 	// Big-picture sessions launch fullscreen like Steam Big Picture. The saved
 	// WindowState is left untouched; closeEvent skips persisting the forced flag.
-	if (qsanBigPictureModeActive()) {
+	m_bigPictureApplied = qsanBigPictureModeActive();
+	if (m_bigPictureApplied) {
 		setWindowState(windowState() | Qt::WindowFullScreen);
 		// The EWMH hint needs a window manager; without one (bare Xvfb, SteamOS
 		// game-mode edge cases) the flag alone leaves the window unresized.
@@ -1307,7 +1317,69 @@ static QRect commandLineWindowGeometry()
 	return QRect();
 }
 
-void MainWindow::restoreFromConfig()
+void MainWindow::saveWindowPlacement()
+{
+	if (commandLineWindowGeometry().isValid())
+		return;
+	const QRect placed = placedOnScreen(size(), pos());
+	Config.setValue("WindowSize", placed.size());
+	Config.setValue("WindowPosition", placed.topLeft());
+	Config.setValue("WindowState", (int)windowState());
+}
+
+#if !defined(QSAN_XP_LEGACY)
+void applyQsanStyleSheet(bool bigPictureMode)
+{
+	QString style;
+	QFile file(QStringLiteral("qss/sanguosha.qss"));
+	if (file.open(QIODevice::ReadOnly))
+		style += QTextStream(&file).readAll();
+	if (bigPictureMode) {
+		QFile tvFile(QStringLiteral("qss/bigpicture_tv.qss"));
+		if (tvFile.open(QIODevice::ReadOnly))
+			style += QTextStream(&tvFile).readAll();
+	}
+	if (!style.isEmpty())
+		qApp->setStyleSheet(style);
+}
+
+void MainWindow::applyBigPictureMode()
+{
+	// Preview, Cancel and preview again can queue several calls; only a real change acts.
+	const bool enabled = qsanBigPictureModeActive();
+	if (enabled == m_bigPictureApplied)
+		return;
+	m_bigPictureApplied = enabled;
+	applyQsanStyleSheet(enabled);
+	InputModeTracker::instance()->setHideCursorInGamepadMode(enabled);
+#ifndef Q_OS_ANDROID
+	if (enabled) {
+		// closeEvent does not save the desktop placement while the mode is on.
+		if (!isFullScreen())
+			saveWindowPlacement();
+		setWindowState(windowState() | Qt::WindowFullScreen);
+	} else {
+		setWindowState(windowState() & ~Qt::WindowFullScreen);
+		restoreWindowPlacement();
+	}
+#endif
+#if QSAN_ENABLE_QML
+	homeController->notifyVisualSettings();
+#endif
+	if (RoomSceneInstance)
+		RoomSceneInstance->gamePresentation()->syncBigPictureMode();
+	gameView->refit();
+	// The stylesheet resized the open dialog's content, and the window behind it moved.
+	if (config_dialog->isVisible()) {
+		QTimer::singleShot(0, config_dialog, [this]() {
+			config_dialog->resize(config_dialog->sizeHint());
+			config_dialog->move(frameGeometry().center() - config_dialog->rect().center());
+		});
+	}
+}
+#endif
+
+void MainWindow::restoreWindowPlacement()
 {
 	const QSize requested = Config.value("WindowSize", QSize(1366, 706)).toSize();
 	const QRect placed = placedOnScreen(requested,
@@ -1330,6 +1402,11 @@ void MainWindow::restoreFromConfig()
 		resize(forced.size());
 		move(forced.topLeft());
 	}
+}
+
+void MainWindow::restoreFromConfig()
+{
+	restoreWindowPlacement();
 
 	QFont font;
 	if (UiConfig.UIFont != font)
@@ -1391,12 +1468,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	CrashHandler::beginShutdown();
 
 	// A forced TV fullscreen session must not overwrite desktop geometry/state.
-	if (!qsanBigPictureModeActive() && !commandLineWindowGeometry().isValid()) {
-		const QRect placed = placedOnScreen(size(), pos());
-		Config.setValue("WindowSize", placed.size());
-		Config.setValue("WindowPosition", placed.topLeft());
-		Config.setValue("WindowState", (int)windowState());
-	}
+	if (!qsanBigPictureModeActive())
+		saveWindowPlacement();
 
 	QMainWindow::closeEvent(event);
 	qApp->quit();

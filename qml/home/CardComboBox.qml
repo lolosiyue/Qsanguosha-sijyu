@@ -23,8 +23,10 @@ ComboBox {
                      : displayText
 
     function moveFocus(target, event) {
-        if (!target)
+        if (!target) {
+            event.accepted = false
             return
+        }
         target.forceActiveFocus()
         event.accepted = true
     }

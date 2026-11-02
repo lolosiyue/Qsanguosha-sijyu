@@ -6,6 +6,7 @@
 #include "package-selection-policy.h"
 #include "crashhandler.h"
 #include <QMutexLocker>
+#include <atomic>
 #if !defined(QSAN_ENGINE_BUILD)
 #include <QApplication>
 #include <QStyleFactory>
@@ -157,8 +158,15 @@ void applyVisualMode(const QString &mode)
 }
 #endif
 
+// -1 until resolved. Read for every event by the BP event filters.
+static std::atomic<int> g_bigPictureMode{-1};
+static bool g_bigPictureLocked = false;
+
 bool qsanBigPictureModeActive()
 {
+    const int mode = g_bigPictureMode.load(std::memory_order_relaxed);
+    if (mode >= 0)
+        return mode != 0;
     const QByteArray env = qgetenv("QSAN_BIG_PICTURE");
     if (!env.isEmpty())
         return env != "0" && env.toLower() != "false";
@@ -166,6 +174,22 @@ bool qsanBigPictureModeActive()
     // the GUI path; reading the key here keeps the check correct for callers
     // that never passed through that normalization (tests, embedded runs).
     return Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+}
+
+void qsanSetBigPictureMode(bool enabled)
+{
+    g_bigPictureMode.store(enabled ? 1 : 0, std::memory_order_relaxed);
+}
+
+void qsanLockBigPictureMode()
+{
+    qsanSetBigPictureMode(qsanBigPictureModeActive());
+    g_bigPictureLocked = true;
+}
+
+bool qsanBigPictureModeLocked()
+{
+    return g_bigPictureLocked;
 }
 
 // Settings files may be hand-edited: non-numeric, negative or >1 values must be clamped to

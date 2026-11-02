@@ -1156,6 +1156,8 @@ Item {
         var buttons = [root.navBar.homeBtn, root.navBar.generalsBtn, root.navBar.cardsBtn,
                        root.navBar.replaysBtn, root.navBar.settingsBtn]
         for (var i = 0; i < buttons.length; ++i) buttons[i].KeyNavigation.up = entry
+        // Setting up implicitly points entry's down back at the bar, which traps Down in a two-item loop.
+        entry.KeyNavigation.down = entry.nextItemInFocusChain(true)
     }
 
     // Load after the home page settles; the 800 ms delay avoids competing with entrance animation and image decoding.

@@ -480,6 +480,29 @@ bool selectsTenFoot(const ResponsiveInput &input)
         && input.stableRect.width() >= 1280.0 && input.stableRect.height() >= 720.0;
 }
 
+double tenFootViewScale(const QSizeF &viewport)
+{
+    return qMax(1.0, qMin(viewport.width() / 1280.0, viewport.height() / 720.0));
+}
+
+TenFootSeat chooseTenFootSeat(int photoCount, double width, double gap,
+                              const QSize &smallSize, const QSize &normalSize)
+{
+    // One gap stays free at each end: the kingdom bar overhangs the photo box
+    // and TVs may overscan. The view zoom already provides the TV scale, so the
+    // Normal layout is the ceiling; a taller ribbon would squeeze the table pile.
+    const int seatWidth = qFloor((width - gap) / qMax(1, photoCount) - gap + 1e-6);
+    TenFootSeat seat;
+    seat.baseSize = seatWidth >= normalSize.width() ? normalSize : smallSize;
+    seat.placedSize = seat.baseSize;
+    seat.allVisible = seatWidth >= smallSize.width();
+    if (seat.allVisible && seatWidth < normalSize.width()) {
+        seat.scale = qreal(seatWidth) / smallSize.width();
+        seat.placedSize = QSize(seatWidth, qRound(smallSize.height() * seat.scale));
+    }
+    return seat;
+}
+
 ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame)
 {
     ResponsiveResult result;
@@ -620,6 +643,7 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
 
     result.profile = chooseProfile(input, foldValid);
     result.valid = true;
+    result.viewScale = input.viewScale;
     const double gap = input.gap;
     // Ten-foot confirm/cancel must stay hittable from a couch, not a desk.
     const double touch = result.profile == Profile::TenFoot

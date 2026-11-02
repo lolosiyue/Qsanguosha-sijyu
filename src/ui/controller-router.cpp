@@ -1,5 +1,6 @@
 #include "controller-router.h"
 
+#include "build-features.h"
 #include "controller-service.h"
 #include "input/input-mode-tracker.h"
 #include "settings.h"
@@ -38,6 +39,11 @@
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QTextDocumentFragment>
+#if QSAN_ENABLE_QML
+#include <QQuickItem>
+#include <QQuickWidget>
+#include <QQuickWindow>
+#endif
 #include <cmath>
 #include <limits>
 
@@ -63,6 +69,17 @@ bool eligible(QWidget *widget, QWidget *scope)
     return widget && widget->isVisibleTo(scope) && widget->isEnabled()
         && widget->focusPolicy() != Qt::NoFocus && (widget == scope || scope->isAncestorOf(widget));
 }
+#if QSAN_ENABLE_QML
+const QObject *quickFocusItem(QWidget *widget)
+{
+    const auto *view = qobject_cast<QQuickWidget *>(widget);
+    return view && view->quickWindow() ? view->quickWindow()->activeFocusItem() : nullptr;
+}
+const QObject *quickComboPopup(const QObject *item)
+{
+    return item && item->inherits("QQuickComboBox") ? item->property("popup").value<QObject *>() : nullptr;
+}
+#endif
 }
 
 ControllerRouter::ControllerRouter(ControllerService *service, QObject *parent)
@@ -124,9 +141,9 @@ bool ControllerRouter::hasConnectedController()
     return service && service->hasConnectedDevice();
 }
 
-void ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers modifiers)
+bool ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers modifiers)
 {
-    if (!target) return;
+    if (!target) return false;
     const QPointer<QWidget> guarded = target;
     const QPointer<QWidget> window = target->window();
     const QPointer<QWidget> parentWindow = window && window->parentWidget()
@@ -135,6 +152,7 @@ void ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers m
     InputModeTracker::SyntheticInputScope synthetic;
     QKeyEvent press(QEvent::KeyPress, key, modifiers);
     QApplication::sendEvent(target, &press);
+    const bool accepted = press.isAccepted();
     // Modal closure may destroy the recipient; never deliver release to its successor.
     if (guarded) {
         QKeyEvent release(QEvent::KeyRelease, key, modifiers);
@@ -151,6 +169,7 @@ void ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers m
             }
         });
     }
+    return accepted;
 }
 
 QWidget *ControllerRouter::widgetScope() const
@@ -266,6 +285,15 @@ bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
         return true;
     }
     if (action == ControllerAction::Activate || action == ControllerAction::Submit) {
+#if QSAN_ENABLE_QML
+        if (const QObject *item = quickFocusItem(focused)) {
+            // Space would type into a QML text field, which has no pad text entry.
+            if (item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit")) return true;
+            // Space closes an open combo box without taking the highlighted row.
+            const QObject *popup = quickComboPopup(item);
+            if (popup && popup->property("visible").toBool()) { sendKey(focused, Qt::Key_Return); return true; }
+        }
+#endif
         if (action == ControllerAction::Submit) {
             const QString confirmId = scope->objectName() == QLatin1String("gameControlPanel") ? QStringLiteral("confirmAction")
                 : scope->objectName() == QLatin1String("controllerTextEntryDialog") ? QStringLiteral("doneTextEntryButton")
@@ -319,6 +347,24 @@ bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
         return true;
     }
     if (!navigates(action)) return true;
+#if QSAN_ENABLE_QML
+    // QML navigates inside one widget: its KeyNavigation graph and controls see
+    // the key first, and a key nothing accepted walks the tab chain.
+    if (qobject_cast<QQuickWidget *>(focused)) {
+        const bool group = action == ControllerAction::PreviousGroup || action == ControllerAction::NextGroup;
+        const bool vertical = action == ControllerAction::Up || action == ControllerAction::Down;
+        const bool forward = action == ControllerAction::NextGroup || action == ControllerAction::Down
+            || action == ControllerAction::Right;
+        const int key = group ? (forward ? Qt::Key_PageDown : Qt::Key_PageUp)
+            : action == ControllerAction::Up ? Qt::Key_Up : action == ControllerAction::Down ? Qt::Key_Down
+            : action == ControllerAction::Left ? Qt::Key_Left : Qt::Key_Right;
+        // A closed combo box would spend Up/Down on changing its value.
+        const QObject *popup = quickComboPopup(quickFocusItem(focused));
+        if ((vertical && popup && !popup->property("visible").toBool()) || !sendKey(focused, key))
+            sendKey(focused, forward ? Qt::Key_Tab : Qt::Key_Backtab);
+        return true;
+    }
+#endif
     if (action == ControllerAction::PreviousGroup || action == ControllerAction::NextGroup) {
         moveFocus(scope, action); return true;
     }
@@ -393,6 +439,12 @@ void ControllerRouter::dispatch(ControllerAction action, quint64 epoch, bool rep
     } else handled = routeWidget(scope, action);
     QWidget *focused = QApplication::focusWidget();
     if (focus.isEmpty() && focused) focus = focused->objectName();
+#if QSAN_ENABLE_QML
+    if (const QObject *item = focus.isEmpty() ? quickFocusItem(focused) : nullptr) {
+        focus = QString::fromLatin1(item->metaObject()->className()) + QLatin1Char(':')
+            + item->property(item->inherits("QQuickComboBox") ? "displayText" : "text").toString();
+    }
+#endif
     trace("action", {{"action", controllerActionName(action)}, {"epoch", QString::number(epoch)},
         {"repeat", repeat}, {"handled", handled}, {"scope", scope ? scope->objectName() : QString()}, {"focus", focus}});
 }
@@ -427,8 +479,10 @@ void ControllerRouter::trace(const QString &kind, QJsonObject data)
 
 void ControllerRouter::observe()
 {
-    if (RoomSceneInstance && RoomSceneInstance->mainWindow())
+    if (RoomSceneInstance && RoomSceneInstance->mainWindow()) {
         RoomSceneInstance->mainWindow()->setProperty("controllerConnected", m_service->hasConnectedDevice());
+        RoomSceneInstance->mainWindow()->setProperty("controllerButtons", m_service->buttonLabels());
+    }
     if (!m_trace.isOpen()) return;
     if (ClientInstance && m_observedCore != ClientInstance->interactionCore()) {
         if (m_observedCore) disconnect(m_observedCore, nullptr, this, nullptr);

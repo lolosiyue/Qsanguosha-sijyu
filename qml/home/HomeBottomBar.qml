@@ -167,11 +167,4 @@ Item {
             KeyNavigation.backtab: replaysBtn
         }
     }
-
-    HomeButtonLegend {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 22
-    }
 }

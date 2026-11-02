@@ -11,6 +11,10 @@ namespace Ui {
     class MainWindow;
 }
 
+// Base stylesheet plus the TV overlay (>=64px buttons, visible focus ring)
+// only while big-picture mode is active.
+void applyQsanStyleSheet(bool bigPictureMode);
+
 class FitView;
 class RoomScene;
 class QGraphicsScene;
@@ -135,6 +139,9 @@ private slots:
     void restoreFromConfig();
 
 private:
+    void saveWindowPlacement();
+    void restoreWindowPlacement();
+    void applyBigPictureMode();
     void shutdownUi();
     void setupLocalLoadingPage();
     void showLocalLoadingPage(const QString &status);
@@ -173,6 +180,7 @@ private:
     ConnectionDialog *connection_dialog = nullptr;
     ConfigDialog *config_dialog = nullptr;
     SettingsSession *settingsSession = nullptr;
+    bool m_bigPictureApplied = false;
     ServerSetupSession *serverSetupSession = nullptr;
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;

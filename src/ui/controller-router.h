@@ -27,7 +27,8 @@ private:
     bool routeWidget(QWidget *scope, ControllerAction action);
     void recoverFocus(QWidget *scope);
     void moveFocus(QWidget *scope, ControllerAction action);
-    void sendKey(QWidget *target, int key, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+    // Returns whether the recipient accepted the key press.
+    bool sendKey(QWidget *target, int key, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
     QWidget *widgetScope() const;
     void observe();
     void trace(const QString &kind, QJsonObject data);

@@ -26,6 +26,7 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QTimer>
+#include <QtMath>
 #include <QApplication>
 #include <QKeyEvent>
 
@@ -426,7 +427,8 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     });
     connect(m_overlay, &RoomOverlayHost::layoutPreferencesChanged, this, [this]() { refit(); });
     connect(room, &RoomScene::responsiveGeometryChanged, m_overlay, [this, room]() {
-        if (m_overlay && (m_responsiveEnabled || room->largeRoomRequired()))
+        if (m_overlay && (m_responsiveEnabled || room->largeRoomRequired()
+                          || room->responsiveLayout().profile == RoomLayoutEngine::Profile::TenFoot))
             m_overlay->setLayoutResult(room->responsiveLayout());
     });
     connect(room, &QObject::destroyed, m_overlay, &QObject::deleteLater);
@@ -508,12 +510,11 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
     if (!scene() || viewportSize.isEmpty())
         return;
 
-    resetTransform();
-
     if (auto *roomScene = qobject_cast<RoomScene *>(scene())) {
         if (m_fitting)
             return;
         m_fitting = true;
+        resetTransform();
         ensureRoomOverlay(roomScene);
         m_overlay->setGeometry(viewport()->rect());
         RoomLayoutEngine::ResponsiveInput input;
@@ -572,11 +573,22 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
             && (input.stableRect.height() > input.stableRect.width()
                 || input.fold.posture != RoomLayoutEngine::FoldPosture::None
                 || input.fold.separating || input.fold.occluding));
+        // TenFoot lays out a 1280x720-based scene and the view zooms all of it,
+        // as the legacy scene clamp does. Whole scene units leave no backdrop seam.
+        QSizeF sceneSize(viewportSize);
+        if (tenFoot) {
+            input.viewScale = RoomLayoutEngine::tenFootViewScale(input.stableRect.size());
+            sceneSize = QSizeF(qCeil(viewportSize.width() / input.viewScale - 1e-6),
+                               qCeil(viewportSize.height() / input.viewScale - 1e-6));
+            input.availableRect = QRectF(QPointF(0, 0), sceneSize);
+        }
         roomScene->setResponsiveLayout(input, responsiveRoom);
-        const QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
-        roomScene->adjustItems(QSizeF(viewportSize));
+        const QRectF newSceneRect(QPointF(0, 0), sceneSize);
+        roomScene->adjustItems(sceneSize);
         setSceneRect(roomScene->sceneRect());
-        if (newSceneRect != roomScene->sceneRect())
+        if (tenFoot)
+            scale(input.viewScale, input.viewScale); // fitInView would inset the scene by 2 px.
+        else if (newSceneRect != roomScene->sceneRect())
             fitInView(roomScene->sceneRect(), Qt::KeepAspectRatio);
         roomScene->applyUiElementScale(m_uiScale);
         roomScene->refreshTouchTargets(transform().m11());
@@ -608,8 +620,13 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         }
 #endif
         m_fitting = false;
+        // A resize during this fit was dropped by the guard above; catch up.
+        if (viewport()->size() != viewportSize)
+            QTimer::singleShot(0, this, &FitView::refit);
         return;
     }
+
+    resetTransform();
 
     if (auto *startScene = qobject_cast<StartScene *>(scene())) {
         const QRectF newSceneRect(-viewportSize.width() / 2.0,

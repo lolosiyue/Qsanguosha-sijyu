@@ -17,12 +17,14 @@ class SettingsSession : public QObject
     Q_OBJECT
     Q_PROPERTY(QVariantMap values READ values NOTIFY valuesChanged)
     Q_PROPERTY(bool active READ isActive NOTIFY activeChanged)
+    Q_PROPERTY(bool bigPictureLocked READ isBigPictureLocked CONSTANT)
 
 public:
     explicit SettingsSession(QObject *parent = nullptr);
 
     QVariantMap values() const { return m_values; }
     bool isActive() const { return m_active; }
+    bool isBigPictureLocked() const;
 
     // Start editing from current settings, or reuse the draft while another settings view is open.
     Q_INVOKABLE void begin();
@@ -52,6 +54,7 @@ signals:
     void backgroundChanged();
     void themeChanged();
     void visualModeChanged();
+    void bigPictureChanged();
     void uiScaleChanged(qreal scale);
     void committed();
 

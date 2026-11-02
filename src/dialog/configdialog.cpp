@@ -3,6 +3,28 @@
 #include "settingssession.h"
 #include "settings.h"
 
+#include <QGuiApplication>
+#include <QScreen>
+#include <QScrollArea>
+
+namespace {
+// Asks for the whole page, like the bare page did, but never more than the screen
+// holds: the big-picture stylesheet makes the pages taller than a 1440p panel.
+class ConfigPageScrollArea : public QScrollArea
+{
+public:
+    using QScrollArea::QScrollArea;
+
+    QSize sizeHint() const override
+    {
+        if (!widget())
+            return QScrollArea::sizeHint();
+        const QSize available = QGuiApplication::primaryScreen()->availableGeometry().size();
+        return widget()->sizeHint().boundedTo(QSize(available.width() * 9 / 10, available.height() * 8 / 10));
+    }
+};
+}
+
 ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     : QDialog(parent), ui(new Ui::ConfigDialog), m_session(session)
 {
@@ -32,6 +54,14 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     themeButton->setObjectName(QStringLiteral("themePackButton"));
     connect(themeButton, &QPushButton::clicked, this, [this] { m_session->openThemePacks(this); });
     ui->envLayout->insertWidget(1, themeButton);
+#if !defined(QSAN_XP_LEGACY)
+    m_bigPicture = new QCheckBox(tr("大屏模式（全螢幕與電視版面）"), this);
+    m_bigPicture->setEnabled(!m_session->isBigPictureLocked());
+    ui->envLayout->insertWidget(2, m_bigPicture);
+    connect(m_bigPicture, &QCheckBox::toggled, this, [this](bool enabled) {
+        bindValue("BigPicture/Enabled", enabled);
+    });
+#endif
     connect(m_responsiveLayout, &QCheckBox::toggled, this, [this](bool enabled) {
         bindValue("UI/ResponsiveLayout", enabled);
     });
@@ -120,6 +150,20 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     // Home settings and this dialog edit the same session, so both views stay in sync.
     connect(m_session, &SettingsSession::valuesChanged, this, &ConfigDialog::loadConfig);
 
+    for (int i = 0; i < ui->tabWidget->count(); ++i) {
+        QWidget *page = ui->tabWidget->widget(i);
+        const QString title = ui->tabWidget->tabText(i);
+        ui->tabWidget->removeTab(i);
+        auto *scroll = new ConfigPageScrollArea(ui->tabWidget);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidgetResizable(true);
+        scroll->setWidget(page);
+        scroll->viewport()->setAutoFillBackground(false);
+        page->setAutoFillBackground(false);
+        ui->tabWidget->insertTab(i, scroll, title);
+    }
+    ui->tabWidget->setCurrentIndex(0);
+
     loadConfig();
 }
 
@@ -135,6 +179,7 @@ void ConfigDialog::loadConfig()
     m_loading = true;
     const QVariantMap v = m_session->values();
     if (m_responsiveLayout) m_responsiveLayout->setChecked(v.value("UI/ResponsiveLayout").toBool());
+    if (m_bigPicture) m_bigPicture->setChecked(v.value("BigPicture/Enabled").toBool());
     if (m_oneHandedness) m_oneHandedness->setCurrentIndex(v.value("UI/RoomHandedness").toInt());
     if (m_portraitBackground) m_portraitBackground->setText(v.value("UI/PortraitBackgroundImage").toString());
     // Map the theme index directly to Qt::ColorScheme: Unknown follows the system.
@@ -210,6 +255,8 @@ void ConfigDialog::showEvent(QShowEvent *event)
     // Start an edit snapshot, or reuse the draft already open in the home settings page.
     m_session->begin();
     loadConfig();
+    // The scrolling pages no longer force the dialog past the .ui size, so ask for the whole page.
+    resize(sizeHint());
     QDialog::showEvent(event);
 }
 

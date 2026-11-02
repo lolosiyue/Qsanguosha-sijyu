@@ -81,6 +81,9 @@ struct ResponsiveInput
     // Big-picture (TV) session: landscape viewports >= 1280x720 select TenFoot,
     // smaller or portrait windows keep the existing responsive hierarchy.
     bool bigPicture = false;
+    // Viewport pixels per scene unit. Only TenFoot zooms: its availableRect is in
+    // scene units while stableRect stays in viewport pixels for the profile gate.
+    double viewScale = 1.0;
     int selfSeat = 0;
     QSize smallPhotoSize;
     QSizeF inspectorMinimumSize = QSizeF(320.0, 0.0);
@@ -108,6 +111,7 @@ struct ResponsiveResult
     bool valid = false;
     Profile profile = Profile::LegacyLandscape;
     SeatPresentation seatPresentation = SeatPresentation::Ring;
+    double viewScale = 1.0; // Viewport pixels per scene unit; see ResponsiveInput.
     QRectF headerRect;
     QRectF mainRect;
     QRectF tableRect;
@@ -241,6 +245,19 @@ ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &fr
 // pre-size inputs before the profile is computed (the photo footprint) share
 // this gate so profile-scoped behaviour stays in one place.
 bool selectsTenFoot(const ResponsiveInput &input);
+// Zoom that fits the 1280x720 TenFoot design scene inside a viewport.
+double tenFootViewScale(const QSizeF &viewport);
+
+struct TenFootSeat
+{
+    QSize baseSize; // Selects the skin's photo layout.
+    qreal scale = 1.0;
+    QSize placedSize; // Whole scene units, so the ribbon's seat count stays exact.
+    bool allVisible = false; // False when the ribbon must page.
+};
+// The largest seat that keeps photoCount seats in one row of the given width.
+TenFootSeat chooseTenFootSeat(int photoCount, double width, double gap,
+                              const QSize &smallSize, const QSize &normalSize);
 }
 
 #endif

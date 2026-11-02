@@ -30,6 +30,8 @@ public:
     // Register responsive views that need live state; the receiver is tracked by QObject lifetime.
     void setLiveConsumer(QObject *consumer, bool live);
     void requestRefresh();
+    // Settings switched big-picture mode; requestRefresh() would be gated once it is off.
+    void syncBigPictureMode();
     // Intents are queued, then revalidated against the current generation, revision and request.
     void submitIntent(const QString &kind, const QString &id, bool selected,
                       quint64 generation, quint64 revision, quint64 requestId);

@@ -1,5 +1,7 @@
 #include "spatial-focus-filter.h"
 
+#include "settings.h"
+
 #include <algorithm>
 
 #include <QAbstractButton>
@@ -86,6 +88,12 @@ SpatialFocusFilter::SpatialFocusFilter(QObject *parent)
 
 bool SpatialFocusFilter::eventFilter(QObject *watched, QEvent *event)
 {
+    // Installed for every run; settings can switch the mode while a scrim is up.
+    if (!qsanBigPictureModeActive()) {
+        if (m_scrim)
+            removeModalScrim();
+        return false;
+    }
     switch (event->type()) {
     case QEvent::KeyPress: {
         QDialog *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
@@ -233,7 +241,7 @@ void SpatialFocusFilter::queueScrimUpdate()
 void SpatialFocusFilter::updateModalScrim()
 {
     QDialog *modal = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-    if (!modal || !modal->isVisible()) {
+    if (!qsanBigPictureModeActive() || !modal || !modal->isVisible()) {
         removeModalScrim();
         return;
     }

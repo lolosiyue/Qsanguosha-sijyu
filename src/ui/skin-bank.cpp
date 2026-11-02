@@ -1869,9 +1869,13 @@ bool QSanSkinFactory::switchSkin(QString skinName)
 	// A build without the artwork would draw blank cards; the text skin needs no files.
 	if (skinName == S_DEFAULT_SKIN_NAME && _m_skinList.contains(S_TEXT_SKIN_NAME) && !isArtworkInstalled())
 		skinName = S_TEXT_SKIN_NAME;
-	if (skinName == _m_skinName) return false;
+	// The big-picture mode picks the TV layout overlay when a skin loads.
+	const bool bigPicture = qsanBigPictureModeActive();
+	const bool modeChanged = bigPicture != _m_skinBigPicture;
+	if (skinName == _m_skinName && !modeChanged) return false;
+	_m_skinBigPicture = bigPicture;
 	bool success = false;
-	if (_m_skinName != S_DEFAULT_SKIN_NAME) {
+	if (_m_skinName != S_DEFAULT_SKIN_NAME || modeChanged) {
 		// Image configs merge into the loaded one, so drop the old skin's extra keys first.
 		_sm_currentSkin = QSanSkinScheme();
 		success = _sm_currentSkin.load(_m_skinList[S_DEFAULT_SKIN_NAME.toLatin1().constData()]);

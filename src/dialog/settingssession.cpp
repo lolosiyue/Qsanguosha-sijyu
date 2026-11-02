@@ -20,6 +20,7 @@ const QString kPortraitBackground = QStringLiteral("UI/PortraitBackgroundImage")
 const QString kDefaultBackground = QStringLiteral("image/system/backdrop/default.jpg");
 const QString kDefaultPortrait = QStringLiteral("image/system/portrait/portrait-background.svg");
 const QString kDefaultMusic = QStringLiteral("audio/system/background.ogg");
+const QString kBigPicture = QStringLiteral("BigPicture/Enabled");
 
 // Revert preview keys in this order: hand preference enables responsive layout, so restore it first.
 // One-hand mode enables responsive layout, so restore it first when reverting preview settings.
@@ -30,7 +31,7 @@ const QStringList &previewKeys()
         QStringLiteral("UIScale"), QStringLiteral("BackgroundImage"), kPortraitBackground,
         QStringLiteral("VisualMode"), QStringLiteral("NoIndicator"), QStringLiteral("NoEquipAnim"),
         QStringLiteral("NoCardMoveAnim"), QStringLiteral("EnableAnimatedGenerals"),
-        QStringLiteral("EnablePointerEffect"), QStringLiteral("EffectsProfile")
+        QStringLiteral("EnablePointerEffect"), QStringLiteral("EffectsProfile"), kBigPicture
     };
     return keys;
 }
@@ -72,6 +73,11 @@ SettingsSession::SettingsSession(QObject *parent)
     load();
 }
 
+bool SettingsSession::isBigPictureLocked() const
+{
+    return qsanBigPictureModeLocked();
+}
+
 QString SettingsSession::fontLabel(const QFont &font)
 {
     return QString("%1 %2").arg(font.family()).arg(font.pointSize());
@@ -103,8 +109,8 @@ void SettingsSession::load()
     v.insert(QStringLiteral("TextEditColor"), UiConfig.TextEditColor);
     v.insert(QStringLiteral("EnableAutoBackgroundChange"), Config.EnableAutoBackgroundChange);
     v.insert(QStringLiteral("EnableBackgroundVideo"), Config.EnableBackgroundVideo);
-    v.insert(QStringLiteral("BigPicture/Enabled"),
-             Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool());
+    v.insert(kBigPicture, qsanBigPictureModeLocked() ? qsanBigPictureModeActive()
+                                                     : Config.value(kBigPicture, false).toBool());
 
 
     v.insert(QStringLiteral("BackgroundMusic"), Config.value("BackgroundMusic", kDefaultMusic).toString());
@@ -160,6 +166,8 @@ void SettingsSession::updateValue(const QString &key, const QVariant &value)
 
 void SettingsSession::setValue(const QString &key, const QVariant &value)
 {
+    if (key == kBigPicture && qsanBigPictureModeLocked())
+        return;
     begin();
     const QVariant next = coerced(m_values.value(key), value);
     if (m_values.value(key) == next)
@@ -203,6 +211,10 @@ void SettingsSession::applyPreview(const QString &key, const QVariant &value)
         Config.setResponsiveUiEnabled(value.toBool());
     } else if (key == kOneHandedness) {
         Config.setOneHandedness(value.toInt());
+    } else if (key == kBigPicture) {
+        // Saved on commit, so Cancel only has to restore the mode.
+        qsanSetBigPictureMode(value.toBool());
+        emit bigPictureChanged();
     } else if (key == QLatin1String("EnablePointerEffect")) {
         Config.EnablePointerEffect = value.toBool();
         Config.setValue("EnablePointerEffect", Config.EnablePointerEffect);
@@ -257,7 +269,8 @@ void SettingsSession::commit()
     Config.setValue("AudioMuted", Config.AudioMuted);
     Config.EnableBackgroundVideo = flag("EnableBackgroundVideo");
     Config.setValue("EnableBackgroundVideo", Config.EnableBackgroundVideo);
-    Config.setValue(QStringLiteral("BigPicture/Enabled"), flag("BigPicture/Enabled"));
+    if (!qsanBigPictureModeLocked())
+        Config.setValue(kBigPicture, flag("BigPicture/Enabled"));
 
     Config.EnableEffects = flag("EnableEffects");
     Config.setValue("EnableEffects", Config.EnableEffects);

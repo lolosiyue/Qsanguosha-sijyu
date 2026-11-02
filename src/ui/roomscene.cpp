@@ -1665,11 +1665,13 @@ void RoomScene::applyResponsiveLayout()
     input.selfSeat = Self ? Self->getSeat() : 0;
     input.promptHeight = prompt_box->boundingRect().height() + 16.0;
     const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
-    // Only the TenFoot TV profile enlarges the photo footprint; every other
-    // BP responsive profile (fold, portrait, small windows) keeps the
-    // desktop-sized seats it had before big-picture routing existed.
-    const qreal photoScale = RoomLayoutEngine::selectsTenFoot(input) ? qMax(scale, 1.5) : scale;
-    input.smallPhotoSize = legacy.smallPhotoSize * photoScale;
+    const bool tenFoot = RoomLayoutEngine::selectsTenFoot(input);
+    QSize photoBaseSize = legacy.smallPhotoSize;
+    qreal photoScale = scale;
+    input.smallPhotoSize = photoBaseSize * photoScale;
+    // Keeps the table band tall enough that boxes centred on it, up to the two-row
+    // card container, clear both the seat row and the dashboard.
+    if (tenFoot) input.interactionHeightFraction = 0.29;
     const bool portrait = input.stableRect.height() > input.stableRect.width();
     const bool nativeChrome = input.largeRoom
         && !portrait;
@@ -1693,6 +1695,15 @@ void RoomScene::applyResponsiveLayout()
         // scaled landscape footer (Android logical widths vary with density).
         input.minimumInteractionHeight = portrait || interactionWidth < 700.0
             ? dashboard->responsiveHeight(interactionWidth) : legacy.skin.dashboardNormalHeight;
+        if (tenFoot) {
+            const auto seat = RoomLayoutEngine::chooseTenFootSeat(photos.size(), measured.tableRect.width(),
+                input.gap, legacy.smallPhotoSize, legacy.normalPhotoSize);
+            photoBaseSize = seat.baseSize;
+            photoScale = seat.scale;
+            input.smallPhotoSize = seat.placedSize;
+            // The header only hosts the ribbon's pager; without one it wastes TV height.
+            if (seat.allVisible) input.headerHeight = 0.0;
+        }
         m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
         chat_box_widget->setOpacity(0.0);
         chat_edit_widget->setOpacity(0.0);
@@ -1710,7 +1721,7 @@ void RoomScene::applyResponsiveLayout()
         emit responsiveGeometryChanged();
         return;
     }
-    m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF(), 4.0);
+    m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF() * input.viewScale, 4.0);
     // Legacy UI scaling pivots around the footer's bottom centre. Responsive
     // positions are top-left coordinates; retaining that pivot shifts scaled
     // dashboards right/down and can push the footer outside the viewport.
@@ -1742,7 +1753,7 @@ void RoomScene::applyResponsiveLayout()
     RoomLayoutEngine::Result table;
     table.valid = table.seatsValid = true;
     table.tableCenter = layout.tableCenter;
-    table.photoBaseSize = legacy.smallPhotoSize;
+    table.photoBaseSize = photoBaseSize;
     table.photoScale = nativeChrome
         ? qreal(input.smallPhotoSize.width()) / legacy.smallPhotoSize.width() : photoScale;
     table.floatingArea = QRect(QPoint(0, 0), layout.tableRect.size().toSize());
@@ -6563,8 +6574,9 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
 
         QString qmlPath = "ui-script/animation.qml";
-        int effectWidth = sceneRect().width();
-        int effectHeight = sceneRect().height();
+        // This overlay is a viewport widget, so it follows the view's zoom.
+        int effectWidth = sceneRect().width() * m_responsiveLayout.viewScale;
+        int effectHeight = sceneRect().height() * m_responsiveLayout.viewScale;
 
 
         QVariantMap params;
@@ -6575,7 +6587,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         params.insert("skill",Sanguosha->translate(skill));
         params.insert("sceneWidth",effectWidth);
         params.insert("sceneHeight",effectHeight);
-        params.insert("tableWidth",m_tableCenterPos.x()*2);
+        params.insert("tableWidth",m_tableCenterPos.x()*2*m_responsiveLayout.viewScale);
 
 
 
@@ -6641,8 +6653,9 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         QString qmlPath = "ui-script/animation.qml";
 
 
-        int effectWidth = sceneRect().width();
-        int effectHeight = sceneRect().height();
+        // This overlay is a viewport widget, so it follows the view's zoom.
+        int effectWidth = sceneRect().width() * m_responsiveLayout.viewScale;
+        int effectHeight = sceneRect().height() * m_responsiveLayout.viewScale;
 
 
         QVariantMap params;
@@ -6651,7 +6664,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         params.insert("skill",Sanguosha->translate(skill));
         params.insert("sceneWidth",effectWidth);
         params.insert("sceneHeight",effectHeight);
-        params.insert("tableWidth",m_tableCenterPos.x()*2);
+        params.insert("tableWidth",m_tableCenterPos.x()*2*m_responsiveLayout.viewScale);
 
 
 

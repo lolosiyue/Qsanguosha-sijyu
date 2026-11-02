@@ -79,15 +79,16 @@ static void installApplicationIcon()
 #endif
 
 // Eats QEvent::ToolTip (and context-help tooltip requests) at application
-// scope so nothing in big-picture mode can pop hover help. Installed only
-// while the mode is active; normal runs are untouched.
+// scope so nothing in big-picture mode can pop hover help. Installed for every
+// run because settings can switch the mode live; it passes everything while off.
 class BigPictureTooltipFilter : public QObject
 {
 public:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
-        if (event->type() == QEvent::ToolTip
-            || event->type() == QEvent::WhatsThis)
+        if ((event->type() == QEvent::ToolTip
+             || event->type() == QEvent::WhatsThis)
+            && qsanBigPictureModeActive())
             return true;
         return QObject::eventFilter(watched, event);
     }
@@ -166,24 +167,6 @@ static void applyBigPictureScaleFactor()
         qputenv("QT_SCALE_FACTOR", "2");
 }
 
-// Base stylesheet plus the TV overlay (>=64px buttons, visible focus ring)
-// only while big-picture mode is active. Normal sessions get byte-identical
-// styling to before.
-static void applyQsanStyleSheet(bool bigPictureMode)
-{
-    QString style;
-    QFile file(QStringLiteral("qss/sanguosha.qss"));
-    if (file.open(QIODevice::ReadOnly))
-        style += QTextStream(&file).readAll();
-    if (bigPictureMode) {
-        QFile tvFile(QStringLiteral("qss/bigpicture_tv.qss"));
-        if (tvFile.open(QIODevice::ReadOnly))
-            style += QTextStream(&tvFile).readAll();
-    }
-    if (!style.isEmpty())
-        qApp->setStyleSheet(style);
-}
-
 int main(int argc, char *argv[]) {
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
     // Under WSLg/XWayland, XI2 sends clicks to the window frame but not the QQuickWidget/QOpenGLWidget client area.
@@ -227,21 +210,25 @@ int main(int argc, char *argv[]) {
     }
 
     // Big-picture (10-foot) mode: --big-picture, the persisted BigPicture/Enabled
-    // key, or a preset QSAN_BIG_PICTURE env var. Normalize the first two into the
-    // env var now so every later stage only checks qsanBigPictureModeActive().
+    // key, or a preset QSAN_BIG_PICTURE env var. Resolve it now so every later
+    // stage only checks qsanBigPictureModeActive().
     bool bigPictureMode = false;
     {
-        const QByteArray bigPictureEnv = qgetenv("QSAN_BIG_PICTURE");
-        if (!bigPictureEnv.isEmpty()) {
+        const bool presetEnv = !qgetenv("QSAN_BIG_PICTURE").isEmpty();
+        bool commandLine = false;
+        for (int i = 1; i < argc; ++i)
+            if (strcmp(argv[i], "--big-picture") == 0)
+                commandLine = true;
+        if (presetEnv || commandLine) {
             // An explicit off value overrides CLI and persisted settings too.
+            // Launch options reach child instances through the env var.
+            if (!presetEnv)
+                qputenv("QSAN_BIG_PICTURE", "1");
+            qsanLockBigPictureMode();
             bigPictureMode = qsanBigPictureModeActive();
         } else {
-            for (int i = 1; i < argc; ++i)
-                if (strcmp(argv[i], "--big-picture") == 0)
-                    bigPictureMode = true;
-            bigPictureMode = bigPictureMode
-                || Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
-            qputenv("QSAN_BIG_PICTURE", bigPictureMode ? "1" : "0");
+            bigPictureMode = Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+            qsanSetBigPictureMode(bigPictureMode);
         }
     }
 
@@ -363,16 +350,15 @@ int main(int argc, char *argv[]) {
         // The home page uses custom contentItem and indicator controls unsupported by the Windows native style.
         QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-        if (bigPictureMode) {
-            // Hover tooltips are a desktop concept; suppress them on TV.
-            static BigPictureTooltipFilter tooltipFilter;
-            qApp->installEventFilter(&tooltipFilter);
+        // Hover tooltips are a desktop concept; suppress them on TV.
+        static BigPictureTooltipFilter tooltipFilter;
+        qApp->installEventFilter(&tooltipFilter);
 #if !defined(QSAN_XP_LEGACY)
-            // Spatial arrow/Enter/Esc navigation plus modal scrims in dialogs.
-            qApp->installEventFilter(new SpatialFocusFilter(qApp));
+        // Spatial arrow/Enter/Esc navigation plus modal scrims in dialogs.
+        qApp->installEventFilter(new SpatialFocusFilter(qApp));
+        if (bigPictureMode)
             InputModeTracker::instance()->setHideCursorInGamepadMode(true);
 #endif
-        }
     }
 
 #ifdef Q_OS_ANDROID

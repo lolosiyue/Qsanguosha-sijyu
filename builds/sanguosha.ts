@@ -3932,6 +3932,46 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
 <context>
     <name>DesktopGamePresentation</name>
     <message>
+        <source>Controller focus: %1 — %2: select; %3: confirm; %4: back</source>
+        <translation>手柄焦点：%1 — %2：选择；%3：确认；%4：返回</translation>
+    </message>
+    <message>
+        <source>D-pad</source>
+        <translation>方向键</translation>
+    </message>
+    <message>
+        <source>Move</source>
+        <translation>移动</translation>
+    </message>
+    <message>
+        <source>Select</source>
+        <translation>选择</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>详情</translation>
+    </message>
+    <message>
+        <source>Switch group</source>
+        <translation>切换分组</translation>
+    </message>
+    <message>
+        <source>Game menu</source>
+        <translation>游戏菜单</translation>
+    </message>
+    <message>
+        <source>Add target vote</source>
+        <translation>增加目标票数</translation>
+    </message>
+    <message>
+        <source>Remove target vote</source>
+        <translation>减少目标票数</translation>
+    </message>
+    <message>
         <location filename="../src/ui/desktop-game-presentation.cpp" line="563"/>
         <source>Free choose head...</source>
         <translation>自由选择主将…</translation>
