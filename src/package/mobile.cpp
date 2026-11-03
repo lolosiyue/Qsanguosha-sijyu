@@ -19918,7 +19918,8 @@ public:
 				cht << room->askForChoice(player,objectName(),"1+2+3+4+5+6+7+8+9+10+11+12+13",QVariant(),"",":" + objectName());
 				cht << "quchong";
 				foreach (ServerPlayer *p, room->getPlayers())
-					room->acquireSkill(p, "#zhizhe");
+					if(!p->hasSkill("#zhizhe", true))
+						room->acquireSkill(p, "#zhizhe");
 				n = -1;
 				foreach (int id, Sanguosha->getRandomCards(true)){
 					ec = Sanguosha->getCard(id);
