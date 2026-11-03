@@ -205,86 +205,13 @@ Item {
                                          y + item.height - formView.height + HomeTheme.settingsRowGap)
     }
 
-    component GroupTitle: Text {
-        Layout.fillWidth: true
-        Layout.topMargin: HomeTheme.settingsRowGap
-        Accessible.role: Accessible.Heading
-        color: HomeTheme.cardAccent
-        font.pixelSize: HomeTheme.settingsGroupFontSize
-        font.bold: true
-        wrapMode: Text.Wrap
-    }
-
-    // Label and control share a row; compact stacks them.
-    component SettingRow: GridLayout {
-        Layout.fillWidth: true
-        columns: root.compact ? 1 : 2
-        columnSpacing: HomeTheme.cardPanelGap
-        rowSpacing: HomeTheme.compactGap
-    }
-
-    component SettingLabel: Text {
-        Layout.preferredWidth: root.compact ? -1 : HomeTheme.settingsLabelWidth
-        Layout.fillWidth: root.compact
-        color: enabled ? HomeTheme.cardTextSecondary : HomeTheme.cardControlDisabledText
-        font.pixelSize: HomeTheme.settingsFontSize
-        wrapMode: Text.Wrap
-    }
-
-    component FormCheck: Basic.CheckBox {
-        id: check
-        property string hint: ""
-        Layout.fillWidth: true
-        implicitHeight: root.compact ? HomeTheme.compactTouch
-                                     : Math.max(implicitContentHeight, implicitIndicatorHeight) + topPadding + bottomPadding
-        padding: 4
-        spacing: 10
-        onActiveFocusChanged: if (activeFocus) root.reveal(check)
-        Keys.onShortcutOverride: function(event) {
-            if (event.key === Qt.Key_Space)
-                event.accepted = true
-        }
-        ToolTip.visible: hint !== "" && hovered
-        ToolTip.text: hint
-        ToolTip.delay: 500
-        indicator: Rectangle {
-            implicitWidth: HomeTheme.settingsCheckSize
-            implicitHeight: HomeTheme.settingsCheckSize
-            x: check.leftPadding
-            y: parent ? (parent.height - height) / 2 : 0
-            radius: HomeTheme.cardBadgeRadius
-            color: check.checked ? HomeTheme.cardInteractive : HomeTheme.cardInputFill
-            border.width: check.activeFocus
-                          ? (root.highContrast ? HomeTheme.cardHighContrastFocusBorderWidth
-                                               : HomeTheme.cardSelectedBorderWidth)
-                          : HomeTheme.cardBorderWidth
-            border.color: check.activeFocus ? HomeTheme.focusBorderHigh
-                        : check.checked ? HomeTheme.cardInteractive : HomeTheme.cardTileBorder
-            opacity: check.enabled ? 1.0 : HomeTheme.cardControlDisabledOpacity
-            Text {
-                anchors.centerIn: parent
-                visible: check.checked
-                text: "✓"
-                color: HomeTheme.cardTagMark
-                font.pixelSize: HomeTheme.cardBodyFontSize
-                font.bold: true
-            }
-        }
-        contentItem: Text {
-            leftPadding: check.indicator.width + check.spacing
-            text: check.text
-            color: check.enabled ? HomeTheme.cardTextPrimary : HomeTheme.cardControlDisabledText
-            font.pixelSize: HomeTheme.settingsFontSize
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.Wrap
-        }
-    }
-
-    component SettingCheck: FormCheck {
-        required property string key
-        checked: root.values[key] === true
-        onToggled: root.set(key, checked)
-    }
+    // Shared form controls read compact, highContrast, values, set() and reveal() from this page.
+    component SettingRow: SettingsRow { compact: root.compact }
+    component SettingLabel: SettingsLabel { compact: root.compact }
+    component FormCheck: SettingsCheckBox { form: root }
+    component SettingCheck: SettingsValueCheck { form: root }
+    component SettingChoice: SettingsChoice { form: root }
+    component FormButton: SettingsButton { form: root }
 
     component ModeRadio: Basic.RadioButton {
         id: radio
@@ -330,29 +257,6 @@ Item {
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
         }
-    }
-
-    component SettingChoice: CardComboBox {
-        id: choice
-        required property string key
-        required property var options
-        Layout.preferredWidth: root.compact ? -1 : HomeTheme.settingsChoiceWidth
-        Layout.fillWidth: root.compact
-        implicitHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardControlHeight
-        font.pixelSize: HomeTheme.settingsFontSize
-        textRole: "label"
-        valueRole: "value"
-        model: options
-        currentIndex: {
-            var current = root.values[key]
-            for (var i = 0; i < options.length; ++i) {
-                if (options[i].value === current)
-                    return i
-            }
-            return 0
-        }
-        onActivated: root.set(key, currentValue)
-        onActiveFocusChanged: if (activeFocus) root.reveal(choice)
     }
 
     component SettingSpin: RowLayout {
@@ -415,13 +319,6 @@ Item {
             border.width: field.activeFocus ? HomeTheme.cardSelectedBorderWidth : HomeTheme.cardBorderWidth
             border.color: field.activeFocus ? HomeTheme.focusBorderHigh : HomeTheme.cardPanelBorder
         }
-    }
-
-    component FormButton: BAToolButton {
-        id: formButton
-        implicitHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardControlHeight + 4
-        Layout.fillWidth: root.compact
-        onActiveFocusChanged: if (activeFocus) root.reveal(formButton)
     }
 
     // One tooltip serves every package checkbox; package contents can be long, so they wrap.
@@ -608,7 +505,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle { text: qsTranslate("ServerDialog", "Game mode") }
+                            SettingsGroupTitle { text: qsTranslate("ServerDialog", "Game mode") }
                             GridLayout {
                                 Layout.fillWidth: true
                                 columns: root.compact ? 1 : 2
@@ -676,7 +573,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle {
+                            SettingsGroupTitle {
                                 visible: root.hasMode("02_1v1")
                                 enabled: root.modeName === "02_1v1"
                                 opacity: enabled ? 1 : HomeTheme.cardControlDisabledOpacity
@@ -710,7 +607,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle {
+                            SettingsGroupTitle {
                                 visible: root.hasMode("06_3v3")
                                 enabled: root.modeName === "06_3v3"
                                 opacity: enabled ? 1 : HomeTheme.cardControlDisabledOpacity
@@ -767,7 +664,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle {
+                            SettingsGroupTitle {
                                 visible: root.hasMode("06_XMode")
                                 enabled: root.modeName === "06_XMode"
                                 opacity: enabled ? 1 : HomeTheme.cardControlDisabledOpacity
@@ -1025,7 +922,7 @@ Item {
                                 text: qsTranslate("ServerDialog", "Reward the first showing player")
                             }
 
-                            GroupTitle { text: qsTranslate("ServerDialog", "Address") }
+                            SettingsGroupTitle { text: qsTranslate("ServerDialog", "Address") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ServerDialog", "Address") }
                                 GridLayout {
@@ -1100,7 +997,7 @@ Item {
                             SettingCheck { key: "EnableMinimizeDialog"; text: qsTranslate("ServerDialog", "Minimize the dialog when server runs") }
                             SettingCheck { key: "SurrenderAtDeath"; text: qsTranslate("ServerDialog", "Surrender at the time of Death") }
 
-                            GroupTitle { text: qsTranslate("ServerDialog", "Artificial intelligence") }
+                            SettingsGroupTitle { text: qsTranslate("ServerDialog", "Artificial intelligence") }
                             SettingCheck { key: "EnableAI"; text: qsTranslate("ServerDialog", "Enable AI") }
                             SettingCheck {
                                 key: "AIHumanized"

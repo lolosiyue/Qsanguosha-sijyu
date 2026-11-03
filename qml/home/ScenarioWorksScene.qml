@@ -106,31 +106,7 @@ Item {
         function onWorkWritten(path) { root.select(path) }
     }
 
-    component Badge: Rectangle {
-        property alias text: badgeLabel.text
-        property color tone: HomeTheme.cardBadgeInfo
-        implicitWidth: badgeLabel.implicitWidth + HomeTheme.cardBadgeHPadding * 2
-        implicitHeight: HomeTheme.cardBadgeHeight
-        radius: HomeTheme.cardBadgeRadius
-        color: tone
-        Text {
-            id: badgeLabel
-            anchors.centerIn: parent
-            color: HomeTheme.cardBadgeText
-            font.pixelSize: HomeTheme.cardMetaFontSize
-            font.bold: true
-        }
-    }
-
-    component SectionTitle: Text {
-        Layout.fillWidth: true
-        Layout.topMargin: HomeTheme.settingsRowGap
-        Accessible.role: Accessible.Heading
-        color: HomeTheme.cardAccent
-        font.pixelSize: HomeTheme.cardDetailSectionFontSize
-        font.bold: true
-        wrapMode: Text.Wrap
-    }
+    component ActionButton: CardActionButton { compact: root.compact }
 
     component BodyText: Text {
         Layout.fillWidth: true
@@ -138,12 +114,6 @@ Item {
         color: HomeTheme.cardTextSecondary
         font.pixelSize: HomeTheme.cardBodyFontSize
         wrapMode: Text.Wrap
-    }
-
-    component ActionButton: BAToolButton {
-        Layout.fillWidth: root.compact
-        Layout.preferredHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardActionButtonExtent
-        opacity: enabled ? 1 : 0.5
     }
 
     ColumnLayout {
@@ -321,7 +291,7 @@ Item {
                                     font.pixelSize: HomeTheme.cardTileTitleFontSize
                                     font.bold: true
                                 }
-                                Badge { text: workRow.modelData.kind }
+                                CardBadge { text: workRow.modelData.kind }
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -406,7 +376,7 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: HomeTheme.cardTileTextGap
-                            Badge { text: root.work.kind || "" }
+                            CardBadge { text: root.work.kind || "" }
                             Text {
                                 height: HomeTheme.cardBadgeHeight
                                 verticalAlignment: Text.AlignVCenter
@@ -434,7 +404,7 @@ Item {
                                   .arg(root.work.rule || "").arg(root.work.extensions || "")
                         }
 
-                        SectionTitle {
+                        CardSectionTitle {
                             visible: !!root.work.compatibilityError
                             text: qsTranslate("ScenarioWorkLibrary", "Incompatible work")
                             color: HomeTheme.cardWarning
@@ -445,7 +415,7 @@ Item {
                             wrapMode: Text.WrapAnywhere
                         }
 
-                        SectionTitle {
+                        CardSectionTitle {
                             visible: !!root.work.progressError
                             text: qsTranslate("ScenarioWorkLibraryDialog", "Cannot read progress")
                             color: HomeTheme.cardDanger
@@ -455,7 +425,7 @@ Item {
                             color: HomeTheme.cardDanger
                         }
 
-                        SectionTitle { text: qsTranslate("ScenarioWorkEditorDialog", "Ordered stage entries") }
+                        CardSectionTitle { text: qsTranslate("ScenarioWorkEditorDialog", "Ordered stage entries") }
 
                         Repeater {
                             model: root.entries
@@ -524,12 +494,12 @@ Item {
                                                 font.bold: true
                                                 wrapMode: Text.Wrap
                                             }
-                                            Badge {
+                                            CardBadge {
                                                 visible: entryTile.modelData.continuation
                                                 text: qsTr("Continuation")
                                                 tone: HomeTheme.cardBadgePositive
                                             }
-                                            Badge {
+                                            CardBadge {
                                                 visible: entryTile.modelData.locked
                                                 text: qsTr("Locked")
                                                 tone: HomeTheme.cardBadgeNeutral

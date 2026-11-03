@@ -22,6 +22,16 @@
     <file alias="CardTagChip.qml">CardTagChip.qml</file>
     <file alias="CardDetailPanel.qml">CardDetailPanel.qml</file>
     <file alias="CardVariantList.qml">CardVariantList.qml</file>
+    <file alias="SettingsGroupTitle.qml">SettingsGroupTitle.qml</file>
+    <file alias="SettingsRow.qml">SettingsRow.qml</file>
+    <file alias="SettingsLabel.qml">SettingsLabel.qml</file>
+    <file alias="SettingsCheckBox.qml">SettingsCheckBox.qml</file>
+    <file alias="SettingsValueCheck.qml">SettingsValueCheck.qml</file>
+    <file alias="SettingsChoice.qml">SettingsChoice.qml</file>
+    <file alias="SettingsButton.qml">SettingsButton.qml</file>
+    <file alias="CardBadge.qml">CardBadge.qml</file>
+    <file alias="CardSectionTitle.qml">CardSectionTitle.qml</file>
+    <file alias="CardActionButton.qml">CardActionButton.qml</file>
     <file alias="HomeTheme.qml">HomeTheme.qml</file>
     <file alias="qmldir">qmldir</file>
     <file alias="HomeBackground.qml">HomeBackground.qml</file>

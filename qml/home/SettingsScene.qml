@@ -51,86 +51,12 @@ Item {
                                          y + item.height - formView.height + HomeTheme.settingsRowGap)
     }
 
-    component GroupTitle: Text {
-        Layout.fillWidth: true
-        Layout.topMargin: HomeTheme.settingsRowGap
-        Accessible.role: Accessible.Heading
-        color: HomeTheme.cardAccent
-        font.pixelSize: HomeTheme.settingsGroupFontSize
-        font.bold: true
-        wrapMode: Text.Wrap
-    }
-
-    // Label and control share a row; compact stacks them.
-    component SettingRow: GridLayout {
-        Layout.fillWidth: true
-        columns: root.compact ? 1 : 2
-        columnSpacing: HomeTheme.cardPanelGap
-        rowSpacing: HomeTheme.compactGap
-    }
-
-    component SettingLabel: Text {
-        Layout.preferredWidth: root.compact ? -1 : HomeTheme.settingsLabelWidth
-        Layout.fillWidth: root.compact
-        color: HomeTheme.cardTextSecondary
-        font.pixelSize: HomeTheme.settingsFontSize
-        wrapMode: Text.Wrap
-    }
-
-    component SettingCheck: Basic.CheckBox {
-        id: check
-        required property string key
-        property string hint: ""
-        Layout.fillWidth: true
-        implicitHeight: root.compact ? HomeTheme.compactTouch
-                                     : Math.max(implicitContentHeight, implicitIndicatorHeight) + topPadding + bottomPadding
-        padding: 4
-        spacing: 10
-        checked: root.values[key] === true
-        onToggled: root.set(key, checked)
-        // Accessible toggle otherwise only changes checked, bypassing the draft.
-        Accessible.onToggleAction: check.click()
-        Accessible.onPressAction: check.click()
-        onActiveFocusChanged: if (activeFocus) root.reveal(check)
-        Keys.onShortcutOverride: function(event) {
-            if (event.key === Qt.Key_Space)
-                event.accepted = true
-        }
-        ToolTip.visible: hint !== "" && hovered
-        ToolTip.text: hint
-        ToolTip.delay: 500
-        indicator: Rectangle {
-            implicitWidth: HomeTheme.settingsCheckSize
-            implicitHeight: HomeTheme.settingsCheckSize
-            x: check.leftPadding
-            y: parent ? (parent.height - height) / 2 : 0
-            radius: HomeTheme.cardBadgeRadius
-            color: check.checked ? HomeTheme.cardInteractive : HomeTheme.cardInputFill
-            border.width: check.activeFocus
-                          ? (root.highContrast ? HomeTheme.cardHighContrastFocusBorderWidth
-                                               : HomeTheme.cardSelectedBorderWidth)
-                          : HomeTheme.cardBorderWidth
-            border.color: check.activeFocus ? HomeTheme.focusBorderHigh
-                        : check.checked ? HomeTheme.cardInteractive : HomeTheme.cardTileBorder
-            opacity: check.enabled ? 1.0 : HomeTheme.cardControlDisabledOpacity
-            Text {
-                anchors.centerIn: parent
-                visible: check.checked
-                text: "✓"
-                color: HomeTheme.cardTagMark
-                font.pixelSize: HomeTheme.cardBodyFontSize
-                font.bold: true
-            }
-        }
-        contentItem: Text {
-            leftPadding: check.indicator.width + check.spacing
-            text: check.text
-            color: check.enabled ? HomeTheme.cardTextPrimary : HomeTheme.cardControlDisabledText
-            font.pixelSize: HomeTheme.settingsFontSize
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.Wrap
-        }
-    }
+    // Shared form controls read compact, highContrast, values, set() and reveal() from this page.
+    component SettingRow: SettingsRow { compact: root.compact }
+    component SettingLabel: SettingsLabel { compact: root.compact }
+    component SettingCheck: SettingsValueCheck { form: root }
+    component SettingChoice: SettingsChoice { form: root }
+    component FormButton: SettingsButton { form: root }
 
     component SettingSlider: RowLayout {
         id: sliderRow
@@ -199,29 +125,6 @@ Item {
         }
     }
 
-    component SettingChoice: CardComboBox {
-        id: choice
-        required property string key
-        required property var options
-        Layout.preferredWidth: root.compact ? -1 : HomeTheme.settingsChoiceWidth
-        Layout.fillWidth: root.compact
-        implicitHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardControlHeight
-        font.pixelSize: HomeTheme.settingsFontSize
-        textRole: "label"
-        valueRole: "value"
-        model: options
-        currentIndex: {
-            var current = root.values[key]
-            for (var i = 0; i < options.length; ++i) {
-                if (options[i].value === current)
-                    return i
-            }
-            return 0
-        }
-        onActivated: root.set(key, currentValue)
-        onActiveFocusChanged: if (activeFocus) root.reveal(choice)
-    }
-
     component PathField: Rectangle {
         property alias text: pathText.text
         Layout.fillWidth: true
@@ -251,13 +154,6 @@ Item {
         columns: root.compact ? 2 : 3
         columnSpacing: HomeTheme.compactGap
         rowSpacing: HomeTheme.compactGap
-    }
-
-    component FormButton: BAToolButton {
-        id: formButton
-        implicitHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardControlHeight + 4
-        Layout.fillWidth: root.compact
-        onActiveFocusChanged: if (activeFocus) root.reveal(formButton)
     }
 
     ColumnLayout {
@@ -376,7 +272,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: HomeTheme.settingsRowGap
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "界面") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "界面") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "主题") }
                                 SettingChoice {
@@ -445,7 +341,7 @@ Item {
                             SettingCheck { key: "EnableAnimatedGenerals"; text: qsTranslate("ConfigDialog", "Enable animated generals (GIF)") }
                             SettingCheck { key: "EnablePointerEffect"; text: qsTranslate("ConfigDialog", "Pointer effect") }
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "直向與單手操作") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "直向與單手操作") }
                             SettingCheck { key: "UI/ResponsiveLayout"; text: qsTranslate("ConfigDialog", "自適應版面（首頁、對話框與牌桌）") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "單手操作") }
@@ -474,7 +370,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "背景") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "背景") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "Setup background") }
                                 PathControls {
@@ -495,7 +391,7 @@ Item {
                             SettingCheck { key: "EnableAutoBackgroundChange"; text: qsTranslate("ConfigDialog", "Enable auto background change according to Lord") }
                             SettingCheck { key: "EnableBackgroundVideo"; text: qsTranslate("ConfigDialog", "Enable video background on the home page") }
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "Visual mode") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "Visual mode") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "Color blindness") }
                                 SettingChoice {
@@ -509,7 +405,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle { text: qsTr("大屏模式") }
+                            SettingsGroupTitle { text: qsTr("大屏模式") }
                             SettingCheck {
                                 key: "BigPicture/Enabled"
                                 enabled: !settingsSession.bigPictureLocked
@@ -518,7 +414,7 @@ Item {
                                       : qsTr("啟用大屏模式（4K 螢幕未開系統縮放時，首頁和對話框要重新啟動才會改變大小）")
                             }
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "Font setup") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "Font setup") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "Application font") }
                                 PathControls {
@@ -563,7 +459,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: HomeTheme.settingsRowGap
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "Audio") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "Audio") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "Setup background music") }
                                 PathControls {
@@ -611,7 +507,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: HomeTheme.settingsRowGap
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "Game") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "Game") }
                             SettingCheck { key: "NeverNullifyMyTrick"; text: qsTranslate("ConfigDialog", "Never nullify my single target trick") }
                             SettingCheck { key: "EnableAutoTarget"; text: qsTranslate("ConfigDialog", "Enable auto target") }
                             SettingCheck { key: "EnableIntellectualSelection"; text: qsTranslate("ConfigDialog", "Enable intellectual selection") }
@@ -650,7 +546,7 @@ Item {
                                 }
                             }
 
-                            GroupTitle { text: qsTranslate("ConfigDialog", "录像") }
+                            SettingsGroupTitle { text: qsTranslate("ConfigDialog", "录像") }
                             SettingCheck {
                                 key: "recorder/autosave"
                                 text: qsTranslate("ConfigDialog", "自动保存")

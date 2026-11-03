@@ -177,31 +177,7 @@ Item {
         }
     }
 
-    component Badge: Rectangle {
-        property alias text: badgeLabel.text
-        property color tone: HomeTheme.cardBadgeInfo
-        implicitWidth: badgeLabel.implicitWidth + HomeTheme.cardBadgeHPadding * 2
-        implicitHeight: HomeTheme.cardBadgeHeight
-        radius: HomeTheme.cardBadgeRadius
-        color: tone
-        Text {
-            id: badgeLabel
-            anchors.centerIn: parent
-            color: HomeTheme.cardBadgeText
-            font.pixelSize: HomeTheme.cardMetaFontSize
-            font.bold: true
-        }
-    }
-
-    component GroupTitle: Text {
-        Layout.fillWidth: true
-        Layout.topMargin: HomeTheme.settingsRowGap
-        Accessible.role: Accessible.Heading
-        color: HomeTheme.cardAccent
-        font.pixelSize: HomeTheme.cardDetailSectionFontSize
-        font.bold: true
-        wrapMode: Text.Wrap
-    }
+    component ActionButton: CardActionButton { compact: root.compact }
 
     component InfoRow: RowLayout {
         property alias label: infoLabel.text
@@ -222,12 +198,6 @@ Item {
             font.pixelSize: HomeTheme.cardBodyFontSize
             wrapMode: Text.Wrap
         }
-    }
-
-    component ActionButton: BAToolButton {
-        Layout.fillWidth: root.compact
-        Layout.preferredHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardActionButtonExtent
-        opacity: enabled ? 1 : 0.5
     }
 
     ColumnLayout {
@@ -472,12 +442,12 @@ Item {
                                             color: HomeTheme.cardTextSecondary
                                             font.pixelSize: HomeTheme.cardCaptionFontSize
                                         }
-                                        Badge {
+                                        CardBadge {
                                             visible: row.modelData.takeover
                                             text: qsTr("Takeover")
                                             tone: HomeTheme.cardBadgeBasic
                                         }
-                                        Badge {
+                                        CardBadge {
                                             text: row.modelData.format
                                             tone: row.modelData.format === "TXT" ? HomeTheme.cardBadgeEquip
                                                                                   : HomeTheme.cardBadgeSkill
@@ -610,7 +580,7 @@ Item {
                                          && root.detail !== null && root.detail.valid === true
                                 spacing: HomeTheme.cardSectionGap
 
-                                GroupTitle { text: qsTr("Game information") }
+                                CardSectionTitle { text: qsTr("Game information") }
                                 InfoRow {
                                     label: qsTr("Mode")
                                     value: root.detail && root.detail.mode ? root.detail.mode : "-"
@@ -624,7 +594,7 @@ Item {
                                     value: root.detail && root.detail.packages ? root.detail.packages : "-"
                                 }
 
-                                GroupTitle { text: qsTr("Players") }
+                                CardSectionTitle { text: qsTr("Players") }
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: root.compact ? 1 : 2
@@ -663,7 +633,7 @@ Item {
                                                         font.pixelSize: HomeTheme.cardBodyFontSize
                                                         font.bold: true
                                                     }
-                                                    Badge {
+                                                    CardBadge {
                                                         text: playerCard.modelData.winner ? qsTr("Win") : qsTr("Lose")
                                                         tone: playerCard.modelData.winner ? HomeTheme.cardBadgePositive
                                                                                           : HomeTheme.cardBadgeNeutral
@@ -700,7 +670,7 @@ Item {
                                     }
                                 }
 
-                                GroupTitle {
+                                CardSectionTitle {
                                     visible: chatText.text !== ""
                                     text: qsTr("Chat log")
                                 }
