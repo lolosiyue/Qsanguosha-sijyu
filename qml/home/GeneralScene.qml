@@ -27,7 +27,11 @@ Item {
             y: parent ? (parent.height - height) / 2 : 0
             radius: 4
             color: HomeTheme.btnSecondary
-            border.color: HomeTheme.baDockBorder
+            border.width: box.activeFocus
+                          ? (homeController.visualMode === "highcontrast" ? HomeTheme.cardHighContrastFocusBorderWidth
+                                                                          : HomeTheme.cardSelectedBorderWidth)
+                          : HomeTheme.cardBorderWidth
+            border.color: box.activeFocus ? HomeTheme.focusBorderHigh : HomeTheme.baDockBorder
             Rectangle {
                 anchors.centerIn: parent
                 width: 10
