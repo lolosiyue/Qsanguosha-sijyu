@@ -1996,7 +1996,7 @@ public:
 		if (mark.name != "&cxyizi") return true;
 		if (player->getMark("&cxyizi") <= 0)
 			room->detachSkillFromPlayer(player, "panshi");
-		else
+		else if (!player->hasSkill("panshi", true))
 			room->acquireSkill(player, "panshi");
 		return true;
 	}
@@ -13904,13 +13904,13 @@ public:
 		}else if(event==MarkChanged){
 			MarkStruct mark = data.value<MarkStruct>();
 			if(mark.name=="&yl_lequan"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_lequan");
+				if(mark.gain>0){if(!player->hasSkill("yl_lequan",true))room->acquireSkill(player,"yl_lequan");}
 				else room->detachSkillFromPlayer(player,"yl_lequan");
 			}else if(mark.name=="&yl_huoxi"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_huoxi");
+				if(mark.gain>0){if(!player->hasSkill("yl_huoxi",true))room->acquireSkill(player,"yl_huoxi");}
 				else room->detachSkillFromPlayer(player,"yl_huoxi");
 			}else if(mark.name=="&yl_zhangqi"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_zhangqi");
+				if(mark.gain>0){if(!player->hasSkill("yl_zhangqi",true))room->acquireSkill(player,"yl_zhangqi");}
 				else room->detachSkillFromPlayer(player,"yl_zhangqi");
 			}/*else if(mark.name=="&yl_yunxiang"){
 				if(mark.gain>0)room->acquireSkill(player,"yl_yunxiang");
@@ -35462,7 +35462,7 @@ public:
 				room->loseMaxHp(player,1,objectName());
 				room->changeTranslation(player,"shouzhi",1);
 				room->addPlayerMark(player,"shouzhiUp");
-				room->acquireSkill(player,"xingmen");
+				if(!player->hasSkill("xingmen",true))room->acquireSkill(player,"xingmen");
 			}
 		}else if(event==QuitDying){
 			foreach(ServerPlayer*p,room->getAllPlayers()){
@@ -35471,7 +35471,7 @@ public:
 					room->loseMaxHp(p,1,objectName());
 					room->changeTranslation(p,"shouzhi",1);
 					room->addPlayerMark(p,"shouzhiUp");
-					room->acquireSkill(p,"xingmen");
+					if(!p->hasSkill("xingmen",true))room->acquireSkill(p,"xingmen");
 				}
 			}
 		}else if(player->getPhase()==Player::Play&&player->getMark("@fenhui")>0){
@@ -36727,7 +36727,7 @@ public:
 				room->loseMaxHp(player,1,objectName());
 				room->changeTranslation(player,"shouzhi",1);
 				room->addPlayerMark(player,"shouzhiUp");
-				room->acquireSkill(player,"xingmen");
+				if(!player->hasSkill("xingmen",true))room->acquireSkill(player,"xingmen");
 			}
 		}else if(event==QuitDying){
 			foreach(ServerPlayer*p,room->getAllPlayers()){
@@ -36736,7 +36736,7 @@ public:
 					room->loseMaxHp(p,1,objectName());
 					room->changeTranslation(p,"shouzhi",1);
 					room->addPlayerMark(p,"shouzhiUp");
-					room->acquireSkill(p,"xingmen");
+					if(!p->hasSkill("xingmen",true))room->acquireSkill(p,"xingmen");
 				}
 			}
 		}else if(player->getPhase()==Player::Play&&player->getMark("@fenhui")>0){
