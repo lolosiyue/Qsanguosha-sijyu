@@ -16934,7 +16934,6 @@ public:
 			ctx.extra_data = value;
 			ctx.original_data = &data;
 			ctx.current_event = event;
-			ctx.targets << damage.to;
 			contexts << ctx;
 		}
 		return true;
@@ -16945,15 +16944,15 @@ public:
 		return !ctx.activationRef.isValid() && room->getTag("SpYanhuoReceipts").toList().contains(ctx.extra_data);
 	}
 	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		const int amount = getEffectiveAmount(ctx);
 		if (amount <= 0) return false;
 		DamageStruct damage = ctx.original_data->value<DamageStruct>();
-		if (damage.to != target) return false;
+		if (!damage.to || !damage.to->isAlive()) return false;
 		LogMessage log;
 		log.type = "#SPYanhuoDamage";
-		log.from = damage.from ? damage.from : target;
+		log.from = damage.from ? damage.from : damage.to;
 		log.arg = "spyanhuo";
 		log.arg2 = QString::number(amount);
 		room->sendLog(log);
@@ -20810,7 +20809,6 @@ public:
 			ctx.extra_data = value;
 			ctx.original_data = &data;
 			ctx.current_event = event;
-			ctx.targets << damage.to;
 			contexts << ctx;
 		}
 		return true;
@@ -20831,9 +20829,15 @@ public:
 	}
 	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
-		if (event == DamageCaused) return false;
 		const int amount = getEffectiveAmount(ctx);
 		if (amount <= 0) return false;
+		if (event == DamageCaused) {
+			DamageStruct damage = ctx.original_data->value<DamageStruct>();
+			if (!damage.to || !damage.to->isAlive()) return false;
+			damage.damage += amount;
+			*ctx.original_data = QVariant::fromValue(damage);
+			return false;
+		}
 		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 		const qint64 current = useId(room);
 		if (!use.card || current <= 0) return false;
@@ -20845,16 +20849,6 @@ public:
 			{"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID}};
 		use.card->setTag("TenyearHanyongReceipts", receipts);
 		if (ctx.owner->getHp() > room->getTag("TurnLengthCount").toInt()) ctx.owner->gainMark("&rsran", amount);
-		return false;
-	}
-	bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-	{
-		const int amount = getEffectiveAmount(ctx);
-		if (amount <= 0) return false;
-		DamageStruct damage = ctx.original_data->value<DamageStruct>();
-		if (damage.to != target) return false;
-		damage.damage += amount;
-		*ctx.original_data = QVariant::fromValue(damage);
 		return false;
 	}
 };
