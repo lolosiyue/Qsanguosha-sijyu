@@ -515,13 +515,40 @@ public:
         if (effect.from == player && effect.card && effect.card->isKindOf("Slash")) result[player] << objectName();
         return result;
     }
-    bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override
     {
-        if (event == DamageCaused) ctx.targets << ctx.original_data->value<DamageStruct>().to;
         return true;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (event == DamageCaused) {
+            if (!ctx.original_data
+                || !ctx.invoker || !ctx.invoker->isAlive()
+                || !ctx.owner || !ctx.owner->isAlive()
+                || !isSourceAvailable(room, ctx))
+                return false;
+            const int amount = getEffectiveAmount(ctx);
+            if (amount <= 0) return false;
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            if (!damage.to || !damage.to->isAlive()) return false;
+            QVariantList receipts = ctx.owner->getTag("olpaoxiao_effects").toList();
+            for (int i = receipts.length() - 1; i >= 0; --i)
+                if (receipts.at(i).toMap().value("receipt") == ctx.extra_data.toMap().value("receipt")) receipts.removeAt(i);
+            ctx.owner->setTag("olpaoxiao_effects", receipts);
+            project(room, ctx.owner);
+            LogMessage log;
+            log.type = "#OLpaoxiaoDamage";
+            log.from = ctx.invoker;
+            log.to << damage.to;
+            log.arg = QString::number(damage.damage);
+            damage.damage += amount;
+            log.arg2 = QString::number(damage.damage);
+            room->sendLog(log);
+            room->broadcastSkillInvoke(objectName());
+            room->notifySkillInvoked(ctx.invoker, objectName());
+            ctx.original_data->setValue(damage);
+            return false;
+        }
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0 || event != CardOffset) return false;
         ServerPlayer *target = ctx.owner;
@@ -534,35 +561,6 @@ public:
         receipts << receipt;
         target->setTag("olpaoxiao_effects", receipts);
         project(room, target);
-        return false;
-    }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-    {
-        if (!target || !target->isAlive()
-            || !ctx.invoker || !ctx.invoker->isAlive()
-            || !ctx.owner || !ctx.owner->isAlive()
-            || !isSourceAvailable(room, ctx))
-            return false;
-        const int amount = getEffectiveAmount(ctx);
-        if (amount <= 0) return false;
-        DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (damage.to != target) return false;
-        QVariantList receipts = ctx.owner->getTag("olpaoxiao_effects").toList();
-        for (int i = receipts.length() - 1; i >= 0; --i)
-            if (receipts.at(i).toMap().value("receipt") == ctx.extra_data.toMap().value("receipt")) receipts.removeAt(i);
-        ctx.owner->setTag("olpaoxiao_effects", receipts);
-        project(room, ctx.owner);
-        LogMessage log;
-        log.type = "#OLpaoxiaoDamage";
-        log.from = ctx.invoker;
-        log.to << target;
-        log.arg = QString::number(damage.damage);
-        damage.damage += amount;
-        log.arg2 = QString::number(damage.damage);
-        room->sendLog(log);
-        room->broadcastSkillInvoke(objectName());
-        room->notifySkillInvoked(ctx.invoker, objectName());
-        ctx.original_data->setValue(damage);
         return false;
     }
 };
