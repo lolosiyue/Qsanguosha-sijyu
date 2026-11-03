@@ -741,8 +741,9 @@ Engine::Engine(bool isManualMode)
     modes.insert("06_ol", GameModeStruct("06_ol", QString("6 人局 [神武在世]"), 6, "ZCCFFF"));
     modes.insert("06p", GameModeStruct("06p", tr("6 players"), 6));
     modes.insert("06pd", GameModeStruct("06pd", tr("6 players (2 renegades)"), 6));
-    modes.insert("06_3v3", GameModeStruct("06_3v3", tr("6 players (3v3)"), 6));
-    modes.insert("06_XMode", GameModeStruct("06_XMode", tr("6 players (XMode)"), 6));
+    // Match the draft seat roles: lord, loyalist, rebel, renegade, rebel, loyalist.
+    modes.insert("06_3v3", GameModeStruct("06_3v3", tr("6 players (3v3)"), 6, "ZCFNFC"));
+    modes.insert("06_XMode", GameModeStruct("06_XMode", tr("6 players (XMode)"), 6, "ZCFNFC"));
     modes.insert("07p", GameModeStruct("07p", tr("7 players"), 7));
     modes.insert("08p", GameModeStruct("08p", tr("8 players"), 8));
     modes.insert("08pd", GameModeStruct("08pd", tr("8 players (2 renegades)"), 8));

@@ -583,9 +583,20 @@ bool RoomRuntime::initialize(QString *error)
         lua_pushstring(state, m_room->getMode().toUtf8().constData());
         lua_pushboolean(state, isNormalGameMode(m_room->getMode(), Config.EnableHegemony));
         lua_pushboolean(state, Config.EnableHegemony);
-        if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
+        lua_pushboolean(state, Sanguosha->getScenario(m_room->getMode()) != nullptr);
+        lua_pushstring(state, Sanguosha->getGameMode(m_room->getMode()).roles.toUtf8().constData());
+        if (LuaRuntime::protectedCall(state, 5, 1, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
             lua_pop(state, 1);
+            return failPhase();
+        }
+        const bool managed = lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        if (!managed) {
+            const QString message = QStringLiteral("MODE_AI_UNMANAGED: cannot initialize AI for mode %1")
+                .arg(m_room->getMode());
+            qWarning().noquote() << "[AI_LUA_ERROR]" << message;
+            if (error) *error = message;
             return failPhase();
         }
     }

@@ -2999,6 +2999,7 @@ void Server::startHeadlessGame()
     if (!room->hasLuaRuntime()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
+        qApp->exit(1);
         return;
     }
     if (!room->isTakeoverReady()) {
