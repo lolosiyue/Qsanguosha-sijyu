@@ -18521,16 +18521,16 @@ public:
 			MarkStruct mark = data.value<MarkStruct>();
 			if(mark.name=="&daoxin"){
 				int n = player->getMark("&daoxin");
-				if(n>=99){
+				if(n>=99 && !player->hasSkill("qljuejin", true)){
 					room->acquireSkill(player,"qljuejin");
 				}
-				if(n>=75){
+				if(n>=75 && !player->hasSkill("qlfangzhu", true)){
 					room->acquireSkill(player,"qlfangzhu");
 				}
-				if(n>=50){
+				if(n>=50 && !player->hasSkill("qljiushi", true)){
 					room->acquireSkill(player,"qljiushi");
 				}
-				if(n>=25){
+				if(n>=25 && !player->hasSkill("qlqingzheng", true)){
 					room->acquireSkill(player,"qlqingzheng");
 				}
 			}
