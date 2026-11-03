@@ -95,7 +95,6 @@ public:
             ctx.extra_data = receipt;
             ctx.original_data = &data;
             ctx.current_event = event;
-            ctx.targets << damage.to;
             contexts << ctx;
         }
         return true;
@@ -109,9 +108,9 @@ public:
             && room->getTag("NeoLuoyiEffects").toList().contains(ctx.extra_data);
     }
 
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!room || !target || !target->isAlive()
+        if (!room
             || !ctx.invoker || !ctx.invoker->isAlive()
             || !ctx.owner || !ctx.owner->isAlive()
             || !ctx.original_data
@@ -120,6 +119,7 @@ public:
         QVariant &data = *ctx.original_data;
         ServerPlayer *xuchu = ctx.invoker;
         DamageStruct damage = data.value<DamageStruct>();
+        if (!damage.to || !damage.to->isAlive()) return false;
         if (damage.chain || damage.transfer || !damage.by_user) return false;
         const Card *reason = damage.card;
         if (reason && (reason->isKindOf("Slash") || reason->isKindOf("Duel"))) {
