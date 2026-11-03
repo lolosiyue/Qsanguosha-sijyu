@@ -35335,7 +35335,8 @@ public:
 							Card *dc = dummyCard(ListV2I(p->getTag("oljinjin_break").toList()));
 							p->removeTag("oljinjin_break");
 							room->obtainCard(tp, dc, objectName());
-							room->acquireSkill(tp, objectName());
+							if (!tp->hasSkill(objectName(), true))
+								room->acquireSkill(tp, objectName());
 						}
 					}
 				}
@@ -35806,7 +35807,7 @@ public:
 				room->setChangeSkillState(tp, s->objectName(), n);
 			}
 		}
-		if (n < 1) {
+		if (n < 1 && !tp->hasSkill("qianfu", true)) {
 			room->acquireSkill(tp, "qianfu");
 			room->setPlayerMark(tp, "qianfuBf", 1);
 		}
