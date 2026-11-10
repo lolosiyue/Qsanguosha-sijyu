@@ -975,6 +975,12 @@ bool CardLifetimeManager::addChangeEdge(Card *source, const Card *target)
     if (!sourceToken || !targetToken)
         return false;
     std::lock_guard<ProfiledMutex> lock(m_mutex);
+    // Observation happens outside this lock. A concurrent finalizer may have
+    // retired either generation before the edge can be installed.
+    if (!entryFor(sourceToken) || !entryFor(targetToken)) {
+        ++m_gauge.stale_access;
+        return false;
+    }
     if (source == target) {
         ++m_gauge.change_list_self_cycle;
         ++m_gauge.blocked_by_legacy_change_list;
@@ -1499,14 +1505,24 @@ quint64 CardLifetimeManager::drainTurnDomain(const void *domain)
     if (m_mode == CardLifetimeMode::ObserveOnly || !domain
         || currentDomain != domain)
         return 0;
-    QList<QPointer<QObject>> retiredObjects;
-    const quint64 retired = drainImpl(domain, &retiredObjects, true);
-    // RoomThread has no event loop. Dispatch each receiver explicitly on this
-    // worker, and never process unrelated posted events or foreign-affinity Cards.
-    for (const QPointer<QObject> &guardedObject : std::as_const(retiredObjects)) {
-        QObject *object = guardedObject.data();
-        if (object && object->thread() == QThread::currentThread())
-            QCoreApplication::sendPostedEvents(object, QEvent::DeferredDelete);
+    quint64 retired = 0;
+    // Destruction can invoke slots that enqueue more cards. Bound the fixed-point
+    // sweep; remaining chains stay pending for the next boundary or final sweep.
+    constexpr int maxPasses = 64;
+    for (int passIndex = 0; passIndex < maxPasses; ++passIndex) {
+        QList<QPointer<QObject>> retiredObjects;
+        const quint64 pass = drainImpl(domain, &retiredObjects, true);
+        if (pass == 0)
+            break;
+        retired += pass;
+        // Destroying a conversion releases its old-card edges. Drain again so
+        // the newly unreferenced cards can retire at this same turn boundary.
+        // RoomThread has no event loop: dispatch only these worker-owned Cards.
+        for (const QPointer<QObject> &guardedObject : std::as_const(retiredObjects)) {
+            QObject *object = guardedObject.data();
+            if (object && object->thread() == QThread::currentThread())
+                QCoreApplication::sendPostedEvents(object, QEvent::DeferredDelete);
+        }
     }
     return retired;
 }
@@ -1546,7 +1562,7 @@ quint64 CardLifetimeManager::drainImpl(
                 && !it->nativeDelete && it->wrappers == 0
                 && it->nativeLeases == 0 && it->adoptionReservations == 0
                 && std::none_of(m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
-                    return edge.sourceToken.get() == it->token.get() || edge.targetToken.get() == it->token.get();
+                    return edge.targetToken.get() == it->token.get();
                 }))
                 candidates.push_back({it->token, it->object, it->affinityThread});
         }
@@ -1575,7 +1591,7 @@ quint64 CardLifetimeManager::drainImpl(
             || it->nativeDelete || it->wrappers != 0
             || it->nativeLeases != 0 || it->adoptionReservations != 0
             || std::any_of(m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
-                return edge.sourceToken.get() == it->token.get() || edge.targetToken.get() == it->token.get();
+                return edge.targetToken.get() == it->token.get();
             }))
             continue;
         {
@@ -1583,6 +1599,8 @@ quint64 CardLifetimeManager::drainImpl(
             it->nativeDelete = true;
             it->token->live = false;
             it->token->state = CardLifetimeState::Retired;
+            // Keep outgoing edges until ~Card removes them: logical retirement
+            // can precede physical destruction, including across domains.
             if (m_gauge.pending_delete > 0) --m_gauge.pending_delete;
             if (m_gauge.managed_live > 0) --m_gauge.managed_live;
             ++m_gauge.retired;
@@ -1762,6 +1780,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
         QPointer<QObject> object;
     };
     QVector<Candidate> candidates;
+    QSet<const CardLifetimeToken *> retiring;
     {
         std::lock_guard<ProfiledMutex> lock(m_mutex);
         reconcileDestroyedLocked();
@@ -1779,14 +1798,19 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
                 || it->token->state == CardLifetimeState::ObservedDefinition
                 || !it->token->live)
                 continue;
-            const bool hasChangeEdge = std::any_of(
-                m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
-                    return edge.sourceToken.get() == it->token.get()
-                        || edge.targetToken.get() == it->token.get();
-                });
-            if (it->nativeLeases != 0 || it->adoptionReservations != 0 || hasChangeEdge)
+            if (it->nativeLeases != 0 || it->adoptionReservations != 0)
                 return false;
             candidates.push_back({it->token, it->object});
+            retiring.insert(it->token.get());
+        }
+
+        // Internal conversion edges can retire with this whole worker-owned
+        // set. Every incoming edge from outside the set still blocks destruction,
+        // including a foreign-domain source awaiting physical destruction.
+        for (const ChangeEdge &edge : std::as_const(m_changeEdges)) {
+            if (retiring.contains(edge.targetToken.get())
+                && !retiring.contains(edge.sourceToken.get()))
+                return false;
         }
 
         for (const Candidate &candidate : std::as_const(candidates)) {

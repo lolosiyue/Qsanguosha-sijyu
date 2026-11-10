@@ -2435,6 +2435,27 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     return card;
 }
 
+// Physical cards a play-phase legacy answer may name. A concrete card must be in the
+// player's hand or hand pile; a converted card's materials may also be the player's own
+// equipment or pile cards. SkillCards keep their own activation/payment validation.
+static bool legacyPlayCardHeld(const Room &room, const ServerPlayer *player, const Card *card)
+{
+    if (!card || card->getTypeId() == Card::TypeSkill) return true;
+    const QList<int> handPile = player->getHandPile();
+    const auto held = [&](int id, bool material) {
+        if (handPile.contains(id)) return true;
+        if (room.getCardOwner(id) != player) return false;
+        const Player::Place place = room.getCardPlace(id);
+        return place == Player::PlaceHand
+            || (material && (place == Player::PlaceEquip || place == Player::PlaceSpecial));
+    };
+    if (!card->isVirtualCard()) return held(card->getEffectiveId(), false);
+    foreach (int id, card->getSubcards()) {
+        if (!held(id, true)) return false;
+    }
+    return true;
+}
+
 bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &request,
                                         const AIResult &result,
                                         CardUseStruct &cardUse) const
@@ -2474,7 +2495,9 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         const int useCardId = result.action.useCardId;
         bool owned = player->handCards().contains(useCardId)
             || player->getHandPile().contains(useCardId);
-        if (!owned) {
+        // Play may directly use only hand/hand-pile cards. An equipped card stays
+        // a response candidate or conversion material, not a playable physical ID.
+        if (!owned && request.kind != AIRequest::Activate) {
             foreach (const Card *equip, player->getEquips()) {
                 if (equip && equip->getEffectiveId() == useCardId) {
                     owned = true;
@@ -2533,6 +2556,13 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
     if (!result.action.legacyCardString.isEmpty()) {
         candidate.parse(result.action.legacyCardString, &m_room);
         if (!candidate.card) return false;
+        // A play-phase card string names physical cards by ID; check them against the
+        // room's card mapping, not the hand list alone. In 07p (seed 20261150) sgs3's
+        // hand list still named GudingBlade 296 while the room mapped it to an equip
+        // area, so each "use" re-equipped it and the play loop asked again forever.
+        if (request.kind == AIRequest::Activate
+            && !legacyPlayCardHeld(m_room, player, candidate.card))
+            return false;
         if (!result.action.selectedTargetNames.isEmpty()) {
             candidate.to.clear();
             foreach (const QString &targetName, result.action.selectedTargetNames)
@@ -4304,6 +4334,31 @@ const Card *AiDecisionCoordinator::decideSinglePeach(ServerPlayer *player,
         [ai, dying]() { return ai->askForSinglePeach(dying); });
 }
 
+bool AiDecisionCoordinator::aiCardUseIsLegal(ServerPlayer *player, const AIRequest &request,
+                                             const CardUseStruct &candidate) const
+{
+    if (!candidate.card) return true;
+    if (player->isCardLimited(candidate.card, request.handlingMethod)) return false;
+    if (request.kind == AIRequest::Activate && !candidate.card->isAvailable(player)) return false;
+    if (request.kind == AIRequest::UseCard && !candidate.hasSkillActivationRequest) {
+        QString pattern = request.pattern;
+        if (pattern.endsWith(QLatin1Char('!'))) pattern.chop(1);
+        // "@"/"@@skill" prompts name a skill, not a CardPattern: matchPattern has no
+        // entry for them and always says no. The response paths skip them the same way
+        // (player-decision-service.cpp askForUseCard, card-use-service.cpp resolveCardUse).
+        if (!pattern.isEmpty() && !pattern.startsWith(QLatin1Char('@'))
+            && !Sanguosha->matchPattern(pattern, player, candidate.card))
+            return false;
+    }
+    QList<const Player *> targets;
+    for (const auto *target : candidate.to) {
+        if (!target || m_room.isProhibited(player, target, candidate.card, targets)
+            || !candidate.card->targetFilter(targets, target, player)) return false;
+        targets << target;
+    }
+    return candidate.card->targetsFeasible(targets, player);
+}
+
 bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &request,
                                    CardUseStruct &cardUse) const
 {
@@ -4432,6 +4487,7 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
 
     AIResult result;
     bool liveLegacyResult = route == AiRouteLegacyAdapted;
+    QString isolatedError;
     if (route == AiRouteIsolated) {
         AIRequest isolated = request;
         projectDecisionContext(player, QVariant(), isolated);
@@ -4445,6 +4501,7 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
             result.decisionId = request.decisionId;
             result.stateRevision = request.stateRevision;
         } else if (!result.handled || !result.errorCode.isEmpty()) {
+            isolatedError = result.errorCode;
             result = player->getAI()->decide(request);
             liveLegacyResult = true;
         }
@@ -4460,7 +4517,30 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         result.stateRevision = m_room.roomRuntime()->stateRevision();
         AIRequest liveRequest = request;
         liveRequest.stateRevision = result.stateRevision;
-        return applyResult(player, liveRequest, result, cardUse);
+        if (isolatedError.isEmpty())
+            return applyResult(player, liveRequest, result, cardUse);
+        // The isolated VM faulted (e.g. AI_INSTRUCTION_LIMIT in a room at or below
+        // AiLargeRoomAlive) and this live answer replaces it unseen. Hold it to the
+        // contract external answers meet; an illegal answer becomes Pass instead of a
+        // no-op use that the play loop would ask for again.
+        CardUseStruct checked = cardUse;
+        if (applyResult(player, liveRequest, result, checked)
+            && aiCardUseIsLegal(player, liveRequest, checked)) {
+            cardUse = checked;
+            return true;
+        }
+        if (!result.handled) return false;
+        qWarning().noquote() << "Isolated AI fallback answer rejected:" << player->objectName()
+                             << "kind" << int(request.kind) << isolatedError
+                             << (result.action.legacyCardString.isEmpty()
+                                     ? QString::number(result.action.useCardId)
+                                     : result.action.legacyCardString);
+        AIResult pass;
+        pass.handled = true;
+        pass.kind = AIResult::Pass;
+        pass.decisionId = liveRequest.decisionId;
+        pass.stateRevision = liveRequest.stateRevision;
+        return applyResult(player, liveRequest, pass, cardUse);
     }
     return applyResult(player, request, result, cardUse);
 }

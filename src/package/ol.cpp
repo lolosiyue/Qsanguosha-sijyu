@@ -24469,22 +24469,26 @@ public:
 		}
 		if (event == CardsMoveOneTime) {
 			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-			if (move.to_place == Player::PlaceHand && (move.reason.m_skillName == "lianju" || move.reason.m_skillName == "shilv")) {
+			const int reason = move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON;
+			// Only the damage-draw effect creates new Shi Lv cards. Reclaiming
+			// a discard also carries "shilv", but must not re-arm its consumed tag.
+			if (move.to_place == Player::PlaceHand && (move.reason.m_skillName == "lianju"
+				|| (move.reason.m_skillName == "shilv" && reason == CardMoveReason::S_REASON_DRAW))) {
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				foreach (int id, move.to->handCards()) {
 					if (move.card_ids.contains(id)) {
 						room->setCardTip(id, "shi_lv");
-						ids << id;
+						if (!ids.contains(QVariant(id))) ids << id;
 					}
 				}
 				room->setTag("shi_lvs", ids);
 			} else if (move.to_place == Player::DiscardPile
-				&& (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD && move.from) {
+				&& reason == CardMoveReason::S_REASON_DISCARD && move.from) {
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				DummyCard *dc = new DummyCard();
 				foreach (int id, move.card_ids) {
 					if (ids.contains(QVariant(id))) {
-						ids.removeOne(QVariant(id));
+						ids.removeAll(QVariant(id));
 						if (!room->getCardOwner(id))
 							dc->addSubcard(id);
 					}
@@ -24499,7 +24503,7 @@ public:
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				foreach (int id, move.card_ids) {
 					if (ids.contains(QVariant(id)))
-						ids.removeOne(QVariant(id));
+						ids.removeAll(QVariant(id));
 				}
 				room->setTag("shi_lvs", ids);
 			}

@@ -998,7 +998,7 @@ void CardUseStruct::changeCard(Card*newcard)
 	if (sourceRef.isValid())
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	if (!replacingOwnedCard)
-		newcard->change_cards << card;
+		newcard->addChange(card);
 	replaceCard(newcard);
 	if (from) {
 		Room *room = from->getRoom();
@@ -1076,7 +1076,7 @@ void CardResponseStruct::changeCard(Card*newcard)
 		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
 	if (sourceRef.isValid())
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
-	newcard->change_cards << m_card;
+	newcard->addChange(m_card);
 	m_card = newcard;
 	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
 }
