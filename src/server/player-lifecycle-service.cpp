@@ -12,6 +12,7 @@
 #include "roomthread.h"
 #include "serverplayer.h"
 #include "skill-runtime-coordinator.h"
+#include "skill-instance-utils.h"
 
 #include "ai.h"
 #include "banpair.h"
@@ -611,7 +612,16 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
                 m_eventDispatcher.registerTriggerSkill(triggerSkill);
                 bool eligible = false;
                 if (invokeStart && triggerSkill->hasEvent(GameStart))
-                    m_room.getThread()->invokeStructuralCallback([&] { eligible = triggerSkill->triggerable(player, &m_room, GameStart); });
+                    m_room.getThread()->invokeStructuralCallback([&] {
+                        // V2 admission is its TriggerList; the legacy bool overload ignores it.
+                        if (const auto *v2 = dynamic_cast<const TriggerSkillV2 *>(triggerSkill)) {
+                            QVariant probe;
+                            for (const QString &name : v2->triggerable(GameStart, &m_room, player, probe).value(player))
+                                eligible = eligible || SkillInstanceUtils::baseName(name) == v2->objectName();
+                        } else {
+                            eligible = triggerSkill->triggerable(player, &m_room, GameStart);
+                        }
+                    });
                 if (eligible) {
                     QVariant data;
                     m_room.getThread()->invokeStructuralCallback([&] { triggerSkill->trigger(GameStart, &m_room, player, data); });
