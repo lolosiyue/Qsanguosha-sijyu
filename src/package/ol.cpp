@@ -38563,6 +38563,8 @@ public:
 			if (use.to.contains(p) || p == player) continue;
 			if (!player->isProhibited(p, use.card)) cands << p;
 		}
+		// The AI target policy reads the triggering use from this tag.
+		player->setTag("xiaoshiUse", data);
 		ServerPlayer *t = room->askForPlayerChosen(player, cands, objectName(), "@xiaoshi", true);
 		if (!t) return false;
 		room->broadcastSkillInvoke(objectName());
@@ -38596,6 +38598,7 @@ public:
 		if (ch == "losehp") room->loseHp(player, 1, true, player, "xiaoshi");
 		else {
 			int n = qMax(1, player->getMark("jinming_record"));
+			player->setTag("xiaoshiUse", data);
 			ServerPlayer *t = room->askForPlayerChosen(player, use.to, "xiaoshi", "@xiaoshi-draw", false, true);
 			if (t) t->drawCards(n, "xiaoshi");
 		}
