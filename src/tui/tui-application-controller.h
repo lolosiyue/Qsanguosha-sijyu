@@ -55,6 +55,12 @@ public:
     // tui-main.cpp never includes tui-terminal.h.
     ~TuiApplicationController() override;
     bool start(QString *error = nullptr);
+    // tui-main.cpp captures Qt's engine-startup warnings (package loading) so
+    // they never reach the primary screen; start() cannot release them because
+    // the message handler belongs to main(). Handing them over here puts them
+    // in the same scrollback (board) / stream (classic) and --log-file as every
+    // other line, after the terminal has been taken.
+    void showStartupDiagnostics(const QStringList &lines);
 
 public slots:
     void handleInputLine(const QString &line);

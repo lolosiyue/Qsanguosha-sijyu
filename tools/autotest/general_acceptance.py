@@ -42,6 +42,7 @@ HEGEMONY_MODE = "08p"
 SCREENSHOT_ROOT = HERE / "autotest-logs" / "skill-ui-latest"
 LUA_ERROR_RE = re.compile(r"attempt to |stack traceback|\[AI_CALLBACK_ERROR\]|lua_error|Lua error", re.I)
 FORCE_RE = re.compile(r"\[AUTOTEST\] force general (\S+) (\S+)")
+SKILL_INVOKED_RE = re.compile(r"\[AUTOTEST\] skill-invoked (\S+) (\S+)")
 ANDROID_PACKAGE = "org.qsanguosha.game"
 # AGENTS.md section 9: the H working tree is the authority for these L directories.
 EXTENSIONS_AUTHORITY = r"H:\Program file\Game\sgs\Qsgs\working\extensions"
@@ -137,26 +138,48 @@ def dump_snapshot():
 def scan_logs(paths, general, skills):
     """Evidence shared by every game stage: forced seat, skill mentions and Lua errors."""
     forced, errors, mentions = [], [], {skill: 0 for skill in skills}
+    invoked = []  # (seat, skill) from the room's own [AUTOTEST] skill-invoked lines
     for path in paths:
         for line in read(path).splitlines():
             match = FORCE_RE.search(line)
             if match and match.group(2) == general:
                 forced.append(match.group(1))
+            called = SKILL_INVOKED_RE.search(line)
+            if called:
+                invoked.append((called.group(1), called.group(2)))
             if LUA_ERROR_RE.search(line):
                 errors.append(f"{Path(path).name}: {line.strip()[:240]}")
             for skill in skills:
                 if skill in line:
                     mentions[skill] += 1
     return {"forced_seats": forced, "skill_mentions": mentions, "lua_errors": errors[:20],
-            "lua_error_count": len(errors)}
+            "lua_error_count": len(errors), "skill_invoked": invoked}
 
 
-def game_status(ok, evidence):
+def game_status(ok, evidence, skills=(), observe_skills=False):
+    """PASS/WARN come from this general's own seat only.
+
+    Lua errors are not a grading input: they come from extensions/ and lua/ai/,
+    which every general shares, so they say nothing about the general under test.
+    They stay in the evidence for triage. A game where the general never took a
+    seat is still FAIL.
+
+    observe_skills is only set by stages whose logs carry the room's
+    [AUTOTEST] skill-invoked lines (headless). The GUI and TUI logs are client
+    logs and never contain them, so there the skill side is simply not graded.
+    """
     if not ok:
         return "FAIL"
-    if not evidence["forced_seats"]:
+    seats = set(evidence["forced_seats"])
+    if not seats:
         return "FAIL"  # the game ran without the general under test
-    return "WARN" if evidence["lua_error_count"] else "PASS"
+    if not observe_skills:
+        return "PASS"
+    invoked = [(seat, skill) for seat, skill in evidence.get("skill_invoked", [])
+               if seat in seats]
+    if skills:
+        invoked = [(seat, skill) for seat, skill in invoked if skill in skills]
+    return "PASS" if invoked else "WARN"
 
 
 class Acceptance:
@@ -324,7 +347,7 @@ class Acceptance:
                 continue
             passed = str(row.get("result", row.get("status", ""))).upper().startswith("PASS") \
                 or row.get("ok") in ("True", "1", "true")
-            status = game_status(passed, evidence)
+            status = game_status(passed, evidence, self.visible_skills, observe_skills=True)
             per_mode[mode] = {"status": status, **evidence}
             if status != "PASS":
                 bad.append(f"{mode}:{status}")
@@ -368,7 +391,7 @@ class Acceptance:
              "what": f"{r.get('note', '')} {r.get('exit_name', '')}".strip(), "files": [str(directory)],
              "context": tail(directory / "runner.log")}
             for r in rows if "crash" in r.get("note", "") or "閃退" in r.get("note", "")]
-        return game_status(ok, evidence), f"{mode} GUI client over TCP, exit {code}", evidence
+        return game_status(ok, evidence, self.visible_skills), f"{mode} GUI client over TCP, exit {code}", evidence
 
     def tui(self):
         directory = self.stage_dir("tui")
@@ -384,7 +407,7 @@ class Acceptance:
                 if lifecycle.get(key) is not None and is_crash_code(lifecycle[key]):
                     log = Path(str(summary).replace("-summary.json", suffix))
                     evidence["crashes"].append(exit_crash("tui", process, lifecycle[key], tail(log), [log]))
-        return game_status(code == 0, evidence), f"{PLATFORM_MODE} TUI over TCP, exit {code}", evidence
+        return game_status(code == 0, evidence, self.visible_skills), f"{PLATFORM_MODE} TUI over TCP, exit {code}", evidence
 
     def android(self):
         if not self.args.android_serial:
@@ -455,7 +478,7 @@ class Acceptance:
         evidence["client_result"] = {"ok": client.get("ok"), "exit_code": client.get("exit_code"),
                                      "errors": client.get("errors"),
                                      "stages": [s.get("stage") for s in client.get("stages", []) if s.get("ok")]}
-        return game_status(ok, evidence), f"{PLATFORM_MODE} Android client via adb reverse", evidence
+        return game_status(ok, evidence, self.visible_skills), f"{PLATFORM_MODE} Android client via adb reverse", evidence
 
     def xp(self):
         if not self.args.xp_evidence:
@@ -467,7 +490,7 @@ class Acceptance:
         ok = "GAME_STARTED" in text and "GAME_OVER" in text
         evidence["crashes"] = [dump_crash("xp", dump, [dump, dump.with_suffix(".txt")])
                                for dump in Path(self.args.xp_evidence).rglob("*.dmp")]
-        return game_status(ok, evidence), f"graded from {self.args.xp_evidence}", evidence
+        return game_status(ok, evidence, self.visible_skills), f"graded from {self.args.xp_evidence}", evidence
 
     def web(self):
         return self.independent_client("web", self.args.web_evidence)
@@ -592,7 +615,7 @@ class Acceptance:
                 or processes.get("alive_owned_pids") != []):
             issues.append("owned orphan check missing or failed")
         evidence.update(winner=winner, issues=issues)
-        return game_status(not issues, evidence), ("; ".join(issues) if issues else
+        return game_status(not issues, evidence, self.visible_skills), ("; ".join(issues) if issues else
             "graded saved Trustee playback; manual branches NOT RUN"), evidence
 
     def sync(self):

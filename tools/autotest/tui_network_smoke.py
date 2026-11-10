@@ -58,6 +58,10 @@ def write_server_config(path, operation_timeout, ai_delay, enable_ai=True,
         "[General]",
         "RandomSeat=false",
         "Enable2ndGeneral=false",
+        # FreeChoose begins the game straight away, so the server never sends the owner a
+        # FreeAssign (CHOOSE_ROLE) request; EnableCheat alone would make the TUI owner hang
+        # on the role-assignment prompt.
+        "FreeAssign=false",
         "EnableCheat=%s" % ("true" if free_choose else "false"),
         "FreeChoose=%s" % ("true" if free_choose else "false"),
         "EnableHegemony=false",

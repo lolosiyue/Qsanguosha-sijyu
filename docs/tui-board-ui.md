@@ -261,6 +261,21 @@ Windows 輪詢 `GetConsoleScreenBufferInfo`。收到即重建 grid 並強制全�
 加入是另一項刻意的例外，但那是新增一個入口，不是改動既有路徑的行為——見 §1
 不變式 3），且是修正而非退化；`docs/tui-client.md` 該段須同步更新。
 
+### 4.3 引擎啟動期訊息的去處
+
+`EngineBootstrap::initialize()` 在 `TuiApplicationController::start()` **之前**
+載入全部 Lua package，途中會 `qWarning()`（今日實例：`src/core/engine.cpp:1055`
+的「重复技能: …」，`extensions/mountainrumour.lua:1926` 的註解也記錄了同一現象）。
+Qt 預設把這串字直接寫 stderr，於是它會落在 primary screen：board 模式下違反
+「進 alternate screen 之前不得寫出任一位元組」，classic 模式下則插在 banner 之上。
+
+處置：`tui-main.cpp` 在引擎啟動前 `qInstallMessageHandler()` 轉存成
+`[warning] …` 行，等 `start()` 成功（terminal 已接管、log file 已開）再交給
+`TuiApplicationController::showStartupDiagnostics()`，即與其他訊息同一條路——
+board 進右側戰報 pane 的 scrollback、classic 進一般輸出、有 `--log-file` 就同時
+入檔。非互動執行（`--plain`、stdout 非 TTY、`NO_COLOR`）不安裝 handler，stderr
+位元組與從前一致，CI 腳本不受影響。`QtFatalMsg` 不轉存，交回 Qt 預設行為。
+
 ## 5. 輸入
 
 ### 5.1 行編輯器

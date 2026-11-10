@@ -22,6 +22,8 @@
 #include <QTextStream>
 #include <QTranslator>
 
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -101,6 +103,69 @@ void writeUtf8(FILE *device, const QString &text)
     stream.setEncoding(QStringConverter::Utf8);
     stream << text;
     stream.flush();
+}
+
+// EngineBootstrap::initialize() loads every Lua package and answers the
+// "duplicated skill" kind of problem with qWarning(), which Qt writes to
+// stderr the moment it happens -- long before TuiApplicationController::start()
+// takes the terminal. On an interactive run that is the wrong screen: in board
+// mode the bytes land on the primary screen ahead of the alternate-screen
+// takeover (nothing may be drawn there, see tools/autotest/tui_board_smoke.py),
+// and in classic mode they land above the banner with the terminal still in
+// insert mode. Hold them here instead, hand them to the controller once the
+// screen belongs to the client, and let its own scrollback and --log-file carry
+// them. A non-interactive run (--plain, no TTY, NO_COLOR) keeps Qt's default
+// handler so scripts and CI see the same stderr bytes as before.
+QStringList g_startupDiagnostics;
+bool g_captureDiagnostics = false;
+QtMessageHandler g_previousMessageHandler = nullptr;
+
+QString messageTypeName(QtMsgType type)
+{
+    switch (type) {
+    case QtDebugMsg: return QStringLiteral("debug");
+    case QtInfoMsg: return QStringLiteral("info");
+    case QtWarningMsg: return QStringLiteral("warning");
+    case QtCriticalMsg: return QStringLiteral("critical");
+    case QtFatalMsg: return QStringLiteral("fatal");
+    }
+    return QStringLiteral("info");
+}
+
+void writeDiagnosticsToStderr(const QStringList &lines)
+{
+    for (const QString &line : lines)
+        writeUtf8(stderr, line + QLatin1Char('\n'));
+}
+
+void captureStartupMessage(QtMsgType type, const QMessageLogContext &context,
+    const QString &message)
+{
+    // A fatal message ends the process by itself; buffering it would let the
+    // run continue after Qt already decided it cannot.
+    if (!g_captureDiagnostics || type == QtFatalMsg) {
+        if (g_previousMessageHandler != nullptr)
+            g_previousMessageHandler(type, context, message);
+        else
+            writeUtf8(stderr, message + QLatin1Char('\n'));
+        if (type == QtFatalMsg)
+            std::abort();
+        return;
+    }
+    const QStringList lines = message.split(QLatin1Char('\n'));
+    for (const QString &line : lines)
+        g_startupDiagnostics.append(
+            QStringLiteral("[%1] %2").arg(messageTypeName(type), line));
+}
+
+QStringList releaseStartupDiagnostics()
+{
+    if (g_captureDiagnostics)
+        qInstallMessageHandler(g_previousMessageHandler);
+    g_captureDiagnostics = false;
+    QStringList captured;
+    captured.swap(g_startupDiagnostics);
+    return captured;
 }
 
 } // namespace
@@ -237,6 +302,12 @@ int main(int argc, char *argv[])
         QLocale::setDefault(locale);
     }
 
+    // A run that owns an interactive terminal will write its own screen; a
+    // plain/redirected one must keep Qt's bytes exactly as they were.
+    const bool interactiveTerminal = outputIsTerminal()
+        && !parser.isSet(plainOption) && !parser.isSet(noColorOption)
+        && !qEnvironmentVariableIsSet("NO_COLOR");
+
     QString error;
     if (!QSanRuntimePaths::resolve(app.arguments(), &error)) {
         QTextStream err(stderr);
@@ -264,7 +335,15 @@ int main(int argc, char *argv[])
     QTranslator engineTranslator;
     if (engineTranslator.load(QSanRuntimePaths::assetPath(QStringLiteral("sanguosha.qm"))))
         app.installTranslator(&engineTranslator);
+    // Capture before engine startup: package loading is where the qWarning()s
+    // come from, and they must not reach the primary screen (see the note on
+    // captureStartupMessage()).
+    if (!dumpTranslations && interactiveTerminal) {
+        g_previousMessageHandler = qInstallMessageHandler(&captureStartupMessage);
+        g_captureDiagnostics = true;
+    }
     if (!EngineBootstrap::initialize(false, &error)) {
+        writeDiagnosticsToStderr(releaseStartupDiagnostics());
         QTextStream(stderr) << "TUI_ERROR engine: " << error << '\n';
         return RuntimeExitCode;
     }
@@ -347,8 +426,7 @@ int main(int argc, char *argv[])
     options.session.reconnectRequested = parser.isSet(reconnectOption);
     if (Sanguosha != nullptr)
         options.session.localRulesBundle = Sanguosha->rulesBundleIdentity();
-    options.ansiEnabled = outputIsTerminal() && !parser.isSet(plainOption)
-        && !parser.isSet(noColorOption) && !qEnvironmentVariableIsSet("NO_COLOR");
+    options.ansiEnabled = interactiveTerminal;
     options.logFile = parser.value(logFileOption);
     options.scriptFile = parser.value(scriptOption);
     options.boardMode = (uiDecision.mode == TuiUiMode::Board);
@@ -361,11 +439,17 @@ int main(int argc, char *argv[])
             // Defer startup errors until controller destruction restores the primary terminal.
             startupFailed = true;
         } else {
+            // The controller has entered the terminal (the alternate screen in
+            // board mode), so the held-back engine messages can go where they
+            // belong: the client's own scrollback and --log-file.
+            controller.showStartupDiagnostics(releaseStartupDiagnostics());
             result = app.exec();
         }
     }
-    if (startupFailed)
+    if (startupFailed) {
         QTextStream(stderr) << "TUI_ERROR startup: " << error << '\n';
+        writeDiagnosticsToStderr(releaseStartupDiagnostics());
+    }
     EngineBootstrap::shutdown();
     return result;
 }
