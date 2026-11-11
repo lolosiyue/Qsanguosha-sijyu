@@ -44,6 +44,14 @@
 
 ## 4. 先判斷使用哪一種 V2 形式
 
+### 原生固定材料與選牌輸入
+
+`ActiveSkillRequest::setCardSelection()` 預設仍取產物的 subcards。原生技能若自行帶入固定材料，可在 C++ 的 `selectionIdsFromCard()` 私有掛鉤中還原真正的 UI 選牌輸入；掛鉤必須純讀，且只正規化該技能的精確產物，不能藉此接受任意客戶端材料。isolated 票據另存 native-only `activationCardIds` 作重建輸入，回覆仍必須匹配產物的實際 subcards，重新生成的材料亦須完全一致。
+
+`ol.cpp::ZhijueVs` 保留 `ZhijueCard`、history key、回應 pattern `@@zhijue`、轉換狀態及既有結算。牌頂火攻的 UI 選牌為空，真正材料仍為 `zhijueId` 指定的原生牌；同色分支保留原有「選牌數不少於同色手牌數」判據，包括裝備替代，不改成必須選齊同色手牌。後續用牌以內部 selector 綁定當次精確實例並復原外層值。
+
+`ZhitianVs` 與 `TenyearJiefanVS` 保留原有 named SkillCard 結算及 history key；解煩仍由既有首輪結束 trigger 回補標記，不新增整局限次。`Quzhou` 保留每階段 `QuzhouCard` 次數、翻牌／繼續選擇及 `@@quzhou`：實體產物以 `Engine::cloneCard(const Card *)` 保留 ID、牌面與技能歸因，避免把引擎持有的 WrappedCard 交給擁有產物生命週期的呼叫者。其 UI 選牌 ID 與產物空 subcards 分開，票據重建須再比對實體 ID；後續詢問亦綁定當次實例。
+
 ### 4.1 產生普通卡
 
 適用於技能只是把牌轉換成 Slash、Jink、Peach、Trick 等既有卡牌。

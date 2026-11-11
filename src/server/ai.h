@@ -38,6 +38,8 @@ struct AICardView {
     int nameLength = -1;
     QString sourceSkillName;
     bool canRecast = false;
+    bool transferable = false;
+    bool printedTransferable = false;
     bool willThrow = false;
     bool singleTarget = false;
     // Owner-only state of the viewer's own physical cards; unknown otherwise.
@@ -47,10 +49,13 @@ struct AICardView {
     bool locked = false;
     bool jilei = false;
     bool usingCard = false;
-    // Owner-only rules, projected for decision requests only (ownerRulesKnown):
+    // Viewer rules for held, evaluated or issued cards, independently of whether
+    // physical owner state is known (ownerRulesKnown):
     // isCardLimited per handling method (outside and inside the hand) and
     // Room::isProhibited per alive target.
     bool ownerRulesKnown = false;
+    bool analepticStaticKnown = false;
+    bool analepticStaticAvailable = false;
     QMap<int, bool> limits;
     QMap<int, bool> limitsHand;
     QMap<QString, bool> prohibited;
@@ -146,14 +151,12 @@ struct AICardCandidateView {
 // class_name or a skill name supplied by an author is a request, never a permission.
 struct AICardConversionView {
     int conversionId;
-    // The produced card, taken from the skill's own createCard() and that card's
-    // meta-object chain - the controlled catalogue, not anything the AI supplied.
-    QString name;
-    QString className;
-    QString skillName;
-    QStringList kindOfNames;
-    int suit;
-    int number;
+    // Same pure face/rule DTO as a physical or evaluated card; the ticket below
+    // remains the only submission authority.
+    AICardView producedCard;
+    bool jilei = false;
+    // The declaration is part of the issued ticket, never supplied by the spec.
+    QString declaredName;
     // The whole instance identity. A bare skill name cannot address a skill that is
     // held more than once, and it says nothing about whose quota pays for the use.
     SkillInstanceRef activationRef;
@@ -169,13 +172,14 @@ struct AICardConversionView {
     QList<int> eligibleSubcardIds;
     // The exact cost cards this conversion was enumerated with, in order.
     QList<int> subcardIds;
+    // Native-only reconstruction inputs. The produced material remains the
+    // exact subcardIds above; the AI cannot replace either list in its reply.
+    QList<int> activationCardIds;
     // The same target description a physical candidate carries, so that one planning
     // algorithm serves both instead of a second one growing for converted cards.
     bool available;
     // A response or use question: the produced card matches the question's pattern.
     bool matchesResponsePattern = false;
-    QString legacyStringKey; // The produced card's Card::toString().
-    bool locked = false; // Player::isLocked of the produced card.
     bool targetFixed;
     bool feasibleWithNoTarget;
     bool completeCoverage;
@@ -192,12 +196,12 @@ struct AICardConversionView {
     QMap<QString, bool> targetFilterEmpty;
 
     AICardConversionView()
-        : conversionId(-1), suit(int(Card::SuitToBeDecided)), number(0),
+        : conversionId(-1),
           activationQuotaAvailable(false), sourceQuotaAvailable(false),
           available(false), targetFixed(false), feasibleWithNoTarget(false),
           completeCoverage(false) {}
 
-    bool isValid() const { return conversionId >= 0 && !name.isEmpty(); }
+    bool isValid() const { return conversionId >= 0 && !producedCard.objectName.isEmpty(); }
 };
 
 struct AISkillView {
@@ -409,6 +413,10 @@ struct AiSkillActionContext {
     PhysicalEquipSource physicalEquipSource;
     bool activationQuotaAvailable;
     bool sourceQuotaAvailable;
+    // Knowledge for the exact action source, not a playable card/conversion ticket.
+    bool hasEmptySelectionEvaluation = false;
+    AICardView emptySelectionCard;
+    AICardCandidateView emptySelectionCandidate;
 
     AiSkillActionContext()
         : activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
@@ -490,6 +498,8 @@ struct AIRequest {
     QList<AiSkillActionContext> skillActions;
     bool equipmentActionsComplete = true;
     AIChoiceOptions choiceOptions;
+    // Native custody only: Lua sees token/count descriptors, never these IDs.
+    QMap<QString, QList<int>> opaqueCardDomains;
     // Only the card decisions carry candidates; the other kinds leave this empty.
     QList<AICardCandidateView> cardCandidates;
     // Conversions this request authorizes, built by the authority from the skills the
@@ -621,6 +631,10 @@ struct AIResult {
     quint64 stateRevision;
     CardActionSpec action;
     QString errorCode;
+
+    // Resolved only by the matching CardChosen authority.
+    QString randomCardToken;
+    int randomCardIndex = 0;
 
     AIResult() : kind(Pass), handled(false), decisionId(0), stateRevision(0) {}
 };

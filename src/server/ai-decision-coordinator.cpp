@@ -7,8 +7,10 @@
 
 #include "engine.h"
 #include "hegemony-mode.h"
+#include "h-formation.h"
 #include "room.h"
 #include "roomthread.h"
+#include "room-state.h"
 #include "server-info.h"
 #include "settings.h"
 #include "skill-runtime-coordinator.h"
@@ -17,8 +19,11 @@
 #include "wrapped-card.h"
 
 #include <cmath>
+#include <climits>
 #include <typeinfo>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QScopeGuard>
 #include "ai-probe.h"
 #include "skill-set-generation.h"
 #include <QElapsedTimer>
@@ -42,6 +47,7 @@ public:
                     const AIRequest &request, const QString &callback)
         : m_enabled(Config.EnableHegemony), m_request(request), m_callback(callback),
           m_player(player ? player->objectName() : QStringLiteral("?")),
+          m_historyEvent(room.currentHistoryEventId()),
           m_source(room.externalAgent(m_player) ? QStringLiteral("external_or_isolated")
                                                 : QStringLiteral("isolated")),
           m_route(Config.EnableAI
@@ -60,7 +66,7 @@ public:
         }
         qInfo().noquote() << QString("[AI_HEGEMONY_DECISION] decision=%1 revision=%2 kind=%3 "
                                     "callback=%4 reason=%5 route=%6 source=%7 stage=%8 result=%9 "
-                                    "error=%10 accepted=%11")
+                                    "error=%10 accepted=%11 player=%12 history_event=%13")
             .arg(m_request.decisionId)
             .arg(m_request.stateRevision)
             .arg(int(m_request.kind))
@@ -71,7 +77,8 @@ public:
             .arg(m_stage)
             .arg(m_result)
             .arg(m_error)
-            .arg(m_accepted ? QStringLiteral("true") : QStringLiteral("false"));
+            .arg(m_accepted ? QStringLiteral("true") : QStringLiteral("false"))
+            .arg(m_player).arg(m_historyEvent);
     }
 
     void setSource(const QString &source) { m_source = source; }
@@ -113,6 +120,7 @@ private:
     const AIRequest &m_request;
     QString m_callback;
     QString m_player;
+    qint64 m_historyEvent;
     QString m_route;
     QString m_source;
     QString m_stage = QStringLiteral("authority");
@@ -248,9 +256,9 @@ static QJsonObject makeAIStateObject(const QVariantMap &source)
     return value.toObject();
 }
 
-// Legal candidates for one card of the asking player. Everything here is computed once,
-// on the authority, for this request only: the isolated side gets values, not a query
-// channel back into the Engine.
+// Legal candidates for one card of the asking player, computed on the authority
+// for this request. Bounded read-only hypotheses use the same projection without
+// issuing submission authority or exposing Engine/Player objects.
 // Who this card may be aimed at, and whether that list is the whole story. Physical
 // candidates and authorized conversions are described by this one function: a card the
 // authority converted is still a card, and giving it a second target algorithm is how
@@ -259,7 +267,9 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
                                 bool &targetFixed, bool &feasibleWithNoTarget,
                                 bool &completeCoverage, QStringList &legalTargets,
                                 QMap<QString, int> &maxVotes,
-                                QList<QStringList> &combinations, int &requestBudget)
+                                QList<QStringList> &combinations, int &requestBudget,
+                                bool actionTargetsOnly = false,
+                                const QStringList *selectedTargets = nullptr)
 {
     const auto projectionRevision = room.roomRuntime()->stateRevision();
     const auto projectionSkillGeneration = SkillSet::generation();
@@ -271,15 +281,31 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
     const Card *real = card->getRealCard();
     const auto cardFlags = card->getFlags();
     const auto realFlags = real ? real->getFlags() : QStringList();
+    const char *projectionFailure = "none";
+    const int initialRequestBudget = requestBudget;
+    int probesLeft = qBound(1, Config.value(QStringLiteral("AiTargetProjectionBudget"), 2048).toInt(), 2048);
+    const int initialProbes = probesLeft;
+    // Observe every exit without issuing extra rule queries or changing budgets.
+    const auto projectionDiagnostic = qScopeGuard([&] {
+        if (!completeCoverage && qEnvironmentVariableIntValue("QSAN_AI_DIAGNOSTICS") == 1)
+            qInfo().noquote() << "[AI_TARGET_PROJECTION_INCOMPLETE] player=" << player->objectName()
+                << "card=" << card->objectName() << "id=" << card->getEffectiveId()
+                << "class=" << card->getClassName() << "native_type=" << (real ? typeid(*real).name() : "null")
+                << "revision=" << projectionRevision << "current_revision=" << room.roomRuntime()->stateRevision()
+                << "reason=" << projectionFailure << "probes_initial=" << initialProbes
+                << "probes_left=" << probesLeft << "request_initial=" << initialRequestBudget
+                << "request_left=" << requestBudget << "legal_targets=" << legalTargets
+                << "target_fixed=" << targetFixed;
+    });
     const auto stableProjection = [&]() {
         if (room.roomRuntime()->stateRevision() != projectionRevision
             || SkillSet::generation() != projectionSkillGeneration
             || room.roomRuntime()->definitions().skillDefinitionVersion() != projectionDefinitions
             || room.getAlivePlayers() != alive || player->getFlagList() != sourceFlags
             || card->getRealCard() != real || card->getFlags() != cardFlags
-            || (real && real->getFlags() != realFlags)) return false;
+            || (real && real->getFlags() != realFlags)) { projectionFailure = "unstable_projection"; return false; }
         for (int i = 0; i < alive.size(); ++i)
-            if (alive.at(i)->getFlagList() != aliveFlags.at(i)) return false;
+            if (alive.at(i)->getFlagList() != aliveFlags.at(i)) { projectionFailure = "target_flags_changed"; return false; }
         return true;
     };
     targetFixed = card->targetFixed();
@@ -288,8 +314,11 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
     maxVotes.clear();
     combinations.clear();
     // Operators/tests may lower the budget; the hard ceiling cannot be raised.
-    int probesLeft = qBound(1, Config.value(QStringLiteral("AiTargetProjectionBudget"), 2048).toInt(), 2048);
-    const auto spend = [&]() { return --probesLeft >= 0 && --requestBudget >= 0; };
+    const auto spend = [&]() {
+        if (--probesLeft < 0) { projectionFailure = "card_probe_budget"; return false; }
+        if (--requestBudget < 0) { projectionFailure = "request_probe_budget"; return false; }
+        return true;
+    };
     if (!spend()) return;
     feasibleWithNoTarget = card->targetsFeasible({}, player);
     if (!stableProjection()) return;
@@ -331,10 +360,13 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
     std::function<bool()> visit = [&]() {
         if (!stableProjection()) return false;
         if (!spend()) return false;
-        if (card->targetsFeasible(prefix, player)) {
-            if (combinations.size() >= 128) return false;
+        if (card->targetsFeasible(prefix, player) && (!selectedTargets || names == *selectedTargets)) {
+            if (combinations.size() >= 128) { projectionFailure = "combination_limit"; return false; }
             combinations << names;
         }
+        // A selected-sequence query explores only that path. Its completion says
+        // nothing about coverage of the whole action space or other sequences.
+        if (selectedTargets && prefix.size() == selectedTargets->size()) return true;
         // Beyond this exact native upper bound, every next target is rejected.
         // Avoid rescanning all 50 seats at each otherwise terminal leaf.
         if (terminalCount >= 0 && prefix.size() >= terminalCount) return true;
@@ -344,22 +376,33 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
         // fit the remaining budget fails now instead of after spending it.
         QList<ServerPlayer *> next;
         foreach (ServerPlayer *target, alive) {
+            if (selectedTargets && target->objectName() != selectedTargets->at(prefix.size())) continue;
             if (!spend()) return false;
             int votes = 0;
             card->targetFilter(prefix, target, player, votes);
             if (votes <= prefix.count(target)) continue;
-            if (!spend()) return false;
-            if (room.isProhibited(player, target, card, prefix)) continue;
+            // Bare skill actions validate through canSelectTarget, not a second
+            // prohibition query against the generic ActiveSkillCard proxy.
+            if (!actionTargetsOnly) {
+                if (!spend()) return false;
+                if (room.isProhibited(player, target, card, prefix)) continue;
+            }
             if (names.isEmpty()) {
                 legalTargets << target->objectName();
                 if (votes > 1) maxVotes.insert(target->objectName(), votes);
             }
-            if (votes > 1 || prefix.contains(target) || prefix.size() >= 8) return false;
+            if (votes > 1 || prefix.contains(target) || prefix.size() >= 8) {
+                projectionFailure = votes > 1 ? "repeated_votes" : prefix.contains(target) ? "repeated_target" : "prefix_depth";
+                return false;
+            }
             next << target;
         }
         const qint64 childScan = terminalCount >= 0 && prefix.size() + 1 >= terminalCount
-            ? 0 : alive.size();
-        if (qint64(next.size()) * (1 + childScan) > qMin(probesLeft, requestBudget)) return false;
+            ? 0 : selectedTargets ? 1 : alive.size();
+        if (qint64(next.size()) * (1 + childScan) > qMin(probesLeft, requestBudget)) {
+            projectionFailure = probesLeft <= requestBudget ? "card_child_scan_budget" : "request_child_scan_budget";
+            return false;
+        }
         for (ServerPlayer *target : next) {
             prefix << target;
             names << target->objectName();
@@ -572,6 +615,9 @@ static AICardView makeAICardView(const Card *card)
     view.nameLength = card->nameLength();
     view.sourceSkillName = card->getSourceSkillName();
     view.canRecast = card->canRecast();
+    view.transferable = card->isTransferable();
+    const Card *printed = card->getEffectiveId() >= 0 ? Sanguosha->getEngineCard(card->getEffectiveId()) : nullptr;
+    view.printedTransferable = printed && printed->isTransferable();
     view.willThrow = card->willThrow();
     view.singleTarget = card->isSingleTargetCard();
     view.suit = int(card->getSuit());
@@ -599,11 +645,19 @@ static AICardView makeAICardView(const Card *card)
 static void projectOwnCardRules(AICardView &view, const ServerPlayer *owner, const Card *card, bool inHand)
 {
     view.ownerRulesKnown = true;
+    if (card->isKindOf("Analeptic")) {
+        // The static rule passes self as Residue's target and omits BasicCard's
+        // extra availability checks. Preserve the exact card, including its face.
+        view.analepticStaticKnown = true;
+        view.analepticStaticAvailable = Analeptic::IsAvailable(owner, card);
+    }
     view.available = card->isAvailable(owner);
     view.targetModResidue = Sanguosha->correctCardTarget(TargetModSkill::Residue, owner, card);
     view.targetModDistance = Sanguosha->correctCardTarget(TargetModSkill::DistanceLimit, owner, card);
     view.targetModExtra = Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, owner, card);
-    for (int method = int(Card::MethodUse); method <= int(Card::MethodIgnore); ++method) {
+    // HandlingMethod also includes Effect, Play, Move and Get after Ignore.
+    // All exact-card producers share this map; preserve the full native domain.
+    for (int method = int(Card::MethodNone); method <= int(Card::MethodGet); ++method) {
         view.limits.insert(method, owner->isCardLimited(card, Card::HandlingMethod(method), false));
         if (inHand)
             view.limitsHand.insert(method, owner->isCardLimited(card, Card::HandlingMethod(method), true));
@@ -643,7 +697,7 @@ static void projectOwnCardState(AICardView &view, const ServerPlayer *owner, boo
         projectOwnCardRules(view, owner, card, asHandCard || owner->handCards().contains(view.effectiveId));
 }
 
-static QJsonObject publicDecisionCard(const Card *card)
+static QJsonObject publicDecisionCard(const Card *card, const ServerPlayer *ruleViewer = nullptr)
 {
     if (!card) return {};
     // A declared/judgement card is public; its backing IDs and subcards are not
@@ -671,6 +725,33 @@ static QJsonObject publicDecisionCard(const Card *card)
         flags.append(flag);
     if (!flags.isEmpty())
         result.insert(QStringLiteral("flags"), flags);
+    if (ruleViewer) {
+        // Only a private, current decision supplies a viewer. Keep the public
+        // face unchanged: these are query facts, never hidden costs or authority.
+        AICardView view;
+        const bool inHand = !card->isVirtualCard()
+            && ruleViewer->handCards().contains(card->getEffectiveId());
+        projectOwnCardRules(view, ruleViewer, card, inHand);
+        QJsonObject limits, limitsHand, prohibited, residueByTarget;
+        for (auto it = view.limits.constBegin(); it != view.limits.constEnd(); ++it)
+            limits.insert(QString::number(it.key()), it.value());
+        for (auto it = view.limitsHand.constBegin(); it != view.limitsHand.constEnd(); ++it)
+            limitsHand.insert(QString::number(it.key()), it.value());
+        for (auto it = view.prohibited.constBegin(); it != view.prohibited.constEnd(); ++it)
+            prohibited.insert(it.key(), it.value());
+        for (auto it = view.targetResidue.constBegin(); it != view.targetResidue.constEnd(); ++it)
+            residueByTarget.insert(it.key(), it.value());
+        QJsonObject rules{{"limits", limits}, {"available", view.available},
+            {"prohibited", prohibited}, {"target_mod_residue", view.targetModResidue},
+            {"target_mod_distance", view.targetModDistance}, {"target_mod_extra", view.targetModExtra}};
+        if (!residueByTarget.isEmpty())
+            result.insert(QStringLiteral("target_residue"), residueByTarget);
+        if (inHand) rules.insert(QStringLiteral("limits_hand"), limitsHand);
+        if (view.analepticStaticKnown)
+            rules.insert(QStringLiteral("analeptic_static_available"), view.analepticStaticAvailable);
+        result.insert(QStringLiteral("evaluation_owner"), ruleViewer->objectName());
+        result.insert(QStringLiteral("evaluation_rules"), rules);
+    }
     return result;
 }
 
@@ -799,6 +880,340 @@ static bool makeAIOwnStateValue(const QVariant &source, QJsonValue &target, int 
 
 }
 
+bool AiDecisionCoordinator::evaluateTargetSequence(Room &room, const AIRequest &request,
+                                                   const QJsonObject &spec, bool &accepted,
+                                                   int &projectionBudget, QString &error)
+{
+    accepted = false;
+    const auto reject = [&](const char *reason) { error = QString::fromLatin1(reason); return false; };
+    static const QSet<QString> fields = {"operation", "viewer", "decision_id", "state_revision",
+        "candidate_id", "card_id", "targets"};
+    for (auto it = spec.constBegin(); it != spec.constEnd(); ++it)
+        if (!fields.contains(it.key())) return reject("unknown target sequence field");
+    if (spec.value("operation").toString() != QStringLiteral("target_sequence")
+        || spec.value("viewer").toString() != request.viewerObjectName
+        || spec.value("decision_id").toString() != request.getDecisionId()
+        || spec.value("state_revision").toString() != request.getStateRevision()
+        || room.roomRuntime()->stateRevision() != request.stateRevision)
+        return reject("target sequence request is stale or belongs to another viewer");
+    if ((request.kind != AIRequest::Activate && request.kind != AIRequest::UseCard)
+        || request.handlingMethod != Card::MethodUse)
+        return reject("target sequence requires a card-use request");
+    for (const char *field : {"candidate_id", "card_id"}) {
+        const QJsonValue value = spec.value(QLatin1String(field));
+        if (!value.isDouble() || value.toDouble() < 0 || value.toDouble() > INT_MAX
+            || value.toDouble() != std::floor(value.toDouble()))
+            return reject("target sequence ticket is invalid");
+    }
+    const AICardCandidateView *issued = nullptr;
+    for (const auto &candidate : request.cardCandidates)
+        if (candidate.candidateId == spec.value("candidate_id").toInt()
+            && candidate.cardId == spec.value("card_id").toInt()) { issued = &candidate; break; }
+    if (!issued || !issued->available || issued->limited)
+        return reject("target sequence candidate was not offered for use");
+    ServerPlayer *viewer = room.findPlayerByObjectName(request.viewerObjectName);
+    if (!viewer || !viewer->isAlive() || request.worldView.self.objectName != request.viewerObjectName
+        || room.getCardOwner(issued->cardId) != viewer)
+        return reject("target sequence candidate owner changed");
+    const bool held = viewer->handCards().contains(issued->cardId) || viewer->getHandPile().contains(issued->cardId)
+        || room.getCardPlace(issued->cardId) == Player::PlaceEquip;
+    const Card *card = held ? Sanguosha->getCard(issued->cardId) : nullptr;
+    if (!card || card->isVirtualCard()) return reject("target sequence candidate is not a held physical card");
+    const QJsonValue rawTargets = spec.value("targets");
+    if (!rawTargets.isArray() && !(rawTargets.isObject() && rawTargets.toObject().isEmpty()))
+        return reject("target sequence is not a list");
+    const QJsonArray values = rawTargets.toArray();
+    if (values.size() > 8) return reject("target sequence exceeds projection depth");
+    QStringList selected;
+    for (const QJsonValue &value : values) {
+        if (!value.isString() || value.toString().isEmpty() || value.toString().size() > 128)
+            return reject("target sequence name is invalid");
+        if (selected.contains(value.toString())) return reject("target sequence repeats a player");
+        selected << value.toString();
+    }
+    EngineRuntimeContextScope contextScope(*Sanguosha, &room);
+    LuaRuntime::Binding nativeBinding(room.roomRuntime()->lua(), false);
+    RoomState *roomState = room.getRoomState();
+    const auto oldReason = roomState->getCurrentCardUseReason();
+    const auto oldPattern = roomState->getCurrentCardUsePattern();
+    const auto restoreContext = qScopeGuard([&] {
+        roomState->setCurrentCardUseReason(oldReason);
+        roomState->setCurrentCardUsePattern(oldPattern);
+    });
+    roomState->setCurrentCardUseReason(request.reason);
+    roomState->setCurrentCardUsePattern(request.pattern);
+    bool fixed = false, empty = false, pathComplete = false;
+    QStringList legal;
+    QMap<QString, int> votes;
+    QList<QStringList> paths;
+    describeCardTargets(room, viewer, card, fixed, empty, pathComplete, legal, votes,
+                        paths, projectionBudget, false, &selected);
+    if (!pathComplete || room.roomRuntime()->stateRevision() != request.stateRevision)
+        return reject("target sequence projection is incomplete or changed state");
+    accepted = paths.contains(selected);
+    return true;
+}
+
+bool AiDecisionCoordinator::evaluateCard(Room &room, const AIRequest &request,
+                                         QJsonObject &spec, AIChoiceCardEvaluation &evaluation,
+                                         int &projectionBudget, QString &error, std::unique_ptr<Card> *evaluatedCard)
+{
+    const auto reject = [&](const char *reason) { error = QString::fromLatin1(reason); return false; };
+    static const QSet<QString> fields = {"viewer", "decision_id", "state_revision", "source_key",
+        "name", "skill", "instance_id", "suit", "number", "subcards", "can_recast"};
+    for (auto it = spec.constBegin(); it != spec.constEnd(); ++it)
+        if (!fields.contains(it.key())) return reject("unknown card evaluation field");
+    if (spec.value("viewer").toString() != request.viewerObjectName
+        || spec.value("decision_id").toString() != request.getDecisionId()
+        || spec.value("state_revision").toString() != request.getStateRevision()
+        || room.roomRuntime()->stateRevision() != request.stateRevision)
+        return reject("card evaluation request is stale or belongs to another viewer");
+    ServerPlayer *viewer = room.findPlayerByObjectName(request.viewerObjectName);
+    if (!viewer || !viewer->isAlive() || request.worldView.self.objectName != request.viewerObjectName)
+        return reject("card evaluation owner is unavailable");
+    EngineRuntimeContextScope contextScope(*Sanguosha, &room);
+    LuaRuntime::Binding nativeBinding(room.roomRuntime()->lua(), false);
+    const quint64 generation = SkillSet::generation();
+    const auto definitions = room.roomRuntime()->definitions().skillDefinitionVersion();
+    const auto alive = room.getAlivePlayers();
+    QList<QStringList> flags;
+    for (const ServerPlayer *player : alive) flags << player->getFlagList();
+    const QString name = spec.value("name").toString(), spelling = spec.value("skill").toString();
+    const QString sourceKey = spec.value("source_key").toString();
+    if (name.isEmpty() || name.size() > 128 || !spec.value("skill").isString() || spelling.size() > 128
+        || sourceKey.isEmpty() || sourceKey.size() > 128)
+        return reject("card evaluation source or printing is incomplete");
+    // Resolve the native source separately from the policy's printed skill name.
+    // Old equipment policies print the card class; use the engine's equipment
+    // mapping rather than lowercasing names or treating a label as ownership.
+    QString skillName = spelling.startsWith('_') ? spelling.mid(1) : spelling;
+    const bool hasSource = !spelling.isEmpty();
+    const Skill *definition = hasSource ? Sanguosha->getSkill(skillName) : nullptr;
+    if (hasSource && !definition) {
+        const std::unique_ptr<Card> prototype(Sanguosha->cloneCard(skillName));
+        const auto *equip = prototype ? qobject_cast<const EquipCard *>(prototype.get()) : nullptr;
+        definition = equip ? Sanguosha->getSkill(equip) : nullptr;
+        if (definition) skillName = definition->objectName();
+    }
+    const auto *equipment = definition
+        ? dynamic_cast<const ViewAsSkillV2 *>(ViewAsSkill::parseViewAsSkill(definition)) : nullptr;
+    const auto integer = [](const QJsonValue &value, int low, int high) {
+        const double n = value.toDouble(double(low) - 1);
+        return value.isDouble() && std::isfinite(n) && std::floor(n) == n && n >= low && n <= high;
+    };
+    if (!integer(spec.value("suit"), int(Card::SuitToBeDecided), int(Card::NoSuit))
+        || !integer(spec.value("number"), -1, 13)
+        || (spec.contains("instance_id") && !integer(spec.value("instance_id"), 0, hasSource ? INT_MAX : 0))
+        || (spec.contains("can_recast") && !spec.value("can_recast").isBool()))
+        return reject("card evaluation printing or instance is invalid");
+    const int requestedInstance = spec.value("instance_id").toInt();
+    int activationInstance = 0;
+    if (hasSource && (!spec.contains("instance_id") || requestedInstance > 0)) {
+        for (const AISkillView &skill : request.worldView.self.skills) {
+            if (skill.skillName != skillName || skill.invalid || skill.instanceId <= 0
+                || (requestedInstance > 0 && skill.instanceId != requestedInstance)) continue;
+            if (activationInstance > 0) return reject("card evaluation requires an explicit skill instance");
+            activationInstance = skill.instanceId;
+        }
+    }
+    SkillInstanceRef activationRef(viewer->objectName(), SkillInstanceKey(skillName, activationInstance));
+    SkillInstanceRef sourceRef;
+    if (hasSource && activationInstance > 0) {
+        if (viewer->isSkillInvalid(skillName, activationInstance)
+            || !viewer->hasSkill(skillName + '#' + QString::number(activationInstance)))
+            return reject("card evaluation source instance is not owned and effective");
+        sourceRef = room.resolveSkillInstanceRootRef(activationRef);
+        if (!sourceRef.isValid()) return reject("card evaluation source root is unavailable");
+    } else if (hasSource) {
+        // Equipment has no invented positive skill instance. Reuse the same
+        // native source preparation as skill actions, including virtual grants.
+        // An explicit missing positive instance must never fall through here.
+        if (requestedInstance > 0 || !equipment || !equipment->isEquipSkill())
+            return reject("card evaluation source instance is not owned and effective");
+        SkillContext source;
+        source.owner = source.invoker = source.initiator = viewer;
+        if (!equipment->prepareEquipSource(&room, source)
+            || (!source.physicalEquipSource.isValid() && !source.sourceRef.isValid()))
+            return reject("card evaluation equipment source is not owned and effective");
+        activationRef = source.activationRef;
+        sourceRef = source.sourceRef;
+    }
+    const QJsonValue rawMaterials = spec.value("subcards");
+    // The bounded Lua value reader represents an empty table as an empty object.
+    if (!rawMaterials.isArray() && !(rawMaterials.isObject() && rawMaterials.toObject().isEmpty()))
+        return reject("card evaluation materials are not a list");
+    const QJsonArray materialValues = rawMaterials.toArray();
+    // A catalog clone has printing but no skill or payment capability. Material
+    // hypotheses still require an owned, effective native source above.
+    if (!hasSource && !materialValues.isEmpty()) return reject("printed card evaluation cannot carry materials");
+    if (materialValues.size() > 64) return reject("card evaluation material limit exceeded");
+    QSet<int> visible, hand, equips, piles, seen;
+    for (const AICardView &card : request.worldView.handCards) hand.insert(card.effectiveId);
+    for (const AICardView &card : request.worldView.self.equips) equips.insert(card.effectiveId);
+    for (const AICardPileView &pile : request.worldView.self.piles)
+        if (pile.open) for (int id : pile.cardIds) piles.insert(id);
+    visible = hand | equips | piles;
+    QList<int> materials;
+    for (const QJsonValue &value : materialValues) {
+        if (!integer(value, 0, INT_MAX)) return reject("card evaluation material ID is invalid");
+        const int id = value.toInt();
+        if (seen.contains(id) || !visible.contains(id) || room.getCardOwner(id) != viewer)
+            return reject("card evaluation material is duplicate or not owner-visible");
+        const Player::Place place = room.getCardPlace(id);
+        if (!((hand.contains(id) && place == Player::PlaceHand)
+            || (equips.contains(id) && place == Player::PlaceEquip)
+            || (piles.contains(id) && place == Player::PlaceSpecial)))
+            return reject("card evaluation material changed zone");
+        seen.insert(id);
+        materials << id;
+    }
+    bool catalogued = false;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        const Card *printed = Sanguosha->getEngineCard(id);
+        if (printed && printed->objectName() == name && printed->getTypeId() != Card::TypeSkill) {
+            catalogued = true;
+            break;
+        }
+    }
+    if (!catalogued) return reject("card evaluation name is outside the ordinary card catalog");
+    if (--projectionBudget < 0) return reject("card evaluation enumeration budget exhausted");
+    TargetModMemoScope memo([&room]() { return room.roomRuntime()->stateRevision(); });
+    // A hypothetical Play query does not inherit an outer response/AG pattern.
+    // These are request-context fields, not gameplay state, and are always restored.
+    RoomState *roomState = room.getRoomState();
+    const auto oldReason = roomState->getCurrentCardUseReason();
+    const QString oldPattern = roomState->getCurrentCardUsePattern();
+    const auto restoreContext = qScopeGuard([&] {
+        roomState->setCurrentCardUseReason(oldReason);
+        roomState->setCurrentCardUsePattern(oldPattern);
+    });
+    roomState->setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
+    roomState->setCurrentCardUsePattern(QString());
+    std::unique_ptr<Card> card(Sanguosha->cloneCard(name, Card::Suit(spec.value("suit").toInt()),
+                                                       spec.value("number").toInt()));
+    if (!card || !card->isVirtualCard() || card->getTypeId() == Card::TypeSkill)
+        return reject("card evaluation did not construct an ordinary virtual card");
+    card->setSkillName(spelling);
+    if (hasSource) {
+        card->setSkillInstanceId(activationInstance);
+        card->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
+        card->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
+    }
+    card->addSubcards(materials);
+    if (spec.contains("can_recast")) card->setCanRecast(spec.value("can_recast").toBool());
+    evaluation.card = makeAICardView(card.get());
+    evaluation.card.legacyStringKey = card->toString(); // all materials were owner-visible
+    projectOwnCardRules(evaluation.card, viewer, card.get(), !materials.isEmpty() && (seen - hand).isEmpty());
+    evaluation.candidate = makeAICardCandidate(room, viewer, card.get(), Card::MethodUse,
+                                               AIRequest::Activate, QString(), projectionBudget);
+    // No candidateId is assigned. The temporary object and its rules are knowledge,
+    // not proof that this skill can produce or submit the requested combination.
+    if (room.roomRuntime()->stateRevision() != request.stateRevision || SkillSet::generation() != generation
+        || room.roomRuntime()->definitions().skillDefinitionVersion() != definitions || room.getAlivePlayers() != alive)
+        return reject("card evaluation state changed during projection");
+    for (int index = 0; index < alive.size(); ++index)
+        if (alive.at(index)->getFlagList() != flags.at(index))
+            return reject("card evaluation flags changed during projection");
+    spec.insert("instance_id", activationInstance);
+    if (evaluatedCard) *evaluatedCard = std::move(card);
+    return true;
+}
+
+bool AiDecisionCoordinator::evaluateOwnerRangeCard(Room &room, const AIRequest &request,
+    const QJsonObject &spec, AIChoiceCardEvaluation &evaluation, QJsonObject &queries,
+    int &projectionBudget, QString &error)
+{
+    const auto reject = [&](const char *reason) { error = QString::fromLatin1(reason); return false; };
+    static const QSet<QString> fields = {"id", "name", "suit", "number", "rawskill", "subcards",
+        "can_recast", "flags", "can_slash_target", "distance_limit", "range_fix", "target_prefix", "target"};
+    for (auto it = spec.begin(); it != spec.end(); ++it)
+        if (!fields.contains(it.key())) return reject("unsupported range query field");
+    ServerPlayer *owner = room.findPlayerByObjectName(request.viewerObjectName);
+    if (!owner || !owner->isAlive() || room.roomRuntime()->stateRevision() != request.stateRevision)
+        return reject("range query owner or revision changed");
+    EngineRuntimeContextScope contextScope(*Sanguosha, &room);
+    LuaRuntime::Binding nativeBinding(room.roomRuntime()->lua(), false);
+    const quint64 generation = SkillSet::generation();
+    const auto definitions = room.roomRuntime()->definitions().skillDefinitionVersion();
+    const auto alive = room.getAlivePlayers();
+    std::unique_ptr<Card> temporary;
+    const Card *card = nullptr;
+    if (spec.contains("id")) {
+        const double number = spec.value("id").toDouble(-1);
+        if (!spec.value("id").isDouble() || number < 0 || number >= Sanguosha->getCardCount()
+            || std::floor(number) != number) return reject("range physical ID is invalid");
+        const int id = int(number);
+        bool visible = false;
+        for (const AICardView &held : request.worldView.handCards) visible |= held.effectiveId == id;
+        for (const AICardView &held : request.worldView.self.equips) visible |= held.effectiveId == id;
+        if (!visible || room.getCardOwner(id) != owner
+            || (room.getCardPlace(id) != Player::PlaceHand && room.getCardPlace(id) != Player::PlaceEquip))
+            return reject("range physical card is outside owner visible zones");
+        card = Sanguosha->getCard(id);
+        evaluation.card = makeAICardView(card);
+        projectOwnCardRules(evaluation.card, owner, card, room.getCardPlace(id) == Player::PlaceHand);
+        evaluation.candidate = makeAICardCandidate(room, owner, card, Card::MethodUse,
+                                                   AIRequest::Activate, QString(), projectionBudget);
+    } else {
+        const QJsonValue flags = spec.value("flags");
+        if (!((flags.isArray() && flags.toArray().isEmpty()) || (flags.isObject() && flags.toObject().isEmpty())))
+            return reject("range virtual flag provenance is unavailable");
+        QJsonObject printing{{"viewer", request.viewerObjectName}, {"decision_id", request.getDecisionId()},
+            {"state_revision", request.getStateRevision()}, {"source_key", "owner_range"},
+            {"name", spec.value("name")}, {"skill", spec.value("rawskill")}, {"suit", spec.value("suit")},
+            {"number", spec.value("number")}, {"subcards", spec.value("subcards")}, {"can_recast", spec.value("can_recast")}};
+        if (!evaluateCard(room, request, printing, evaluation, projectionBudget, error, &temporary)) return false;
+        card = temporary.get();
+    }
+    // Every result remains evaluation-only. Exact physical rules and virtual
+    // construction use the same projectors as ordinary card evaluation.
+    evaluation.card.ownerStateKnown = true;
+    evaluation.card.locked = owner->isLocked(card);
+    evaluation.card.jilei = owner->isJilei(card);
+    QJsonObject slashMap;
+    for (const ServerPlayer *target : alive) {
+        QJsonObject distances;
+        for (bool limited : {false, true}) {
+            QJsonObject fixes;
+            for (int fix = 0; fix <= 2; ++fix) {
+                if (--projectionBudget < 0) return reject("range query budget exhausted");
+                fixes.insert(QString::number(fix), owner->canSlash(target, card, limited, fix));
+            }
+            distances.insert(limited ? "true" : "false", fixes);
+        }
+        slashMap.insert(target->objectName(), distances);
+    }
+    queries.insert("can_slash_map", slashMap);
+    if (spec.contains("can_slash_target")) {
+        const auto *target = room.findPlayerByObjectName(spec.value("can_slash_target").toString());
+        const double fix = spec.value("range_fix").toDouble(1001);
+        if (!alive.contains(const_cast<ServerPlayer *>(target)) || !spec.value("distance_limit").isBool()
+            || !std::isfinite(fix) || std::floor(fix) != fix || fix < -1000 || fix > 1000)
+            return reject("invalid range Slash query");
+        queries.insert("can_slash", owner->canSlash(target, card, spec.value("distance_limit").toBool(), int(fix)));
+    }
+    if (spec.contains("target_prefix")) {
+        const auto rawPrefix = spec.value("target_prefix");
+        if ((!rawPrefix.isArray() && !(rawPrefix.isObject() && rawPrefix.toObject().isEmpty()))
+            || rawPrefix.toArray().size() > 8)
+            return reject("invalid range target prefix");
+        QList<const Player *> prefix;
+        for (const QJsonValue &name : spec.value("target_prefix").toArray()) {
+            const auto *target = room.findPlayerByObjectName(name.toString());
+            if (!name.isString() || !alive.contains(const_cast<ServerPlayer *>(target)) || prefix.contains(target))
+                return reject("range target prefix is outside living roster");
+            prefix << target;
+        }
+        const auto *target = room.findPlayerByObjectName(spec.value("target").toString());
+        if (!alive.contains(const_cast<ServerPlayer *>(target))) return reject("invalid range target");
+        queries.insert("target_filter", card->targetFilter(prefix, target, owner));
+    }
+    if (room.roomRuntime()->stateRevision() != request.stateRevision || SkillSet::generation() != generation
+        || room.roomRuntime()->definitions().skillDefinitionVersion() != definitions || room.getAlivePlayers() != alive)
+        return reject("range rule projection changed state");
+    return true;
+}
+
 AiDecisionCoordinator::AiDecisionCoordinator(Room &room,
                                              SkillRuntimeCoordinator &skillRuntime)
     : m_room(room), m_skillRuntime(skillRuntime)
@@ -838,9 +1253,11 @@ void AiDecisionCoordinator::setMarkVisibility(const ServerPlayer *owner, const Q
 void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
                                         const QVariant &data)
 {
+    if (triggerEvent == CardFinished && data.canConvert<CardUseStruct>())
+        m_room.roomRuntime()->ai().observeOriginalSDUse(triggerEvent, data.value<CardUseStruct>());
     // One bounded, value-only log per Room. Nothing here keeps a pointer: the structs
     // are read once, while they are still valid, and only names and ids are kept.
-    AIEventView event;
+    AIEventView event{};
     event.sequence = ++m_eventSequence;
     event.revision = m_room.roomRuntime()->stateRevision();
     event.triggerEvent = triggerEvent;
@@ -995,6 +1412,49 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
                     event.details.insert(QStringLiteral("original_known_both_target"), revealed->objectName());
             }
         }
+    }
+    if (Config.EnableHegemony && (triggerEvent == CardUsed || triggerEvent == CardResponded
+        || triggerEvent == CardFinished || triggerEvent == CardsMoveOneTime
+        || triggerEvent == CardEffected || triggerEvent == DamageComplete || triggerEvent == HpRecover)) {
+        // Observation only: an accepted AI answer is never evidence of payment.
+        // Keep native stages and history parents explicit for offline comparison.
+        QJsonObject audit{{"event", triggerEvent}, {"kind", event.kind},
+            {"revision", double(event.revision)}, {"history_event", double(m_room.currentHistoryEventId())},
+            {"use_event", double(m_room.historyParent(m_room.currentHistoryEventId(),
+                QStringLiteral("use_card"), true).value("id").toLongLong())},
+            {"from", event.from}, {"to", event.to},
+            {"targets", QJsonArray::fromStringList(event.targets)}, {"amount", event.amount}};
+        if (event.details.contains("card")) audit.insert("card", event.details.value("card"));
+        const auto material = [](const Card *card) {
+            QJsonArray ids;
+            if (card) {
+                const QList<int> cards = card->isVirtualCard() ? card->getSubcards()
+                    : QList<int>{card->getEffectiveId()};
+                for (int id : cards) if (id >= 0) ids.append(id);
+            }
+            return ids;
+        };
+        if (data.canConvert<CardUseStruct>()) audit.insert("materials", material(data.value<CardUseStruct>().card));
+        else if (data.canConvert<CardResponseStruct>()) {
+            const CardResponseStruct response = data.value<CardResponseStruct>();
+            audit.insert("kind", "card_response");
+            audit.insert("from", target ? target->objectName() : QString());
+            audit.insert("card", publicDecisionCard(response.m_card));
+            audit.insert("materials", material(response.m_card));
+        } else if (data.canConvert<CardsMoveOneTimeStruct>()) {
+            const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            QJsonArray ids, places;
+            // Match the existing public-destination boundary. Hidden draws stay
+            // count-only in this observer log as well.
+            for (int id : event.cardIds) ids.append(id);
+            for (Player::Place place : move.from_places) places.append(int(place));
+            audit.insert("cards", ids); audit.insert("from_places", places);
+            audit.insert("to_place", int(move.to_place));
+            audit.insert("move_reason", move.reason.m_reason);
+            audit.insert("move_skill", move.reason.m_skillName);
+        }
+        qInfo().noquote() << "[AI_HEGEMONY_OBSERVED]"
+            << QJsonDocument(audit).toJson(QJsonDocument::Compact);
     }
     while (m_events.size() >= AiEventLogLimit)
         m_events.removeFirst();
@@ -1488,6 +1948,11 @@ static QJsonObject makeAIHegemonyFacts(const Room &room, const ServerPlayer *vie
             {"head", head}, {"deputy", deputy}, {"public_head", publicHead}, {"public_deputy", publicDeputy},
             {"head_kingdom", knownHead ? knownHead->getKingdom() : QString()}};
         // Duanchang announces these slots publicly without revealing their generals.
+        const QStringList viewed = viewer->getTag(QStringLiteral("KnownBoth_") + player->objectName())
+            .toString().split('+', Qt::KeepEmptyParts);
+        bool seen = false;
+        for (const QString &slot : viewed) seen = seen || !slot.isEmpty();
+        row.insert("known_both_seen", seen ? 1 : 0);
         row.insert("duanchang", QJsonArray::fromStringList(
             player->property("Duanchang").toString().split(',', Qt::SkipEmptyParts)));
         QJsonObject shownSkills, skillSlots;
@@ -1746,6 +2211,16 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         }
 
         if (player == viewer) {
+            // The static wine gate is distinct from Card::isAvailable and includes
+            // private source restrictions. Only the owner's printed prototype gets it.
+            if (!eventOnly && playerView.prototypeRules.contains(QStringLiteral("Analeptic"))) {
+                if (Card *analeptic = Sanguosha->cloneCard(QStringLiteral("analeptic"))) {
+                    analeptic->deleteLater();
+                    QJsonObject rules = playerView.prototypeRules.value(QStringLiteral("Analeptic")).toObject();
+                    rules.insert("analeptic_static_available", Analeptic::IsAvailable(player, analeptic));
+                    playerView.prototypeRules.insert(QStringLiteral("Analeptic"), rules);
+                }
+            }
             // Only the viewer's own Slash evaluation reads the empty-prefix filter.
             // It costs one targetFilter per alive player, so events skip it.
             if (!eventOnly && player->isAlive()
@@ -1790,6 +2265,16 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             for (const ServerPlayer *other : m_room.getAllPlayers()) {
                 QMap<QString, bool> row;
                 for (const QString &zone : zones) row.insert(zone, player->canDiscard(other, zone));
+                // A zone answer is existential, not permission for every card in
+                // that zone. Only already-visible identities get exact ID facts.
+                // Other player rows may not have been projected yet, so use the
+                // same visibility gate without exporting hidden hand identities.
+                for (const Card *card : other->getCards("hej")) {
+                    if (!card) continue;
+                    const int id = card->getEffectiveId();
+                    if (id < 0 || !cardVisibleTo(m_room, id, viewer)) continue;
+                    row.insert(QStringLiteral("id:%1").arg(id), player->canDiscard(other, id));
+                }
                 playerView.canDiscard.insert(other->objectName(), row);
             }
             world.self = playerView;
@@ -1803,7 +2288,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         }
     }
     const auto distancePlayers = m_room.getAlivePlayers();
-    const auto distanceSkills = !eventOnly && !compactPolicy
+    const auto distanceSkills = !eventOnly && (!compactPolicy || hegemony)
         ? Sanguosha->getDistanceSkills() : QList<const DistanceSkill *>();
     const quint64 distanceRevision = m_room.roomRuntime()->stateRevision();
     const quint64 skillGeneration = SkillSet::generation();
@@ -1812,8 +2297,8 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         // rebel's distance to the lord; without it each such event failed its hook.
         world.distanceScope = QStringLiteral("lord");
         world.distances = lordDistances();
-    } else if (compactPolicy) {
-        // Isolated decisions need viewer-relative geometry. Keep both directions:
+    } else if (compactPolicy && !hegemony) {
+        // Outside Hegemony, retain viewer-relative geometry. Keep both directions:
         // distance modifiers can be asymmetric. Other pairs remain explicitly absent.
         world.distanceScope = QStringLiteral("viewer");
         QMap<QString, int> outgoing;
@@ -1824,6 +2309,9 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 QMap<QString, int>{{viewer->objectName(), other->distanceTo(viewer)}});
         }
         world.distances.insert(viewer->objectName(), outgoing);
+    // Hegemony policies also compare two other players. These aggregate values
+    // are already broadcast by refreshDistanceCacheIfDirty; no modifier sources
+    // or concealed skill identities are included in the full matrix.
     } else if (m_distanceCacheValid && m_distanceRevision == distanceRevision
         && m_distanceSkillGeneration == skillGeneration
         && m_distancePlayers == distancePlayers && m_distanceSkills == distanceSkills) {
@@ -2082,9 +2570,9 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
 // asked, only the skill's own createCard() names the produced card, and the cost is
 // whatever the skill accepted - never what the AI will later claim it paid.
 //
-// Zero/one-card costs are concrete tickets. Wider costs require the explicit
-// independent-selection contract and become one parameterized ticket per instance;
-// never enumerate hand subsets. Unknown skill families leave coverage incomplete.
+// Fixed costs use bounded ordered prefixes; independent recipes may instead carry
+// a parameterized ticket. Variable costs use exact sampled prefixes and leave
+// enumeration incomplete. Every declaration and implicit cost comes from the skill.
 bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
                                                  AIRequest &request, int &projectionBudget) const
 {
@@ -2132,15 +2620,24 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             offered = !player->isSkillInvalid(instance.skillName, instance.instanceID)
                 && (!reasonKnown || skill->isAvailable(player, request.reason, request.pattern));
         }
-        if (offered && !v2)
+        if (offered && !v2) {
             enumerated = false;
+            if (Config.EnableHegemony && reasonKnown)
+                qInfo().noquote() << QString("[AI_HEGEMONY_V1_AVAILABLE] decision=%1 player=%2 skill=%3 instance=%4 reason=%5")
+                    .arg(request.decisionId).arg(player->objectName()).arg(instance.skillName)
+                    .arg(instance.instanceID).arg(int(request.reason));
+        }
     }
 
     QList<int> payable = player->handCards();
     foreach (const Card *equip, player->getEquips())
         if (equip) payable << equip->getEffectiveId();
 
-    foreach (const AiSkillActionContext &action, request.skillActions) {
+    for (AiSkillActionContext &action : request.skillActions) {
+        if (probesLeft <= 0 || projectionBudget <= 0 || request.cardConversions.size() >= 64) {
+            enumerated = false;
+            break;
+        }
         const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
             Sanguosha->getViewAsSkill(action.getActivationSkillName()));
         // A skill this side cannot ask is a skill whose conversions are unknown, not
@@ -2151,82 +2648,122 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             continue;
         }
         const int cost = skill->getN();
-        // External staging groups complete tickets; it does not drive skill selection.
-        // Declarations and parameterized costs still need a richer native projection.
-        if (cost < 0 || cost > 1 || skill->declaresCardName())
-            staged = false;
+        if (cost < 0) { enumerated = false; continue; }
+        if (cost > 1 || skill->declaresCardName()) staged = false;
         const bool parameterized = cost >= 2 && skill->hasIndependentAIConversion();
-        if (cost < 0 || cost > 8 || (cost > 1 && !parameterized)) {
-            enumerated = false;
-            continue;
-        }
-        // Hand-pile and expand-pile material. A variable cost is ticketed over hand
-        // cards only, so material beyond them leaves that skill incomplete.
         const QList<int> extra = extraConversionMaterialIds(m_room, player, skill, enumerated);
         if (parameterized && !extra.isEmpty()) enumerated = false;
-        QList<QList<int> > selections;
+        const QList<int> materials = payable + extra;
         QList<int> eligible;
-        if (cost == 0) {
-            selections << QList<int>();
-        } else {
-            foreach (int cardId, parameterized ? payable : payable + extra) {
-                if (--probesLeft < 0 || --projectionBudget < 0) { enumerated = false; break; }
-                if (parameterized && !player->handCards().contains(cardId)) continue;
-                const Card *payment = Sanguosha->getCard(cardId);
-                if (!payment) continue;
-                ActiveSkillRequest probe;
-                probe.reason = request.reason;
-                probe.pattern = request.pattern;
-                probe.initiator = player;
-                probe.activationRef = action.activationRef;
-                if (!skill->canSelectCard(probe, payment)) continue;
-                if (parameterized) eligible << cardId;
-                else selections << (QList<int>() << cardId);
+        const auto spend = [&] {
+            if (probesLeft <= 0 || projectionBudget <= 0) {
+                enumerated = false;
+                return false;
             }
-        }
-        if (parameterized) {
-            // The explicit invariant contract authorizes all distinct choices; build
-            // only one representative to describe the cost-independent output.
-            if (probesLeft < 0 || projectionBudget < 0) continue;
-            if (eligible.size() < cost) continue;
-            selections << eligible.mid(0, cost);
-        }
-        foreach (const QList<int> &selection, selections) {
-            if (request.cardConversions.size() >= 64) { enumerated = false; break; }
-            ActiveSkillRequest built;
-            built.reason = request.reason;
-            built.pattern = request.pattern;
-            built.initiator = player;
-            built.activationRef = action.activationRef;
-            built.selectedCardIds = selection;
-            if (!skill->cardSelectionFeasible(built)) continue;
+            --probesLeft;
+            --projectionBudget;
+            return true;
+        };
+        const auto roomForTicket = [&] {
+            if (request.cardConversions.size() >= 64) {
+                enumerated = false;
+                return false;
+            }
+            return true;
+        };
+        const auto emitOne = [&](const ActiveSkillRequest &built, const QList<int> &selection,
+                                 const QString &declaration) {
+            if (!skill->cardSelectionFeasible(built)) return;
             const Card *produced = skill->createCard(built);
-            if (!produced) { enumerated = false; continue; }
+            if (!produced) { enumerated = false; return; }
             // A skill that produces a bare proxy is a skill action, not a card
             // conversion: it is already carried by the skill action path and its
             // selected cards. Skipping it is classification, not a coverage gap.
             if (produced->objectName().isEmpty()) {
+                // A zero-input proxy describes this offered action's targets.
+                // Its native skill owns costs; generic Card::isAvailable,
+                // MethodUse limitation and jilei are not action payment gates.
+                if (cost == 0 && !skill->declaresCardName() && selection.isEmpty()
+                    && produced->getSubcards().isEmpty()
+                    && dynamic_cast<const ActiveSkillCard *>(produced)) {
+                    Card *proxy = const_cast<Card *>(produced);
+                    proxy->setActivationSkill(action.activationRef.key.skillName,
+                                              action.activationRef.key.instanceID);
+                    if (action.sourceRef.isValid())
+                        proxy->setSourceSkill(action.sourceRef.key.skillName,
+                                              action.sourceRef.key.instanceID);
+                    AICardCandidateView candidate;
+                    candidate.available = action.activationQuotaAvailable && action.sourceQuotaAvailable;
+                    describeCardTargets(m_room, player, proxy, candidate.targetFixed,
+                        candidate.feasibleWithNoTarget, candidate.completeCoverage,
+                        candidate.legalTargets, candidate.maxVotes,
+                        candidate.targetCombinations, projectionBudget, true);
+                    for (ServerPlayer *target : m_room.getAlivePlayers()) {
+                        if (--projectionBudget < 0) {
+                            candidate.completeCoverage = false;
+                            candidate.targetCombinations.clear();
+                            candidate.targetFilterEmpty.clear();
+                            break;
+                        }
+                        candidate.targetFilterEmpty.insert(target->objectName(),
+                            proxy->targetFilter({}, target, player));
+                    }
+                    action.emptySelectionCard = makeAICardView(proxy);
+                    action.emptySelectionCard.legacyStringKey = proxy->toString();
+                    action.emptySelectionCandidate = candidate;
+                    action.hasEmptySelectionEvaluation = true;
+                }
                 staged = false;
                 const_cast<Card *>(produced)->deleteLater();
-                continue;
+                return;
+            }
+            // Keep UI-selected inputs separate from native fixed material.
+            // The ticket still binds the actual produced subcards exactly.
+            const QList<int> actualCosts = produced->getSubcards();
+            ActiveSkillRequest normalized = built;
+            normalized.setCardSelection(produced);
+            if (normalized.selectedCardIds != selection) {
+                ActiveSkillRequest actual = built;
+                actual.selectedCardIds.clear();
+                QSet<int> unique;
+                bool knownCosts = true;
+                for (int id : normalized.selectedCardIds) {
+                    const Card *payment = Sanguosha->getCard(id);
+                    if (!spend() || unique.contains(id)
+                        || !payment || (!payable.contains(id) && !extra.contains(id))
+                        || !skill->canSelectCard(actual, payment)) {
+                        knownCosts = false;
+                        break;
+                    }
+                    unique.insert(id);
+                    actual.selectedCardIds << id;
+                }
+                if (!knownCosts || !skill->cardSelectionFeasible(actual)) {
+                    enumerated = false;
+                    const_cast<Card *>(produced)->deleteLater();
+                    return;
+                }
             }
             if (produced->getTypeId() == Card::TypeSkill || produced->getSubcards() != selection)
                 staged = false;
             AICardConversionView view;
+            view.producedCard = makeAICardView(produced);
+            const QList<int> ownerHand = player->handCards();
+            bool inHand = !produced->isVirtualCard() ? ownerHand.contains(produced->getEffectiveId())
+                : !produced->getSubcards().isEmpty();
+            if (produced->isVirtualCard())
+                for (int id : produced->getSubcards()) if (!ownerHand.contains(id)) inHand = false;
+            projectOwnCardRules(view.producedCard, player, produced, inHand);
             view.conversionId = request.cardConversions.size() + 1;
-            view.name = produced->objectName();
-            view.className = produced->getClassName();
-            view.skillName = produced->getSkillName(false);
-            view.kindOfNames = produced->getKindOfNames();
-            view.suit = int(produced->getSuit());
-            view.number = produced->getNumber();
+            view.declaredName = declaration;
             view.activationRef = action.activationRef;
             view.sourceRef = action.sourceRef;
             view.equipmentActivation = action.equipmentActivation;
             view.physicalEquipSource = action.physicalEquipSource;
             view.activationQuotaAvailable = action.activationQuotaAvailable;
             view.sourceQuotaAvailable = action.sourceQuotaAvailable;
-            view.subcardIds = selection;
+            view.subcardIds = actualCosts;
+            view.activationCardIds = normalized.selectedCardIds;
             view.costCount = parameterized ? cost : 0;
             view.eligibleSubcardIds = eligible;
             // An "@@skill" prompt asks for that skill's product, which canActivate and
@@ -2236,11 +2773,14 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             const AICardCandidateView candidate = makeAICardCandidate(m_room, player,
                 produced, request.handlingMethod, request.kind, cardPattern, projectionBudget);
             view.available = candidate.available && !candidate.limited;
+            view.jilei = candidate.jilei;
             // Outside play a candidate's availability is its pattern match.
             view.matchesResponsePattern = request.kind != AIRequest::Activate && candidate.available;
-            view.legacyStringKey = produced->toString();
-            view.locked = player->isLocked(produced);
-            if (!view.available) { const_cast<Card *>(produced)->deleteLater(); continue; }
+            // Issued costs are already disclosed to this viewer; keep their exact
+            // face and sort identity in the shared card DTO, not a second copy.
+            view.producedCard.legacyStringKey = produced->toString();
+            view.producedCard.locked = player->isLocked(produced);
+            if (!view.available) { const_cast<Card *>(produced)->deleteLater(); return; }
             view.targetFixed = candidate.targetFixed;
             view.feasibleWithNoTarget = candidate.feasibleWithNoTarget;
             view.completeCoverage = candidate.completeCoverage;
@@ -2258,6 +2798,98 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             // conversion can never be a handle the AI holds onto.
             const_cast<Card *>(produced)->deleteLater();
             request.cardConversions << view;
+        };
+        ActiveSkillRequest base;
+        base.reason = request.reason;
+        base.pattern = request.pattern;
+        base.initiator = player;
+        base.activationRef = action.activationRef;
+        const auto emitSelection = [&](const QList<int> &selection) {
+            if (!roomForTicket() || !spend()) return;
+            ActiveSkillRequest built = base;
+            built.selectedCardIds = selection;
+            const QStringList declarations = skill->declaresCardName()
+                ? skill->usableNames(built) : QStringList{QString()};
+            for (const QString &declaration : declarations) {
+                if (!roomForTicket() || !spend()) return;
+                built.userString = declaration;
+                ActiveSkillRequest checked = built;
+                checked.selectedCardIds.clear();
+                bool selectable = true;
+                for (int id : selection) {
+                    if (!spend()) return;
+                    const Card *payment = Sanguosha->getCard(id);
+                    if (!payment || !skill->canSelectCard(checked, payment)) {
+                        selectable = false;
+                        break;
+                    }
+                    checked.selectedCardIds << id;
+                }
+                if (selectable) emitOne(built, selection, declaration);
+            }
+        };
+        if (parameterized) {
+            // Keep the existing cost-independent recipe contract. Every material
+            // is independently admitted; one representative describes its face.
+            for (int id : payable) {
+                if (!spend()) break;
+                const Card *payment = Sanguosha->getCard(id);
+                if (payment && skill->canSelectCard(base, payment)) eligible << id;
+            }
+            if (eligible.size() >= cost) emitSelection(eligible.mid(0, cost));
+        } else if (cost > 0) {
+            // Fixed costs use bounded ordered prefixes. Emit as we go, so budget
+            // exhaustion preserves earlier exact tickets instead of losing them.
+            if (skill->cardSelectionFeasible(base)) emitSelection({});
+            std::function<void(ActiveSkillRequest &)> visit;
+            visit = [&](ActiveSkillRequest &selected) {
+                if (!roomForTicket() || probesLeft <= 0 || projectionBudget <= 0) {
+                    enumerated = false;
+                    return;
+                }
+                if (selected.selectedCardIds.size() == cost) {
+                    emitSelection(selected.selectedCardIds);
+                    return;
+                }
+                if (!selected.selectedCardIds.isEmpty()) emitSelection(selected.selectedCardIds);
+                for (int id : materials) {
+                    if (selected.selectedCardIds.contains(id)) continue;
+                    if (!spend()) return;
+                    const Card *payment = Sanguosha->getCard(id);
+                    // Declaration-specific material predicates are checked only
+                    // after the exact declared name is known in emitSelection.
+                    if (!payment || (!skill->declaresCardName()
+                        && !skill->canSelectCard(selected, payment))) continue;
+                    selected.selectedCardIds << id;
+                    visit(selected);
+                    selected.selectedCardIds.removeLast();
+                    if (probesLeft <= 0 || projectionBudget <= 0 || !roomForTicket()) return;
+                }
+            };
+            ActiveSkillRequest selected = base;
+            visit(selected);
+        } else {
+            emitSelection({});
+            // getN()==0 also represents variable-material skills. Sample every
+            // singleton and a growing legal prefix, not variable-size subsets.
+            // These are exact native products; sampling never claims enumeration.
+            ActiveSkillRequest growing = base;
+            bool variableMaterials = false;
+            for (int id : materials) {
+                if (!roomForTicket() || !spend()) break;
+                const Card *payment = Sanguosha->getCard(id);
+                if (!payment) continue;
+                if (skill->declaresCardName() || skill->canSelectCard(base, payment)) {
+                    variableMaterials = true;
+                    emitSelection(QList<int>{id});
+                }
+                if (!spend()) break;
+                if (skill->declaresCardName() || skill->canSelectCard(growing, payment)) {
+                    growing.selectedCardIds << id;
+                    if (growing.selectedCardIds.size() > 1) emitSelection(growing.selectedCardIds);
+                }
+            }
+            if (variableMaterials) enumerated = false;
         }
     }
     request.conversionsEnumerated = enumerated;
@@ -2344,10 +2976,11 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     // Everything the author wrote is compared against the authority's own record. A
     // disagreement is a forged name, suit, number, skill or cost - never something to
     // reconcile in the author's favour. An unset suit or number means "as issued".
-    if (spec.name != authorized->name) return nullptr;
-    if (spec.suit != int(Card::SuitToBeDecided) && spec.suit != authorized->suit)
+    const AICardView &issuedCard = authorized->producedCard;
+    if (spec.name != issuedCard.objectName) return nullptr;
+    if (spec.suit != int(Card::SuitToBeDecided) && spec.suit != issuedCard.suit)
         return nullptr;
-    if (spec.number != 0 && spec.number != authorized->number) return nullptr;
+    if (spec.number != 0 && spec.number != issuedCard.number) return nullptr;
     if (!spec.skillName.isEmpty()
         && spec.skillName != authorized->activationRef.key.skillName)
         return nullptr;
@@ -2379,15 +3012,20 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     activation.pattern = request.pattern;
     activation.initiator = player;
     activation.activationRef = authorized->activationRef;
+    activation.userString = authorized->declaredName;
     if (!skill->canActivateRequest(activation)) return nullptr;
     if (authorized->costCount > 0 && !skill->hasIndependentAIConversion()) return nullptr;
-    // Revalidate each prefix, not just the final number of cards.
-    foreach (int id, spec.subcardIds) {
+    // A reply binds produced material; only the ticket/native skill supplies
+    // reconstruction inputs. Parameterized recipes still select their hand costs.
+    const QList<int> selection = authorized->costCount > 0 ? spec.subcardIds : authorized->activationCardIds;
+    foreach (int id, selection) {
         const Card *payment = Sanguosha->getCard(id);
         if (!payment || !skill->canSelectCard(activation, payment)) return nullptr;
         activation.selectedCardIds << id;
     }
     if (!skill->cardSelectionFeasible(activation)) return nullptr;
+    if (!authorized->declaredName.isEmpty()
+        && !skill->canDeclare(activation, authorized->declaredName)) return nullptr;
 
     SkillContext context;
     context.initiator = player;
@@ -2419,9 +3057,12 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     // to pick which authorized conversion the AI meant.
     const Card *produced = skill->createCard(activation);
     if (!produced) return nullptr;
-    if (produced->objectName() != authorized->name
-        || int(produced->getSuit()) != authorized->suit
-        || produced->getNumber() != authorized->number) {
+    if (produced->getSubcards() != spec.subcardIds
+        || produced->isVirtualCard() != issuedCard.virtualCard
+        || (!issuedCard.virtualCard && produced->getEffectiveId() != issuedCard.effectiveId)
+        || produced->objectName() != issuedCard.objectName
+        || int(produced->getSuit()) != issuedCard.suit
+        || produced->getNumber() != issuedCard.number) {
         const_cast<Card *>(produced)->deleteLater();
         return nullptr;
     }
@@ -2449,14 +3090,44 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
     candidate.from = player;
     candidate.card = nullptr;
     candidate.to.clear();
+    const auto commitCandidate = [&]() {
+        cardUse = candidate;
+        m_room.roomRuntime()->ai().commitOriginalSDChoices(request, result, candidate);
+        if (Config.EnableHegemony && candidate.card) {
+            QJsonArray costs;
+            const QList<int> material = candidate.card->isVirtualCard() ? candidate.card->getSubcards()
+                : QList<int>{candidate.card->getEffectiveId()};
+            for (int id : material) if (id >= 0) costs.append(id);
+            QStringList targets;
+            for (const ServerPlayer *target : candidate.to) targets << target->objectName();
+            const auto *skillCard = dynamic_cast<const SkillCard *>(candidate.card->getRealCard());
+            QString declaration = skillCard ? skillCard->getUserString() : QString();
+            if (result.action.hasCardSpec) {
+                for (const AICardConversionView &conversion : request.cardConversions)
+                    if (conversion.conversionId == result.action.cardSpec.conversionId)
+                        declaration = conversion.declaredName;
+            }
+            const QJsonObject audit{{"decision", double(request.decisionId)},
+                {"revision", double(request.stateRevision)}, {"player", player->objectName()},
+                {"card", publicDecisionCard(candidate.card)}, {"materials", costs},
+                {"targets", QJsonArray::fromStringList(targets)},
+                {"declaration", declaration},
+                {"activation_skill", candidate.activationRef.key.skillName},
+                {"activation_instance", candidate.activationRef.key.instanceID},
+                {"source_skill", candidate.sourceRef.key.skillName},
+                {"source_instance", candidate.sourceRef.key.instanceID}};
+            qInfo().noquote() << "[AI_HEGEMONY_ACCEPTED_CARD]"
+                << QJsonDocument(audit).toJson(QJsonDocument::Compact);
+        }
+        return true;
+    };
     // Every target below was chosen by an AI, so Room::useCard must re-run the ordered
     // targetFilter/targetsFeasible/prohibit contract on it. CardUseStruct::parse sets
     // this for the legacy string answer; the value-typed card_id answer had no such
     // path, so an out-of-range or prohibited target reached gameplay unchecked.
     candidate.m_validateTargets = true;
     if (result.kind == AIResult::Pass) {
-        cardUse = candidate;
-        return true;
+        return commitCandidate();
     }
 
     QSet<QString> targetNames;
@@ -2502,8 +3173,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
             if (!offered) return false;
         }
         candidate.card = played;
-        cardUse = candidate;
-        return true;
+        return commitCandidate();
     }
     if (result.action.hasCardSpec) {
         Card *built = buildSpecCard(player, request, result.action.cardSpec);
@@ -2527,8 +3197,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         candidate.sourceRef = authorized->sourceRef;
         candidate.physicalEquipSource = authorized->physicalEquipSource;
         candidate.setOwnedCard(built);
-        cardUse = candidate;
-        return true;
+        return commitCandidate();
     }
     if (!result.action.legacyCardString.isEmpty()) {
         candidate.parse(result.action.legacyCardString, &m_room);
@@ -2553,8 +3222,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
             mutableCard->setSourceSkill(context.getSourceSkillName(),
                 context.getSourceInstanceID());
         }
-        cardUse = candidate;
-        return true;
+        return commitCandidate();
     }
 
     if (!result.action.hasSkillActionContext)
@@ -2590,8 +3258,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         candidate.sourceRef = offered->sourceRef;
         candidate.physicalEquipSource = offered->physicalEquipSource;
         candidate.setOwnedCard(const_cast<Card *>(built));
-        cardUse = candidate;
-        return true;
+        return commitCandidate();
     }
     AIRequest playRequest;
     if (!request.hasSkillActionContext) {
@@ -2645,8 +3312,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
     proxy->addSubcards(result.action.selectedCardIds);
     proxy->setUserString(result.action.userString);
     candidate.setOwnedCard(proxy);
-    cardUse = candidate;
-    return true;
+    return commitCandidate();
 }
 
 AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
@@ -2964,6 +3630,66 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
     EngineRuntimeContextScope scope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     QJsonObject &context = request.choiceOptions.context;
+    const auto projectUse = [this, viewer](const QVariant &value, bool knownActualUse = false) -> QJsonValue {
+        if (!value.canConvert<CardUseStruct>()) return QJsonValue();
+        const CardUseStruct use = value.value<CardUseStruct>();
+        const AIStateRefs refs = liveStateRefs(m_room);
+        if (!use.from || !use.card || !refs.player(use.from) || !refs.card(use.card))
+            return QJsonValue();
+        QJsonArray targets;
+        for (const ServerPlayer *target : use.to) {
+            if (!target || !refs.player(target)) return QJsonValue();
+            targets.append(target->objectName());
+        }
+        QJsonObject result{{"from", use.from->objectName()}, {"to", targets},
+            {"card", publicDecisionCard(use.card, knownActualUse ? viewer : nullptr)}};
+        if (knownActualUse) {
+            result.insert(QStringLiteral("response_list_known"), true);
+            result.insert(QStringLiteral("no_respond_list"), QJsonArray::fromStringList(use.no_respond_list));
+            // Read only this viewer's slots from the current native use. A tag
+            // snapshot or a hypothetical card cannot witness a Jink requirement.
+            if (use.card->isKindOf("Slash") && use.to.contains(viewer)) {
+                const QStringList jinks = use.from->getTag(
+                    QStringLiteral("Jink_") + use.card->toString()).toStringList();
+                double expected = 1;
+                bool known = true;
+                for (int index = 0; index < use.to.size(); ++index) {
+                    if (use.to.at(index) != viewer) continue;
+                    bool numeric = false;
+                    const double count = jinks.value(index).toDouble(&numeric);
+                    if (!numeric || !std::isfinite(count) || count < 0) {
+                        known = false;
+                        break;
+                    }
+                    if (count == 0) { expected = 0; break; }
+                    expected = qMax(expected, count);
+                }
+                // Missing/uninitialized native data stays unknown, never 1.
+                if (known) result.insert(QStringLiteral("expected_jink_num"), expected);
+            }
+        }
+        return result;
+    };
+    // QVariant conversion of a different payload yields the default SlashEffect;
+    // distinguish that known absence from an unprojected actual effect.
+    if (data.isValid() || !context.contains(QStringLiteral("slash_effect_present"))) {
+        context.remove(QStringLiteral("slash_effect"));
+        const bool hasSlashEffect = data.canConvert<SlashEffectStruct>();
+        context.insert(QStringLiteral("slash_effect_present"), hasSlashEffect);
+        if (hasSlashEffect) {
+            const SlashEffectStruct effect = data.value<SlashEffectStruct>();
+            const AIStateRefs refs = liveStateRefs(m_room);
+            if (refs.player(effect.from) && refs.player(effect.to) && refs.card(effect.slash)) {
+                context.insert(QStringLiteral("slash_effect"), QJsonObject{
+                    {"from", effect.from ? effect.from->objectName() : QString()},
+                    {"to", effect.to ? effect.to->objectName() : QString()},
+                    {"card_present", effect.slash != nullptr}, {"card", publicDecisionCard(effect.slash, viewer)},
+                    {"nature", int(effect.nature)}, {"jink_num", effect.jink_num}, {"drank", effect.drank},
+                    {"multiple", effect.multiple}, {"nullified", effect.nullified},
+                    {"no_respond", effect.no_respond}, {"no_offset", effect.no_offset}});
+            }
+        }
+    }
     QString formationPattern = request.pattern;
     if (formationPattern.endsWith('!')) formationPattern.chop(1);
     if (formationPattern == QStringLiteral("@@heg_ziliang")) {
@@ -3005,27 +3731,48 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
     if (data.canConvert<JudgeStruct *>()) {
         const JudgeStruct *judge = data.value<JudgeStruct *>();
         if (!judge || !judge->who) return;
-        const auto hasActiveFilter = [](const ServerPlayer *player) {
-            for (const SkillInstance &instance : player->getSkillInstances()) {
-                const auto *filter = dynamic_cast<const FilterSkill *>(
-                    Sanguosha->getViewAsSkill(instance.skillName));
-                if (filter && !player->isSkillInvalid(instance.skillName, instance.instanceID))
-                    return true;
-            }
+        const auto visibleSkillsComplete = [&request, viewer](const ServerPlayer *player) {
+            if (player == viewer) return true;
+            for (const AIPlayerView &view : request.worldView.players)
+                if (view.objectName == player->objectName()) return view.skillsComplete;
             return false;
         };
-        // A judged player's filter can change a retrial card. Do not run CardFilter,
-        // rewrite engine cards, or speculate through callbacks while taking a view.
-        bool complete = !hasActiveFilter(judge->who);
-        int lightningHolders = 0;
-        bool lightningReserveComplete = true;
-        if (judge->reason != QStringLiteral("lightning")) {
-            for (ServerPlayer *holder : m_room.getAllPlayers()) {
-                if (!holder->containsTrick(QStringLiteral("lightning"))) continue;
-                ++lightningHolders;
-                if (hasActiveFilter(holder)) lightningReserveComplete = false;
+        const auto judgmentFace = [&](const ServerPlayer *player, int id,
+                                      QJsonObject &face, bool *outcome) {
+            if (!visibleSkillsComplete(player)) return false;
+            // updateCardsChange/filterCards refilters a moved judgment card from
+            // its printed face, not the previous holder's filtered wrapper.
+            const Card *printed = Sanguosha->getEngineCard(id);
+            if (!printed) return false;
+            const Card *filtered = printed;
+            const auto cleanup = qScopeGuard([&] {
+                if (filtered != printed) const_cast<Card *>(filtered)->deleteLater();
+            });
+            for (const Skill *skill : player->getSkillList(true, false)) {
+                const auto *filter = dynamic_cast<const FilterSkill *>(skill);
+                if (!filter || !player->hasSkill(skill->objectName())) continue;
+                const Card *next = nullptr;
+                if (!filter->projectAIJudgmentCard(printed, next)) return false;
+                // Native filterCards asks every filter about the same base card;
+                // only the last matching result survives. Do not compose faces.
+                if (next) {
+                    if (filtered != printed) const_cast<Card *>(filtered)->deleteLater();
+                    filtered = next;
+                }
             }
+            face = publicDecisionCard(filtered, viewer);
+            face.insert(QStringLiteral("judgment_source_id"), id);
+            face.insert(QStringLiteral("judgment_target"), player->objectName());
+            if (outcome) *outcome = judge->isGood(filtered);
+            return true;
+        };
+        bool complete = visibleSkillsComplete(judge->who);
+        QList<ServerPlayer *> lightningHolders;
+        if (judge->reason != QStringLiteral("lightning")) {
+            for (ServerPlayer *holder : m_room.getAllPlayers())
+                if (holder->containsTrick(QStringLiteral("lightning"))) lightningHolders << holder;
         }
+        bool lightningReserveComplete = true;
         QList<int> owned = viewer->handCards();
         for (const Card *equip : viewer->getEquips())
             if (equip) owned << equip->getEffectiveId();
@@ -3034,8 +3781,8 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         const QSet<int> ownedSet = qsanToSet(owned);
         const QList<int> candidates = request.kind == AIRequest::RespondCard
             ? request.choiceOptions.cardIds : owned;
-        QJsonObject outcomes;
-        QJsonObject lightningCandidates;
+        QJsonObject outcomes, filteredCards, filteredSuits, filteredNumbers;
+        QMap<QString, QJsonObject> lightningCandidates;
         for (int id : candidates) {
             if (!ownedSet.contains(id)) continue;
             const Card *card = Sanguosha->getCard(id);
@@ -3045,23 +3792,50 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
                 break;
             }
             if (viewer->isCardLimited(card, request.handlingMethod)) continue;
-            if (complete) outcomes.insert(QString::number(id), judge->isGood(card));
-            if (lightningHolders > 0 && lightningReserveComplete
-                && card->getSuit() == Card::Spade && card->getNumber() >= 2
-                && card->getNumber() <= 9)
-                lightningCandidates.insert(QString::number(id), true);
+            const QString key = QString::number(id);
+            QJsonObject face;
+            bool good = false;
+            if (judgmentFace(judge->who, id, face, &good)) {
+                outcomes.insert(key, good);
+                filteredCards.insert(key, face);
+                filteredSuits.insert(key, face.value(QStringLiteral("suit")));
+                filteredNumbers.insert(key, face.value(QStringLiteral("number")));
+            } else complete = false;
+            for (const ServerPlayer *holder : lightningHolders) {
+                QJsonObject lightningFace;
+                if (!judgmentFace(holder, id, lightningFace, nullptr)) {
+                    lightningReserveComplete = false;
+                    continue;
+                }
+                if (lightningFace.value(QStringLiteral("suit")).toInt() == Card::Spade
+                    && lightningFace.value(QStringLiteral("number")).toInt() >= 2
+                    && lightningFace.value(QStringLiteral("number")).toInt() <= 9)
+                    lightningCandidates[holder->objectName()].insert(key, true);
+            }
         }
-        if (!complete) outcomes = QJsonObject();
-        if (!lightningReserveComplete) lightningCandidates = QJsonObject();
+        if (!complete) {
+            outcomes = QJsonObject();
+            filteredCards = filteredSuits = filteredNumbers = QJsonObject();
+        }
         // Lua first applies its retrial policy, then reserves one eligible card
-        // from the end per holder. Reserving here would use the wrong candidate order.
-        context.insert("judge", QJsonObject{{"who", judge->who->objectName()},
+        // per holder. Preserve holder order and each policy's candidate scan order.
+        QJsonObject judgment{{"who", judge->who->objectName()},
             {"reason", judge->reason}, {"pattern", judge->pattern}, {"good", judge->isGood()},
-            {"negative", judge->negative}, {"card", publicDecisionCard(judge->card)},
+            {"negative", judge->negative}, {"card", publicDecisionCard(judge->card, viewer)},
             {"outcome_by_id", outcomes}, {"outcomes_complete", complete},
-            {"lightning_candidate_ids", lightningCandidates},
-            {"lightning_holder_count", lightningHolders},
-            {"lightning_reserve_complete", lightningReserveComplete}});
+            {"filtered_cards", filteredCards}, {"filtered_complete", complete},
+            {"filtered_suit_by_id", filteredSuits}, {"filtered_number_by_id", filteredNumbers},
+            {"lightning_candidate_ids", QJsonObject()},
+            {"lightning_holder_count", lightningHolders.size()},
+            {"lightning_reserve_complete", lightningReserveComplete}};
+        if (lightningReserveComplete) {
+            QJsonArray rows;
+            for (const ServerPlayer *holder : lightningHolders)
+                rows.append(QJsonObject{{"holder", holder->objectName()},
+                    {"candidate_ids", lightningCandidates.value(holder->objectName())}});
+            judgment.insert(QStringLiteral("lightning_reserve_rows"), rows);
+        }
+        context.insert("judge", judgment);
     } else if (data.canConvert<DamageStruct>()) {
         const DamageStruct damage = data.value<DamageStruct>();
         context.insert("damage", QJsonObject{
@@ -3070,7 +3844,7 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
             {"amount", damage.damage}, {"nature", int(damage.nature)},
             {"chain", damage.chain}, {"transfer", damage.transfer},
             {"by_user", damage.by_user}, {"reason", damage.reason},
-            {"card", publicDecisionCard(damage.card)},
+            {"card", publicDecisionCard(damage.card, viewer)},
             {"card_name", damage.card ? damage.card->objectName() : QString()}});
     } else if (data.canConvert<DyingStruct>()) {
         const DyingStruct dying = data.value<DyingStruct>();
@@ -3085,16 +3859,21 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
                 {"amount", damage.damage}, {"nature", int(damage.nature)},
                 {"chain", damage.chain}, {"transfer", damage.transfer},
                 {"by_user", damage.by_user},
-                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card)},
+                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card, viewer)},
                 {"card_name", damage.card ? damage.card->objectName() : QString()}});
         }
         context.insert(QStringLiteral("dying"), dyingObject);
     } else if (data.canConvert<CardEffectStruct>()) {
         const CardEffectStruct effect = data.value<CardEffectStruct>();
+        const QJsonObject effectCard = publicDecisionCard(effect.card, viewer);
+        // Nullification's top-level card and typed effect are the same actual
+        // question card. Refresh both here, under the request's runtime binding.
+        if (request.choiceOptions.reason == QStringLiteral("nullification"))
+            context.insert(QStringLiteral("card"), effectCard);
         context.insert("effect", QJsonObject{
             {"from", effect.from ? effect.from->objectName() : QString()},
             {"to", effect.to ? effect.to->objectName() : QString()},
-            {"card", publicDecisionCard(effect.card)},
+            {"card", effectCard},
             {"card_name", effect.card ? effect.card->objectName() : QString()},
             {"offset_num", effect.offset_num}, {"no_respond", effect.no_respond},
             {"no_offset", effect.no_offset}});
@@ -3119,14 +3898,20 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
                     {"root_effect", QJsonObject{
                         {"from", chain->rootEffect.from ? chain->rootEffect.from->objectName() : QString()},
                         {"to", chain->rootEffect.to->objectName()},
-                        {"card", publicDecisionCard(rootCard)}}}};
+                        {"card", publicDecisionCard(rootCard, viewer)}}}};
             }
             // The root trick owns the target list. A counter-nullification's
             // own use/history describes a different action and has no such list.
             const QVariant tagged = m_room.getTag(QStringLiteral("UseHistory") + rootCard->toString());
             if (tagged.canConvert<CardUseStruct>()) {
                 const CardUseStruct use = tagged.value<CardUseStruct>();
-                bool live = use.card == rootCard && refs.card(use.card);
+                // Physical uses store the wrapper while Card::use emits its real
+                // card. Preserve exact object identity for virtual/root chains.
+                const CardEffectStruct &root = witnessed ? chain->rootEffect : effect;
+                bool live = use.card && refs.card(use.card) && refs.card(rootCard)
+                    && (use.card == rootCard || use.card->getRealCard() == rootCard)
+                    && refs.player(use.from) && use.from == root.from
+                    && root.to && use.to.contains(root.to);
                 QJsonArray targets;
                 for (const ServerPlayer *target : use.to) {
                     live = live && target && refs.player(target);
@@ -3163,14 +3948,11 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
             {"reason", QJsonObject{{"reason", move.reason.m_reason},
                 {"skill_name", move.reason.m_skillName}}}});
     } else if (data.canConvert<CardUseStruct>()) {
-        const CardUseStruct use = data.value<CardUseStruct>();
-        QJsonArray targets;
-        for (const ServerPlayer *target : use.to)
-            if (target) targets.append(target->objectName());
-        // The question exposes the declared use, never its hidden payment IDs.
-        context.insert("use", QJsonObject{
-            {"from", use.from ? use.from->objectName() : QString()},
-            {"to", targets}, {"card", publicDecisionCard(use.card)}});
+        context.remove(QStringLiteral("use"));
+        // Only this supplied live use witnesses its response list, including an
+        // empty list. Neither historical tags nor card names can confer it.
+        const QJsonValue use = projectUse(data, true);
+        if (use.isObject()) context.insert(QStringLiteral("use"), use);
     } else if (data.canConvert<ServerPlayer *>()) {
         const ServerPlayer *target = data.value<ServerPlayer *>();
         // Only reference the player in the viewer's existing world snapshot.
@@ -3189,15 +3971,20 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
     const AIStateRefs refs = liveStateRefs(m_room);
     if (!context.contains(QStringLiteral("damage"))) {
         const QVariant tagged = m_room.getTag(QStringLiteral("CurrentDamageStruct"));
+        if (!tagged.isValid())
+            context.insert(QStringLiteral("current_damage_present"), false);
         const DamageStruct damage = tagged.canConvert<DamageStruct>() ? tagged.value<DamageStruct>() : DamageStruct();
-        if (tagged.canConvert<DamageStruct>() && refs.player(damage.from) && refs.player(damage.to)) {
+        if (tagged.canConvert<DamageStruct>() && damage.to
+            && refs.player(damage.from) && refs.player(damage.to)
+            && refs.card(damage.card)) {
+            context.insert(QStringLiteral("current_damage_present"), true);
             context.insert(QStringLiteral("damage"), QJsonObject{
                 {"from", damage.from ? damage.from->objectName() : QString()},
                 {"to", damage.to ? damage.to->objectName() : QString()},
                 {"amount", damage.damage}, {"nature", int(damage.nature)},
                 {"chain", damage.chain}, {"transfer", damage.transfer},
                 {"by_user", damage.by_user},
-                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card)},
+                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card, viewer)},
                 {"card_name", damage.card ? damage.card->objectName() : QString()}});
         }
     }
@@ -3212,7 +3999,7 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
                 if (target) targets.append(target->objectName());
             context.insert(QStringLiteral("use"), QJsonObject{
                 {"from", use.from ? use.from->objectName() : QString()},
-                {"to", targets}, {"card", publicDecisionCard(use.card)}});
+                {"to", targets}, {"card", publicDecisionCard(use.card, viewer)}});
         }
     }
 
@@ -3247,20 +4034,6 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
     const auto exactTag = [&viewer](const QString &name) {
         return viewer ? viewer->getTag(name) : QVariant();
     };
-    const auto projectUse = [this](const QVariant &value) -> QJsonValue {
-        if (!value.canConvert<CardUseStruct>()) return QJsonValue();
-        const CardUseStruct use = value.value<CardUseStruct>();
-        const AIStateRefs refs = liveStateRefs(m_room);
-        if (!use.from || !use.card || !refs.player(use.from) || !refs.card(use.card))
-            return QJsonValue();
-        QJsonArray targets;
-        for (const ServerPlayer *target : use.to) {
-            if (!target || !refs.player(target)) return QJsonValue();
-            targets.append(target->objectName());
-        }
-        return QJsonObject{{"from", use.from->objectName()}, {"to", targets},
-            {"card", publicDecisionCard(use.card)}};
-    };
     const auto projectDamage = [this](const QVariant &value) -> QJsonValue {
         if (!value.canConvert<DamageStruct>()) return QJsonValue();
         const DamageStruct damage = value.value<DamageStruct>();
@@ -3287,6 +4060,36 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         && (inquiry->owner == viewer || inquiry->invoker == viewer);
     const QVariant inquiryData = ownInquiry && inquiry->original_data
         ? *inquiry->original_data : QVariant();
+    // Reuse the native callback's existing borrowed scope for helper reasons.
+    // Match seat, exact source skill and event; another nested ask cannot inherit
+    // a stale use. These values score candidates and confer no target authority.
+    const bool useQuestion = inquiry && (inquiry->owner == viewer || inquiry->invoker == viewer)
+        && ((reason == QStringLiteral("_heg_kenshang")
+                && inquiry->skill_name == QStringLiteral("#heg_kenshang-effect")
+                && inquiry->current_event == TargetSpecifying)
+            || (reason == QStringLiteral("wushuang_extra")
+                && inquiry->skill_name == QStringLiteral("heg_wushuang_lvlingqi")
+                && inquiry->current_event == TargetSpecifying)
+            || (reason == QStringLiteral("heg_Halberd")
+                && inquiry->skill_name == QStringLiteral("heg_Halberd")
+                && inquiry->current_event == ChangeSlash));
+    if (useQuestion && inquiry->original_data) {
+        const QJsonValue useValue = projectUse(*inquiry->original_data, true);
+        if (useValue.isObject()) {
+            context.insert(QStringLiteral("use"), useValue);
+            if (reason == QStringLiteral("_heg_kenshang")) {
+                const CardUseStruct use = inquiry->original_data->value<CardUseStruct>();
+                QList<ServerPlayer *> replacements;
+                for (ServerPlayer *target : m_room.getUseExtraTargets(use, false))
+                    if (!viewer->inMyAttackRange(target)) replacements << target;
+                for (ServerPlayer *target : use.to)
+                    if (!viewer->inMyAttackRange(target) && !replacements.contains(target)) replacements << target;
+                QJsonArray names;
+                for (ServerPlayer *target : replacements) names.append(target->objectName());
+                context.insert(QStringLiteral("extra_targets"), names);
+            }
+        }
+    }
     if (request.pattern == QStringLiteral("@@heg_Triblade") && inquiry
         && inquiry->skill_name == QStringLiteral("heg_Triblade")
         && (inquiry->owner == viewer || inquiry->invoker == viewer)) {
@@ -3501,6 +4304,26 @@ bool AiDecisionCoordinator::decideGeneral(ServerPlayer *player, const QStringLis
         catalog.insert(name, row);
     }
     options.context.insert("general_catalog", catalog);
+    if (Config.EnableHegemony && reason == QStringLiteral("heg_huashen")) {
+        // Owner-private souls, public definitions only. The Lua policy decides
+        // which supplier to consume; no foreign pile or hidden general is read.
+        QJsonObject souls;
+        for (const QString &name : player->property("Huashens").toString().split('+', Qt::SkipEmptyParts)) {
+            const General *general = Sanguosha->getGeneral(name);
+            if (!general) continue;
+            QJsonArray skills;
+            for (const Skill *skill : general->getVisibleSkillList()) {
+                const Skill::Frequency frequency = skill->getFrequency(player);
+                if ((frequency != Skill::Frequent && frequency != Skill::NotFrequent)
+                    || skill->relateToPlace(true) || skill->relateToPlace(false)
+                    || dynamic_cast<const HArraySummon *>(ViewAsSkill::parseViewAsSkill(skill))
+                    || skill->objectName() == QStringLiteral("heg_huashen")) continue;
+                skills.append(skill->objectName());
+            }
+            souls.insert(name, skills);
+        }
+        options.context.insert("huashen_soul_skills", souls);
+    }
     const ServerPlayer *lord = m_room.getLord();
     if (lord && lord->getGeneral())
         options.context.insert("lord_general_kingdom", lord->getGeneral()->getKingdom());
@@ -3642,11 +4465,13 @@ bool AiDecisionCoordinator::decideAmazingGrace(ServerPlayer *player, const QList
 
 bool AiDecisionCoordinator::decideCardChosen(ServerPlayer *player, ServerPlayer *who,
                                              const QString &flags, const QString &reason,
-                                             Card::HandlingMethod method, int &cardId) const
+                                             Card::HandlingMethod method, int &cardId,
+                                             const QList<int> &disabledIds, bool canCancel) const
 {
     if (!player || !player->getAI() || !who) return false;
     AIChoiceOptions options;
     options.reason = reason;
+    options.optional = canCancel;
     // Public zones and viewer-visible hand members may be offered below. Hidden
     // hand identities stay out of both metadata and the candidate set.
     options.playerNames << who->objectName();
@@ -3665,6 +4490,7 @@ bool AiDecisionCoordinator::decideCardChosen(ServerPlayer *player, ServerPlayer 
             if (view.objectName == who->objectName()) { targetView = &view; break; }
         }
     }
+    QSet<int> disclosedCardIds;
     if (targetView) {
         QList<AICardView> visible;
         if (flags.contains(QLatin1Char('e'))) visible << targetView->equips;
@@ -3674,13 +4500,49 @@ bool AiDecisionCoordinator::decideCardChosen(ServerPlayer *player, ServerPlayer 
             if (!targetView->handVisible) request.choiceOptions.candidatesComplete = false;
         }
         for (const AICardView &card : visible) {
+            disclosedCardIds.insert(card.effectiveId);
+            if (disabledIds.contains(card.effectiveId)) continue;
             if (method == Card::MethodDiscard && !player->canDiscard(who, card.effectiveId)) continue;
+            if (method == Card::MethodGet && !player->canGet(who, card.effectiveId)) continue;
             request.choiceOptions.cardIds << card.effectiveId;
             request.choiceOptions.cards << card;
         }
     } else {
         request.choiceOptions.candidatesComplete = false;
     }
+    // Opaque ordered domains let isolated policy sample face-down hands without
+    // receiving identities. Keep Original's full-domain order distinct from the
+    // generic legal domain; both are rechecked against this exact request below.
+    QJsonObject randomChoices;
+    for (const QString &zone : {QStringLiteral("h"), QStringLiteral("e"), QStringLiteral("j"),
+             QStringLiteral("he"), QStringLiteral("hj"), QStringLiteral("ej"), QStringLiteral("hej")}) {
+        bool subset = true;
+        for (QChar c : zone) if (!flags.contains(c)) subset = false;
+        if (!subset) continue;
+        QList<int> full, legal;
+        for (const Card *card : who->getCards(zone)) {
+            const int id = card->getEffectiveId();
+            full << id;
+            // Prior opaque picks stay native; do not disclose disabled IDs.
+            if (disabledIds.contains(id)) continue;
+            if (method == Card::MethodDiscard && !player->canDiscard(who, id)) continue;
+            if (method == Card::MethodGet && !player->canGet(who, id)) continue;
+            legal << id;
+        }
+        for (bool original : {false, true}) {
+            const QString key = original ? "original:" + zone : zone;
+            const QString token = QStringLiteral("card-choice/%1/%2").arg(request.decisionId).arg(key);
+            const QList<int> &domain = original ? full : legal;
+            request.opaqueCardDomains.insert(token, domain);
+            QJsonObject visibleIndices;
+            for (int index = 0; index < domain.size(); ++index)
+                if (disclosedCardIds.contains(domain.at(index)))
+                    visibleIndices.insert(QString::number(domain.at(index)), index + 1);
+            randomChoices.insert(key, QJsonObject{{"token", token}, {"count", domain.size()},
+                {"complete", true}, {"original_full_domain", original}, {"visible_card_indices", visibleIndices}});
+        }
+    }
+    request.choiceOptions.context.insert("random_card_choices", randomChoices);
     AI *ai = player->getAI();
     AIResult result;
     AiDecisionAudit audit(m_room, player, request, QStringLiteral("askForCardChosen"));
@@ -3708,11 +4570,28 @@ bool AiDecisionCoordinator::decideCardChosen(ServerPlayer *player, ServerPlayer 
         audit.accept(QStringLiteral("card"));
         return true;
     }
-    if (result.kind != AIResult::Answer || result.action.selectedCardIds.size() != 1)
-        return false;
-    cardId = result.action.selectedCardIds.first();
-    if (!request.choiceOptions.cardIds.contains(cardId)) return false;
+    if (result.kind == AIResult::Pass && canCancel) {
+        cardId = -1;
+        audit.accept(QStringLiteral("pass"));
+        return true;
+    }
+    if (result.kind != AIResult::Answer) return false;
+    if (!result.randomCardToken.isEmpty()) {
+        const auto domain = request.opaqueCardDomains.constFind(result.randomCardToken);
+        if (domain == request.opaqueCardDomains.cend() || !result.action.selectedCardIds.isEmpty()
+            || result.randomCardIndex < 1 || result.randomCardIndex > domain->size()) return false;
+        cardId = domain->at(result.randomCardIndex - 1);
+        bool stillOwned = false;
+        for (const Card *card : who->getCards(flags)) if (card->getEffectiveId() == cardId) stillOwned = true;
+        if (!stillOwned) return false;
+    } else {
+        if (result.action.selectedCardIds.size() != 1) return false;
+        cardId = result.action.selectedCardIds.first();
+        if (!request.choiceOptions.cardIds.contains(cardId)) return false;
+    }
+    if (disabledIds.contains(cardId)) return false;
     if (method == Card::MethodDiscard && !player->canDiscard(who, cardId)) return false;
+    if (method == Card::MethodGet && !player->canGet(who, cardId)) return false;
     audit.accept(QStringLiteral("card"));
     return true;
 }
@@ -3789,11 +4668,12 @@ bool AiDecisionCoordinator::decideYiji(ServerPlayer *player, const QList<int> &c
 bool AiDecisionCoordinator::decidePlayerChosen(ServerPlayer *player,
                                                const QList<ServerPlayer *> &targets,
                                                const QString &reason,
-                                               ServerPlayer *&choice) const
+                                               ServerPlayer *&choice, bool optional) const
 {
     if (!player || !player->getAI()) return false;
     AIChoiceOptions options;
     options.reason = reason;
+    options.optional = optional;
     foreach (ServerPlayer *target, targets) {
         if (target)
             options.playerNames << target->objectName();
@@ -3826,6 +4706,11 @@ bool AiDecisionCoordinator::decidePlayerChosen(ServerPlayer *player,
         if (!legacyChoice) return false;
         choice = legacyChoice;
         audit.accept(QStringLiteral("player"));
+        return true;
+    }
+    if (result.kind == AIResult::Pass && optional) {
+        choice = nullptr;
+        audit.accept(QStringLiteral("pass"));
         return true;
     }
     if (result.kind != AIResult::Answer || result.action.selectedTargetNames.size() != 1)
@@ -4001,6 +4886,11 @@ bool AiDecisionCoordinator::decideTriggerOrder(ServerPlayer *player, const QStri
                    }, result, audit))
         return false;
     audit.envelope(result);
+    if (result.kind == AIResult::Pass && optional) {
+        answer = QStringLiteral("cancel");
+        audit.accept(QStringLiteral("pass"));
+        return true;
+    }
     if (result.kind != AIResult::Answer || result.action.userString.isEmpty())
         return false;
     // The call site normalizes the skill/owner spelling, so the string passes through.
@@ -4298,8 +5188,14 @@ const Card *AiDecisionCoordinator::decideSinglePeach(ServerPlayer *player,
                                                 ? QStringLiteral("peach+analeptic")
                                                 : QStringLiteral("peach"),
                                             QString(), Card::MethodUse);
-    if (dying)
+    if (dying && liveStateRefs(m_room).player(dying)) {
         request.choiceOptions.playerNames << dying->objectName();
+        // The request knows who is dying, but does not carry a DyingStruct's
+        // damage pointer. Project the live room damage separately, never invent it.
+        request.choiceOptions.context.insert(QStringLiteral("dying"),
+                                             QJsonObject{{"who", dying->objectName()}});
+    }
+    projectDecisionContext(player, QVariant(), request);
     return decideResponse(player, request, QStringLiteral("askForSinglePeach"),
         [ai, dying]() { return ai->askForSinglePeach(dying); });
 }

@@ -3047,6 +3047,10 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
     checkTriggerDispatchAbort();
 
     const qint64 targetUseEventId = recordTriggerHistoryBefore(triggerEvent, room, target, data);
+    // Effects can ask for a card inside CardUsed. Bind retained AI selections
+    // to this use before callbacks; the general event recorder stays post-effect.
+    if (triggerEvent == CardUsed && data.canConvert<CardUseStruct>())
+        room->roomRuntime()->ai().observeOriginalSDUse(triggerEvent, data.value<CardUseStruct>());
 	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
 	// Long games: a snapshot every ten turns keeps partial runs measurable.
 	if (m_perfTraceEnabled && outerTurn && ++m_triggerDispatchProfile.outerTurns % 10 == 0)

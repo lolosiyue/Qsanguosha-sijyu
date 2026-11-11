@@ -4029,9 +4029,9 @@ bool Room::decideAiAmazingGrace(ServerPlayer *player, const QList<int> &cardIds,
 
 bool Room::decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                               const QString &reason, Card::HandlingMethod method,
-                              int &cardId) const
+                              int &cardId, const QList<int> &disabledIds, bool canCancel) const
 {
-	return m_aiDecisions->decideCardChosen(player, who, flags, reason, method, cardId);
+	return m_aiDecisions->decideCardChosen(player, who, flags, reason, method, cardId, disabledIds, canCancel);
 }
 
 bool Room::decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
@@ -4042,9 +4042,9 @@ bool Room::decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QSt
 }
 
 bool Room::decideAiPlayerChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
-                                const QString &reason, ServerPlayer *&choice) const
+                                const QString &reason, ServerPlayer *&choice, bool optional) const
 {
-	return m_aiDecisions->decidePlayerChosen(player, targets, reason, choice);
+	return m_aiDecisions->decidePlayerChosen(player, targets, reason, choice, optional);
 }
 
 bool Room::decideAiPlayersChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,

@@ -474,6 +474,10 @@ protected:
 private:
     QStringList listedNames() const;
     bool canDeclareListed(const ActiveSkillRequest &request, const QString &name) const;
+    friend struct ActiveSkillRequest;
+    // Recover UI-selected inputs from a produced card. Fixed native material
+    // (for example a deck-top conversion) is not a second player selection.
+    virtual QList<int> selectionIdsFromCard(const ActiveSkillRequest &request, const Card *card) const;
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill
@@ -511,6 +515,12 @@ class FilterSkill : public OneCardViewAsSkill
 
 public:
     FilterSkill(const QString &name);
+
+private:
+    friend class AiDecisionCoordinator;
+    // Native isolated projection only: true/null means no match; a matching
+    // result is a fresh caller-owned face. Never mutate Room or WrappedCard.
+    virtual bool projectAIJudgmentCard(const Card *original, const Card *&filtered) const;
 };
 
 typedef QMap<ServerPlayer*, QStringList> TriggerList;

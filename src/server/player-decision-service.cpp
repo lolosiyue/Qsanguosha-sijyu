@@ -583,7 +583,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
                 aiAttempted = true;
                 QElapsedTimer timer;
                 timer.start();
-                aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
+                aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice, optional);
                 if (Config.AIDelay > timer.elapsed())
                     m_room.thread->delay(Config.AIDelay - timer.elapsed());
             } else {
@@ -600,7 +600,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
                     ai = player->getAI();
                     if (ai) {
                         aiAttempted = true;
-                        aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
+                        aiDecision = m_room.decideAiPlayerChosen(player, targets, log.arg, choice, optional);
                     }
                 }
             }
@@ -785,7 +785,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             QElapsedTimer timer;
             timer.start();
             player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-            aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+            aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id, disabled_ids, can_cancel);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -805,7 +805,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
                 if (ai) {
                     aiAttempted = true;
                     player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-                    aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+                    aiDecision = m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id, disabled_ids, can_cancel);
                 }
             }
         }

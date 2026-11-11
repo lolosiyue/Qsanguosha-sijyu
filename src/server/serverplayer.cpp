@@ -1706,7 +1706,8 @@ ServerPlayer *ServerPlayer::getLastAlive(int n) const
 {
     ServerPlayer *p = const_cast<ServerPlayer *>(this);
     for (int i = 0; i < n; ++i) {
-        p = getPreviousAlive(1);
+        // Continue from the previous result instead of restarting at this player.
+        p = p->getPreviousAlive(1);
     }
     return p;
 }

@@ -266,7 +266,8 @@ void Player::setFlags(const QString &flag)
 
 bool Player::hasFlag(const QString &flag) const
 {
-    return flags.contains(flag);
+    // Rule hypotheses overlay reads only; actual flags and revision never change.
+    return TargetModSkillQueryScope::flagValue(this, flag, flags.contains(flag));
 }
 
 void Player::clearFlags()

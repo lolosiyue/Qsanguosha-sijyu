@@ -90,6 +90,9 @@ public:
     // Immutable printed-deck composition, cached per Room rather than in AI
     // belief memory. It contains no draw order or concealed card locations.
     QJsonObject publicCardCounts();
+    void commitOriginalSDChoices(const AIRequest &request, const AIResult &result,
+                                 const CardUseStruct &use);
+    void observeOriginalSDUse(int triggerEvent, const CardUseStruct &use);
 
 private:
     friend class RoomManagedState;
@@ -114,6 +117,13 @@ private:
     static int luaTraceback(lua_State *state);
     static int luaAiDataRead(lua_State *state);
     static int luaAiDataWrite(lua_State *state);
+    static int luaOriginalSDChoice(lua_State *state);
+    static int luaEvaluateCard(lua_State *state);
+    static int luaMakeFacadeIndex(lua_State *state);
+    static int luaFacadeIndex(lua_State *state);
+    static int luaWithOwnerRange(lua_State *state);
+    static int luaEvaluateOwnerRangeCard(lua_State *state);
+    bool consumeCardEvaluationQuery(const AIRequest &request);
     static void luaInstructionHook(lua_State *state, lua_Debug *debug);
     static AiLuaRuntime *fromUpvalue(lua_State *state);
     static AiLuaRuntime *current();
@@ -137,8 +147,39 @@ private:
     qint64 m_initializationInstructionBudget;
     qint64 m_instructionsRemaining;
     bool m_instructionLimitExceeded;
+    // Optional bounded instruction samples; never capture locals or arguments.
+    bool m_instructionProfiling = false;
+    int m_instructionProfileTicks = 0;
+    qint64 m_instructionProfileSamples = 0;
+    QHash<QString, QPair<qint64, qint64>> m_instructionProfile; // self, inclusive
     int m_publicCardCount = -1;
     QJsonObject m_publicCardCounts;
+    // A separate bounded read-only enumeration allowance; failed queries count
+    // too, and a retry of the same decision cannot replenish it.
+    quint64 m_cardEvaluationDecision = 0;
+    int m_cardEvaluationCalls = 0;
+    int m_cardEvaluationBudget = 0;
+
+    struct OriginalSDScope {
+        quint64 decision = 0;
+        QString viewer, reason;
+        bool dummy = true;
+        int physicalId = -1;
+        int conversionId = -1;
+        QHash<QString, QPair<QString, QList<int>>> domains;
+        QHash<QString, QPair<QString, int>> handles;
+    };
+    struct OriginalSDSelection {
+        quint64 decision = 0;
+        QString viewer, target, reason, turn;
+        int physicalId = -1;
+        int conversionId = -1;
+        int selectedId = -1;
+        qint64 useEvent = 0;
+        QVariantMap acceptedSource;
+    };
+    QHash<QString, OriginalSDScope> m_originalSDScopes;
+    QList<OriginalSDSelection> m_originalSDSelections;
 };
 
 #endif

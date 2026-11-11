@@ -6258,6 +6258,7 @@ public:
 
 TenyearJiefanCard::TenyearJiefanCard()
 {
+    setSkillName("tenyearjiefan");
 }
 
 bool TenyearJiefanCard::targetFilter(const QList<const Player *> &targets, const Player *, const Player *) const
@@ -6292,24 +6293,33 @@ void TenyearJiefanCard::onEffect(CardEffectStruct &effect) const
 		target->drawCards(1, "tenyearjiefan");
 }
 
-class TenyearJiefanVS : public ZeroCardViewAsSkill
+class TenyearJiefanVS : public ViewAsSkillV2
 {
 public:
-	TenyearJiefanVS() : ZeroCardViewAsSkill("tenyearjiefan")
+	TenyearJiefanVS() : ViewAsSkillV2("tenyearjiefan")
 	{
 		frequency = Limited;
 		limit_mark = "@tenyearjiefanMark";
 	}
 
-	const Card *viewAs() const
-	{
-		return new TenyearJiefanCard;
-	}
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && request.initiator->getMark("@tenyearjiefanMark") >= 1;
+    }
 
-	bool isEnabledAtPlay(const Player *player) const
-	{
-		return player->getMark("@tenyearjiefanMark") >= 1;
-	}
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        return canActivate(request) && request.selectedCardIds.isEmpty();
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        return cardSelectionFeasible(request) ? new TenyearJiefanCard : nullptr;
+    }
+
+    // The token is refreshed by the existing first-turn trigger; no new game quota.
+    QString historyKey(const ActiveSkillRequest &) const override { return "TenyearJiefanCard"; }
 };
 
 class TenyearJiefan : public TriggerSkill

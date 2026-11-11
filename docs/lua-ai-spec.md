@@ -787,6 +787,13 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 `make_request` 尚未填入 choice reason，以 decision ID 對照後續記錄。這些僅為觀測，
 不更改預算、重試、fallback 或遊戲結果，也不提供 wall-clock timeout。
 
+同一診斷開關亦啟用決策 callback 的指令抽樣：每 10,000 Lua VM 指令取最多
+32 層堆疊，以來源檔案／函式定義行聚合，最多 512 個符號，不讀參數或 locals。
+`[AI_PROFILE]` 列出本題實際預算、扣除指令數與抽樣數；超限或使用至少半數預算時，
+`[AI_PROFILE_HOT]` 分別輸出 self／inclusive 前 15 個符號。inclusive 每份 stack
+對同一符號只計一次，避免遞迴重複累加。這是抽樣熱點，非精確呼叫數或時間排名；
+不涵蓋 native query 內部成本，符號／深度上限亦可能省略資料。未啟用時不抽樣。
+
 #### 15.2.1 AIWorldView
 
 模式／身份 hook 與 Room 身份明示服務的介面與相容界線見
@@ -1514,7 +1521,7 @@ response resolver；一般模式 isolated 結果未通過驗證時可回退 lega
 |---|---|
 | 每牌最多 2048 次投影探測（`AiTargetProjectionBudget` 可向下調整至 1）、128 組、8 層目標；整個 request 共用 16384 次目標／成本探測 | `complete_coverage=false` 或 `conversions_enumerated=false`，部分組合不發票為完整能力。每層先掃完整層再往下，第一層 `legal_targets` 不因子樹耗盡預算而截斷；子樹下界（每個下一目標 1 次 visit 加每座位 1 次 filter）超過剩餘預算時當場判定，不先耗盡預算。沒有跨 request 分頁續取；需更大投影的情境 unsupported。 |
 | 每 request 128 次候選規劃、8 層巢狀；scratch 複製 4096 值／16 層 | 帶 `planning` 原因的 unsupported，最外層記錄未覆蓋；不改成 declined/pass。 |
-| Lua instructions | host 的 `AiLuaInstructionBudget` 乘以 max(1, 存活人數 / 8)（整數除法），超限回 `AI_INSTRUCTION_LIMIT`；涵蓋巢狀策略，預算不在子分支重置。事件處理用同一個縮放後的預算。 |
+| Lua instructions | 存活人數 ≤8 時用 host 的 `AiLuaInstructionBudget`；>8 時用 `base × alive / 2`（整數除法），超限回 `AI_INSTRUCTION_LIMIT`；涵蓋巢狀策略，預算不在子分支重置。事件處理用同一個縮放後的預算。 |
 
 scratch 不是模擬器；預留牌／使用次數不等於正式 history、quota、距離或裝備狀態已改變。
 重複投票目標、任意多牌轉化、跨 request 意圖、Shadow、覆蓋率與效能量測均不由本節宣稱完成。

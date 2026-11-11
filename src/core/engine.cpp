@@ -105,33 +105,54 @@ TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
 
 TargetModSkillQueryScope::~TargetModSkillQueryScope() { s_current = m_previous; }
 
+TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner, const QMap<QString, bool> &flags)
+    : m_owner(owner), m_useHistoryEventId(0), m_flagsOnly(true), m_flags(flags), m_previous(s_current)
+{
+    s_current = this;
+}
+
+bool TargetModSkillQueryScope::flagValue(const Player *owner, const QString &flag, bool value)
+{
+    for (auto scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_flags.contains(flag)) return scope->m_flags.value(flag);
+    return value;
+}
+
 int TargetModSkillQueryScope::historyValue(const Player *owner, const QString &key, int value)
 {
     // A later explicit target selection may be planned after this use was
     // counted. Discount only that increment in queries, never in real history.
-    return s_current && s_current->m_owner == owner && !s_current->m_historyKey.isEmpty()
-        && s_current->m_historyKey == key ? qMax(0, value - 1) : value;
+    auto scope = s_current;
+    while (scope && scope->m_flagsOnly) scope = scope->m_previous;
+    return scope && scope->m_owner == owner && !scope->m_historyKey.isEmpty()
+        && scope->m_historyKey == key ? qMax(0, value - 1) : value;
 }
 
 qint64 TargetModSkillQueryScope::excludedHistoryUse(const Player *owner)
 {
     // Journal queries remove this exact accepted-use fact, not an assumed last
     // matching card. Nested uses and other players retain their own history.
-    return s_current && s_current->m_owner == owner ? s_current->m_useHistoryEventId : 0;
+    auto scope = s_current;
+    while (scope && scope->m_flagsOnly) scope = scope->m_previous;
+    return scope && scope->m_owner == owner ? scope->m_useHistoryEventId : 0;
 }
 
 bool TargetModSkillQueryScope::allows(const Player *owner, const SkillInstanceRef &ref)
 {
-    return !s_current || (s_current->m_owner == owner && s_current->m_allowedHidden.contains(ref));
+    auto scope = s_current;
+    while (scope && scope->m_flagsOnly) scope = scope->m_previous;
+    return !scope || (scope->m_owner == owner && scope->m_allowedHidden.contains(ref));
 }
 
 void TargetModSkillQueryScope::record(const Player *owner, const SkillInstanceRef &ref,
                                      const CorrectSkillResult &result)
 {
-    if (s_current && s_current->m_owner == owner && s_current->m_allowedHidden.contains(ref)
+    auto scope = s_current;
+    while (scope && scope->m_flagsOnly) scope = scope->m_previous;
+    if (scope && scope->m_owner == owner && scope->m_allowedHidden.contains(ref)
         && result.applies && (result.value != 0 || result.unlimited)
-        && !s_current->m_contributors.contains(ref))
-        s_current->m_contributors << ref;
+        && !scope->m_contributors.contains(ref))
+        scope->m_contributors << ref;
 }
 
 namespace {

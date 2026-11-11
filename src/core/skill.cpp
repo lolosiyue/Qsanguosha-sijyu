@@ -580,6 +580,10 @@ void ActiveSkillRequest::setCardSelection(const Card *card)
     selectedCardIds = card ? card->getSubcards() : QList<int>();
     const SkillCard *proxy = card ? qobject_cast<const SkillCard *>(card->getRealCard()) : nullptr;
     userString = proxy ? proxy->getUserString() : (card ? card->objectName() : QString());
+    const QString skillName = !activationRef.key.skillName.isEmpty() ? activationRef.key.skillName
+        : card ? card->getActivationSkillName() : QString();
+    const auto *skill = Sanguosha ? dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName)) : nullptr;
+    if (skill) selectedCardIds = skill->selectionIdsFromCard(*this, card);
 }
 
 ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
@@ -651,6 +655,11 @@ bool ViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card 
 bool ViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
 {
     return request.selectedCardIds.length() == m_n;
+}
+
+QList<int> ViewAsSkillV2::selectionIdsFromCard(const ActiveSkillRequest &, const Card *card) const
+{
+    return card ? card->getSubcards() : QList<int>();
 }
 
 const Card *ViewAsSkillV2::createCard(const ActiveSkillRequest &request) const
@@ -1018,6 +1027,13 @@ FilterSkill::FilterSkill(const QString &name)
 {
     frequency = Compulsory;
 	response_pattern = "..";
+}
+
+bool FilterSkill::projectAIJudgmentCard(const Card *, const Card *&filtered) const
+{
+    // Arbitrary native/Lua filters have no implicit read-only guarantee.
+    filtered = nullptr;
+    return false;
 }
 
 TriggerSkill::TriggerSkill(const QString &name)

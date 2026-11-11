@@ -9,6 +9,7 @@
 #include <QSet>
 
 #include <functional>
+#include <memory>
 
 class Room;
 class DistanceSkill;
@@ -23,6 +24,18 @@ public:
 
     AIWorldView buildWorldView(ServerPlayer *viewer, bool compactPolicy = false,
                                bool eventOnly = false) const;
+    // Read-only ordinary-card hypothesis, using the same face/rule/target DTOs as
+    // offered cards. It never issues a conversion or a submission candidate ID.
+    static bool evaluateCard(Room &room, const AIRequest &request, QJsonObject &spec,
+                             AIChoiceCardEvaluation &evaluation, int &projectionBudget,
+                             QString &error, std::unique_ptr<Card> *evaluatedCard = nullptr);
+    static bool evaluateOwnerRangeCard(Room &room, const AIRequest &request, const QJsonObject &spec,
+                                      AIChoiceCardEvaluation &evaluation, QJsonObject &queries,
+                                      int &projectionBudget, QString &error);
+    // Validate one issued physical candidate's ordered sequence with the shared
+    // bounded target projector; never turn this into full-space coverage.
+    static bool evaluateTargetSequence(Room &room, const AIRequest &request, const QJsonObject &spec,
+                                       bool &accepted, int &projectionBudget, QString &error);
     // Called once per trigger, while the structs are still alive, to keep a bounded
     // value log. Nothing from the QVariant survives the call.
     void recordEvent(int triggerEvent, ServerPlayer *target, const QVariant &data);
@@ -75,12 +88,12 @@ public:
                             const QString &reason, int &cardId) const;
     bool decideCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                           const QString &reason, Card::HandlingMethod method,
-                          int &cardId) const;
+                          int &cardId, const QList<int> &disabledIds, bool canCancel) const;
     bool decideYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
                     const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
                     int &cardId) const;
     bool decidePlayerChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
-                            const QString &reason, ServerPlayer *&choice) const;
+                             const QString &reason, ServerPlayer *&choice, bool optional = false) const;
     bool decidePlayersChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
                              const QString &reason, int maxNum, int minNum,
                              QList<ServerPlayer *> &chosen) const;

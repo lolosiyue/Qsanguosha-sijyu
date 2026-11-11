@@ -33783,6 +33783,7 @@ public:
 
 ZhitianCard::ZhitianCard()
 {
+	setSkillName("zhitian");
 	will_throw = false;
 	target_fixed = true;
 }
@@ -33801,22 +33802,29 @@ void ZhitianCard::onUse(Room*room, CardUseStruct &card_use) const
 	room->returnToTopDrawPile(ids);
 }
 
-class ZhitianVs : public ZeroCardViewAsSkill
+class ZhitianVs : public ViewAsSkillV2
 {
 public:
-	ZhitianVs() : ZeroCardViewAsSkill("zhitian")
+	ZhitianVs() : ViewAsSkillV2("zhitian")
 	{
 	}
 
-	const Card*viewAs() const
-	{
-		return new ZhitianCard;
-	}
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
+    }
 
-	bool isEnabledAtPlay(const Player*) const
-	{
-		return true;
-	}
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        return canActivate(request) && request.selectedCardIds.isEmpty();
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        return cardSelectionFeasible(request) ? new ZhitianCard : nullptr;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ZhitianCard"; }
 };
 
 class Zhitian : public TriggerSkillV2
@@ -33955,7 +33963,7 @@ public:
 
 ZhijueCard::ZhijueCard()
 {
-	//will_throw = false;
+	setSkillName("zhijue");
 	target_fixed = true;
 }
 
@@ -33977,55 +33985,103 @@ void ZhijueCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) con
 	if(choices.isEmpty()) return;
 	QString cn = room->askForChoice(source,"zhijue",choices.join("+"), QVariant(), "", ":zhijue");
 	room->setPlayerProperty(source,"zhijueCn",cn);
+	// The continuation belongs to the exact accepted copy, including when the
+	// owner holds another Zhijue instance. Restore an outer response selector.
+	const QString selector = ViewAsSkillV2::borrowedActivationMarkName("zhijue");
+	const int previous = source->getMark(selector);
+	room->setPlayerMark(source, selector, getActivationSkillInstanceId());
+	const auto restoreSelector = qScopeGuard([&] { room->setPlayerMark(source, selector, previous); });
 	room->askForUseCard(source,"@@zhijue","zhijue0:"+cn);
 }
 
-class ZhijueVs : public ViewAsSkill
+class ZhijueVs : public ViewAsSkillV2
 {
 public:
-	ZhijueVs() : ViewAsSkill("zhijue")
-	{
-		response_pattern = "@@zhijue";
-	}
+    ZhijueVs() : ViewAsSkillV2("zhijue") {}
 
-	bool viewFilter(const QList<const Card*> &cards, const Card*c) const
-	{
-		if(Self->getChangeSkillState(objectName())==1||Sanguosha->getCurrentCardUsePattern()=="@@zhijue"){
-			return false;
-		}
-		return (cards.isEmpty()||c->getColor()==cards.first()->getColor())
-			&&Self->getMark(c->getColorString()+"zhijueColor-Clear")<1&&!Self->isJilei(c);
-	}
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        const Player *player = request.initiator;
+        if (!player) return false;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY)
+            return player->getChangeSkillState(objectName()) != 1 || player->getMark("zhijueId") >= 0;
+        return (request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE)
+            && request.pattern == "@@zhijue" && !player->property("zhijueCn").toString().isEmpty();
+    }
 
-	const Card*viewAs(const QList<const Card*> &cards) const
-	{
-		if(Sanguosha->getCurrentCardUsePattern()=="@@zhijue"){
-			Card*dc = Sanguosha->cloneCard(Self->property("zhijueCn").toString());
-			dc->setSkillName("_"+objectName());
-			return dc;
-		}
-		if(Self->getChangeSkillState(objectName())!=1){
-			if(cards.isEmpty()) return nullptr;
-			int n = 0;
-			foreach(const Card*h, Self->getHandcards()){
-				if(h->getColor()==cards.first()->getColor())
-					n++;
-			}
-			if(cards.length()<n) return nullptr;
-			Card*dc = new ZhijueCard;
-			dc->addSubcards(cards);
-			return dc;
-		}
-		Card*dc = Sanguosha->cloneCard("fire_attack");
-		dc->addSubcard(Self->getMark("zhijueId"));
-		dc->setSkillName(objectName());
-		return dc;
-	}
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        const Player *player = request.initiator;
+        if (!player || !card || request.pattern == "@@zhijue"
+            || player->getChangeSkillState(objectName()) == 1
+            || request.selectedCardIds.contains(card->getEffectiveId())
+            || player->getMark(card->getColorString() + "zhijueColor-Clear") > 0 || player->isJilei(card)) return false;
+        if (request.selectedCardIds.isEmpty()) return true;
+        const Card *first = Sanguosha->getCard(request.selectedCardIds.first());
+        return first && card->getColor() == first->getColor();
+    }
 
-	bool isEnabledAtPlay(const Player*player) const
-	{
-		return player->getChangeSkillState(objectName())!=1||player->getMark("zhijueId")>=0;
-	}
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        const Player *player = request.initiator;
+        if (!player || !canActivate(request)) return false;
+        if (request.pattern == "@@zhijue" || player->getChangeSkillState(objectName()) == 1)
+            return request.selectedCardIds.isEmpty();
+        if (request.selectedCardIds.isEmpty()) return false;
+        ActiveSkillRequest prefix = request;
+        prefix.selectedCardIds.clear();
+        for (int id : request.selectedCardIds) {
+            const Card *card = Sanguosha->getCard(id);
+            if (!card || !canSelectCard(prefix, card)) return false;
+            prefix.selectedCardIds << id;
+        }
+        const Card *first = Sanguosha->getCard(request.selectedCardIds.first());
+        int sameColorHand = 0;
+        for (const Card *card : player->getHandcards())
+            if (card->getColor() == first->getColor()) ++sameColorHand;
+        // Preserve V1's minimum count, including its equipment substitutions.
+        return request.selectedCardIds.size() >= sameColorHand;
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Player *player = request.initiator;
+        if (request.pattern == "@@zhijue") {
+            Card *card = Sanguosha->cloneCard(player->property("zhijueCn").toString());
+            if (card) card->setSkillName("_" + objectName());
+            return card;
+        }
+        if (player->getChangeSkillState(objectName()) != 1) {
+            auto *card = new ZhijueCard;
+            card->addSubcards(request.selectedCardIds);
+            return card;
+        }
+        const int id = player->getMark("zhijueId");
+        if (id < 0 || !Sanguosha->getCard(id)) return nullptr;
+        Card *card = Sanguosha->cloneCard("fire_attack");
+        if (card) {
+            card->addSubcard(id);
+            card->setSkillName(objectName());
+        }
+        return card;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ZhijueCard"; }
+
+private:
+    QList<int> selectionIdsFromCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        // The deck card is native fixed material, never a selectable UI card.
+        // Clear only the exact current native product; forged material remains
+        // selected and is rejected by the ordinary V2 selection gate.
+        const Player *player = request.initiator;
+        if (player && card && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && player->getChangeSkillState(objectName()) == 1 && card->isKindOf("FireAttack")
+            && card->getSubcards() == QList<int>{player->getMark("zhijueId")}) return {};
+        return card ? card->getSubcards() : QList<int>();
+    }
 };
 
 class Zhijue : public TriggerSkillV2

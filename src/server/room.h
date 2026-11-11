@@ -1096,12 +1096,12 @@ private:
                               const QString &reason, int &cardId) const;
     bool decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                             const QString &reason, Card::HandlingMethod method,
-                            int &cardId) const;
+                            int &cardId, const QList<int> &disabledIds, bool canCancel) const;
     bool decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
                       const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
                       int &cardId) const;
     bool decideAiPlayerChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
-                              const QString &reason, ServerPlayer *&choice) const;
+                              const QString &reason, ServerPlayer *&choice, bool optional = false) const;
     bool decideAiPlayersChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
                                const QString &reason, int maxNum, int minNum,
                                QList<ServerPlayer *> &chosen) const;

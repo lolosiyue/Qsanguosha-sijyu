@@ -6828,6 +6828,7 @@ public:
 };
 QuzhouCard::QuzhouCard()
 {
+	setSkillName("quzhou");
 	target_fixed = true;
 }
 
@@ -6841,7 +6842,14 @@ void QuzhouCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
 		const Card*c = Sanguosha->getCard(ids.last());
 		if(c->isKindOf("Slash")){
 			room->notifyMoveToPile(source,ids,"quzhou");
-			c = room->askForUseCard(source,"@@quzhou","quzhou0");
+            // The continuation belongs to this copy, including borrowed activations.
+            {
+                const QString selector = ViewAsSkillV2::borrowedActivationMarkName("quzhou");
+                const int previous = source->getMark(selector);
+                room->setPlayerMark(source, selector, getActivationSkillInstanceId());
+                const auto restore = qScopeGuard([&] { room->setPlayerMark(source, selector, previous); });
+                c = room->askForUseCard(source,"@@quzhou","quzhou0");
+            }
 			room->notifyMoveToPile(source,ids,"quzhou",Player::PlaceTable,false);
 			if(!c) dc->addSubcards(ids);
 			room->throwCard(dc,"quzhou",nullptr);
@@ -6862,38 +6870,64 @@ void QuzhouCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
 	}
 }
 
-class Quzhou : public ViewAsSkill
+class Quzhou : public ViewAsSkillV2
 {
 public:
-	Quzhou() : ViewAsSkill("quzhou")
+	Quzhou() : ViewAsSkillV2("quzhou", 1)
 	{
 		expand_pile = "#quzhou";
 	}
 
-	bool viewFilter(const QList<const Card *> &cards, const Card *to_select) const
-	{
-		return cards.isEmpty()&&Self->getPileName(to_select->getId()).contains("quzhou");
-	}
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        if (!request.initiator) return false;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY)
+            return request.initiator->usedTimes("QuzhouCard") < 1;
+        return (request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE)
+            && request.pattern.contains("@@quzhou");
+    }
 
-	const Card *viewAs(const QList<const Card *> &cards) const
-	{
-		if (cards.isEmpty()){
-			if(Sanguosha->getCurrentCardUsePattern().isEmpty())
-				return new QuzhouCard();
-			return nullptr;
-		}
-		return cards.first();
-	}
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        if (!request.initiator || !card || !request.selectedCardIds.isEmpty()) return false;
+        const int id = card->getEffectiveId();
+        // Server notifications carry the temporary table card without changing its zone.
+        return request.initiator->getPileName(id).contains("quzhou")
+            || getExpandPileCardIds(request.initiator).contains(id);
+    }
 
-	bool isEnabledAtPlay(const Player *player) const
-	{
-		return player->usedTimes("QuzhouCard")<1;
-	}
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (!canActivate(request)) return false;
+        if (request.selectedCardIds.isEmpty()) return request.pattern.isEmpty();
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest prefix = request;
+        prefix.selectedCardIds.clear();
+        return canSelectCard(prefix, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
 
-	bool isEnabledAtResponse(const Player *, const QString &pattern) const
-	{
-		return pattern.contains("@@quzhou");
-	}
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        if (request.selectedCardIds.isEmpty()) return new QuzhouCard;
+        // Preserve the physical product's ID, face and skill attribution. Never
+        // return the engine-owned WrappedCard to a caller that owns its result.
+        return Sanguosha->cloneCard(Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &request) const override
+    {
+        return request.selectedCardIds.isEmpty() ? QStringLiteral("QuzhouCard")
+            : Sanguosha->getCard(request.selectedCardIds.first())->getClassName();
+    }
+
+private:
+    QList<int> selectionIdsFromCard(const ActiveSkillRequest &, const Card *card) const override
+    {
+        return card && !card->isVirtualCard() ? QList<int>{card->getEffectiveId()}
+            : card ? card->getSubcards() : QList<int>();
+    }
 };
 
 class Baojia : public TriggerSkill

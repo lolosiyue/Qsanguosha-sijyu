@@ -61,6 +61,8 @@ QJsonValue json(const AICardView &v) {
         {"legacyStringKey", json(v.legacyStringKey)},
         {"nameLength", json(v.nameLength)},
         {"canRecast", json(v.canRecast)},
+        {"transferable", json(v.transferable)},
+        {"printedTransferable", json(v.printedTransferable)},
         {"willThrow", json(v.willThrow)},
         {"singleTarget", json(v.singleTarget)},
         {"ownerStateKnown", json(v.ownerStateKnown)}
@@ -75,6 +77,7 @@ QJsonValue json(const AICardView &v) {
         o.insert("jilei", json(v.jilei));
         o.insert("usingCard", json(v.usingCard));
     }
+    if (v.analepticStaticKnown) o.insert("analepticStaticAvailable", json(v.analepticStaticAvailable));
     return o;
 }
 QJsonValue json(const AICardPileView &v) {
@@ -88,7 +91,7 @@ QJsonValue json(const AICardPileView &v) {
     };
 }
 QJsonValue json(const AICardCandidateView &v) {
-    return QJsonObject{
+    QJsonObject result{
         {"candidateId", json(v.candidateId)},
         {"cardId", json(v.cardId)},
         {"available", json(v.available)},
@@ -103,15 +106,24 @@ QJsonValue json(const AICardCandidateView &v) {
         {"feasibleWithNoTarget", json(v.feasibleWithNoTarget)},
         {"completeCoverage", json(v.completeCoverage)}
     };
+    if (v.extraTargetKnown || !v.targetFilterEmpty.isEmpty())
+        result.insert("targetFilterEmpty", json(v.targetFilterEmpty));
+    return result;
 }
 QJsonValue json(const AICardConversionView &v) {
-    return QJsonObject{
+    // Preserve the wire keys; all face values come from the issued card DTO.
+    const AICardView &card = v.producedCard;
+    QJsonObject o{
         {"conversionId", json(v.conversionId)},
-        {"name", json(v.name)},
-        {"className", json(v.className)},
-        {"kindOfNames", json(v.kindOfNames)},
-        {"suit", json(v.suit)},
-        {"number", json(v.number)},
+        {"card", json(v.producedCard)},
+        {"jilei", json(v.jilei)},
+        {"name", json(card.objectName)},
+        {"className", json(card.className)},
+        {"declaredName", json(v.declaredName)},
+        {"physicalProductId", json(card.virtualCard ? -1 : card.effectiveId)},
+        {"kindOfNames", json(card.kindOfNames)},
+        {"suit", json(card.suit)},
+        {"number", json(card.number)},
         {"activationRef", json(v.activationRef)},
         {"sourceRef", json(v.sourceRef)},
         {"activationQuotaAvailable", json(v.activationQuotaAvailable)},
@@ -121,8 +133,8 @@ QJsonValue json(const AICardConversionView &v) {
         {"subcardIds", json(v.subcardIds)},
         {"available", json(v.available)},
         {"matchesResponsePattern", json(v.matchesResponsePattern)},
-        {"legacyStringKey", json(v.legacyStringKey)},
-        {"locked", json(v.locked)},
+        {"legacyStringKey", json(card.legacyStringKey)},
+        {"locked", json(card.locked)},
         {"targetFixed", json(v.targetFixed)},
         {"feasibleWithNoTarget", json(v.feasibleWithNoTarget)},
         {"completeCoverage", json(v.completeCoverage)},
@@ -132,6 +144,8 @@ QJsonValue json(const AICardConversionView &v) {
         {"targetCombinations", json(v.targetCombinations)},
         {"maxVotes", json(v.maxVotes)}
     };
+    if (card.analepticStaticKnown) o.insert("analepticStaticAvailable", json(card.analepticStaticAvailable));
+    return o;
 }
 QJsonValue json(const AISkillView &v) {
     return QJsonObject{
@@ -253,12 +267,19 @@ QJsonValue json(const AIWorldView &v) {
     };
 }
 QJsonValue json(const AiSkillActionContext &v) {
-    return QJsonObject{
+    QJsonObject result{
         {"activationRef", json(v.activationRef)},
         {"sourceRef", json(v.sourceRef)},
         {"activationQuotaAvailable", json(v.activationQuotaAvailable)},
-        {"sourceQuotaAvailable", json(v.sourceQuotaAvailable)}
+        {"sourceQuotaAvailable", json(v.sourceQuotaAvailable)},
+        {"equipmentActivation", json(v.equipmentActivation)}
     };
+    if (v.physicalEquipSource.isValid())
+        result.insert("physicalEquipSource", QJsonObject::fromVariantMap(v.physicalEquipSource.toVariantMap()));
+    if (v.hasEmptySelectionEvaluation)
+        result.insert("emptySelection", QJsonObject{{"card", json(v.emptySelectionCard)},
+                                                    {"candidate", json(v.emptySelectionCandidate)}});
+    return result;
 }
 QJsonValue json(const AIChoiceOptions &v) {
     return QJsonObject{
@@ -359,7 +380,14 @@ bool externalAgentResultJson(const QJsonObject &o, AIResult &result) {
     else return false;
     const auto a = o["action"].toObject();
     if (!fields(a,{"candidateId","useCardId","selectedCardIds","bottomCardIds",
-                   "selectedTargetNames","userString","cardSpec","skillActionContext"})) return false;
+                   "selectedTargetNames","userString","cardSpec","skillActionContext","randomCardChoice"})) return false;
+    if (a.contains("randomCardChoice")) {
+        if (a.size() != 1 || r.kind != AIResult::Answer || !a["randomCardChoice"].isObject()) return false;
+        const auto choice = a["randomCardChoice"].toObject();
+        if (!fields(choice,{"token","index"})
+            || !text(choice["token"],r.randomCardToken) || r.randomCardToken.isEmpty()
+            || !integer(choice["index"],r.randomCardIndex) || r.randomCardIndex < 1) return false;
+    }
     auto &out = r.action;
     if (a.contains("candidateId") && !integer(a["candidateId"],out.candidateId)) return false;
     if (a.contains("useCardId") && !integer(a["useCardId"],out.useCardId)) return false;

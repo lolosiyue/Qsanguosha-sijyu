@@ -82,6 +82,11 @@
 | `ai_defense_slash` | `getDefenseSlash` 的八卦／已知閃、護駕、雙閃、大喝、潛襲、體力、目標、手牌、屬性及尾段政策 | `(self, target, observer, context)` |
 | `ai_target_damage` | `isGoodTarget`、`canAttack`、`findPlayerToDamage`、`justDamage`、`isGoodChainTarget`、`CanUseAttackSkill` | `(self, target, context)` |
 
+`isGoodChainTarget` 的呼叫端統一為 `(target, source, nature, damage, card)`；
+來源與牌不共用參數槽，ordinary／Original 的評分及缺省規則分別保留。
+此位置參數 ABI 與下游 `ai_target_damage(self, target, context)` 的 stage ABI 不同，
+不得將 stage callback 也跟著重排。完整契約見 `isolated-ai-authoring-guide.md`。
+
 `ai_need_damaged` 與 `ai_defense_slash` 的原 connection callback 仍在 core 原位置，以原參數呼叫。單套件政策沿用技能 slot：wrapper 只處理精確匹配的 phase／rule，其他 stage 含 context 委派前一個 callback，普通呼叫則保留原 ABI；跨套件組合使用穩定的具名前綴 key。`getDefenseSlash` 的護駕閃數及共享絕情判斷放在當次 context；未載入絕情政策時允許受傷收益判斷。連鎖反傷同時傳回分數與 kill-lord 狀態；均不使用跨 request 全域快取。
 
 同 phase 以 `order` 決定先後。回 `context.value` 表示繼續；回 `(nil, true)`、`(false, true)` 或 `(value, true)` 都是終止，不能以 `if value` 代替 terminal 判斷。既有合併 `hasSkills` 查詢、查詢早於技能條件的都督／技能狀態觀測、亂數消耗位置及遞迴 guard 保留。
@@ -208,7 +213,7 @@ native registry 的 `__pairs` 用於覆蓋盤點，不代表可擴大原先 prox
 | 單選最低 keep、AG、Pindian | 卡片 metadata 一次建立索引，候選單次掃描 O(n)。 |
 | viewer 關係與距離投影 | 關係只呼叫 viewer 對各人的 hook；距離保留 viewer 的雙向邊，原生 distance 呼叫次數 O(n)。未投影的其他玩家配對維持 unknown；原生 hook 成本另計。 |
 | 排序／多張 discard | 評分預計算，排序 O(n log n)；不宣稱全流程 O(n)。 |
-| 目標組合／轉化成本 | 權威端有探測 budget，耗盡為 incomplete；固定上限 k 的獨立成本選擇 O(k n)，不枚舉手牌子集。 |
+| 目標組合／轉化成本 | 權威端有探測 budget，耗盡為 incomplete；已發行實體候選的單一選定序列可由共用投影器有界查核，不宣稱全空間完整；固定上限 k 的獨立成本選擇 O(k n)，不枚舉手牌子集。 |
 | 給牌需求 | 共用救命／裝備優先項先預分類；任意技能 `ai_cardneed` 仍須牌 × 適用 hook 比對，不能宣稱這部分為 O(n)。 |
 
 時間推演 (Planning) 按 viewer 保存純值；target／cost 授權券同時綁定 decision ID 與 state revision，跨 request 的一般 intent 只在 revision 未變時保留。`ai_coverage.outcomes()` 提供結果分類計數，與 registry 的宣告覆蓋率分開。

@@ -1107,6 +1107,14 @@ public:
         return new_card;
     }
 
+    bool projectAIJudgmentCard(const Card *original, const Card *&filtered) const override
+    {
+        // Both callbacks depend only on the supplied face and allocate a clone.
+        const bool matches = original && viewFilter(original);
+        filtered = matches ? viewAs(original) : nullptr;
+        return original && (!matches || filtered);
+    }
+
 	int getEffectIndex(const ServerPlayer *, const Card *) const
 	{
 		return -2;

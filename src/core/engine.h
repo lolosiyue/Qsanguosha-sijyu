@@ -59,11 +59,13 @@ class TargetModSkillQueryScope final {
 public:
     TargetModSkillQueryScope(const Player *owner, const QList<SkillInstanceRef> &allowedHidden,
                              const QString &historyKey = QString(), qint64 useHistoryEventId = 0);
+    TargetModSkillQueryScope(const Player *owner, const QMap<QString, bool> &flags);
     ~TargetModSkillQueryScope();
     static bool allows(const Player *owner, const SkillInstanceRef &ref);
     static void record(const Player *owner, const SkillInstanceRef &ref, const CorrectSkillResult &result);
     static int historyValue(const Player *owner, const QString &key, int value);
     static qint64 excludedHistoryUse(const Player *owner);
+    static bool flagValue(const Player *owner, const QString &flag, bool value);
     QList<SkillInstanceRef> contributors() const { return m_contributors; }
     static bool isActive() { return s_current; }
 private:
@@ -73,6 +75,8 @@ private:
     QList<SkillInstanceRef> m_contributors;
     QString m_historyKey;
     qint64 m_useHistoryEventId;
+    bool m_flagsOnly = false;
+    QMap<QString, bool> m_flags;
     TargetModSkillQueryScope *m_previous;
     static thread_local TargetModSkillQueryScope *s_current;
 };

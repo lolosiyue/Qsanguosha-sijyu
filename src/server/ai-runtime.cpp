@@ -1,6 +1,7 @@
 #include "ai-runtime.h"
 
 #include "ai-data-store.h"
+#include "ai-decision-coordinator.h"
 #include "engine.h"
 #include "lua-runtime.h"
 #include "lua.hpp"
@@ -9,6 +10,7 @@
 #include "settings.h"
 #include "skill.h"
 #include "standard.h"
+#include "serverplayer.h"
 
 #include <QDebug>
 #include <QDir>
@@ -17,7 +19,10 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QScopedValueRollback>
+#include <QScopeGuard>
+#include <QUuid>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -25,6 +30,13 @@ namespace {
 
 thread_local AiLuaRuntime *currentAiRuntime = nullptr;
 thread_local const AIRequest *currentAiDecision = nullptr;
+struct OwnerRangeQuery {
+    AiLuaRuntime *runtime;
+    const AIRequest *request;
+    QString source;
+    int depth;
+};
+thread_local const OwnerRangeQuery *currentOwnerRangeQuery = nullptr;
 thread_local int currentAiBudgetScale = 1;
 
 // Read the live stack before luaL_error unwinds it. Do not inspect locals or
@@ -129,7 +141,8 @@ bool isPlainTable(lua_State *state, int index)
 
 // A pure policy value: booleans, finite numbers, bounded strings and plain tables
 // (a dense array or a string-keyed object). Anything else is left out.
-bool readLuaPolicyValue(lua_State *state, int index, QJsonValue &value, int depth, int &budget)
+bool readLuaPolicyValue(lua_State *state, int index, QJsonValue &value, int depth, int &budget,
+                         bool strict = false)
 {
     index = lua_absindex(state, index);
     if (depth > 6 || --budget < 0)
@@ -154,11 +167,24 @@ bool readLuaPolicyValue(lua_State *state, int index, QJsonValue &value, int dept
         if (!isPlainTable(state, index)) return false;
         const size_t length = lua_rawlen(state, index);
         if (length > 0) {
+            if (strict) {
+                // Strict queries cannot silently discard dictionary keys or an
+                // out-of-range numeric tail on a supposedly dense material list.
+                lua_pushnil(state);
+                while (lua_next(state, index) != 0) {
+                    const lua_Number key = lua_type(state, -2) == LUA_TNUMBER ? lua_tonumber(state, -2) : 0;
+                    if (--budget < 0 || !std::isfinite(key) || std::floor(key) != key || key < 1 || key > length) {
+                        lua_pop(state, 2);
+                        return false;
+                    }
+                    lua_pop(state, 1);
+                }
+            }
             QJsonArray array;
             for (size_t i = 1; i <= length; ++i) {
                 lua_rawgeti(state, index, lua_Integer(i));
                 QJsonValue item;
-                const bool ok = readLuaPolicyValue(state, -1, item, depth + 1, budget);
+                const bool ok = readLuaPolicyValue(state, -1, item, depth + 1, budget, strict);
                 lua_pop(state, 1);
                 if (!ok) return false;
                 array.append(item);
@@ -172,8 +198,9 @@ bool readLuaPolicyValue(lua_State *state, int index, QJsonValue &value, int dept
             QString key;
             QJsonValue item;
             if (lua_type(state, -2) == LUA_TSTRING && readBoundedString(state, -2, key)
-                && readLuaPolicyValue(state, -1, item, depth + 1, budget))
+                && readLuaPolicyValue(state, -1, item, depth + 1, budget, strict))
                 object.insert(key, item);
+            else if (strict) { lua_pop(state, 2); return false; }
             lua_pop(state, 1);
             if (budget < 0) { lua_pop(state, 1); return false; }
         }
@@ -309,6 +336,10 @@ void pushAICardView(lua_State *state, const AICardView &card)
         setStringField(state, "source_skill", card.sourceSkillName);
     lua_pushboolean(state, card.canRecast);
     lua_setfield(state, -2, "can_recast");
+    lua_pushboolean(state, card.transferable);
+    lua_setfield(state, -2, "transferable");
+    lua_pushboolean(state, card.printedTransferable);
+    lua_setfield(state, -2, "printed_transferable");
     lua_pushboolean(state, card.willThrow);
     lua_setfield(state, -2, "will_throw");
     lua_pushboolean(state, card.singleTarget);
@@ -333,9 +364,15 @@ void pushAICardView(lua_State *state, const AICardView &card)
         lua_pushboolean(state, card.gift);
         lua_setfield(state, -2, "gift");
     }
-    if (card.ownerStateKnown && card.ownerRulesKnown) {
+    // Issued conversions and evaluations have viewer rules without physical
+    // owner state. Each capability is disclosed under its own known flag.
+    if (card.ownerRulesKnown) {
         lua_pushboolean(state, card.available);
         lua_setfield(state, -2, "available");
+        if (card.analepticStaticKnown) {
+            lua_pushboolean(state, card.analepticStaticAvailable);
+            lua_setfield(state, -2, "analeptic_static_available");
+        }
         lua_pushinteger(state, card.targetModResidue);
         lua_setfield(state, -2, "target_mod_residue");
         lua_pushinteger(state, card.targetModDistance);
@@ -1104,6 +1141,8 @@ bool AiLuaRuntime::initialize(QString *error)
 
 void AiLuaRuntime::shutdown()
 {
+    m_originalSDScopes.clear();
+    m_originalSDSelections.clear();
     m_lua.shutdown();
 }
 
@@ -1158,6 +1197,8 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
         LuaRuntime::Binding luaBinding(m_lua);
         ExecutionBinding executionBinding(*this);
         QScopedValueRollback<const AIRequest *> decisionScope(currentAiDecision, &request);
+        // Interrupted Lua callbacks must not retain native planning handles.
+        const auto clearSDScopes = qScopeGuard([&] { m_originalSDScopes.clear(); });
         QScopedValueRollback<int> scaleScope(currentAiBudgetScale, budgetScale);
         lua_State *state = m_lua.state();
         lua_getglobal(state, "ai_decide");
@@ -1169,8 +1210,14 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
             AiDecisionPhase phase(request, "push_request", budgetScale);
             pushRequest(state, request);
         }
-        m_instructionsRemaining = scaledInstructionBudget() * qMax(1, budgetScale);
+        const qint64 instructionBudget = scaledInstructionBudget() * qMax(1, budgetScale);
+        m_instructionsRemaining = instructionBudget;
         m_instructionLimitExceeded = false;
+        QScopedValueRollback<bool> profileScope(m_instructionProfiling,
+            qEnvironmentVariableIntValue("QSAN_AI_DIAGNOSTICS") == 1);
+        m_instructionProfileTicks = 0;
+        m_instructionProfileSamples = 0;
+        m_instructionProfile.clear();
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         LuaRuntime::LuaInvocationScope invocation(m_lua);
         int status;
@@ -1179,6 +1226,35 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
             status = lua_pcall(state, 1, 1, 0);
         }
         lua_sethook(state, nullptr, 0, 0);
+        if (m_instructionProfiling) {
+            const qint64 charged = instructionBudget - m_instructionsRemaining;
+            qInfo().noquote() << "[AI_PROFILE] decision=" << request.decisionId
+                << "instruction_budget=" << instructionBudget << "charged_instructions=" << charged
+                << "samples=" << m_instructionProfileSamples << "interval=" << 10000
+                << "symbols=" << m_instructionProfile.size() << "symbol_cap=" << 512 << "depth_cap=" << 32;
+            // Print hot symbols only for substantial decisions. Inclusive hits
+            // count a symbol once per stack sample, including recursive stacks.
+            if (m_instructionLimitExceeded || charged >= instructionBudget / 2) {
+                auto symbols = m_instructionProfile.keys();
+                for (bool inclusive : {false, true}) {
+                    std::sort(symbols.begin(), symbols.end(), [&](const QString &a, const QString &b) {
+                        const auto av = m_instructionProfile.value(a), bv = m_instructionProfile.value(b);
+                        const qint64 ac = inclusive ? av.second : av.first, bc = inclusive ? bv.second : bv.first;
+                        return ac != bc ? ac > bc : a < b;
+                    });
+                    for (int index = 0; index < qMin(15, int(symbols.size())); ++index) {
+                        const QString &symbol = symbols.at(index);
+                        const auto hits = m_instructionProfile.value(symbol);
+                        if ((inclusive ? hits.second : hits.first) == 0) break;
+                        qInfo().noquote() << "[AI_PROFILE_HOT] decision=" << request.decisionId
+                            << "order=" << (inclusive ? "inclusive" : "self")
+                            << "self_samples=" << hits.first << "inclusive_samples=" << hits.second
+                            << "symbol=" << symbol;
+                    }
+                }
+            }
+            m_instructionProfile.clear();
+        }
         AiDecisionPhase resultPhase(request, "parse_result_gc", budgetScale);
         if (status != 0) {
             result.errorCode = m_instructionLimitExceeded
@@ -1190,9 +1266,10 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
             lua_pop(state, 1);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else {
-            if (lua_isnil(state, -1) && Config.EnableHegemony) {
+            if (Config.EnableHegemony) {
                 // Coverage is not a runtime fault. Read only bounded primitive
                 // diagnostics; never call Lua again after the budget is removed.
+                const bool unanswered = lua_isnil(state, -1);
                 const auto boundedString = [state](int index, size_t limit) {
                     size_t length = 0;
                     const char *value = lua_type(state, index) == LUA_TSTRING
@@ -1202,7 +1279,7 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
                 lua_getglobal(state, "ai_last_decision_outcome");
                 const QString outcome = boundedString(-1, 64);
                 lua_pop(state, 1);
-                QString reason, key;
+                QString reason, key, traceback;
                 lua_getglobal(state, "ai_last_decision_failure");
                 if (lua_istable(state, -1)) {
                     lua_pushliteral(state, "reason");
@@ -1213,11 +1290,35 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
                     lua_rawget(state, -2);
                     key = boundedString(-1, 256);
                     lua_pop(state, 1);
+                    lua_pushliteral(state, "traceback");
+                    lua_rawget(state, -2);
+                    traceback = boundedString(-1, 4096);
+                    lua_pop(state, 1);
                 }
                 lua_pop(state, 1);
-                qWarning().noquote() << "[AI_HEGEMONY_NOT_COVERED] decision=" << request.decisionId
-                    << "player=" << request.viewerObjectName << "outcome=" << outcome
-                    << "reason=" << reason << "key=" << key;
+                // A complete proposal may coexist with an unplanned candidate.
+                // Keep that debt visible without marking the proposal accepted;
+                // normal result parsing and authority validation still follow.
+                if (unanswered || !reason.isEmpty()) {
+                    qWarning().noquote() << (unanswered ? "[AI_HEGEMONY_NOT_COVERED] decision="
+                                                       : "[AI_HEGEMONY_PARTIAL_COVERAGE] decision=")
+                        << request.decisionId << "player=" << request.viewerObjectName << "outcome=" << outcome
+                        << "reason=" << reason << "key=" << key;
+                    // Correlate the rejected request with its issued incomplete tickets.
+                    // This reads the snapshot only; no target rule is queried again.
+                    if (unanswered && key == QStringLiteral("targets")
+                        && qEnvironmentVariableIntValue("QSAN_AI_DIAGNOSTICS") == 1) {
+                        for (const auto &candidate : request.cardCandidates) {
+                            if (candidate.completeCoverage) continue;
+                            qInfo().noquote() << "[AI_TARGET_REJECTED_CANDIDATE] decision=" << request.decisionId
+                                << "card_id=" << candidate.cardId << "candidate_id=" << candidate.candidateId
+                                << "available=" << candidate.available << "limited=" << candidate.limited
+                                << "target_fixed=" << candidate.targetFixed << "legal_targets=" << candidate.legalTargets;
+                        }
+                    }
+                    if (!traceback.isEmpty())
+                        qWarning().noquote() << "[AI_HEGEMONY_UNSUPPORTED_TRACE] decision=" << request.decisionId << traceback;
+                }
             }
             if (!lua_isnil(state, -1)) {
                 if (!parseResult(state, result)
@@ -1445,6 +1546,266 @@ int AiLuaRuntime::luaTraceback(lua_State *state)
     return 1;
 }
 
+void AiLuaRuntime::commitOriginalSDChoices(const AIRequest &request, const AIResult &result,
+                                          const CardUseStruct &use)
+{
+    const QString turn = m_room->historyScopes().value("turn_id").toString();
+    QStringList targets;
+    for (const ServerPlayer *target : use.to) targets << target->objectName();
+    const int physical = use.card && !use.card->isVirtualCard() ? use.card->getEffectiveId() : -1;
+    const int conversion = result.action.hasCardSpec ? result.action.cardSpec.conversionId : -1;
+    for (auto it = m_originalSDSelections.begin(); it != m_originalSDSelections.end();) {
+        if (it->turn != turn) { it = m_originalSDSelections.erase(it); continue; }
+        if (it->viewer == request.viewerObjectName && it->decision != request.decisionId && it->useEvent == 0) {
+            it = m_originalSDSelections.erase(it);
+            continue;
+        }
+        if (it->viewer != request.viewerObjectName || it->decision != request.decisionId) { ++it; continue; }
+        if (!use.card || it->reason != use.card->objectName() || !targets.contains(it->target)
+            || (conversion >= 0 ? it->conversionId != conversion : it->physicalId != physical)) {
+            it = m_originalSDSelections.erase(it);
+            continue;
+        }
+        it->acceptedSource = m_room->historyCardSnapshot(use.card);
+        ++it;
+    }
+}
+
+void AiLuaRuntime::observeOriginalSDUse(int triggerEvent, const CardUseStruct &use)
+{
+    if (!use.from || !use.card || (triggerEvent != CardUsed && triggerEvent != CardFinished)) return;
+    const qint64 event = m_room->historyParent(m_room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
+    if (event <= 0) return;
+    const QVariantMap source = m_room->historyCardSnapshot(use.card);
+    for (auto it = m_originalSDSelections.begin(); it != m_originalSDSelections.end();) {
+        if (triggerEvent == CardFinished && it->useEvent == event) {
+            it = m_originalSDSelections.erase(it);
+            continue;
+        }
+        if (triggerEvent == CardUsed && it->useEvent == 0 && it->viewer == use.from->objectName()
+            && it->acceptedSource == source) it->useEvent = event;
+        ++it;
+    }
+}
+
+int AiLuaRuntime::luaOriginalSDChoice(lua_State *state)
+{
+    AiLuaRuntime *runtime = fromUpvalue(state);
+    const AIRequest *request = currentAiDecision;
+    const auto reply = [state](QJsonObject value) {
+        value.insert("kind", "original_sd_choice");
+        pushAIJsonValue(state, value);
+        return 1;
+    };
+    const auto unknown = [&](const char *reason) {
+        return reply(QJsonObject{{"known", false}, {"reason", QString::fromLatin1(reason)}});
+    };
+    if (!runtime || current() != runtime || !request || !Config.EnableHegemony || !isPlainTable(state, 1))
+        return unknown("Original SD requires an active isolated Hegemony request");
+    const auto stringField = [state](int index, const char *key) {
+        lua_getfield(state, index, key);
+        QString value;
+        if (lua_type(state, -1) == LUA_TSTRING) readBoundedString(state, -1, value);
+        lua_pop(state, 1);
+        return value.size() <= 256 ? value : QString();
+    };
+    const auto intField = [state](int index, const char *key, int fallback) {
+        lua_getfield(state, index, key);
+        int value = fallback;
+        if (lua_type(state, -1) != LUA_TNUMBER || !aiResultInteger(lua_tonumber(state, -1), value)) value = fallback;
+        lua_pop(state, 1);
+        return value;
+    };
+    const auto boolField = [state](int index, const char *key) {
+        lua_getfield(state, index, key);
+        const bool value = lua_type(state, -1) == LUA_TBOOLEAN && lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        return value;
+    };
+    const auto token = [] { return QUuid::createUuid().toString(QUuid::WithoutBraces); };
+    const QString op = stringField(1, "op"), scopeKey = stringField(1, "scope");
+    ServerPlayer *viewer = runtime->m_room->findPlayerByObjectName(request->viewerObjectName);
+    if (!viewer) return unknown("Original SD viewer is unavailable");
+    EngineRuntimeContextScope engineScope(*Sanguosha, runtime->m_room);
+    LuaRuntime::Binding nativeBinding(runtime->m_room->roomRuntime()->lua(), false);
+    const QString turn = runtime->m_room->historyScopes().value("turn_id").toString();
+    const auto disclosed = [&](int id) {
+        const auto contains = [id](const QList<AICardView> &cards) {
+            for (const AICardView &card : cards) if (card.effectiveId == id) return true;
+            return false;
+        };
+        if (contains(request->worldView.handCards) || contains(request->worldView.self.equips)
+            || contains(request->worldView.self.judgingArea)) return true;
+        for (const AIPlayerView &player : request->worldView.players)
+            if (contains(player.knownCards) || contains(player.equips) || contains(player.judgingArea)) return true;
+        return false;
+    };
+    if (op == "enter") {
+        const QString reason = stringField(1, "reason");
+        if ((reason != "snatch" && reason != "dismantlement") || runtime->m_originalSDScopes.size() >= 32)
+            return unknown("Original SD source or scope limit is invalid");
+        lua_getfield(state, 1, "source");
+        if (!isPlainTable(state, -1)) { lua_pop(state, 1); return unknown("Original SD source is malformed"); }
+        const int sourceIndex = lua_gettop(state);
+        const int physical = intField(sourceIndex, "id", -1);
+        const int conversion = intField(sourceIndex, "conversion_id", -1);
+        const QString recipe = stringField(sourceIndex, "recipe_key");
+        lua_pop(state, 1);
+        const bool dummy = boolField(1, "dummy");
+        bool admitted = dummy && !recipe.isEmpty();
+        for (const AICardCandidateView &candidate : request->cardCandidates)
+            if (candidate.cardId == physical && candidate.available) {
+                const Card *card = Sanguosha->getCard(physical);
+                admitted = card && card->objectName() == reason;
+            }
+        for (const AICardConversionView &candidate : request->cardConversions)
+            if (candidate.conversionId == conversion && candidate.available
+                && candidate.producedCard.objectName == reason) admitted = true;
+        if (!admitted) return unknown("Original SD source was not issued to this request");
+        OriginalSDScope scope;
+        scope.decision = request->decisionId;
+        scope.viewer = request->viewerObjectName;
+        scope.reason = reason;
+        scope.dummy = dummy;
+        scope.physicalId = physical;
+        scope.conversionId = conversion;
+        const QString key = token();
+        runtime->m_originalSDScopes.insert(key, scope);
+        return reply(QJsonObject{{"known", true}, {"scope", key}});
+    }
+    if (op == "leave") {
+        const auto it = runtime->m_originalSDScopes.constFind(scopeKey);
+        if (it == runtime->m_originalSDScopes.cend() || it->decision != request->decisionId
+            || it->viewer != request->viewerObjectName) return unknown("Original SD scope is stale");
+        runtime->m_originalSDScopes.remove(scopeKey);
+        return reply(QJsonObject{{"known", true}});
+    }
+    const QString targetName = stringField(1, "target");
+    ServerPlayer *target = runtime->m_room->findPlayerByObjectName(targetName);
+    if (op == "read") {
+        const QString reason = stringField(1, "reason"), flags = stringField(1, "flags");
+        if (!target || request->kind != AIRequest::CardChosen || request->choiceOptions.reason != reason
+            || request->choiceOptions.context.value("who").toString() != targetName
+            || request->choiceOptions.context.value("flags").toString() != flags)
+            return unknown("Original SD read is outside its card-chosen request");
+        const QVariantMap parent = runtime->m_room->historyParent(runtime->m_room->currentHistoryEventId(), "use_card", true);
+        const QVariantMap data = parent.value("data").toMap();
+        for (auto it = runtime->m_originalSDSelections.begin(); it != runtime->m_originalSDSelections.end();) {
+            if (it->turn != turn) { it = runtime->m_originalSDSelections.erase(it); continue; }
+            if (it->viewer != request->viewerObjectName || it->target != targetName || it->reason != reason
+                || it->acceptedSource.isEmpty() || data.value("from").toString() != it->viewer
+                || it->useEvent <= 0 || it->useEvent != parent.value("id").toLongLong()
+                || data.value("card").toMap() != it->acceptedSource) { ++it; continue; }
+            const int selected = it->selectedId;
+            runtime->m_originalSDSelections.erase(it);
+            for (auto domain = request->opaqueCardDomains.cbegin(); domain != request->opaqueCardDomains.cend(); ++domain) {
+                const int index = domain.value().indexOf(selected);
+                if (index >= 0) return reply(QJsonObject{{"known", true}, {"selected", true},
+                    {"receipt", QJsonObject{{"token", domain.key()}, {"index", index + 1}}}});
+            }
+            break;
+        }
+        return reply(QJsonObject{{"known", true}, {"selected", false}});
+    }
+    auto frame = runtime->m_originalSDScopes.find(scopeKey);
+    if (frame == runtime->m_originalSDScopes.end() || frame->decision != request->decisionId
+        || frame->viewer != request->viewerObjectName) return unknown("Original SD planning scope is stale");
+    if (op == "select") {
+        const auto domain = frame->domains.constFind(stringField(1, "token"));
+        const int ordinal = intField(1, "ordinal", -1);
+        if (domain == frame->domains.cend() || ordinal < 0 || ordinal >= domain->second.size()
+            || frame->handles.size() >= 128) return unknown("Original SD ordinal is outside the sealed domain");
+        target = runtime->m_room->findPlayerByObjectName(domain->first);
+        if (!target) return unknown("Original SD domain target is unavailable");
+        const QString key = token();
+        frame->handles.insert(key, qMakePair(domain->first, domain->second.at(ordinal)));
+        return reply(QJsonObject{{"known", true}, {"handle", key}});
+    }
+    if (!target) return unknown("Original SD target is unavailable");
+    if (op == "domain") {
+        const QString flags = stringField(1, "flags");
+        if (flags.isEmpty() || flags.size() > 3 || QString(flags).remove('h').remove('e').remove('j') != ""
+            || frame->domains.size() >= 64) return unknown("Original SD domain is invalid");
+        QList<int> ids;
+        for (const Card *card : target->getCards(flags)) ids << card->getEffectiveId();
+        const QString key = token();
+        frame->domains.insert(key, qMakePair(targetName, ids));
+        // Policy may identify public members by position; concealed identities
+        // remain in native custody, including the exact selected hand card.
+        QJsonObject visibleIndices;
+        for (int index = 0; index < ids.size(); ++index)
+            if (disclosed(ids.at(index))) visibleIndices.insert(QString::number(ids.at(index)), index + 1);
+        return reply(QJsonObject{{"known", true}, {"token", key}, {"count", ids.size()},
+            {"visible_card_indices", visibleIndices}});
+    }
+    if (op == "native_hand") {
+        if (target->isKongcheng()) return reply(QJsonObject{{"known", true}, {"empty", true}});
+        if (frame->handles.size() >= 128) return unknown("Original SD handle limit reached");
+        const QString key = token();
+        // Sample uniformly in native custody using the independent AI stream;
+        // planning must not advance gameplay RNG or disclose a hand identity.
+        const QList<int> hand = target->handCards();
+        frame->handles.insert(key, qMakePair(targetName, hand.at(runtime->m_rng.bounded(int(hand.size())))));
+        return reply(QJsonObject{{"known", true}, {"handle", key}});
+    }
+    if (op == "can_get") {
+        lua_getfield(state, 1, "key");
+        bool valid = false, value = false;
+        int id = -1;
+        if (lua_type(state, -1) == LUA_TNUMBER && aiResultInteger(lua_tonumber(state, -1), id) && disclosed(id)) {
+            for (const Card *card : target->getCards("hej")) if (card->getEffectiveId() == id) valid = true;
+            if (valid) value = viewer->canGet(target, id);
+        } else if (lua_type(state, -1) == LUA_TSTRING) {
+            QString flags;
+            readBoundedString(state, -1, flags);
+            valid = !flags.isEmpty() && flags.size() <= 3 && QString(flags).remove('h').remove('e').remove('j').isEmpty();
+            if (valid) value = viewer->canGet(target, flags);
+        }
+        lua_pop(state, 1);
+        if (!valid) return unknown("Original canGet key is not a disclosed card or finite zone");
+        return reply(QJsonObject{{"known", true}, {"value", value}});
+    }
+    if (op == "write") {
+        if (frame->dummy || turn.isEmpty() || turn == "0" || stringField(1, "reason") != frame->reason)
+            return unknown("Original SD write has no actual source or turn");
+        int selected = -1;
+        lua_getfield(state, 1, "selection");
+        if (lua_type(state, -1) == LUA_TSTRING) {
+            QString key;
+            readBoundedString(state, -1, key);
+            const auto handle = frame->handles.constFind(key);
+            if (handle != frame->handles.cend() && handle->first == targetName) selected = handle->second;
+        } else if (lua_type(state, -1) == LUA_TNUMBER) {
+            int id = -1;
+            if (aiResultInteger(lua_tonumber(state, -1), id) && disclosed(id)) selected = id;
+        }
+        lua_pop(state, 1);
+        bool inDomain = false;
+        for (const Card *card : target->getCards("hej")) if (card->getEffectiveId() == selected) inDomain = true;
+        if (!inDomain) return unknown("Original SD selected card left its target");
+        auto &selections = runtime->m_originalSDSelections;
+        for (auto it = selections.begin(); it != selections.end();) {
+            if (it->turn != turn || (it->decision == frame->decision && it->viewer == frame->viewer
+                && it->target == targetName && it->reason == frame->reason))
+                it = selections.erase(it);
+            else ++it;
+        }
+        if (selections.size() >= 128) return unknown("Original SD selection limit reached");
+        OriginalSDSelection selection;
+        selection.decision = frame->decision;
+        selection.viewer = frame->viewer;
+        selection.target = targetName;
+        selection.reason = frame->reason;
+        selection.turn = turn;
+        selection.physicalId = frame->physicalId;
+        selection.conversionId = frame->conversionId;
+        selection.selectedId = selected;
+        selections << selection;
+        return reply(QJsonObject{{"known", true}});
+    }
+    return unknown("Original SD operation is not admitted");
+}
+
 int AiLuaRuntime::luaAiDataRead(lua_State *state)
 {
     const QByteArray data = AiDataStore::read().toUtf8();
@@ -1477,6 +1838,23 @@ void AiLuaRuntime::luaInstructionHook(lua_State *state, lua_Debug *debug)
     if (!runtime)
         return;
     runtime->m_instructionsRemaining -= 1000;
+    if (runtime->m_instructionProfiling && !runtime->m_instructionLimitExceeded
+        && ++runtime->m_instructionProfileTicks == 10) {
+        runtime->m_instructionProfileTicks = 0;
+        ++runtime->m_instructionProfileSamples;
+        QSet<QString> visited;
+        lua_Debug frame;
+        for (int level = 0; level < 32 && lua_getstack(state, level, &frame); ++level) {
+            if (!lua_getinfo(state, "S", &frame) || frame.linedefined < 0) continue;
+            const QString symbol = QString::fromUtf8(frame.short_src) + ':' + QString::number(frame.linedefined);
+            if (visited.contains(symbol)) continue;
+            visited.insert(symbol);
+            if (!runtime->m_instructionProfile.contains(symbol) && runtime->m_instructionProfile.size() >= 512) continue;
+            auto &hits = runtime->m_instructionProfile[symbol];
+            if (level == 0) ++hits.first;
+            ++hits.second;
+        }
+    } // Finish all C++ sample temporaries before luaL_error can unwind the hook.
     if (runtime->m_instructionsRemaining <= 0) {
         // Nested pcall handlers can catch the error; report the original stack once.
         if (!runtime->m_instructionLimitExceeded)
@@ -1531,6 +1909,23 @@ bool AiLuaRuntime::installSandbox(QString *error)
     lua_pushcfunction(state, &AiLuaRuntime::luaAiDataWrite);
     lua_setfield(state, -2, "write");
     lua_setglobal(state, "ai_data");
+
+    lua_pushlightuserdata(state, this);
+    lua_pushcclosure(state, &AiLuaRuntime::luaOriginalSDChoice, 1);
+    lua_setglobal(state, "ai_original_sd_choice");
+    lua_pushlightuserdata(state, this);
+    lua_pushcclosure(state, &AiLuaRuntime::luaEvaluateCard, 1);
+    lua_setglobal(state, "ai_evaluate_card");
+    lua_pushcfunction(state, &AiLuaRuntime::luaMakeFacadeIndex);
+    lua_setglobal(state, "ai_make_facade_index");
+    lua_pushlightuserdata(state, this);
+    lua_pushcclosure(state, &AiLuaRuntime::luaWithOwnerRange, 1);
+    lua_setglobal(state, "ai_with_owner_range");
+    lua_pushlightuserdata(state, this);
+    lua_pushcclosure(state, &AiLuaRuntime::luaEvaluateOwnerRangeCard, 1);
+    lua_setglobal(state, "ai_evaluate_owner_range_card");
+    lua_pushboolean(state, qEnvironmentVariableIsSet("QSAN_AI_UNSUPPORTED_TRACE"));
+    lua_setglobal(state, "ai_unsupported_trace_enabled");
 
     const char *blockedGlobals[] = {
         "sgs", "io", "os", "package", "coroutine", "require", "dofile", "loadfile",
@@ -1671,6 +2066,8 @@ bool AiLuaRuntime::installSandbox(QString *error)
         lua_setfield(state, -2, "nd_trick");
         lua_pushboolean(state, card->canRecast());
         lua_setfield(state, -2, "can_recast");
+        lua_pushboolean(state, card->isTransferable());
+        lua_setfield(state, -2, "transferable");
         lua_pushboolean(state, card->isSingleTargetCard());
         lua_setfield(state, -2, "single_target");
         if (const auto *equip = dynamic_cast<const EquipCard *>(card)) {
@@ -1940,28 +2337,6 @@ static const char *aiDecisionKindName(AIRequest::DecisionKind kind)
     return "unknown";
 }
 
-static void pushAiSkillAction(lua_State *state, const AiSkillActionContext &action)
-{
-    lua_createtable(state, 0, 8);
-    setStringField(state, "activation_owner", action.getActivationOwner());
-    setStringField(state, "activation_skill", action.getActivationSkillName());
-    lua_pushinteger(state, action.getActivationInstanceId());
-    lua_setfield(state, -2, "activation_instance");
-    setStringField(state, "source_owner", action.getSourceOwner());
-    setStringField(state, "source_skill", action.getSourceSkillName());
-    lua_pushinteger(state, action.getSourceInstanceID());
-    lua_setfield(state, -2, "source_instance");
-    lua_pushboolean(state, action.isActivationQuotaAvailable());
-    lua_setfield(state, -2, "activation_quota_available");
-    lua_pushboolean(state, action.isSourceQuotaAvailable());
-    lua_setfield(state, -2, "source_quota_available");
-    lua_pushboolean(state, action.equipmentActivation);
-    lua_setfield(state, -2, "equipment_activation");
-    if (action.physicalEquipSource.isValid()) {
-        pushAIJsonValue(state, QJsonObject::fromVariantMap(action.physicalEquipSource.toVariantMap()));
-        lua_setfield(state, -2, "physical_equipment");
-    }
-}
 static void pushAICardCandidate(lua_State *state, const AICardCandidateView &candidate)
 {
     lua_createtable(state, 0, 8);
@@ -2027,6 +2402,8 @@ static void pushAICardCandidate(lua_State *state, const AICardCandidateView &can
             lua_setfield(state, -2, it.key().toUtf8().constData());
         }
         lua_setfield(state, -2, "extra_target_by_player");
+    }
+    if (candidate.extraTargetKnown || !candidate.targetFilterEmpty.isEmpty()) {
         lua_createtable(state, 0, int(candidate.targetFilterEmpty.size()));
         for (auto it = candidate.targetFilterEmpty.constBegin();
              it != candidate.targetFilterEmpty.constEnd(); ++it) {
@@ -2034,6 +2411,37 @@ static void pushAICardCandidate(lua_State *state, const AICardCandidateView &can
             lua_setfield(state, -2, it.key().toUtf8().constData());
         }
         lua_setfield(state, -2, "target_filter_empty");
+    }
+}
+static void pushAiSkillAction(lua_State *state, const AiSkillActionContext &action)
+{
+    lua_createtable(state, 0, 8);
+    setStringField(state, "activation_owner", action.getActivationOwner());
+    setStringField(state, "activation_skill", action.getActivationSkillName());
+    lua_pushinteger(state, action.getActivationInstanceId());
+    lua_setfield(state, -2, "activation_instance");
+    setStringField(state, "source_owner", action.getSourceOwner());
+    setStringField(state, "source_skill", action.getSourceSkillName());
+    lua_pushinteger(state, action.getSourceInstanceID());
+    lua_setfield(state, -2, "source_instance");
+    lua_pushboolean(state, action.isActivationQuotaAvailable());
+    lua_setfield(state, -2, "activation_quota_available");
+    lua_pushboolean(state, action.isSourceQuotaAvailable());
+    lua_setfield(state, -2, "source_quota_available");
+    lua_pushboolean(state, action.equipmentActivation);
+    lua_setfield(state, -2, "equipment_activation");
+    if (action.physicalEquipSource.isValid()) {
+        pushAIJsonValue(state, QJsonObject::fromVariantMap(action.physicalEquipSource.toVariantMap()));
+        lua_setfield(state, -2, "physical_equipment");
+    }
+    if (action.hasEmptySelectionEvaluation) {
+        // This action-local card face and target plan carry no submission token.
+        lua_createtable(state, 0, 2);
+        pushAICardView(state, action.emptySelectionCard);
+        lua_setfield(state, -2, "card");
+        pushAICardCandidate(state, action.emptySelectionCandidate);
+        lua_setfield(state, -2, "candidate");
+        lua_setfield(state, -2, "empty_selection");
     }
 }
 // context.acquired_card_evaluations[id] / printed_card_evaluations[name]: the card as
@@ -2078,6 +2486,10 @@ static void pushChoiceCardEvaluations(lua_State *state, const QList<AIChoiceCard
         lua_setfield(state, -2, "target_mod_distance");
         lua_pushinteger(state, card.targetModExtra);
         lua_setfield(state, -2, "target_mod_extra");
+        if (card.analepticStaticKnown) {
+            lua_pushboolean(state, card.analepticStaticAvailable);
+            lua_setfield(state, -2, "analeptic_static_available");
+        }
         lua_setfield(state, -2, "card_rules");
         pushAICardCandidate(state, row.candidate);
         lua_setfield(state, -2, "candidate");
@@ -2085,6 +2497,201 @@ static void pushChoiceCardEvaluations(lua_State *state, const QList<AIChoiceCard
                                        : QByteArray::number(card.effectiveId).constData());
     }
 }
+int AiLuaRuntime::luaMakeFacadeIndex(lua_State *state)
+{
+    luaL_checktype(state, 1, LUA_TTABLE);
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    lua_settop(state, 2);
+    lua_pushcclosure(state, &AiLuaRuntime::luaFacadeIndex, 2);
+    return 1;
+}
+
+int AiLuaRuntime::luaFacadeIndex(lua_State *state)
+{
+    // Only table dispatch moves to native code: providers remain live, values
+    // are never cached, and missing-value policy remains owned by Lua.
+    luaL_checktype(state, 1, LUA_TTABLE);
+    lua_settop(state, 2);
+    lua_pushvalue(state, 2);
+    lua_rawget(state, lua_upvalueindex(1));
+    if (!lua_isnil(state, -1)) return 1;
+    lua_pop(state, 1);
+    lua_pushliteral(state, "_scalar_methods");
+    lua_rawget(state, 1);
+    if (lua_istable(state, -1)) {
+        lua_pushvalue(state, 2);
+        lua_rawget(state, -2);
+        if (!lua_isnil(state, -1)) return 1;
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    lua_pushvalue(state, lua_upvalueindex(2));
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_pushvalue(state, 1);
+    lua_pushvalue(state, 2);
+    lua_call(state, 3, 1);
+    return 1;
+}
+
+bool AiLuaRuntime::consumeCardEvaluationQuery(const AIRequest &request)
+{
+    if (m_cardEvaluationDecision != request.decisionId) {
+        m_cardEvaluationDecision = request.decisionId;
+        m_cardEvaluationCalls = 0;
+        m_cardEvaluationBudget = 16384;
+    }
+    return ++m_cardEvaluationCalls <= 64;
+}
+
+int AiLuaRuntime::luaWithOwnerRange(lua_State *state)
+{
+    AiLuaRuntime *runtime = fromUpvalue(state);
+    const AIRequest *request = currentAiDecision;
+    if (!runtime || current() != runtime || !request || !Config.EnableHegemony
+        || lua_gettop(state) != 3 || lua_type(state, 1) != LUA_TSTRING
+        || lua_type(state, 2) != LUA_TSTRING || !lua_isfunction(state, 3)
+        || lua_rawlen(state, 2) == 0 || lua_rawlen(state, 2) > 128
+        || (currentOwnerRangeQuery && currentOwnerRangeQuery->depth >= 8)
+        || !runtime->consumeCardEvaluationQuery(*request)) {
+        lua_pushliteral(state, "owner range requires a bounded read-only isolated scope");
+        return lua_error(state);
+    }
+    int status = 0;
+    {
+        const QString flag = QString::fromUtf8(lua_tostring(state, 1));
+        ServerPlayer *owner = runtime->m_room->findPlayerByObjectName(request->viewerObjectName);
+        if (!owner || !owner->isAlive() || runtime->m_room->roomRuntime()->stateRevision() != request->stateRevision
+            || (flag != "InfinityAttackRange" && flag != "slashNoDistanceLimit")) {
+            lua_pushliteral(state, "invalid owner range flag or stale decision");
+            status = 1;
+        } else {
+            OwnerRangeQuery query{runtime, request, QString::fromUtf8(lua_tostring(state, 2)),
+                currentOwnerRangeQuery ? currentOwnerRangeQuery->depth + 1 : 1};
+            QScopedValueRollback<const OwnerRangeQuery *> queryGuard(currentOwnerRangeQuery, &query);
+            // A read overlay bypasses memoized rules and leaves real flags,
+            // signals, history and revision untouched, including callback errors.
+            TargetModSkillQueryScope scope(owner, QMap<QString, bool>{{flag, true}});
+            QJsonObject data{{"kind", "owner_range_hypothesis"}, {"viewer", request->viewerObjectName},
+                {"flag", flag}, {"source_key", query.source},
+                {"InfinityAttackRange", owner->hasFlag("InfinityAttackRange")},
+                {"slashNoDistanceLimit", owner->hasFlag("slashNoDistanceLimit")},
+                {"attack_range", owner->getAttackRange()}, {"attack_range_without_weapon", owner->getAttackRange(false)}};
+            QJsonObject ranges;
+            for (const ServerPlayer *target : runtime->m_room->getAlivePlayers())
+                ranges.insert(target->objectName(), owner->inMyAttackRange(target));
+            data.insert("in_attack_range", ranges);
+            lua_pushvalue(state, 3);
+            pushAIJsonValue(state, data);
+            status = lua_pcall(state, 1, LUA_MULTRET, 0);
+        }
+    }
+    // Never longjmp over native scope destructors.
+    if (status != 0) return lua_error(state);
+    return lua_gettop(state) - 3;
+}
+
+int AiLuaRuntime::luaEvaluateOwnerRangeCard(lua_State *state)
+{
+    AiLuaRuntime *runtime = fromUpvalue(state);
+    const AIRequest *request = currentAiDecision;
+    const auto unknown = [state](const QString &reason) {
+        pushAIJsonValue(state, QJsonObject{{"known", false}, {"error", reason}});
+        return 1;
+    };
+    if (!runtime || current() != runtime || !request || !currentOwnerRangeQuery
+        || currentOwnerRangeQuery->runtime != runtime || currentOwnerRangeQuery->request != request
+        || !runtime->consumeCardEvaluationQuery(*request))
+        return unknown(QStringLiteral("range card query is outside its bounded native scope"));
+    QJsonValue value;
+    int valueBudget = 256;
+    if (lua_gettop(state) != 1 || !readLuaPolicyValue(state, 1, value, 0, valueBudget, true) || !value.isObject())
+        return unknown(QStringLiteral("range card query requires a pure specification"));
+    AIChoiceCardEvaluation evaluation;
+    QJsonObject queries;
+    QString error;
+    if (!AiDecisionCoordinator::evaluateOwnerRangeCard(*runtime->m_room, *request, value.toObject(),
+        evaluation, queries, runtime->m_cardEvaluationBudget, error)) return unknown(error);
+    pushChoiceCardEvaluations(state, {evaluation}, request->viewerObjectName, true);
+    lua_getfield(state, -1, evaluation.card.objectName.toUtf8().constData());
+    lua_remove(state, -2);
+    lua_getfield(state, -1, "card");
+    lua_getfield(state, -2, "card_rules");
+    lua_setfield(state, -2, "evaluation_rules");
+    lua_pop(state, 1);
+    for (auto it = queries.begin(); it != queries.end(); ++it) {
+        pushAIJsonValue(state, it.value());
+        lua_setfield(state, -2, it.key().toUtf8().constData());
+    }
+    return 1;
+}
+
+int AiLuaRuntime::luaEvaluateCard(lua_State *state)
+{
+    AiLuaRuntime *runtime = fromUpvalue(state);
+    const AIRequest *request = currentAiDecision;
+    const auto unknown = [state](const QString &reason) {
+        pushAIJsonValue(state, QJsonObject{{"known", false}, {"error", reason}});
+        return 1;
+    };
+    if (!runtime || current() != runtime || !request)
+        return unknown(QStringLiteral("card evaluation requires an active isolated decision"));
+    // This allowance is separate from initial request construction. Enumeration
+    // shares its budget across queries; all other rule scans are bounded by the
+    // query count and current player roster. Invalid calls consume a slot too.
+    if (!runtime->consumeCardEvaluationQuery(*request))
+        return unknown(QStringLiteral("card evaluation query limit exceeded"));
+    QJsonValue value;
+    int valueBudget = 256;
+    if (lua_gettop(state) != 1 || !readLuaPolicyValue(state, 1, value, 0, valueBudget, true) || !value.isObject())
+        return unknown(QStringLiteral("card evaluation requires a bounded pure specification"));
+    QJsonObject spec = value.toObject();
+    if (spec.value("operation").toString() == QStringLiteral("target_sequence")) {
+        bool accepted = false;
+        QString error;
+        if (!AiDecisionCoordinator::evaluateTargetSequence(*runtime->m_room, *request, spec, accepted,
+                                                           runtime->m_cardEvaluationBudget, error))
+            return unknown(error);
+        if (qEnvironmentVariableIntValue("QSAN_AI_DIAGNOSTICS") == 1)
+            qInfo().noquote() << "[AI_TARGET_SEQUENCE] decision=" << request->decisionId
+                << "candidate_id=" << spec.value("candidate_id").toInt()
+                << "card_id=" << spec.value("card_id").toInt()
+                << "targets=" << QJsonDocument(spec.value("targets").toArray()).toJson(QJsonDocument::Compact)
+                << "accepted=" << accepted;
+        spec.insert("known", true);
+        spec.insert("accepted", accepted);
+        pushAIJsonValue(state, spec);
+        return 1;
+    }
+    if (!Config.EnableHegemony)
+        return unknown(QStringLiteral("card hypothesis requires an isolated Hegemony decision"));
+    AIChoiceCardEvaluation evaluation;
+    QString error;
+    if (!AiDecisionCoordinator::evaluateCard(*runtime->m_room, *request, spec, evaluation,
+                                              runtime->m_cardEvaluationBudget, error))
+        return unknown(error);
+    if (qEnvironmentVariableIsSet("QSAN_AI_UNSUPPORTED_TRACE"))
+        qInfo().noquote() << "[AI_CARD_EVALUATION] decision=" << request->decisionId
+            << "viewer=" << request->viewerObjectName << "source=" << spec.value("source_key").toString()
+            << "instance=" << spec.value("instance_id").toInt() << "card=" << evaluation.card.objectName
+            << "complete=" << evaluation.candidate.completeCoverage
+            << "combinations=" << evaluation.candidate.targetCombinations.size();
+    // Use the existing choice-evaluation serializer and select its one row; no
+    // second face/rule/target serializer or native Card object crosses this API.
+    pushChoiceCardEvaluations(state, {evaluation}, request->viewerObjectName, true);
+    lua_getfield(state, -1, evaluation.card.objectName.toUtf8().constData());
+    lua_remove(state, -2);
+    lua_pushboolean(state, true);
+    lua_setfield(state, -2, "known");
+    setStringField(state, "viewer", request->viewerObjectName);
+    setStringField(state, "decision_id", request->getDecisionId());
+    setStringField(state, "state_revision", request->getStateRevision());
+    setStringField(state, "context_kind", QStringLiteral("activate"));
+    setIntegerField(state, "handling_method", int(Card::MethodUse));
+    pushAIJsonValue(state, spec);
+    lua_setfield(state, -2, "spec");
+    return 1;
+}
+
 void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
 {
     lua_createtable(state, 0, 10);
@@ -2117,7 +2724,7 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
         lua_createtable(state, int(request.cardConversions.size()), 0);
         for (int index = 0; index < request.cardConversions.size(); ++index) {
             const AICardConversionView &conversion = request.cardConversions.at(index);
-            lua_createtable(state, 0, 18);
+            pushAICardView(state, conversion.producedCard);
             lua_pushinteger(state, conversion.conversionId);
             lua_setfield(state, -2, "conversion_id");
             lua_pushinteger(state, conversion.costCount);
@@ -2128,13 +2735,11 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
                 lua_rawseti(state, -2, i + 1);
             }
             lua_setfield(state, -2, "eligible_subcards");
-            setStringField(state, "name", conversion.name);
-            setStringField(state, "class_name", conversion.className);
-            setStringField(state, "skill_name", conversion.skillName);
-            lua_pushinteger(state, conversion.suit);
-            lua_setfield(state, -2, "suit");
-            lua_pushinteger(state, conversion.number);
-            lua_setfield(state, -2, "number");
+            setStringField(state, "declared_name", conversion.declaredName);
+            if (!conversion.producedCard.virtualCard) {
+                lua_pushinteger(state, conversion.producedCard.effectiveId);
+                lua_setfield(state, -2, "physical_product_id");
+            }
             setStringField(state, "activation_owner", conversion.activationRef.ownerObjectName);
             setStringField(state, "activation_skill", conversion.activationRef.key.skillName);
             lua_pushinteger(state, conversion.activationRef.key.instanceID);
@@ -2159,10 +2764,10 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
                 lua_pushboolean(state, conversion.matchesResponsePattern);
                 lua_setfield(state, -2, "matches_response_pattern");
             }
-            setStringField(state, "legacy_string_key", conversion.legacyStringKey);
-            setStringField(state, "legacy_sort_key", conversion.legacyStringKey);
-            lua_pushboolean(state, conversion.locked);
+            lua_pushboolean(state, conversion.producedCard.locked);
             lua_setfield(state, -2, "locked");
+            lua_pushboolean(state, conversion.jilei);
+            lua_setfield(state, -2, "jilei");
             lua_pushboolean(state, conversion.targetFixed);
             lua_setfield(state, -2, "target_fixed");
             lua_pushboolean(state, conversion.feasibleWithNoTarget);
@@ -2188,11 +2793,8 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
                 lua_rawseti(state, -2, i + 1);
             }
             lua_setfield(state, -2, "target_combinations");
-            lua_createtable(state, int(conversion.kindOfNames.size()), 0);
-            for (int nameIndex = 0; nameIndex < conversion.kindOfNames.size(); ++nameIndex) {
-                pushQString(state, conversion.kindOfNames.at(nameIndex));
-                lua_rawseti(state, -2, nameIndex + 1);
-            }
+            // Keep the conversion ABI alias without building the face list twice.
+            lua_getfield(state, -1, "kind_of");
             lua_setfield(state, -2, "kind_of_names");
             if (conversion.extraTargetKnown) {
                 lua_pushinteger(state, conversion.extraTargetCount);
@@ -2598,6 +3200,42 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
     }
     if (kind == QStringLiteral("answer")) {
         result.kind = AIResult::Answer;
+        lua_getfield(state, -1, "random_card_choice");
+        if (!lua_isnil(state, -1)) {
+            if (!currentAiDecision || currentAiDecision->kind != AIRequest::CardChosen || !isPlainTable(state, -1)) {
+                lua_pop(state, 1);
+                return false;
+            }
+            lua_getfield(state, -1, "token");
+            const bool tokenOk = lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, result.randomCardToken)
+                && currentAiDecision->opaqueCardDomains.contains(result.randomCardToken);
+            lua_pop(state, 1);
+            lua_getfield(state, -1, "index");
+            const bool indexOk = lua_type(state, -1) == LUA_TNUMBER
+                && aiResultInteger(lua_tonumber(state, -1), result.randomCardIndex) && result.randomCardIndex > 0;
+            lua_pop(state, 1);
+            // A receipt selects a member; card-specific strategy never crosses
+            // into the native authority. Reject extra receipt fields.
+            bool fieldsOk = true;
+            lua_pushnil(state);
+            while (lua_next(state, -2) != 0) {
+                QString key;
+                if (lua_type(state, -2) != LUA_TSTRING || !readBoundedString(state, -2, key)
+                    || (key != QLatin1String("token") && key != QLatin1String("index"))) fieldsOk = false;
+                lua_pop(state, 1);
+            }
+            lua_pop(state, 1);
+            if (!tokenOk || !indexOk || !fieldsOk) return false;
+            for (const char *field : {"answer", "cards", "targets", "bottom_cards", "card_spec",
+                                      "card_id", "card", "candidate_id", "skill_action"}) {
+                lua_getfield(state, -1, field);
+                const bool present = !lua_isnil(state, -1);
+                lua_pop(state, 1);
+                if (present) return false;
+            }
+            return true;
+        }
+        lua_pop(state, 1);
         lua_getfield(state, -1, "answer");
         if (!lua_isnil(state, -1)) {
             if (lua_type(state, -1) != LUA_TSTRING) {

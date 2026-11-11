@@ -241,6 +241,15 @@ bool ExternalAgentEndpoint::validateShape(const AIRequest &q, const AIResult &r)
     for (const auto &name : a.selectedTargetNames) if (name.size() > 65536) return false;
     for (const auto &ref : {a.skillActionContext.activationRef, a.skillActionContext.sourceRef})
         if (ref.ownerObjectName.size() > 65536 || ref.key.skillName.size() > 65536) return false;
+    if (!r.randomCardToken.isEmpty()) {
+        const auto domain = q.opaqueCardDomains.constFind(r.randomCardToken);
+        return q.kind == AIRequest::CardChosen && r.kind == AIResult::Answer
+            && domain != q.opaqueCardDomains.cend() && r.randomCardIndex > 0 && r.randomCardIndex <= domain->size()
+            && a.useCardId < 0 && !a.hasCardSpec && !a.hasSkillActionContext
+            && a.selectedCardIds.isEmpty() && a.selectedTargetNames.isEmpty()
+            && a.bottomCardIds.isEmpty() && a.userString.isEmpty();
+    }
+    if (r.randomCardIndex != 0) return false;
     if (r.kind == AIResult::Pass)
         return (q.kind == AIRequest::Activate || q.kind == AIRequest::UseCard || o.optional)
             && a.useCardId < 0 && !a.hasCardSpec && !a.hasSkillActionContext
