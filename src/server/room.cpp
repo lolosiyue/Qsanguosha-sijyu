@@ -4946,6 +4946,8 @@ void Room::notifySkillInvoked(ServerPlayer*player, const QString&skill_name)
 		JsonArray args;
 		args << QSanProtocol::S_GAME_EVENT_SKILL_INVOKED << player->objectName() << skill_name;
 		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+		if(Server::isHeadlessMode)
+			Server::writeHeadlessLog(QString("[AUTOTEST] skill-invoked %1 %2").arg(player->objectName(), skill_name));
 		// Only an already-public invocation may disclose a selected skill scope.
 		for (int i = m_pendingResolutionScopes.size() - 1; i >= 0; --i)
 			if (m_pendingResolutionScopes[i]->discloseSkill(skill_name, player)) break;

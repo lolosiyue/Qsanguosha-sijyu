@@ -824,6 +824,13 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		if(Config.Enable2ndGeneral)
 			m_room.broadcastProperty(the_lord, "general2");
 	}
+
+	if (Server::isHeadlessMode){
+		// Diagnostic for automated acceptance runs: record which seat received which general.
+		foreach(ServerPlayer *p, m_room.getPlayers())
+			Server::writeHeadlessLog(QString("[AUTOTEST] seated %1 general='%2' general2='%3'")
+				.arg(p->objectName()).arg(p->getGeneralName()).arg(p->getGeneral2Name()));
+	}
 }
 
 void GameSessionController::chooseGeneralsOfJianGeDefenseMode()

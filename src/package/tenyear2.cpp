@@ -1996,7 +1996,7 @@ public:
 		if (mark.name != "&cxyizi") return true;
 		if (player->getMark("&cxyizi") <= 0)
 			room->detachSkillFromPlayer(player, "panshi");
-		else
+		else if (!player->hasSkill("panshi", true))
 			room->acquireSkill(player, "panshi");
 		return true;
 	}
@@ -13904,13 +13904,13 @@ public:
 		}else if(event==MarkChanged){
 			MarkStruct mark = data.value<MarkStruct>();
 			if(mark.name=="&yl_lequan"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_lequan");
+				if(mark.gain>0){if(!player->hasSkill("yl_lequan",true))room->acquireSkill(player,"yl_lequan");}
 				else room->detachSkillFromPlayer(player,"yl_lequan");
 			}else if(mark.name=="&yl_huoxi"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_huoxi");
+				if(mark.gain>0){if(!player->hasSkill("yl_huoxi",true))room->acquireSkill(player,"yl_huoxi");}
 				else room->detachSkillFromPlayer(player,"yl_huoxi");
 			}else if(mark.name=="&yl_zhangqi"){
-				if(mark.gain>0)room->acquireSkill(player,"yl_zhangqi");
+				if(mark.gain>0){if(!player->hasSkill("yl_zhangqi",true))room->acquireSkill(player,"yl_zhangqi");}
 				else room->detachSkillFromPlayer(player,"yl_zhangqi");
 			}/*else if(mark.name=="&yl_yunxiang"){
 				if(mark.gain>0)room->acquireSkill(player,"yl_yunxiang");
@@ -16934,7 +16934,6 @@ public:
 			ctx.extra_data = value;
 			ctx.original_data = &data;
 			ctx.current_event = event;
-			ctx.targets << damage.to;
 			contexts << ctx;
 		}
 		return true;
@@ -16945,15 +16944,15 @@ public:
 		return !ctx.activationRef.isValid() && room->getTag("SpYanhuoReceipts").toList().contains(ctx.extra_data);
 	}
 	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		const int amount = getEffectiveAmount(ctx);
 		if (amount <= 0) return false;
 		DamageStruct damage = ctx.original_data->value<DamageStruct>();
-		if (damage.to != target) return false;
+		if (!damage.to || !damage.to->isAlive()) return false;
 		LogMessage log;
 		log.type = "#SPYanhuoDamage";
-		log.from = damage.from ? damage.from : target;
+		log.from = damage.from ? damage.from : damage.to;
 		log.arg = "spyanhuo";
 		log.arg2 = QString::number(amount);
 		room->sendLog(log);
@@ -20810,7 +20809,6 @@ public:
 			ctx.extra_data = value;
 			ctx.original_data = &data;
 			ctx.current_event = event;
-			ctx.targets << damage.to;
 			contexts << ctx;
 		}
 		return true;
@@ -20831,9 +20829,15 @@ public:
 	}
 	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
-		if (event == DamageCaused) return false;
 		const int amount = getEffectiveAmount(ctx);
 		if (amount <= 0) return false;
+		if (event == DamageCaused) {
+			DamageStruct damage = ctx.original_data->value<DamageStruct>();
+			if (!damage.to || !damage.to->isAlive()) return false;
+			damage.damage += amount;
+			*ctx.original_data = QVariant::fromValue(damage);
+			return false;
+		}
 		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
 		const qint64 current = useId(room);
 		if (!use.card || current <= 0) return false;
@@ -20845,16 +20849,6 @@ public:
 			{"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID}};
 		use.card->setTag("TenyearHanyongReceipts", receipts);
 		if (ctx.owner->getHp() > room->getTag("TurnLengthCount").toInt()) ctx.owner->gainMark("&rsran", amount);
-		return false;
-	}
-	bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-	{
-		const int amount = getEffectiveAmount(ctx);
-		if (amount <= 0) return false;
-		DamageStruct damage = ctx.original_data->value<DamageStruct>();
-		if (damage.to != target) return false;
-		damage.damage += amount;
-		*ctx.original_data = QVariant::fromValue(damage);
 		return false;
 	}
 };
@@ -35462,7 +35456,7 @@ public:
 				room->loseMaxHp(player,1,objectName());
 				room->changeTranslation(player,"shouzhi",1);
 				room->addPlayerMark(player,"shouzhiUp");
-				room->acquireSkill(player,"xingmen");
+				if(!player->hasSkill("xingmen",true))room->acquireSkill(player,"xingmen");
 			}
 		}else if(event==QuitDying){
 			foreach(ServerPlayer*p,room->getAllPlayers()){
@@ -35471,7 +35465,7 @@ public:
 					room->loseMaxHp(p,1,objectName());
 					room->changeTranslation(p,"shouzhi",1);
 					room->addPlayerMark(p,"shouzhiUp");
-					room->acquireSkill(p,"xingmen");
+					if(!p->hasSkill("xingmen",true))room->acquireSkill(p,"xingmen");
 				}
 			}
 		}else if(player->getPhase()==Player::Play&&player->getMark("@fenhui")>0){
@@ -36727,7 +36721,7 @@ public:
 				room->loseMaxHp(player,1,objectName());
 				room->changeTranslation(player,"shouzhi",1);
 				room->addPlayerMark(player,"shouzhiUp");
-				room->acquireSkill(player,"xingmen");
+				if(!player->hasSkill("xingmen",true))room->acquireSkill(player,"xingmen");
 			}
 		}else if(event==QuitDying){
 			foreach(ServerPlayer*p,room->getAllPlayers()){
@@ -36736,7 +36730,7 @@ public:
 					room->loseMaxHp(p,1,objectName());
 					room->changeTranslation(p,"shouzhi",1);
 					room->addPlayerMark(p,"shouzhiUp");
-					room->acquireSkill(p,"xingmen");
+					if(!p->hasSkill("xingmen",true))room->acquireSkill(p,"xingmen");
 				}
 			}
 		}else if(player->getPhase()==Player::Play&&player->getMark("@fenhui")>0){

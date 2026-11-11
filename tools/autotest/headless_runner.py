@@ -423,7 +423,9 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         cmd += ["--force-general", args.force_general]
     proc = spawn(cmd, workdir, log_path, env=qt_console_env())
     timeout = games * PER_GAME_TIMEOUT + 120
-    deadline = time.time() + timeout
+    # Measure the per-game deadline on the monotonic clock: a VM pause/restore jumps
+    # time.time() forward and would SIGKILL a game that never ran for `timeout` seconds.
+    deadline = time.monotonic() + timeout
     timed_out = False
     budget_stopped = False
     code = None
@@ -441,7 +443,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             proc.kill()
             code = wait_exit(proc, 5)
             break
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             timed_out = True
             # Kill through our child handle; taskkill failure must not leave an unbounded wait.
             proc.kill()

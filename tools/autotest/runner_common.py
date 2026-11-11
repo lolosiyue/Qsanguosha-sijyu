@@ -18,8 +18,13 @@ from collections import Counter, defaultdict
 IS_WINDOWS = os.name == "nt"
 
 
-# Prefer release, then RelWithDebInfo, then debug to avoid selecting a stale debug build over a recent CI build.
-_EXE_SUBDIRS = ("release", "relwithdebinfo", "RelWithDebInfo", "debug", "")
+# Prefer RelWithDebInfo, then release, then debug: the build tree is what the
+# current source compiles to, while release/ can hold an older drop lacking
+# newer autotest markers. On 2026-11-10 release/QSanguosha (Oct 23 02:13) had no
+# "[AUTOTEST] skill-invoked" line, so every general looked like it never
+# triggered a skill; relwithdebinfo/QSanguosha (Oct 23 04:58) has it. Trees
+# without relwithdebinfo (the Windows deploy tree) fall through to release.
+_EXE_SUBDIRS = ("relwithdebinfo", "release", "RelWithDebInfo", "debug", "")
 
 
 def executable_name(base):

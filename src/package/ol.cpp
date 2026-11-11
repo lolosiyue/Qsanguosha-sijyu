@@ -9334,7 +9334,6 @@ public:
 			ctx.amount = receipt.value("amount").toInt(); ctx.original_data = &data; ctx.current_event = event;
 			ctx.extra_data = QVariantMap{{"receipt", value}};
 			ctx.trigger_count = counts[donor->objectName() + ':' + QString::number(ctx.instanceID)]++;
-			ctx.targets << target; ctx.manual_effect = true;
 			contexts << ctx;
 		}
 		return true;
@@ -9347,24 +9346,19 @@ public:
 	}
 	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
 	{ return ctx.owner && ctx.invoker && ctx.original_data; }
-	bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
 		room->sendCompulsoryTriggerLog(ctx.owner, "yizhengc", true, true);
-		const QList<ServerPlayer *> recipients = ctx.targets;
 		room->loseMaxHp(ctx.owner, 1, "yizhengc");
-		for (ServerPlayer *target : recipients)
-			if (skillEffect(event, room, player, ctx, target)) return true;
-		return false;
-	}
-	bool effectTarget(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-	{
 		if (!ctx.original_data) return false;
 		if (event == DamageCaused) {
 			DamageStruct damage = ctx.original_data->value<DamageStruct>();
+			if (!damage.to || !damage.to->isAlive()) return false;
 			damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage);
-		} else {
+		} else if (event == PreHpRecover) {
+			if (!ctx.invoker || !ctx.invoker->isAlive()) return false;
 			RecoverStruct recover = ctx.original_data->value<RecoverStruct>();
-			recover.recover = qMin(recover.recover + getEffectiveAmount(ctx), target->getMaxHp() - target->getHp());
+			recover.recover = qMin(recover.recover + getEffectiveAmount(ctx), ctx.invoker->getMaxHp() - ctx.invoker->getHp());
 			*ctx.original_data = QVariant::fromValue(recover);
 		}
 		return false;
@@ -9748,7 +9742,7 @@ public:
 			ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(),
 				SkillInstanceKey(receipt.value("skill").toString(), receipt.value("source").toInt()));
 			ctx.amount = receipt.value("amount").toInt(); ctx.trigger_count = counts[ctx.instanceID]++;
-			ctx.extra_data = value; ctx.targets << damage.to; ctx.original_data = &data; ctx.current_event = event;
+			ctx.extra_data = value; ctx.original_data = &data; ctx.current_event = event;
 			contexts << ctx;
 		}
 		return true;
@@ -9766,18 +9760,19 @@ public:
 		if (event == ThrowEquipArea) ctx.extra_data = ctx.original_data->toList().size();
 		return true;
 	}
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-	{
-		const int amount = getEffectiveAmount(ctx);
-		DamageStruct damage = ctx.original_data->value<DamageStruct>();
-		LogMessage log; log.type = "#TuxingDamage"; log.from = ctx.owner; log.to << target;
-		log.arg = QString::number(damage.damage); damage.damage += amount; log.arg2 = QString::number(damage.damage);
-		room->sendLog(log); room->broadcastSkillInvoke(this); room->notifySkillInvoked(ctx.owner, objectName());
-		*ctx.original_data = QVariant::fromValue(damage);
-		return false;
-	}
 	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
+		if (event == DamageCaused) {
+			if (!ctx.original_data) return false;
+			const int amount = getEffectiveAmount(ctx);
+			DamageStruct damage = ctx.original_data->value<DamageStruct>();
+			if (!damage.to || !damage.to->isAlive()) return false;
+			LogMessage log; log.type = "#TuxingDamage"; log.from = ctx.owner; log.to << damage.to;
+			log.arg = QString::number(damage.damage); damage.damage += amount; log.arg2 = QString::number(damage.damage);
+			room->sendLog(log); room->broadcastSkillInvoke(this); room->notifySkillInvoked(ctx.owner, objectName());
+			*ctx.original_data = QVariant::fromValue(damage);
+			return false;
+		}
 		if (event != ThrowEquipArea) return false;
 		ServerPlayer *target = ctx.owner;
 		const int amount = getEffectiveAmount(ctx);
@@ -24474,22 +24469,26 @@ public:
 		}
 		if (event == CardsMoveOneTime) {
 			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-			if (move.to_place == Player::PlaceHand && (move.reason.m_skillName == "lianju" || move.reason.m_skillName == "shilv")) {
+			const int reason = move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON;
+			// Only the damage-draw effect creates new Shi Lv cards. Reclaiming
+			// a discard also carries "shilv", but must not re-arm its consumed tag.
+			if (move.to_place == Player::PlaceHand && (move.reason.m_skillName == "lianju"
+				|| (move.reason.m_skillName == "shilv" && reason == CardMoveReason::S_REASON_DRAW))) {
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				foreach (int id, move.to->handCards()) {
 					if (move.card_ids.contains(id)) {
 						room->setCardTip(id, "shi_lv");
-						ids << id;
+						if (!ids.contains(QVariant(id))) ids << id;
 					}
 				}
 				room->setTag("shi_lvs", ids);
 			} else if (move.to_place == Player::DiscardPile
-				&& (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD && move.from) {
+				&& reason == CardMoveReason::S_REASON_DISCARD && move.from) {
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				DummyCard *dc = new DummyCard();
 				foreach (int id, move.card_ids) {
 					if (ids.contains(QVariant(id))) {
-						ids.removeOne(QVariant(id));
+						ids.removeAll(QVariant(id));
 						if (!room->getCardOwner(id))
 							dc->addSubcard(id);
 					}
@@ -24504,7 +24503,7 @@ public:
 				QVariantList ids = room->getTag("shi_lvs").toList();
 				foreach (int id, move.card_ids) {
 					if (ids.contains(QVariant(id)))
-						ids.removeOne(QVariant(id));
+						ids.removeAll(QVariant(id));
 				}
 				room->setTag("shi_lvs", ids);
 			}
@@ -35396,7 +35395,8 @@ public:
 							Card *dc = dummyCard(ListV2I(p->getTag("oljinjin_break").toList()));
 							p->removeTag("oljinjin_break");
 							room->obtainCard(tp, dc, objectName());
-							room->acquireSkill(tp, objectName());
+							if (!tp->hasSkill(objectName(), true))
+								room->acquireSkill(tp, objectName());
 						}
 					}
 				}
@@ -35867,7 +35867,7 @@ public:
 				room->setChangeSkillState(tp, s->objectName(), n);
 			}
 		}
-		if (n < 1) {
+		if (n < 1 && !tp->hasSkill("qianfu", true)) {
 			room->acquireSkill(tp, "qianfu");
 			room->setPlayerMark(tp, "qianfuBf", 1);
 		}
@@ -38623,6 +38623,8 @@ public:
 			if (use.to.contains(p) || p == player) continue;
 			if (!player->isProhibited(p, use.card)) cands << p;
 		}
+		// The AI target policy reads the triggering use from this tag.
+		player->setTag("xiaoshiUse", data);
 		ServerPlayer *t = room->askForPlayerChosen(player, cands, objectName(), "@xiaoshi", true);
 		if (!t) return false;
 		room->broadcastSkillInvoke(objectName());
@@ -38656,6 +38658,7 @@ public:
 		if (ch == "losehp") room->loseHp(player, 1, true, player, "xiaoshi");
 		else {
 			int n = qMax(1, player->getMark("jinming_record"));
+			player->setTag("xiaoshiUse", data);
 			ServerPlayer *t = room->askForPlayerChosen(player, use.to, "xiaoshi", "@xiaoshi-draw", false, true);
 			if (t) t->drawCards(n, "xiaoshi");
 		}

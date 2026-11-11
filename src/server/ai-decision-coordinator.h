@@ -126,6 +126,11 @@ public:
 
 private:
     friend struct RoomTestAccess;
+    // The legality checks decide() applies to external answers (limits, play
+    // availability, response pattern, ordered targets); an isolated-fault fallback
+    // answer must meet them too.
+    bool aiCardUseIsLegal(ServerPlayer *player, const AIRequest &request,
+                          const CardUseStruct &candidate) const;
     // The legacy answer runs live on this Room, so it is produced on demand and only
     // for the routes that need it.
     typedef std::function<AIResult(const AIRequest &)> LegacyAnswer;

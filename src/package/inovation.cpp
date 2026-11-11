@@ -4388,7 +4388,7 @@ public:
             ctx.owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true); ctx.initiator = ctx.owner; ctx.invoker = actor;
             ctx.instanceID = receipt.value("instance").toInt(); ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(),
                 SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
-            ctx.amount = receipt.value("amount", 1).toInt(); ctx.extra_data = receipt; ctx.current_event = event; ctx.original_data = &data; ctx.targets << damage.to; ctx.is_forced = true; contexts << ctx;
+            ctx.amount = receipt.value("amount", 1).toInt(); ctx.extra_data = receipt; ctx.current_event = event; ctx.original_data = &data; ctx.is_forced = true; contexts << ctx;
         }
         return true;
     }
@@ -4413,6 +4413,11 @@ public:
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        if (event == DamageCaused) {
+            DamageStruct damage = ctx.original_data->value<DamageStruct>();
+            if (!damage.card || !damage.to || !damage.to->isAlive()) return false;
+            damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); return false;
+        }
         ServerPlayer *target = ctx.owner;
         if (event != CardUsed || !target || !target->isAlive()) return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>(); if (!use.card) return false;
@@ -4439,8 +4444,7 @@ public:
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (!target || !target->isAlive()) return false;
-        if (event == DamageCaused) { DamageStruct damage = ctx.original_data->value<DamageStruct>(); damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); return false; }
+        if (event != CardUsed || !target || !target->isAlive()) return false;
         CardUseStruct use = ctx.original_data->value<CardUseStruct>(); if (!use.card) return false;
         if (!use.to.contains(target) && ctx.invoker && ctx.invoker->canSlash(target, use.card, false)) {
             use.to << target; room->sortByActionOrder(use.to); *ctx.original_data = QVariant::fromValue(use);

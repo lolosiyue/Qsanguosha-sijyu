@@ -80,6 +80,52 @@ static void releaseFreedRoomHeap()
 #endif
 }
 
+// A winner is published before worker-side Lua/statistics cleanup has finished.
+// Keep main processing events until every worker stops: deleting the Room on a
+// deadline makes its destructor join while a worker can still be waiting on main.
+template <typename OnDisposed, typename OnSlowStop>
+void disposeRoomWhenStopped(QObject *owner, QPointer<Room> room,
+                            OnDisposed onDisposed, OnSlowStop onSlowStop)
+{
+    const auto dispose = [owner, onDisposed](const QPointer<Room> &finishedRoom) {
+        if (!finishedRoom) {
+            onDisposed();
+            return;
+        }
+        QObject::connect(finishedRoom.data(), &QObject::destroyed, owner,
+            [owner, onDisposed]() {
+                // destroyed precedes QObject child destruction. Continue only
+                // after that whole destructor has returned to the event loop.
+                QTimer::singleShot(0, owner, onDisposed);
+            });
+        finishedRoom->deleteLater();
+    };
+    // Preserve the existing inter-game settling delay.
+    QTimer::singleShot(500, owner, [owner, room, dispose, onSlowStop]() {
+        if (!room || room->allGameThreadsStopped()) {
+            dispose(room);
+            return;
+        }
+        QTimer *pollTimer = new QTimer(owner);
+        pollTimer->setInterval(100);
+        QObject::connect(pollTimer, &QTimer::timeout, owner,
+            [room, pollTimer, dispose, onSlowStop, elapsedMs = 0, warned = false]() mutable {
+                if (room && !room->allGameThreadsStopped()) {
+                    elapsedMs += pollTimer->interval();
+                    if (!warned && elapsedMs >= 10000) {
+                        warned = true;
+                        onSlowStop();
+                    }
+                    return;
+                }
+                pollTimer->stop();
+                pollTimer->deleteLater();
+                dispose(room);
+            });
+        pollTimer->start();
+    });
+}
+
 // A QAbstractSocket may only be touched from the thread that owns it. Server
 // and the sockets it accepts both live on the main thread today, so this is a
 // direct call in practice; routing every teardown through it keeps the rule the
@@ -2999,6 +3045,7 @@ void Server::startHeadlessGame()
     if (!room->hasLuaRuntime()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
+        qApp->exit(1);
         return;
     }
     if (!room->isTakeoverReady()) {
@@ -3051,13 +3098,6 @@ void Server::startHeadlessGame()
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
-        // Keep a 500 ms inter-game delay: testing at 0 ms caused a fail-fast crash about nine seconds into the next game
-        // (0xC0000409, no minidump); old-room cleanup and next-game startup need time to settle.
-        // Family C protection: never block while waiting between games; RoomThread cleanup may need
-        // main to process queued/blocking events (Room.cpp BlockingQueuedConnection),
-        // which would deadlock. Poll without blocking: main checks every 100 ms
-        // until RoomThread exits, then deleteLater and start the next game;
-        // force progress after ten seconds and record an ERROR marker.
         auto continueAfterRoom = [this, currentGameCount, gameLimit]() {
             releaseFreedRoomHeap();
             if (currentGameCount < gameLimit) {
@@ -3067,47 +3107,9 @@ void Server::startHeadlessGame()
                 qApp->quit();
             }
         };
-        // Build the next Room only once the finished one is really destroyed:
-        // starting it straight after deleteLater() kept both games' card clones,
-        // Lua states and AI runtimes alive together, and the freed heap was then
-        // never returned. destroyed fires inside ~QObject, before the Room's
-        // children go, so the next step is queued behind it.
-        auto disposeThenContinue = [this, continueAfterRoom](const QPointer<Room> &room) {
-            if (!room) {
-                continueAfterRoom();
-                return;
-            }
-            connect(room.data(), &QObject::destroyed, this, [this, continueAfterRoom]() {
-                QTimer::singleShot(0, this, continueAfterRoom);
-            });
-            room->deleteLater();
-        };
-        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, disposeThenContinue]() {
-            if (roomPtr) {
-                RoomThread *rt = roomPtr->getThread();
-                if (rt && rt->isRunning()) {
-                    QTimer *pollTimer = new QTimer(this);
-                    int *elapsedMs = new int(0);
-                    connect(pollTimer, &QTimer::timeout, this,
-                        [roomPtr, rt, pollTimer, elapsedMs, currentGameCount, disposeThenContinue]() {
-                            *elapsedMs += 100;
-                            const bool finished = !rt->isRunning();
-                            if (finished || *elapsedMs >= 10000) {
-                                if (!finished) {
-                                    Server::writeHeadlessLog("ERROR: RoomThread wait timeout (game "
-                                        + QString::number(currentGameCount) + ")");
-                                }
-                                pollTimer->stop();
-                                pollTimer->deleteLater();
-                                delete elapsedMs;
-                                disposeThenContinue(roomPtr);
-                            }
-                        });
-                    pollTimer->start(100);
-                    return;
-                }
-            }
-            disposeThenContinue(roomPtr);
+        disposeRoomWhenStopped(this, roomPtr, continueAfterRoom, [currentGameCount]() {
+            Server::writeHeadlessLog("WARNING: Room workers still stopping (game "
+                + QString::number(currentGameCount) + "); continuing asynchronous wait");
         });
     });
 
@@ -3172,40 +3174,13 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     connect(room, &Room::game_over, this, [this, roomPtr, headless](const QString &winner) {
         qDebug() << "Test game finished. Winner:" << winner;
 
-        // Keep a 500 ms inter-game delay, as in startHeadlessGame; zero caused the next-game fail-fast crash.
-        // Family C protection, as in startHeadlessGame: poll without blocking until RoomThread exits, then delete the room.
-        QTimer::singleShot(500, this, [this, roomPtr, headless]() {
-            if (roomPtr) {
-                RoomThread *rt = roomPtr->getThread();
-                if (rt && rt->isRunning()) {
-                    QTimer *pollTimer = new QTimer(this);
-                    int *elapsedMs = new int(0);
-                    connect(pollTimer, &QTimer::timeout, this,
-                        [this, roomPtr, rt, pollTimer, elapsedMs, headless]() {
-                            *elapsedMs += 100;
-                            const bool finished = !rt->isRunning();
-                            if (finished || *elapsedMs >= 10000) {
-                                pollTimer->stop();
-                                pollTimer->deleteLater();
-                                delete elapsedMs;
-                                if (roomPtr) {
-                                    roomPtr->deleteLater();
-                                }
-                                if (headless) {
-                                    qDebug() << "Test completed. Exiting.";
-                                    qApp->quit();
-                                }
-                            }
-                        });
-                    pollTimer->start(100);
-                    return;
-                }
-                roomPtr->deleteLater();
-            }
+        disposeRoomWhenStopped(this, roomPtr, [headless]() {
             if (headless) {
                 qDebug() << "Test completed. Exiting.";
                 qApp->quit();
             }
+        }, []() {
+            qWarning("Test game Room workers still stopping; continuing asynchronous wait");
         });
     });
 

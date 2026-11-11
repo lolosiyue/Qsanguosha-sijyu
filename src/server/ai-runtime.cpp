@@ -957,6 +957,17 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, b
     lua_getfield(state, result, "managed");
     world.modePolicy.insert("managed", world.customRoles || bool(lua_toboolean(state, -1)));
     lua_pop(state, 1);
+    if (!world.modePolicy.value("managed").toBool()) {
+        // A Room VM logs this admission failure once, even across AI requests.
+        lua_getfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.unmanaged_logged");
+        const bool logged = lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        if (!logged) {
+            qWarning().noquote() << "[AI_LUA_ERROR] MODE_AI_UNMANAGED: active mode" << world.modeId;
+            lua_pushboolean(state, true);
+            lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.unmanaged_logged");
+        }
+    }
     lua_getfield(state, result, "predictable");
     world.modePolicy.insert("predictable", bool(lua_toboolean(state, -1)));
     lua_pop(state, 1);

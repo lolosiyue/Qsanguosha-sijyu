@@ -1071,6 +1071,38 @@ target_compile_definitions(h50p_distance_probe PRIVATE QSAN_ENGINE_BUILD QSAN_SE
 target_link_libraries(h50p_distance_probe PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
 qsan_link_websocket_gateway(h50p_distance_probe)
+# Native integration regression; opt-in so it does not gate game runtime in CI.
+add_executable(qsanguosha_ai_direct_card_regression EXCLUDE_FROM_ALL
+    tools/autotest/ai-direct-card-regression.cpp)
+target_include_directories(qsanguosha_ai_direct_card_regression PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario)
+target_compile_definitions(qsanguosha_ai_direct_card_regression PRIVATE
+    QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+target_link_libraries(qsanguosha_ai_direct_card_regression PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
+qsan_link_websocket_gateway(qsanguosha_ai_direct_card_regression)
+if(WIN32)
+    target_link_libraries(qsanguosha_ai_direct_card_regression PRIVATE
+        "$<$<CONFIG:Release>:dbghelp>")
+endif()
+# Legacy-answer fallback regression (07p loop); opt-in like the direct-card fixture.
+add_executable(qsanguosha_ai_legacy_fallback_regression EXCLUDE_FROM_ALL
+    tools/autotest/ai-legacy-fallback-regression.cpp)
+target_include_directories(qsanguosha_ai_legacy_fallback_regression PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario)
+target_compile_definitions(qsanguosha_ai_legacy_fallback_regression PRIVATE
+    QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY QSAN_FALLBACK_CONTRACT)
+target_link_libraries(qsanguosha_ai_legacy_fallback_regression PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
+qsan_link_websocket_gateway(qsanguosha_ai_legacy_fallback_regression)
+if(WIN32)
+    target_link_libraries(qsanguosha_ai_legacy_fallback_regression PRIVATE
+        "$<$<CONFIG:Release>:dbghelp>")
+endif()
 # Headless skill scenario host for tools/autotest/skill_scenario_runner.py; built on request.
 add_executable(qsanguosha_skill_scenario EXCLUDE_FROM_ALL tools/skill-scenario-host.cpp)
 target_include_directories(qsanguosha_skill_scenario PRIVATE

@@ -99,3 +99,15 @@ web/public/rules/
 /packages/*/archives/
 /packages/*/inventory.generated.json
 /packages/*/generated/inventory.json
+
+# Local run artifacts and per-version binaries kept outside the tracked tree.
+/.maint/
+/.agent-teams/
+/cases-out/
+/diy/
+/scenarios/
+/scenario-works/
+/nos_simayi
+/GER.lua
+/gbackup.json
+/artifacts/

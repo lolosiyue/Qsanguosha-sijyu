@@ -1369,6 +1369,15 @@ void TuiApplicationController::writeOutput(const QString &text)
     appendLogLine(TuiRenderer::sanitize(text, 16384));
 }
 
+void TuiApplicationController::showStartupDiagnostics(const QStringList &lines)
+{
+    // Same path as any other notice, so board scrollback, classic output and
+    // the --log-file all agree -- and the alternate screen is already in place
+    // by the time main() calls this (it runs after a successful start()).
+    for (const QString &line : lines)
+        writeOutput(line);
+}
+
 void TuiApplicationController::writeDump(const QString &text)
 {
     m_presenter->writeDump(TuiRenderer::sanitizePresentable(text, 16384));

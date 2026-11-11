@@ -1183,7 +1183,7 @@ public:
             ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(),
                 SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
             ctx.original_data = &data; ctx.current_event = event; ctx.extra_data = receipt;
-            ctx.amount = receipt.value("amount").toInt(); ctx.targets << damage.to; ctx.is_forced = true;
+            ctx.amount = receipt.value("amount").toInt(); ctx.is_forced = true;
             contexts << ctx;
         }
         return true;
@@ -1194,14 +1194,14 @@ public:
         return holder && holder->isAlive() && ctx.original_data
             && holder->getTag("tenyearluoyi_receipts").toList().contains(ctx.extra_data);
     }
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!isSourceAvailable(room, ctx) || getEffectiveAmount(ctx) <= 0) return false;
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (!damage.from || damage.from->objectName() != ctx.extra_data.toMap().value("holder").toString() || damage.to != target || !damage.card
-            || (!damage.card->isKindOf("Slash") && !damage.card->isKindOf("Duel"))) return false;
+        if (!damage.from || damage.from->objectName() != ctx.extra_data.toMap().value("holder").toString() || !damage.to
+            || !damage.to->isAlive() || !damage.card || (!damage.card->isKindOf("Slash") && !damage.card->isKindOf("Duel"))) return false;
         LogMessage log; log.type = "#LuoyiBuff"; log.from = ctx.initiator ? ctx.initiator : ctx.invoker;
-        log.to << target; log.arg = QString::number(damage.damage);
+        log.to << damage.to; log.arg = QString::number(damage.damage);
         damage.damage += getEffectiveAmount(ctx); log.arg2 = QString::number(damage.damage);
         room->sendLog(log); *ctx.original_data = QVariant::fromValue(damage);
         return false;

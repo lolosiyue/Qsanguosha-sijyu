@@ -351,7 +351,7 @@ def main():
                         help="固定遊戲 seed (unsigned 十進位整數)")
     parser.add_argument("--artifact-dir", default="gui-network-artifacts")
     parser.add_argument("--label", default=None, help="artifact 檔名前綴 (預設: 模式名)")
-    parser.add_argument("--platform", default="xcb", choices=("xcb", "offscreen", "windows"),
+    parser.add_argument("--platform", default="xcb", choices=("xcb", "wayland", "offscreen", "windows"),
                         help="Qt platform plugin (預設: xcb)")
     parser.add_argument("--xvfb", dest="xvfb", action="store_true", default=False,
                         help="用 xvfb-run 起 client (CI 用)")
