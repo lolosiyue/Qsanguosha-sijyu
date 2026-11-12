@@ -2726,6 +2726,7 @@ void Client::updatePileNum()
 		pile_str.prepend(tr("Level: <b>%1</b>,").arg(m_bossLevel + 1));
 
 	lines_doc->setHtml(QString("<font color='%1'><p align = \"center\">%2</p></font>").arg(UiConfig.TextEditColor.name()).arg(pile_str));
+	emit pile_num_changed(pile_num);
 }
 
 void Client::askForDiscard(const QVariant &reqvar)

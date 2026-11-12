@@ -7,8 +7,10 @@
 //#include "protocol.h"
 #include "generic-cardcontainer-ui.h"
 #include <QMap>
+#include <QPointer>
 
 class CardItem;
+class TableDecks;
 struct CardsMoveStruct;
 
 class TablePile : public GenericCardContainer
@@ -41,11 +43,20 @@ public:
     virtual QRectF boundingRect() const;
     void showJudgeResult(int cardId, bool takeEffect);
     void resetForManagedSync();
+    inline void setDecks(const TableDecks *decks)
+    {
+        m_decks = decks;
+    }
+    bool isShowingCard(int cardId) const;
     void setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
         const QString &name);
 
 public slots:
     void clear(bool delayRequest = true);
+
+signals:
+    // Cards left the processing area and finished settling into their pile.
+    void cardsSettled();
 
 protected:
     // This function must be called with mutex_pileCards locked.
@@ -62,6 +73,8 @@ protected:
     int m_timer;
     int m_currentTime;
     QMap<int, QPair<QString, QString> > m_convertedCards;
+    const TableDecks *m_decks = nullptr;
+    QList<QPointer<CardItem> > m_fadingCards;
 };
 
 #endif

@@ -576,6 +576,7 @@ signals:
     void player_speak(const QString &who, const QString &text);
     void line_spoken(const QString &line);
     void card_used();
+    void pile_num_changed(int draw_count);
 
     void game_started();
     void game_over();
