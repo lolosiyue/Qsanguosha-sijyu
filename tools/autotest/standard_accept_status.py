@@ -70,6 +70,19 @@ def latest_csv(headless_dir: Path):
     return best
 
 
+def all_csvs(headless_dir: Path):
+    """回傳 [(stamp, path)]，新到舊。單格補跑只寫一行 CSV，所以不能只看最新一份。"""
+    found = []
+    if not headless_dir.is_dir():
+        return found
+    for path in headless_dir.iterdir():
+        m = CSV_RE.match(path.name)
+        if m:
+            found.append((m.group(1), path))
+    found.sort(key=lambda item: item[0], reverse=True)
+    return found
+
+
 def parse_stamp(stamp: str) -> str:
     """"20261113-094913" -> "2026-11-13 09:49:13"，取不到就原樣回。"""
     try:
@@ -143,45 +156,62 @@ def read_gui_stages(root: Path, general: str) -> dict:
 # ---------------------------------------------------------------- 彙整
 
 def collect(root: Path, general: str) -> dict:
+    """逐格取最新的勝出記錄。
+
+    早期版本只看目錄裡最新的一份 CSV。單格補跑（--modes 05p）只會寫一行，
+    於是最新那份只有 05p，其餘 15 格就被誤判成缺格 —— diaochan 因此一度被
+    報成「缺 15 格」。改法：把該目錄所有 CSV 由新到舊讀進來，每個模式取
+    第一次出現的那一筆，也就是該模式最新的記錄。同一份 CSV 內同模式多局
+    仍只取第一行（read_csv 既有行為）。
+    """
     headless_dir = root / "raw" / general / "headless"
-    picked = latest_csv(headless_dir)
     result = {
         "general": general,
         "csv": None,
         "stamp": "",
         "updated": "",
+        "updated_latest": "",
         "modes": {},
+        "mode_stamp": {},
         "missing": [],
         "bad": [],
         "gui": {},
     }
-    if picked is None:
+    if not headless_dir.is_dir():
         result["missing"] = list(LAYER_A)
         result["gui"] = read_gui_stages(root, general)
         return result
 
-    stamp, csv_path = picked
-    rows = read_csv(csv_path)
-    result["csv"] = csv_path
-    result["stamp"] = stamp
-    result["updated"] = parse_stamp(stamp)
+    newest_stamp = ""
+    newest_csv = None
+    for stamp, csv_path in all_csvs(headless_dir):
+        if newest_csv is None:
+            newest_stamp, newest_csv = stamp, csv_path
+        rows = read_csv(csv_path)
+        for mode in LAYER_A:
+            if mode in result["modes"] or mode not in rows:
+                continue
+            row = rows[mode]
+            status, reason = judge_row(row)
+            result["modes"][mode] = {
+                "status": status,
+                "reason": reason,
+                "exit": _int(row.get("exit", "0")),
+                "finished": _int(row.get("finished", "0")),
+                "expected": _int(row.get("expected", "0")),
+            }
+            result["mode_stamp"][mode] = stamp
+            if status == "bad":
+                result["bad"].append(mode)
 
-    for mode in LAYER_A:
-        row = rows.get(mode)
-        if row is None:
-            result["missing"].append(mode)
-            continue
-        status, reason = judge_row(row)
-        result["modes"][mode] = {
-            "status": status,
-            "reason": reason,
-            "exit": _int(row.get("exit", "0")),
-            "finished": _int(row.get("finished", "0")),
-            "expected": _int(row.get("expected", "0")),
-        }
-        if status == "bad":
-            result["bad"].append(mode)
-
+    result["csv"] = newest_csv
+    result["stamp"] = newest_stamp
+    result["updated"] = parse_stamp(newest_stamp)
+    # 表上顯示「這一行最後一次被更新」的時間：各模式裡最新的那個 stamp，
+    # 不是最新一份 CSV 的時間。否則單格補跑會讓整行看起來停在補跑時間。
+    newest_mode = max(result["mode_stamp"].values(), default="")
+    result["updated_latest"] = parse_stamp(newest_mode)
+    result["missing"] = [m for m in LAYER_A if m not in result["modes"]]
     result["gui"] = read_gui_stages(root, general)
     return result
 
@@ -235,7 +265,7 @@ def render_table(results: list) -> list:
             gui.get("gui", "—"),
             gui.get("gui_heg", "—"),
             gui.get("tui", "—"),
-            res["updated"] or "—",
+            res["updated_latest"] or "—",
             label,
         ]
         lines.append("  ".join(pad(c, w) for c, w in zip(cells, widths)).rstrip())
