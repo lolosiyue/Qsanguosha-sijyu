@@ -16987,10 +16987,11 @@ public:
 					}
 				}
 				if(ids.isEmpty()) return false;
+				const bool open = move.open.value(move.card_ids.indexOf(ids.last()), false);
 				move.removeCardIds(ids);
 				data = QVariant::fromValue(move);
 				CardsMoveStruct move1 = CardsMoveStruct(ids,move.from,player,room->getCardPlace(ids.last()),move.to_place,move.reason);
-				room->moveCardsAtomic(move1,move.open.last());
+				room->moveCardsAtomic(move1,open);
 			}
 		}else if(event==EventPhaseStart&&player->getPhase()==Player::Start){
 			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {

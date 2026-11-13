@@ -15,6 +15,7 @@
 #include "wrapped-card.h"
 #include "roomthread.h"
 #include "card-lifetime-manager.h"
+#include <QDebug>
 #include <QScopeGuard>
 #include <algorithm>
 
@@ -1266,6 +1267,13 @@ void Nullification::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
     CardUseStruct card_use = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
 	if(card_use.nullified_list.contains("_ALL_TARGETS")) return;
 	CardEffectStruct effect = source->getTag("NullifyingEffect").value<CardEffectStruct>();
+	if (!card_use.whocard || !effect.card) {
+		qWarning().noquote() << "[NULLIFICATION_INVALID_CONTEXT]"
+			<< "source=" << source->objectName() << "card=" << toString()
+			<< "missing_whocard=" << !card_use.whocard
+			<< "missing_effect_card=" << !effect.card << "action=skip_effect";
+		return;
+	}
 	QString tn = source->objectName();
 	if (effect.to) tn = effect.to->objectName();
     QVariant data = "Nullification:"+card_use.whocard->getClassName()+":"+tn+":"+(effect.nullified?"true":"false");
