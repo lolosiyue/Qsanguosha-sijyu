@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 原版 standard 25 武將 headless 驗收：可中斷續跑的驅動外殼。
+# 武將 headless 驗收：可中斷續跑的驅動外殼。PACK 決定跑哪個包。
 #
 # 為什麼需要外層驅動：general_acceptance.py 一次只跑一個武將，它自己的
 # headless stage 沒有任何續跑能力 —— 中途被打斷（本機每天 05:00 Windows
@@ -7,9 +7,14 @@
 # 每完成一個武將就把狀態寫進 state/，下次啟動只補未完成的。
 #
 # 用法：
-#   tools/autotest/standard-accept-driver.sh            # 續跑未完的
+#   tools/autotest/standard-accept-driver.sh            # 續跑未完的（預設 PACK=standard）
+#   PACK=wind tools/autotest/standard-accept-driver.sh  # 風包 10 將
+#   PACK=fire tools/autotest/standard-accept-driver.sh  # 火包 10 將
 #   tools/autotest/standard-accept-driver.sh --status   # 只看進度
 #   tools/autotest/standard-accept-driver.sh --reset caocao
+#
+# PACK 會決定輸出目錄：artifacts/<PACK>-accept-<date>/，所以風火包不會
+# 撞進 standard 那輪的 state/ 與 raw/。
 #
 # 同一時間只允許一個實例（flock）。要中斷直接 kill 掉這個進程即可；
 # state 是每武將一寫，最壞情況只損失當前這一個武將。
@@ -17,18 +22,20 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT="${OUT_DIR:-$ROOT/artifacts/standard-accept-20261110}"
+PACK="${PACK:-standard}"
+OUT="${OUT_DIR:-$ROOT/artifacts/${PACK}-accept-20261110}"
 STATE="$OUT/state"
 RAW="$OUT/raw"
 LOCK="$STATE/driver.lock"
 LOG="$OUT/driver.log"
 EXE_ROOT="$ROOT"
 JOBS="${JOBS:-2}"
-BASE_SEED="${BASE_SEED:-20261110}"
+# BASE_SEED 只在 PACK 未給時當後備；PACK 各自有自己的起點（見下面 case）。
+BASE_SEED="${BASE_SEED:-}"
 
 # 21 個 strengthen 強化的原版人 + 4 個 addGenerals 非 nos 武將。順序固定，
 # 這樣 seed 與輸出目錄在多次執行之間一致，續跑不會換到別的對局。
-GENERALS=(
+STANDARD_GENERALS=(
   caocao simayi xiahoudun zhangliao xuchu
   guojia liubei guanyu zhangfei zhaoyun
   machao huangyueying ganning lvmeng huanggai
@@ -36,18 +43,47 @@ GENERALS=(
   diaochan zhenji zhugeliang sunquan sunshangxiang
 )
 
+# 風包 WindPackage（src/package/wind.cpp:2569）。這些武將只存在於原始包，
+# 沒有 strengthen 版，所以矩陣跑的是原版技能本身。
+WIND_GENERALS=(
+  xiahouyuan caoren huangzhong weiyan xiaoqiao
+  zhoutai zhangjiao yuji shenguanyu shenlvmeng
+)
+
+# 火包 FirePackage（src/package/fire.cpp:1888）。
+FIRE_GENERALS=(
+  dianwei xunyu pangtong wolong taishici
+  yuanshao yanliangwenchou pangde shenzhouyu shenzhugeliang
+)
+
+# 每個包從自己的 seed 起點算，避免三個包在報告裡出現同一組 seed 造成混淆。
+case "$PACK" in
+  standard) GENERALS=("${STANDARD_GENERALS[@]}"); PACK_SEED_BASE="${PACK_SEED_BASE:-20261110}" ;;
+  wind)     GENERALS=("${WIND_GENERALS[@]}");     PACK_SEED_BASE="${PACK_SEED_BASE:-20261210}" ;;
+  fire)     GENERALS=("${FIRE_GENERALS[@]}");     PACK_SEED_BASE="${PACK_SEED_BASE:-20261310}" ;;
+  *)        echo "unknown PACK=$PACK (expected: standard|wind|fire)" >&2; exit 2 ;;
+esac
+
+# 風火包不套用 standard 那輪的 layerB-exclude.txt：那份清單是為 strengthen
+# 武將的層 B 排的，跟這兩個包無關。要排除模式就自己給 LAYERB_EXCLUDE。
+if [[ "$PACK" != "standard" ]]; then
+  LAYERB_EXCLUDE="${LAYERB_EXCLUDE:-artifacts/${PACK}-accept-20261110/layerB-exclude.txt}"
+fi
+
 mkdir -p "$STATE" "$RAW"
 
 log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG"; }
 
 seed_for() {
-  # 每個武將一個穩定 seed：BASE_SEED + 序號 * 10，方便重跑同一局。
+  # 每個武將一個穩定 seed：包起點 + 序號 * 10，方便重跑同一局。
+  # 給 BASE_SEED 時它覆蓋包起點（要重跑出跟某份舊報告完全一樣的對局時用）。
   local idx="$1"
-  echo $(( BASE_SEED + idx * 10 ))
+  local base="${BASE_SEED:-$PACK_SEED_BASE}"
+  echo $(( base + idx * 10 ))
 }
 
 layerB_exclude() {
-  local f="$OUT/layerB-exclude.txt"
+  local f="${LAYERB_EXCLUDE:-$OUT/layerB-exclude.txt}"
   if [[ -f "$f" ]]; then tr -d '\n' < "$f"; else echo ""; fi
 }
 
@@ -124,7 +160,7 @@ write_progress() {
     if [[ "$(cut -f2 <<<"$line")" == "rc=0" ]]; then done=$((done+1)); else failed=$((failed+1)); fi
   done
   {
-    echo "# 原版 standard 25 武將驗收 — 進度"
+    echo "# ${PACK} 包武將 headless 驗收 — 進度"
     echo
     echo "更新時間：$(date '+%F %T %Z')"
     echo
@@ -143,7 +179,7 @@ write_progress() {
     done
     echo
     echo "狀態檔：\`$STATE/<general>.status\`；原始 log：\`$RAW/<general>/\`。"
-    echo "續跑：\`tools/autotest/standard-accept-driver.sh\`（冪等，已完成的會跳過）。"
+    echo "續跑：\`PACK=$PACK tools/autotest/standard-accept-driver.sh\`（冪等，已完成的會跳過）。"
   } > "$f"
 }
 
