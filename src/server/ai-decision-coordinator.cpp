@@ -34,6 +34,63 @@ namespace {
 const int AiEventLogLimit = 64;
 // Above this many alive players isolated faults are contained instead of handed to SmartAI.
 const int AiLargeRoomAlive = 16;
+
+// Opt-in, exclusive timings within projectWorldView. The public-board build is
+// measured separately by AI_WV; no gameplay query is added or skipped here.
+class AiWorldProjectionProbe
+{
+public:
+    enum Section { Facts, Prototypes, Players, CardRules, Availability, Distances, History, Policy, Count };
+
+    AiWorldProjectionProbe()
+        : m_enabled(qEnvironmentVariableIntValue("QSAN_AI_WV_DETAIL") == 1)
+    {
+        if (m_enabled) m_timer.start();
+    }
+
+    void section(Section next)
+    {
+        if (!m_enabled) return;
+        const qint64 now = m_timer.nsecsElapsed();
+        m_durations[m_section] += now - m_checkpoint;
+        m_checkpoint = now;
+        m_section = next;
+    }
+
+    template <typename Operation>
+    void measure(Section next, Operation operation)
+    {
+        const Section previous = m_section;
+        section(next);
+        operation();
+        section(previous);
+    }
+
+    void report(const AIWorldView &world, bool eventOnly)
+    {
+        if (!m_enabled) return;
+        section(m_section);
+        qInfo().noquote() << "[AI_WV_DETAIL]"
+            << "viewer=" << world.self.objectName << "revision=" << world.revision
+            << "event_only=" << eventOnly << "players=" << world.players.size() + 1
+            << "hand=" << world.handCards.size() << "total_us=" << m_checkpoint / 1000
+            << "facts_us=" << m_durations[Facts] / 1000
+            << "prototypes_us=" << m_durations[Prototypes] / 1000
+            << "players_us=" << m_durations[Players] / 1000
+            << "card_rules_us=" << m_durations[CardRules] / 1000
+            << "availability_us=" << m_durations[Availability] / 1000
+            << "distances_us=" << m_durations[Distances] / 1000
+            << "history_us=" << m_durations[History] / 1000
+            << "policy_us=" << m_durations[Policy] / 1000;
+    }
+
+private:
+    bool m_enabled;
+    QElapsedTimer m_timer;
+    qint64 m_checkpoint = 0;
+    qint64 m_durations[Count] = {};
+    Section m_section = Facts;
+};
 }
 
 // Hegemony decisions must expose the distinction between an isolated envelope
@@ -2053,6 +2110,7 @@ static QJsonObject makeAIHegemonyFacts(const Room &room, const ServerPlayer *vie
 AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
                                                    bool compactPolicy, bool eventOnly) const
 {
+    AiWorldProjectionProbe probe;
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     AIWorldView world;
@@ -2084,6 +2142,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     world.enableHegemony = ServerInfo.EnableHegemony;
     world.aiHumanized = board.modeId != QStringLiteral("50p")
         && Config.value(QStringLiteral("AIHumanized"), true).toBool();
+    world.originAiDelay = Config.OriginAIDelay;
     if (!viewer || viewer->getRoom() != &m_room) return world;
     world.aiChatEnabled = viewer->getState() == QStringLiteral("robot")
         && Config.OriginAIDelay > 0 && world.aiHumanized;
@@ -2114,8 +2173,10 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
 
     const bool hegemony = ServerInfo.EnableHegemony;
     // Basic prototype rules cost several skill scans per player; events skip them.
+    probe.section(AiWorldProjectionProbe::Prototypes);
     const QHash<QString, QJsonObject> prototypes = eventOnly
         ? QHash<QString, QJsonObject>() : prototypeRules();
+    probe.section(AiWorldProjectionProbe::Players);
     for (const PublicPlayer &row : board.players) {
         ServerPlayer *player = row.player;
         if (!player) continue;
@@ -2197,6 +2258,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 const ViewAsSkill *viewAs = eventOnly ? nullptr
                     : Sanguosha->getViewAsSkill(cached.instance.skillName);
                 if (viewAs) {
+                    probe.section(AiWorldProjectionProbe::Availability);
                     skillView.viewAsKnown = true;
                     skillView.viewAsV2 = dynamic_cast<const ViewAsSkillV2 *>(viewAs) != nullptr;
                     skillView.enabledAtPlay = viewAs->isEnabledAtPlay(player);
@@ -2205,12 +2267,14 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                         QStringLiteral("nullification"), QStringLiteral("peach+analeptic")};
                     for (const QString &pattern : responsePatterns)
                         skillView.enabledAtResponse.insert(pattern, viewAs->isEnabledAtResponse(player, pattern));
+                    probe.section(AiWorldProjectionProbe::Players);
                 }
             }
             playerView.skills << skillView;
         }
 
         if (player == viewer) {
+            probe.section(AiWorldProjectionProbe::Availability);
             // The static wine gate is distinct from Card::isAvailable and includes
             // private source restrictions. Only the owner's printed prototype gets it.
             if (!eventOnly && playerView.prototypeRules.contains(QStringLiteral("Analeptic"))) {
@@ -2237,11 +2301,16 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 }
             }
             // Own-card rules are decision data; events skip them like prototype rules.
+            probe.section(AiWorldProjectionProbe::Players);
             for (AICardView &card : playerView.equips)
-                projectOwnCardState(card, viewer, false, !eventOnly);
+                probe.measure(AiWorldProjectionProbe::CardRules, [&] {
+                    projectOwnCardState(card, viewer, false, !eventOnly);
+                });
             for (AICardPileView &pile : playerView.piles)
                 for (AICardView &card : pile.cards)
-                    projectOwnCardState(card, viewer, false, !eventOnly);
+                    probe.measure(AiWorldProjectionProbe::CardRules, [&] {
+                        projectOwnCardState(card, viewer, false, !eventOnly);
+                    });
             const QHash<QString, int> history = player->getHistory();
             for (auto entry = history.cbegin(); entry != history.cend(); ++entry)
                 playerView.usedHistory.insert(entry.key(), player->usedTimes(entry.key()));
@@ -2280,13 +2349,16 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             world.self = playerView;
             foreach (const Card *card, player->getHandcards()) {
                 AICardView view = makeAICardView(card);
-                projectOwnCardState(view, viewer, false, !eventOnly);
+                probe.measure(AiWorldProjectionProbe::CardRules, [&] {
+                    projectOwnCardState(view, viewer, false, !eventOnly);
+                });
                 world.handCards << view;
             }
         } else {
             world.players << playerView;
         }
     }
+    probe.section(AiWorldProjectionProbe::Distances);
     const auto distancePlayers = m_room.getAlivePlayers();
     const auto distanceSkills = !eventOnly && (!compactPolicy || hegemony)
         ? Sanguosha->getDistanceSkills() : QList<const DistanceSkill *>();
@@ -2336,6 +2408,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
             m_worldDistances = world.distances;
         }
     }
+    probe.section(AiWorldProjectionProbe::History);
     if (!eventOnly) foreach (const int cardId, m_room.getDiscardPile()) {
         if (const Card *card = Sanguosha->getCard(cardId))
             world.discardPile << makeAICardView(card);
@@ -2350,7 +2423,9 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     }
     if (world.enableHegemony)
         world.hegemonyFacts = makeAIHegemonyFacts(m_room, viewer);
+    probe.section(AiWorldProjectionProbe::Policy);
     AiLuaRuntime::evaluateModePolicy(m_room.roomRuntime()->lua(), world, compactPolicy);
+    probe.report(world, eventOnly);
     return world;
 }
 
