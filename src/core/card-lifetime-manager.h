@@ -323,6 +323,11 @@ private:
     void classifyPhysicalDestructionLocked(Entry &entry);
     void reconcileDestroyedLocked();
     void reapDeadLocked(const std::shared_ptr<const CardLifetimeToken> &token);
+    // Caller holds m_mutex. Returned leases must be released after unlocking,
+    // or transferred to another owning container without releasing them.
+    QList<std::shared_ptr<const CardLifetimeToken>> replaceEventPayloadLocked(
+        const void *owner, QList<std::shared_ptr<const CardLifetimeToken>> tokens);
+    void releaseEventLeaseRefLocked(const std::shared_ptr<const CardLifetimeToken> &token);
     quint64 drainImpl(const void *domain,
                       QList<QPointer<QObject>> *retiredObjects,
                       bool turnBoundary = false);
@@ -335,6 +340,7 @@ private:
     QList<ChangeEdge> m_changeEdges;
     QList<TagBinding> m_tagBindings;
     QHash<const void *, QList<std::shared_ptr<const CardLifetimeToken>>> m_eventLeases;
+    QHash<const void *, int> m_eventLeaseRefs;
     QHash<const void *, QHash<QByteArray, QList<std::shared_ptr<const CardLifetimeToken>>>> m_variantTags;
     CardLifetimeMode m_mode;
     QThread *m_ownerThread;

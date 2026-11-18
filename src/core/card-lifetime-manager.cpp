@@ -10,6 +10,7 @@
 #include <QSet>
 
 #include <cstdio>
+#include <limits>
 #include <mutex>
 
 // CardTagOwner is only an ownership wrapper on the tag, but readers always use
@@ -130,6 +131,7 @@ CardLifetimeManager::~CardLifetimeManager()
     m_changeEdges.clear();
     m_tagBindings.clear();
     m_eventLeases.clear();
+    m_eventLeaseRefs.clear();
     m_variantTags.clear();
     m_entries.clear();
     m_deadEntries.clear();
@@ -475,18 +477,19 @@ void CardLifetimeManager::reapDeadLocked(
         || entry->adoptionReservations != 0 || entry->object != nullptr)
         return;
     const void *address = token->address;
-    const bool referenced = std::any_of(m_wrappers.cbegin(), m_wrappers.cend(),
-        [&](const WrapperBinding &binding) { return binding.token.get() == token.get(); })
-        || std::any_of(m_changeEdges.cbegin(), m_changeEdges.cend(),
+    // entry->wrappers already counts every m_wrappers binding that points at this
+    // token (SWIG calls retainWrapper before bindWrapper, and every release path
+    // decrements), so a token reaching this point has no wrapper left to find.
+    // Scanning m_wrappers here cost 64% of the reap samples for nothing.
+    const bool referenced = std::any_of(m_changeEdges.cbegin(), m_changeEdges.cend(),
         [&](const ChangeEdge &edge) { return edge.sourceToken.get() == token.get()
             || edge.targetToken.get() == token.get(); })
         || std::any_of(m_tagBindings.cbegin(), m_tagBindings.cend(),
         [&](const TagBinding &binding) { return binding.token.get() == token.get(); });
     if (referenced)
         return;
-    for (auto it = m_eventLeases.cbegin(); it != m_eventLeases.cend(); ++it)
-        for (const auto &held : it.value())
-            if (held.get() == token.get()) return;
+    if (m_eventLeaseRefs.value(token.get()) > 0)
+        return;
     for (auto outer = m_variantTags.cbegin(); outer != m_variantTags.cend(); ++outer)
         for (auto inner = outer.value().cbegin(); inner != outer.value().cend(); ++inner)
             for (const auto &held : inner.value())
@@ -1086,6 +1089,41 @@ void CardLifetimeManager::releaseTags(const void *container)
         releaseNativeLease(token);
 }
 
+void CardLifetimeManager::releaseEventLeaseRefLocked(
+    const std::shared_ptr<const CardLifetimeToken> &token)
+{
+    auto found = m_eventLeaseRefs.find(token.get());
+    if (found == m_eventLeaseRefs.end() || found.value() <= 0)
+        qFatal("CardLifetimeManager: inconsistent event lease index");
+    if (found.value() == 1)
+        m_eventLeaseRefs.erase(found);
+    else
+        --found.value();
+}
+
+QList<std::shared_ptr<const CardLifetimeToken>> CardLifetimeManager::replaceEventPayloadLocked(
+    const void *owner, QList<std::shared_ptr<const CardLifetimeToken>> tokens)
+{
+    QList<std::shared_ptr<const CardLifetimeToken>> previous;
+    auto found = m_eventLeases.find(owner);
+    if (found != m_eventLeases.end()) {
+        previous = std::move(found.value());
+        m_eventLeases.erase(found);
+        for (const auto &token : previous)
+            releaseEventLeaseRefLocked(token);
+    }
+    if (!tokens.isEmpty()) {
+        for (const auto &token : tokens) {
+            int &references = m_eventLeaseRefs[token.get()];
+            if (references == std::numeric_limits<int>::max())
+                qFatal("CardLifetimeManager: event lease reference overflow");
+            ++references;
+        }
+        m_eventLeases.insert(owner, std::move(tokens));
+    }
+    return previous;
+}
+
 void CardLifetimeManager::retainEventPayload(const void *owner,
                                              std::initializer_list<const Card *> cards)
 {
@@ -1100,9 +1138,14 @@ void CardLifetimeManager::retainEventPayload(const void *owner,
         if (token && retainNativeLease(token))
             tokens.push_back(token);
     }
-    std::lock_guard<ProfiledMutex> lock(m_mutex);
-    if (!tokens.isEmpty())
-        m_eventLeases.insert(owner, std::move(tokens));
+    QList<std::shared_ptr<const CardLifetimeToken>> replaced;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        if (!tokens.isEmpty())
+            replaced = replaceEventPayloadLocked(owner, std::move(tokens));
+    }
+    for (const auto &token : replaced)
+        releaseNativeLease(token);
 }
 
 void CardLifetimeManager::releaseEventPayload(const void *owner)
@@ -1110,11 +1153,7 @@ void CardLifetimeManager::releaseEventPayload(const void *owner)
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
         std::lock_guard<ProfiledMutex> lock(m_mutex);
-        auto found = m_eventLeases.find(owner);
-        if (found == m_eventLeases.end())
-            return;
-        tokens = std::move(found.value());
-        m_eventLeases.erase(found);
+        tokens = replaceEventPayloadLocked(owner, {});
     }
     for (const auto &token : tokens)
         releaseNativeLease(token);
@@ -1133,6 +1172,7 @@ quint64 CardLifetimeManager::releaseEventPayloads(const void *domain)
                 const Entry *entry = entryForLease(*held);
                 if (entry && entry->domain == domain) {
                     tokens.append(*held);
+                    releaseEventLeaseRefLocked(*held);
                     held = heldTokens.erase(held);
                 } else {
                     ++held;
@@ -1261,8 +1301,14 @@ bool CardLifetimeManager::retainVariantPayload(const void *owner, const QVariant
         }
         tokens.push_back(token);
     }
-    std::lock_guard<ProfiledMutex> lock(m_mutex);
-    if (!tokens.isEmpty()) m_eventLeases.insert(owner, std::move(tokens));
+    QList<std::shared_ptr<const CardLifetimeToken>> replaced;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        if (!tokens.isEmpty())
+            replaced = replaceEventPayloadLocked(owner, std::move(tokens));
+    }
+    for (const auto &token : replaced)
+        releaseNativeLease(token);
     return true;
 }
 
@@ -1275,11 +1321,7 @@ bool CardLifetimeManager::retainVariantTag(const void *container, const QByteArr
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
         std::lock_guard<ProfiledMutex> lock(m_mutex);
-        auto found = m_eventLeases.find(container);
-        if (found != m_eventLeases.end()) {
-            tokens = std::move(found.value());
-            m_eventLeases.erase(found);
-        }
+        tokens = replaceEventPayloadLocked(container, {});
         if (!tokens.isEmpty())
             m_variantTags[container].insert(key, std::move(tokens));
     }
@@ -2287,7 +2329,7 @@ bool CardLifetimeManager::resetForTest()
             return false;
     }
     if (!m_wrappers.isEmpty() || !m_changeEdges.isEmpty() || !m_tagBindings.isEmpty()
-        || !m_eventLeases.isEmpty() || !m_variantTags.isEmpty()
+        || !m_eventLeases.isEmpty() || !m_eventLeaseRefs.isEmpty() || !m_variantTags.isEmpty()
         || !m_domainActiveScopes.isEmpty() || !m_domainLuaPins.isEmpty()
         || !m_runtimeLuaPins.isEmpty()
         || !m_runtimeRegistrations.isEmpty() || !m_domainBaselines.isEmpty()
@@ -2303,6 +2345,7 @@ bool CardLifetimeManager::resetForTest()
     m_deadEntries.clear();
     m_wrappers.clear();
     m_domainActiveScopes.clear();
+    m_eventLeaseRefs.clear();
     m_domainLuaPins.clear();
     m_runtimeLuaPins.clear();
     m_domainBaselines.clear();
