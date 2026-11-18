@@ -1728,8 +1728,17 @@ public:
             if (!judge.card || judge.isBad() || !ctx.invoker->isAlive()) continue;
             const int id = judge.card->getEffectiveId();
             if (id < 0 || room->getCardPlace(id) != Player::DiscardPile) continue;
-            ServerPlayer *recipient = room->askForPlayerChosen(ctx.invoker, room->getAlivePlayers(), objectName(),
-                "@olpiaoling-invoke:" + judge.card->objectName(), true);
+            ServerPlayer *recipient = nullptr;
+            {
+                const QVariant previous = ctx.invoker->getTag("olpiaoling");
+                const auto restore = qScopeGuard([&] {
+                    if (previous.isValid()) ctx.invoker->setTag("olpiaoling", previous);
+                    else ctx.invoker->removeTag("olpiaoling");
+                });
+                ctx.invoker->setTag("olpiaoling", QVariant::fromValue(judge.card));
+                recipient = room->askForPlayerChosen(ctx.invoker, room->getAlivePlayers(), objectName(),
+                    "@olpiaoling-invoke:" + judge.card->objectName(), true);
+            }
             if (recipient) {
                 SkillContext give = ctx;
                 give.extra_data = id;
@@ -1817,7 +1826,16 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        ServerPlayer *target = room->askForPlayerChosen(ctx.invoker, use.to, objectName(), "@olluanji-remove", true);
+        ServerPlayer *target = nullptr;
+        {
+            const QVariant previous = ctx.invoker->getTag("olluanji_data");
+            const auto restore = qScopeGuard([&] {
+                if (previous.isValid()) ctx.invoker->setTag("olluanji_data", previous);
+                else ctx.invoker->removeTag("olluanji_data");
+            });
+            ctx.invoker->setTag("olluanji_data", QVariant::fromValue(use));
+            target = room->askForPlayerChosen(ctx.invoker, use.to, objectName(), "@olluanji-remove", true);
+        }
         if (!target) return false;
         ctx.targets << target;
         return true;
