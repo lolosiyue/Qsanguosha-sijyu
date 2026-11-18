@@ -77,6 +77,10 @@ LUA_ERR_RE = re.compile(
 )
 UNKNOWN_OPT = "Unknown options: headless"
 
+# headless_runner 的 CSV 檔名固定是 summary-headless-<YYYYMMDD-HHMMSS>.csv，
+# 用檔名內的戳排跑批先後（不用 mtime：複製、備份都會改動 mtime）。
+CSV_STAMP_RE = re.compile(r"summary-headless-(\d{8}-\d{6})\.csv$")
+
 # 堆疊回溯的單幀行（`in method 'x'`、`in function <f:l>`）不是獨立錯誤，
 # 歸類時要跳過，否則真正的錯誤會被這些幀擠出榜外。
 TRACEBACK_RE = re.compile(r"\bin (?:method|function|local|field|upvalue|main chunk)\b")
@@ -131,17 +135,35 @@ def collect_csv_stats(groot: Path) -> dict[str, dict]:
 
     exit / finished / expected 這三個數字以它為準；log 只用來判 verdict。
     還沒寫出來就回空 dict，呼叫端填空字串，不猜。
+
+    **逐模式取最新的一列，不是取最新的一份 CSV**：2026-11-14 起有一批
+    「單格重現」的跑批只寫 1 列（`original-repro-evidence/20261140/...` 那類），
+    照「取時間最新那一份」會把該將其餘 15 格的 exit / finished 全變空白，
+    diaochan、sunshangxiang、zhangliao、guanyu 四將都撞到。
     """
-    cands = sorted(groot.glob("summary-headless-*.csv")) or \
-        sorted(groot.glob("**/summary-headless-*.csv"))
-    if not cands:
+    files = list(groot.glob("summary-headless-*.csv")) + \
+        list(groot.glob("**/summary-headless-*.csv"))
+    if not files:
         return {}
+    stamped = []
+    for path in files:
+        m = CSV_STAMP_RE.search(path.name)
+        stamped.append((m.group(1) if m else "", str(path), path))
+    # 新的先讀；每個 mode 只收第一次見到的那一列。戳格式固定，字串比較即時間比較。
+    stamped.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
     stats: dict[str, dict] = {}
-    # 這個 CSV 帶 UTF-8 BOM，不用 utf-8-sig 的話第一個欄位會變成 "\ufeffmode"。
-    with cands[-1].open(newline="", encoding="utf-8-sig") as fh:
-        for row in csv.DictReader(fh):
-            mode = row.get("mode", "")
-            if mode in MODES and mode not in stats:
+    seen: set[str] = set()
+    for _stamp, key, path in stamped:
+        if key in seen:
+            continue
+        seen.add(key)
+        # 這個 CSV 帶 UTF-8 BOM，不用 utf-8-sig 的話第一個欄位會變成 "\ufeffmode"。
+        with path.open(newline="", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                mode = row.get("mode", "")
+                if mode not in MODES or mode in stats:
+                    continue
                 finished = row.get("finished", "")
                 expected = row.get("expected", "")
                 stats[mode] = {
@@ -154,6 +176,8 @@ def collect_csv_stats(groot: Path) -> dict[str, dict]:
                     "failed_games": row.get("failed_games", ""),
                     "finished": finished,
                     "expected": expected,
+                    "log": row.get("log", ""),
+                    "csv": path.name,
                     # 不採 CSV 的 `done_marker`：headless_runner 的 done 是
                     # `shutdown_count == 1`（:470），多打一局的模式永遠是 False。
                     "done": (finished_covers_expected(finished, expected)
@@ -185,6 +209,23 @@ def collect_budget(groot: Path | None) -> tuple[list[str], list[str], str]:
     return (list(budget.get("stopped") or []),
             list(budget.get("not_run") or []),
             str(headless.get("detail") or ""))
+
+
+def log_written_after_csv(path: Path, st: dict) -> bool:
+    """這份 log 是不是比它所屬的 CSV 還晚寫？
+
+    CSV 是整將跑完才落盤的，正常情況下 log 一定比它舊。反過來就代表手上這份
+    log 屬於之後才開始的另一輪跑批，不能拿它解釋這份 CSV 的結果。寬限 120 秒
+    是因為 CSV 與 log 的寫入時間本來就貼得很近。
+    """
+    m = CSV_STAMP_RE.search(st.get("csv", ""))
+    if not m:
+        return False
+    try:
+        csv_epoch = time.mktime(time.strptime(m.group(1), "%Y%m%d-%H%M%S"))
+        return path.stat().st_mtime > csv_epoch + 120
+    except (ValueError, OSError):
+        return False
 
 
 def collect_logs(root: Path) -> dict[str, Path]:
@@ -220,7 +261,10 @@ def judge_log(path: Path, general: str, own_skills: set[str] | None = None) -> d
     forced_generals: list[str] = []
     # 模式臨時授與的技能（impasse_fight 這類會用 #AcquireSkill 給技能）。
     # 這些不是武將本體技，不能算命中。
-    acquired: set[str] = set()
+    # 必須按「座位 + 技能」記：`#AcquireSkill | keji | from: sgs3` 是把 keji
+    # 給 sgs3，跟 sgs1 自己發動的 keji 無關。只記技能名會把別座位的授予也算到
+    # 待測武將頭上，lvmeng/05p 就是這樣被誤判成 WARN（sgs1 真的發過 keji）。
+    acquired: set[tuple[str, str]] = set()
     lua_errors: list[tuple[int, str]] = []
     wrong_binary = False
     winners: list[str] = []
@@ -238,7 +282,7 @@ def judge_log(path: Path, general: str, own_skills: set[str] | None = None) -> d
             seated = (i, m.group(1), line.strip())
         m = ACQUIRE_RE.search(line)
         if m:
-            acquired.add(m.group(1))
+            acquired.add((m.group(2), m.group(1)))
             continue
         m = SKILL_RE.search(line)
         if m:
@@ -306,7 +350,7 @@ def judge_log(path: Path, general: str, own_skills: set[str] | None = None) -> d
     # 那些不算「這個武將的技能被觸發過」。
     if own_skills:
         hit = [s for s in own
-               if s[2] in own_skills and s[2] not in acquired]
+               if s[2] in own_skills and (s[1], s[2]) not in acquired]
         if not hit:
             foreign = ", ".join(sorted({s[2] for s in own}))
             return {
@@ -363,6 +407,8 @@ def main() -> int:
                 continue
             g, _, s = part.partition("=")
             skill_map[g.strip()] = {x.strip() for x in s.split(",") if x.strip()}
+    if not skill_map:  # judge_log skips the body-skill filter without it: equipment/foreign skills would PASS
+        parser.error("--skills is empty; run artifacts/<run>/run-judge.sh (it passes skills-args.txt)")
 
     root = Path(args.dir).resolve()
     if not root.is_dir():
@@ -386,8 +432,16 @@ def main() -> int:
         logs = collect_logs(groot)
         csv_stats = collect_csv_stats(groot)
         for mode in MODES:
-            path = logs.get(mode)
             st = csv_stats.get(mode, {})
+            # log 以 CSV 第 16 欄指的那份為準：CSV 與它是同一次跑批寫出來的。
+            # collect_logs 用 glob 猜最新目錄，跑批還在寫的時候會挑到尚未收尾的
+            # 新批，跟舊 CSV 拼成一份從來不存在過的結果（luxun/08_defense
+            # 2026-11-15 就是這樣被判成 WARN：CSV 是 01:13 那批、log 是 09:32
+            # 正在跑的那份，只有 force general、一條技能行都沒有）。
+            csv_log = (st.get("log") or "").strip()
+            path = Path(csv_log) if csv_log else None
+            if path is None or not path.is_file():
+                path = logs.get(mode)   # 沒有 CSV 時才退回 glob 的結果
             if path is None:
                 rows[gen][mode] = {
                     "verdict": "NOT RUN", "seat": "", "skills": "",
@@ -436,6 +490,23 @@ def main() -> int:
                     "expected": st.get("expected", ""),
                 }
                 continue
+            # CSV 說這局完成了，但手上這份 log 比 CSV 還新、或根本沒有收尾行／
+            # 勝負行：那是「跑批還在寫」的狀態。這時候判 WARN（技能沒觀測到）會
+            # 把「還沒打到」講成「沒觸發」，所以退回 RUNNING。
+            if st.get("done"):
+                tail_text = path.read_text(errors="replace")
+                if log_written_after_csv(path, st) or not (
+                        ALL_DONE_RE.search(tail_text) or WINNER_RE.search(tail_text)):
+                    rows[gen][mode] = {
+                        "verdict": "RUNNING", "seat": "", "skills": "",
+                        "evidence": [str(path)],
+                        "reason": "log 還在寫（比 CSV 新，或缺收尾行／勝負行），先不判",
+                        "lua": 0, "exit_code": st.get("exit", ""),
+                        "finished": st.get("finished", ""),
+                        "expected": st.get("expected", ""),
+                    }
+                    continue
+
             if not st.get("done"):
                 # 這裡要分兩種，不能一律叫 RUNNING：
                 #   真的還在跑     → 這將的 CSV 還沒落盤，上面已經攔掉了

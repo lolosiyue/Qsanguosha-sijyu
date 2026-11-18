@@ -71,15 +71,19 @@ def latest_csv(headless_dir: Path):
 
 
 def all_csvs(headless_dir: Path):
-    """回傳 [(stamp, path)]，新到舊。單格補跑只寫一行 CSV，所以不能只看最新一份。"""
+    """回傳 [(stamp, path)]，新到舊。單格補跑只寫一行 CSV，所以不能只看最新一份。
+
+    用 `**/` 遞迴：2026-11-14 起有些單格重現的跑批把 CSV 寫進子目錄
+    （`original-repro-evidence/<seed>/`），只掃一層會看不到那筆記錄。
+    """
     found = []
     if not headless_dir.is_dir():
         return found
-    for path in headless_dir.iterdir():
+    for path in headless_dir.glob("**/summary-headless-*.csv"):
         m = CSV_RE.match(path.name)
         if m:
             found.append((m.group(1), path))
-    found.sort(key=lambda item: item[0], reverse=True)
+    found.sort(key=lambda item: (item[0], str(item[1])), reverse=True)
     return found
 
 

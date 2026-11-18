@@ -590,6 +590,7 @@ def main():
           % (", ".join(modes), args.games, parallel, len(tasks)))
 
     results = []
+    csv_path = None
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(run_mode, args, exe, workdir, m, args.games, tag): m
                    for (m, tag) in tasks}
@@ -625,6 +626,31 @@ def main():
                 if r.get("smart_ai_failed"):
                     print("        smart-ai 載入失敗 (檔案/環境問題), 後續局未跑")
 
+            # Rewrite this run's summary after every mode, not only at the end: a run
+            # killed midway (WSL stop, 05:00 scheduled shutdown) used to leave no CSV
+            # at all, so every finished mode of that run had to be played again.
+            csv_path = write_summary(args, log_root, results, csv_path)
+
+    csv_path = write_summary(args, log_root, results, csv_path)
+    print("結果: %s" % csv_path)
+
+    ok = sum(1 for r in results if r.get("ok"))
+    # Budget-stopped and unstarted modes are reported separately; they are not failures.
+    budgeted = sum(1 for r in results if r.get("budget"))
+    print("總計: %d/%d 通過" % (ok, len(results))
+          + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
+    return 0 if ok + budgeted == len(results) else 1
+
+
+def write_summary(args, log_root, results, previous):
+    """Write the summary CSV for the modes finished so far; return its path.
+
+    The file is named by the time of this write, so its stamp is never older than
+    any mode it lists (standard_matrix_judge.py treats a log newer than its CSV as
+    still running). Each rewrite replaces the run's previous file, so a finished
+    run still leaves exactly one CSV. The temporary name starts with a dot and
+    ends in .tmp, so no summary-headless-*.csv glob can pick up a half-written file.
+    """
     csv_path = (
         os.path.abspath(args.output)
         if args.output
@@ -665,15 +691,15 @@ def main():
                 process_failure or result.get("error", ""),
                 result.get("log", "").replace("\\", "/"), result.get("budget", ""),
             ])
-    write_csv(csv_path, header, csv_rows)
-    print("結果: %s" % csv_path)
-
-    ok = sum(1 for r in results if r.get("ok"))
-    # Budget-stopped and unstarted modes are reported separately; they are not failures.
-    budgeted = sum(1 for r in results if r.get("budget"))
-    print("總計: %d/%d 通過" % (ok, len(results))
-          + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
-    return 0 if ok + budgeted == len(results) else 1
+    tmp_path = os.path.join(os.path.dirname(csv_path), "." + os.path.basename(csv_path) + ".tmp")
+    write_csv(tmp_path, header, csv_rows)
+    os.replace(tmp_path, csv_path)
+    if previous and os.path.abspath(previous) != os.path.abspath(csv_path):
+        try:
+            os.remove(previous)
+        except OSError:
+            pass
+    return csv_path
 
 
 if __name__ == "__main__":

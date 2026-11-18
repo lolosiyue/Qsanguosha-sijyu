@@ -21,6 +21,14 @@
 
 set -uo pipefail
 
+# 崩潰要留 core。沒有 core 就只能靠日誌猜崩點 —— 2026-11-18 的
+# xunyu/03_1v2 與 dianwei/10_shijia 兩格都因此沒有證據可看。
+# 子進程繼承這個上限，包括 general_acceptance.py 與它 spawn 的 QSanguosha；
+# runner_common.ensure_core_dumps() 在 Python 那層再兜一次。
+# kernel 的 core_pattern 是相對路徑 `core`，所以 core 會落在對局的 cwd
+# （resolve_workdir 指到倉庫根），.gitignore 已擋住它。
+ulimit -c unlimited 2>/dev/null || true
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACK="${PACK:-standard}"
 OUT="${OUT_DIR:-$ROOT/artifacts/${PACK}-accept-20261110}"
@@ -99,6 +107,9 @@ run_one() {
   fi
 
   mkdir -p "$dir"
+  # 上一輪留下的 modes.txt 不能拿來判這一輪：general_acceptance.py 若在寫出新表之前
+  # 就失敗，coverage 會拿舊矩陣判成 ok。先刪掉，失敗時 coverage 會報 nomodes。
+  rm -f "$dir/headless/modes.txt"
   log "START $general seed=$seed out=$dir"
   local started; started=$(date +%s)
 
@@ -107,6 +118,7 @@ run_one() {
       --seed "$seed" \
       --stages headless \
       --exclude-modes "$(layerB_exclude)" \
+      --resume \
       --jobs 1 \
       --headless-minutes 0 \
       --skip-sync-check \
@@ -117,23 +129,17 @@ run_one() {
   # rc 不能當完成判據。實測：guanyu 撞上預設 60 分鐘預算，16 個模式只跑了 5 個、
   # 另外 11 個是 NOT RUN，general_acceptance.py 仍然 exit 0。只看 rc 會把「缺格」
   # 記成完成，之後永遠不會補跑，summary.tsv 會靜靜留下一整批空白而顯示 PASS。
-  # 真正的判據是這一輪的 CSV：必須有 16 行，且每行 finished == expected。
-  local coverage; coverage=$(python3 - "$dir" <<'PY'
-import csv, glob, sys
-rows = []
-for path in glob.glob(sys.argv[1] + "/headless/summary-headless-*.csv"):
-    rows = list(csv.DictReader(open(path, encoding="utf-8-sig")))
-    break
-if not rows:
-    print("nocsv")
-    raise SystemExit
-bad = [r["mode"] for r in rows if not r.get("finished") or r["finished"] != r.get("expected")]
-print("ok" if len(rows) == 16 and not bad else "incomplete:" + ",".join(bad))
-PY
-)
+  #
+  # 真正的判據是逐格的：本輪矩陣（general_acceptance.py 寫的 headless/modes.txt）
+  # 裡每一格，最新一次嘗試都已收局。規則在 acceptance_cells.py，跟
+  # general_acceptance.py --resume 共用同一份，兩邊不會再各算各的。
+  # 以前這裡只讀「最新一份 CSV」並要求剛好 16 行：16 是 standard 包的模式數，
+  # wind 包 48 格永遠判 INCOMPLETE；續跑只跑剩餘格，最新 CSV 也永遠不會是整份。
+  # 輸出第一個字是 ok / nomodes / nocsv / incomplete:...，後面是給人看的細節。
+  local coverage; coverage=$(python3 "$ROOT/tools/autotest/acceptance_cells.py" coverage "$dir/headless")
 
   # 只登記真正跑完的武將；沒跑完就不寫狀態檔，下次啟動會自動重跑這一將。
-  if [[ "$coverage" != "ok" ]]; then
+  if [[ "${coverage%% *}" != "ok" ]]; then
     log "INCOMPLETE $general rc=$rc coverage=$coverage ${elapsed}s (重跑)"
     write_progress
     return 1
@@ -141,7 +147,7 @@ PY
 
   printf '%s\trc=%s\tseed=%s\tseconds=%s\t%s\n' \
       "$general" "$rc" "$seed" "$elapsed" "$(date '+%F %T')" > "$tag.status"
-  log "DONE $general rc=$rc ${elapsed}s"
+  log "DONE $general rc=$rc ${elapsed}s coverage=$coverage"
   write_progress
   return 0
 }

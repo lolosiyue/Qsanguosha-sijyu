@@ -111,3 +111,8 @@ web/public/rules/
 /GER.lua
 /gbackup.json
 /artifacts/
+
+# 崩潰留下的 core。kernel 的 core_pattern 是相對路徑 `core`，core_uses_pid=1，
+# 實際檔名是 core.<pid>，落在對局 cwd（倉庫根）。單檔可達 1 GB，不能進 repo。
+/core
+/core.*
