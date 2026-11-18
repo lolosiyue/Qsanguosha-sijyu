@@ -382,6 +382,7 @@ struct AIWorldView {
     bool enableHegemony = false;
     bool aiHumanized = false;
     bool aiChatEnabled = false;
+    int originAiDelay = 0;
     // Roles still alive, from the mode's composition minus the visible dead. Unknown
     // when the mode has custom roles or a dead player's role is hidden from the viewer.
     QJsonObject roleCounts;
