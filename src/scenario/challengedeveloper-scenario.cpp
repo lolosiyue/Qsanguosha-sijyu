@@ -2562,12 +2562,14 @@ public:
 
     const Card *viewAs() const
     {
-        QString name = Self->property("dev_juanlao_card").toString();
+        const Player *player = Self;
+        if (!player) return nullptr;
+        QString name = player->property("dev_juanlao_card").toString();
         if (name.isEmpty()) return nullptr;
         Card *c = Sanguosha->cloneCard(name);
         if (!c) return nullptr;
         c->setSkillName("dev_juanlao");
-        if (!c->isAvailable(Self)) {
+        if (!c->isAvailable(player)) {
             c->deleteLater();
             return nullptr;
         }
@@ -2576,7 +2578,8 @@ public:
 
     bool isEnabledAtPlay(const Player *player) const
     {
-        QString name = Self->property("dev_juanlao_card").toString();
+        if (!player) return false;
+        QString name = player->property("dev_juanlao_card").toString();
         if (name.isEmpty()) return false;
         Card *c = Sanguosha->cloneCard(name);
         if (!c) return false;

@@ -217,12 +217,14 @@ void CoupleScenario::remarry(ServerPlayer *enkemann, ServerPlayer *widow) const
     Room *room = enkemann->getRoom();
 
     ServerPlayer *ex_husband = getSpouse(widow);
-    setSpouse(ex_husband, nullptr);
-    LogMessage log;
-    log.type = "#Divorse";
-    log.from = widow;
-    log.to << ex_husband;
-    room->sendLog(log);
+    if (ex_husband) {
+        setSpouse(ex_husband, nullptr);
+        LogMessage log;
+        log.type = "#Divorse";
+        log.from = widow;
+        log.to << ex_husband;
+        room->sendLog(log);
+    }
 
     ServerPlayer *ex_wife = getSpouse(enkemann);
     if (ex_wife) {
