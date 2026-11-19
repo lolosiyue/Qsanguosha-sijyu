@@ -26,6 +26,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -136,6 +137,19 @@ bool NetworkUiSmokeController::configure(const QStringList &arguments, QString *
     m_windowSize = NetworkUiSmokeReport::parseWindowSize(arguments);
     m_preshowRequested = NetworkUiSmokeReport::parsePreshowSkills(arguments);
     m_stayHidden = arguments.contains(QLatin1String(NetworkUiSmokeReport::FlagStayHidden));
+    const int scriptOption = arguments.indexOf(QStringLiteral("--network-ui-smoke-script"));
+    if (scriptOption >= 0) {
+        QFile script(arguments.value(scriptOption + 1));
+        if (!script.open(QIODevice::ReadOnly)) {
+            if (error) *error = QStringLiteral("Cannot read network smoke server script: %1").arg(script.errorString());
+            return false;
+        }
+        m_serverScript = QString::fromUtf8(script.readAll());
+        if (m_serverScript.trimmed().isEmpty()) {
+            if (error) *error = QStringLiteral("Network smoke server script is empty");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -277,6 +291,7 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
     // button state RoomScene has already laid out.
     m_responder = new NetworkUiSmokeResponder(scene, m_stallMs, this);
     m_responder->setStayHidden(m_stayHidden);
+    m_responder->setServerScript(m_serverScript);
 }
 
 void NetworkUiSmokeController::onServerReply(int commandType)

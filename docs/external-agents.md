@@ -112,11 +112,17 @@ memory for that transport instance: do not save it, put it in command arguments,
 log it, or publish/forward the port. No persistent credential setup is required.
 A second seat needs a separate transport/capability; there is no seat selector.
 
-The runnable `qsanguosha_external_agent_host` starts one external seat (Pause
-policy) and one real companion SmartAI in a two-player native-role room. Its only
-bootstrap line on stdout has the prefix `QSAN_AGENT_BOOTSTRAP `. The supplied
-Python client reads that line through a subprocess pipe. The two processes share
-no engine pointers, Lua state, or decision callbacks.
+The runnable `qsanguosha_external_agent_host` opens a native-role room with
+`--mode <id>` (default `02p`; the registry decides the player count), 
+`--external-seats <n>` (default 1; the first `n` seats are external with the
+Pause policy, the rest are companion SmartAI robots) and `--seed <u32>`
+(default 20261003). Dedicated hegemony, 1v1, 3v3 and XMode drafting workers
+reject attachment, so those modes fail fast with `AGENT attach-failed`. Every
+external seat prints its own `QSAN_AGENT_BOOTSTRAP ` line on stdout, each
+carrying that seat's `objectName`; single-seat clients may keep reading only
+the first line. The supplied Python client reads one line through a
+subprocess pipe. The two processes share no engine pointers, Lua state, or
+decision callbacks.
 
 ```sh
 cmake -S . -B build -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_EXTERNAL_AGENT_HOST=ON
@@ -174,6 +180,60 @@ Closing the socket applies the endpoint's configured disconnect policy. A new
 socket with the same in-memory capability resumes the same pending decision under
 Pause; a finished decision cannot be resumed. No implicit fallback is introduced.
 
+### Answering against the declared candidate space
+
+Each `cardCandidates` entry declares the complete legal action space for one
+card; answering inside it is the client's responsibility.
+
+- `targetCombinations` lists the exact legal target sequences.
+  `targetFixed: true` with `targetCombinations: [[]]` means the card takes no
+  player selection: submit `kind:"useCard"` with `useCardId` only and omit
+  `selectedTargetNames` — global and AOE effects derive their targets at
+  resolution (an empty target list resolves to all other players). Attaching
+  names to a target-fixed candidate, or any sequence outside
+  `targetCombinations`, is an illegal action even though the card itself was
+  offered.
+- `choiceOptions.cardIds`/`cards`, `cardCandidates` and `cardConversions` are
+  the only authorized card sources; a physical ID not offered cannot be
+  submitted. A candidate marked `limited: true` is unusable for this request
+  regardless of `available`.
+- Rejections surface in two shapes. Shape and decision-gate rejections reopen
+  the same prompt with `lastError` (`illegal-action`). A submission that
+  passes the decision gate but fails use-time validation reopens as a fresh
+  `decisionId` with no `lastError` and no event: after an accepted
+  submission, treat a same-shape follow-up request as a rejection signal and
+  re-read the declared space instead of resubmitting the same answer.
+  Consecutive legitimate asks of the same shape are distinguished by an
+  advancing `stateRevision`; a true use-time rejection leaves it unchanged.
+- Skill-driven view-as asks (`skillActions` non-empty) are answered with
+  `kind:"useCard"` whose `skillActionContext` mirrors the offered
+  `activationRef`/`sourceRef`, whose `selectedCardIds` carry the skill's own
+  material — for the wind `shensu` play-phase ask (`@@shensu2`,
+  `Card::MethodDiscard`): exactly one equip card from the hand — and whose
+  `selectedTargetNames` satisfy the skill's target filter. A pass on such an
+  ask bounces at room level even though the endpoint queues it. When the
+  material does not exist (no equip in hand), a skill ask that offers no
+  empty selection would have no expressible answer and loop with fresh
+  decisionIds at an unchanged stateRevision — the engine now avoids this by
+  not raising the ask at all (`Shensu::effect` skips the play-phase ask when
+  no equip material exists, matching the skill's own `canSelectCard` rule;
+  a generic external-Pass→decline mapping in the coordinator remains future
+  work).
+
+### Autonomous answering
+
+An external seat answers from its own judgment over the projected request
+DTO. Rule knowledge — skill text, card effects, targeting and resolution
+contracts — is legitimate preparation and may be read from the source tree.
+Peeking at the engine's own decision makers is not: an external client must
+not read the SmartAI Lua policies (`sgs.ai_skill_*` and the rest of
+`lua/ai/`), the isolated AI layer, or any other in-engine decision route.
+Those sources belong to engine-side seats, and an agent that has seen them
+is no longer an independent decision maker — audit evidence claiming
+`external_agent` provenance becomes misleading. The bundled deterministic
+`mockExternalAgentAnswer` is a value-shape reference only and carries no
+strategy.
+
 Incoming frames are limited to 256 KiB and outgoing/backlogged bytes to 8 MiB;
 oversized/blocked connections close and apply the explicit disconnect policy.
 Requests are value copies, and only the existing viewer projection is serialized.
@@ -186,6 +246,101 @@ seat-selection rejection, disconnect/reconnect with an identical pending snapsho
 stale IDs/revisions, malformed replies and duplicate submissions before finishing
 the game. `--cancel` exercises cancellation from the separate client. The mock's
 120-second watchdog is a test/client budget, not an engine game timer. Durable server-restart persistence remains deferred.
+
+### Hybrid routing driver (`tools/autotest/external_agent_driver.py`)
+
+A file-queue bridge that layers five consumption optimizations onto the v1
+transport: conservative mechanical local answering, per-seat incremental
+worldview briefs, stable-prefix rendering, a battle-notes file protocol, and
+escalation routing. The driver never calls any LLM API; the brain stays on the
+other side of the file queue.
+
+- CLI: `--mode/--seed/--external-seats` pass through to the host.
+  `--fallback mock|file` picks the resolver for escalated questions — the
+  deterministic probe-equivalent answer, or `answer-<n>.json` written by the
+  LLM session next to the brief (consumed and deleted on read).
+  `--escalate-kinds all|0,1,...` restricts which decision kinds are routed to
+  the brief queue (unlisted kinds fall back to mock). `--auto-log`,
+  `--brief-dir`, `--notes` and `--max-seconds` (default 1800) relocate
+  artifacts and bound the run; reopens of one decisionId are capped at 4.
+- Mechanical adjudicator: answers locally only when the declared action space
+  has exactly one element (single choice, exact discard count, single card /
+  target, opaque random-card domain at index 1, forced pick-all sequences,
+  zero-usable play phases) or an optional prompt has zero usable actions
+  (`playerNames` on response kinds is metadata, e.g. the dying-peach target
+  list, not part of the action space). Asks whose `skillActions` are
+  non-empty are never locally passed or answered — their space is the skill
+  activation and a blind pass can bounce at use-time. Every local answer
+  passes a contract
+  self-check before submission — including the candidateId↔useCardId pairing
+  and membership of target sequences in the declared `targetCombinations`;
+  for skill asks the material/target declaration checks are waived because
+  the skill logic owns those spaces. A signature that is
+  gate-rejected, or silently re-asked after an accepted submission (fresh
+  decisionId, same declared space, no new events, unchanged stateRevision),
+  is poisoned permanently
+  and audited as `auto_rejected`.
+- Every decision appends one line to `auto-answers.jsonl` (route
+  `local|escalated`, basis/reason, resolver `mock|llm`, self-check result and
+  the submitted answer), so a full run stays auditable per decision.
+- Escalated decisions write `<brief-dir>/<seat>/pending-<n>.json` (full DTO,
+  authority for legality checks and deep reads) and `decision-<n>.md` (the
+  brief the LLM reads). Brief sections are fixed — 契約備忘 → 座位背景 → 筆記
+  → 本題 → 局面增量 → 尾註 — with byte-identical template text, JSON key
+  order preserved as parsed, and volatile content (decision serial,
+  timestamps) confined to the tail, maximizing the stable prefix that
+  provider prompt caches hit. Escalation reason (`optional`／`space>1`／
+  `kind:<n>`／`auto_rejected`／`reopen`) is carried in the brief title line
+  for upstream routing.
+- Briefs carry per-seat cursors (`last_revision`, `last_event_sequence`):
+  the seat background is reprinted only after a change, and the increment
+  lists events with `sequence` above the cursor plus hp/hand/judging deltas,
+  so repeated decisions stay cheap. Inside the increment, nested card
+  objects are deduplicated into a per-brief card table and referenced by
+  `cardRef`, and zero-information maintenance events (`kind:"other"`,
+  amount 0, no card face, single-player details) are folded into one count
+  line listing their trigger codes — the pending DTO stays the byte-exact
+  authority for anything elided. The same card table also covers nested
+  card objects inside `choiceOptions.context`, whose `original:*` mirror
+  domains of `random_card_choices` are dropped (base-domain tokens are the
+  answerable ones); `choiceOptions.cards` and `cardCandidates` stay full —
+  they are the declared answer space. The fixed 契約備忘 template carries a
+  triggerEvent→semantics legend (values from the engine's `TriggerEvent`
+  enum) so numeric event codes are self-explanatory. Prompts, skill names and
+  card names are annotated from the runtime's own `lang/zh_CN` Lua tables
+  (verbatim simplified-Chinese text, deterministic per key): each brief lists
+  a 譯名對照 block for the ask's prompt/pattern/reason/skill keys and the
+  card table, and the seat background names the viewer's skills — the DTO
+  carries raw keys only, so this is what makes custom-skill asks
+  self-explanatory. Composite prompts render engine-style: the translation
+  key is the part before `:` and its `%src`/`%dest`/`%arg` placeholders are
+  substituted in template appearance order with the colon-args mapped to
+  player display names (general names translated via the same tables, matching
+  the client's getPlayerName behaviour); choice options translate via exact
+  `skill:option` keys only. The seat background
+  also lists the viewer's own hand card names.
+
+- Replay and multi-seat options: `--replay <auto-answers.jsonl>` submits a
+  prior run's recorded answers verbatim by decisionId (audited as route
+  `replay`; misses fall through to the normal flow) and compares the
+  recorded winner at game over — an exact-reproduction smoke for driver
+  changes. `--replay-scope llm` replays only escalated answers and lets the
+  current adjudicator handle the rest, regression-testing it on a live
+  stream. `--shared-cursor` (multi-seat + single LLM session) broadcasts the
+  event cursor across seats so later seats skip events an earlier brief
+  already showed; the benefit tracks decision interleave density because
+  the bounded event journal caps how far back a cursor can reach.
+- `game/notes.md` is maintained by the LLM session between decisions
+  (strategy, inference, seat states); the driver only cites the path and
+  quotes an excerpt, never writes it.
+
+Offline cache-hit measurement for the brief stream (the driver itself never
+calls an LLM API): `tools/autotest/cache_hit_sim.py --brief-dir <run>/briefs`
+models provider caching rules (minimum cacheable prefix, block granularity,
+cache-read/write multipliers — all flags) under the accumulating-session and
+fresh-call topologies, verifies the stream qualifies for caching (byte-stable
+template, append-only), and reports hit rates plus cost ratios against the
+full-DTO counterfactual from the pending DTOs.
 
 ## Lua compatibility regression
 

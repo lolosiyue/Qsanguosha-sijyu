@@ -391,6 +391,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_replay = new RoomReplayController(this, main_window);
 	connect(m_replay, &RoomReplayController::takeoverRequested,
 		this, &RoomScene::takeoverRequested);
+	connect(m_replay, &RoomReplayController::perspectiveRequested,
+		this, &RoomScene::replayPerspectiveRequested);
 
 	m_choiceDialog = nullptr;
     m_playerCardBox = nullptr;
@@ -472,8 +474,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// add role ComboBox
 	connect(Self,SIGNAL(role_changed(QString)),dashboard,SLOT(updateRole(QString)));
 
-	m_switchPerspectiveAction = nullptr;
-	m_currentPerspective = QString();
 	if(ClientInstance->getReplayer()){
 		dashboard->hideControlButtons();
 		CrashHandler::setGamePhase(CrashHandler::PhaseReplay);
@@ -1439,14 +1439,9 @@ void RoomScene::switchReplayPerspective(const QString &player_name)
 {
 	if (!ClientInstance->getReplayer())
 		return;
-
-	ClientPlayer *target = ClientInstance->getPlayer(player_name);
-	if (!target || target->isDead())
-		return;
-
-	m_currentPerspective = player_name;
-	ClientInstance->setSelf(target);
-	emit ClientInstance->switch_control_context(player_name);
+	// A different source stream has different hidden information. Recreate the
+	// Client from that stream rather than relabeling the current visible hand.
+	emit replayPerspectiveRequested(player_name);
 }
 
 RoomLayoutEngine::Input RoomScene::layoutInput(const QRectF &viewport, bool clampScene) const
@@ -2222,6 +2217,15 @@ void RoomScene::removePlayer(const QString&player_name)
 	if(photo){
 		photo->setPlayer(nullptr);
 		name2photo.remove(player_name);
+		if (ClientInstance->getReplayer() && game_started) {
+			// Replay rosters may shrink as well as grow. Empty lobby placeholders
+			// must not survive a removed in-game seat and break the next arrangement.
+			photos.removeOne(photo);
+			item2player.remove(photo);
+			delete photo;
+			emit seatCountChanged();
+			updateTable();
+		}
 		Sanguosha->playSystemAudioEffect("remove-player",false);
 	}
 
@@ -2743,6 +2747,13 @@ void RoomScene::showControllerMenu()
     });
     add("controllerTrust", tr("Toggle trustee (leaves controller-only play)"),
         connected && trust_button && trust_button->isEnabled(), [this]() { trust(); });
+    // Reuse the live application actions, including Android's content manager.
+    for (const char *name : {"actionConfigure", "actionAndroidContentManager", "actionReturn_to_Main_Menu"}) {
+        const QPointer<QAction> action = main_window->findChild<QAction *>(QString::fromLatin1(name));
+        if (action) add(QStringLiteral("controller_") + QString::fromLatin1(name),
+            action->text().remove(QLatin1Char('&')), action->isEnabled(),
+            [action]() { if (action && action->isEnabled()) action->trigger(); });
+    }
     auto *back = new QPushButton(tr("Return to game"), dialog);
     back->setObjectName(QStringLiteral("controllerMenuBack"));
     layout->addWidget(back);

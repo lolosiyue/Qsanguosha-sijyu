@@ -43,6 +43,8 @@ void configureParser(QCommandLineParser &parser)
         QStringLiteral("seed")));
     parser.addOption(QCommandLineOption(QStringLiteral("autotest-log"),
         QStringLiteral("Write automation markers to <path>."), QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("record-dir"),
+        QStringLiteral("Record each room and recipient in a new replay directory."), QStringLiteral("path")));
     parser.addOption(QCommandLineOption(QStringLiteral("log-level"),
         QStringLiteral("Set the minimum log level (debug|info|warning|error)."),
         QStringLiteral("level"), QStringLiteral("info")));
@@ -56,6 +58,8 @@ void configureParser(QCommandLineParser &parser)
         QStringLiteral("Overlay server settings from an INI <path>."), QStringLiteral("path")));
     parser.addOption(QCommandLineOption(QStringLiteral("list-game-modes"),
         QStringLiteral("List available game modes and exit.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("acceptance-catalog"),
+        QStringLiteral("Export the loaded general/skill acceptance catalog as JSON and exit.")));
     parser.addOption(QCommandLineOption(QStringLiteral("check-config"),
         QStringLiteral("Validate the effective server configuration and exit.")));
     parser.addOption(QCommandLineOption(QStringLiteral("print-config"),
@@ -172,10 +176,17 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
     result.options.helpRequested = parser.isSet(QStringLiteral("help"));
     result.options.versionRequested = parser.isSet(QStringLiteral("version"));
     result.options.listGameModes = parser.isSet(QStringLiteral("list-game-modes"));
+    result.options.acceptanceCatalog = parser.isSet(QStringLiteral("acceptance-catalog"));
     result.options.printConfig = parser.isSet(QStringLiteral("print-config"));
     result.options.checkConfig = parser.isSet(QStringLiteral("check-config"));
     result.options.jsonOutput = parser.isSet(QStringLiteral("json"));
     result.options.assetReport = parser.isSet(QStringLiteral("asset-report"));
+    if (result.options.acceptanceCatalog && (result.options.listGameModes
+            || result.options.printConfig || result.options.checkConfig
+            || result.options.assetReport || result.options.jsonOutput)) {
+        result.error = QStringLiteral("option '--acceptance-catalog' cannot be combined with other report options");
+        return result;
+    }
     if (result.options.jsonOutput && !result.options.printConfig) {
         result.error = QStringLiteral("option '--json' requires '--print-config'");
         return result;
@@ -241,6 +252,7 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
         || !parseNonEmptyText(QStringLiteral("server-name"), result.options.serverName)
         || !parseNonEmptyText(QStringLiteral("force-general"), result.options.forceGeneral)
         || !parseNonEmptyText(QStringLiteral("autotest-log"), result.options.autotestLog)
+        || !parseNonEmptyText(QStringLiteral("record-dir"), result.options.recordDirectory)
         || !parseNonEmptyText(QStringLiteral("config"), result.options.configFile)
         || !parseNonEmptyText(QStringLiteral("log-file"), result.options.logFile)
         || !parseNonEmptyText(QStringLiteral("asset-root"), result.options.assetRoot)

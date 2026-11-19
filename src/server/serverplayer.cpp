@@ -686,10 +686,9 @@ void ServerPlayer::startRecord()
 		Sanguosha ? Sanguosha->getMODName() : QStringLiteral("unknown"));
 }
 
-void ServerPlayer::saveRecord(const QString &filename)
+bool ServerPlayer::saveRecord(const QString &filename)
 {
-	if (recordBuffer)
-		recordBuffer->saveText(filename);
+	return recordBuffer && recordBuffer->saveText(filename);
 }
 
 void ServerPlayer::addToSelected(const QString &general)
@@ -792,7 +791,8 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message,
 		return 0;
 	}
 
-	if (recordBuffer && !recordBuffer->recordMessage(canonical, &error)) {
+	if (recordBuffer && ProtocolPayloadRegistry::isReplayEligible(canonical, false)
+		&& !recordBuffer->recordMessage(canonical, &error)) {
 		qWarning().noquote() << reportHeader() << "Replay recording failed: command"
 			<< message.command << ":" << error;
 		disconnectSocketFromOwnerThread();

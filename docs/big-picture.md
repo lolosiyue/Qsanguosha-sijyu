@@ -164,8 +164,8 @@ by the spatial filter.
 - The home pages take the pad directly: the D-pad reaches QML's own KeyNavigation
   first and walks the tab chain when nothing accepts the key; a closed combo box
   always moves focus, and South picks the highlighted row of an open one. LB/RB and
-  LT/RT switch home tabs in BP. QML text fields (search, server name) cannot be
-  edited by pad: South does nothing there. On 2026-11-03 a virtual pad went from the
+   LT/RT switch home tabs in BP. QML text fields (search, server name) now open
+   the shared button-only text editor on activation. On 2026-11-03 a virtual pad went from the
   desktop home to saving 大屏模式, and from the BP home through quick join and the
   game menu to a started game; physical hardware is still untested.
 - The table's `TenFoot` layout profile now applies during BP sessions on
@@ -189,14 +189,16 @@ by the spatial filter.
   shows during active requests and Left/Right walks the seat row in screen
   order. A second run used only D-pad, South and East, as a TV remote would:
   every request it met was answered and accepted, with `command:confirm`
-  reached by D-pad. Neither run reached game over. A remote has no Start, so the
-  game menu stays out of its reach, and the legend describes a pad.
+   reached by D-pad. Neither run reached game over. The Android TV integration
+   now adds explicit Details and Game menu commands and remote-specific labels;
+   see [Android TV](android-tv.md) for its platform input and validation scope.
 - The legend and status hint name the buttons printed on the connected pad
   (`SDL_GetGamepadButtonLabel`), falling back to the Xbox layout. Only the Xbox
   labels have been seen on screen; PlayStation and Switch labels were not exercised.
 - A TV remote that reaches the game as a keyboard (arrows, Enter, Esc) cannot play
   yet: arrows need focus that only Tab creates, Up/Down stay inside a group, and
-  selecting needs Space. No remote input path exists or has been tested.
+   selecting needs Space. Android TV now supplies its own Qt key-event source
+   through the shared controller router; desktop keyboard remotes still use this legacy path.
 - Still not accepted: a real 16:9 panel and physical gamepad or remote hardware.
   Earlier evidence lives in memory/work/zcode-tenfoot-20261027/ and
   memory/work/zcode-tenfoot-20261028/.

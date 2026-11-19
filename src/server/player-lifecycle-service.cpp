@@ -5,6 +5,8 @@
 #include "card-lifetime-manager.h"
 #include "event-dispatcher.h"
 #include "gamerule.h"
+#include "game-session-controller.h"
+#include "headless-replay-session.h"
 #include "room.h"
 #include "room-managed-state.h"
 #include "room-notifier.h"
@@ -29,6 +31,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 using namespace QSanProtocol;
 
@@ -76,7 +79,15 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
     m_room.safeSetPlayerProperty(player, "avatar", avatar);
     player->setScreenName(screenName);
 
-    if (!isRobot) {
+    HeadlessReplaySession *replay = m_room.m_gameSession->headlessReplay();
+    if (replay) {
+        QString error;
+        if (!replay->addPlayer(player, false, &error)) {
+            m_room.setTag(QStringLiteral("HeadlessReplayError"), error);
+            qWarning().noquote() << "Headless replay bootstrap failed:" << error;
+        }
+    }
+    if (!isRobot || replay) {
         m_room.notifyProperty(player, player, "objectName");
         // Everyone else's connection state arrives through a broadcast, but
         // nothing broadcasts a player's own state until it changes, so tell
@@ -90,6 +101,12 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
 
     player->introduceTo(nullptr);
 
+    if (!isRobot || replay) {
+        foreach (ServerPlayer *existing, m_roster.players()) {
+            if (existing != player) existing->introduceTo(player);
+        }
+    }
+
     if (isRobot) {
         ReadyPayload readyPayload;
         m_room.setReadyCommand(player, readyPayload.toVariant());
@@ -99,10 +116,6 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
         greeting.text = greetingStr;
         m_room.speakCommand(player, greeting.toVariant());
         player->startNetworkDelayTest();
-        foreach (ServerPlayer *existing, m_roster.players()) {
-            if (existing != player)
-                existing->introduceTo(player);
-        }
     }
 }
 
@@ -810,12 +823,25 @@ void PlayerLifecycleService::changePlayerGeneral2(ServerPlayer *player,
 }
 
 void PlayerLifecycleService::requestSummonBetween(ServerPlayer *before, ServerPlayer *after,
-                                                  const QString &generalName)
+                                                  const QString &generalName, const QString &role)
 {
+    const auto players = m_roster.players();
+    if (!m_room.hasGameStarted() || !players.contains(before) || !players.contains(after) || !before->isAlive()
+        || !after->isAlive() || before->getNextAlive() != after || !Sanguosha->getGeneral(generalName)) {
+        qWarning() << "Rejected summon: invalid players, adjacency or general";
+        return;
+    }
+    const QString resolvedRole = role.isEmpty()
+        ? (before->isLord() ? QStringLiteral("loyalist") : before->getRole()) : role;
+    if (!QStringList{"lord", "loyalist", "rebel", "renegade"}.contains(resolvedRole)) {
+        qWarning() << "Rejected summon: invalid role" << resolvedRole;
+        return;
+    }
     SummonRequest request;
     request.before = before;
     request.after = after;
     request.generalName = generalName;
+    request.role = resolvedRole;
     if (m_room.getThread()) request.cascadeId = m_room.getThread()->deferredCreatorCascadeId();
     m_pendingSummons.append(request);
 }
@@ -836,48 +862,54 @@ void PlayerLifecycleService::finishDeferredCascade(quint64 token, bool cancelled
 
 void PlayerLifecycleService::processPendingSummons()
 {
-    foreach (const SummonRequest &request, m_pendingSummons) {
-        ServerPlayer *player = insertPlayerMidGame(request.before, request.after,
-                                                   request.generalName);
-        if (player)
-            m_dynamicPlayers.append(player);
+    // Draw/skill callbacks may enqueue more summons. Leave those for the next
+    // outermost flush instead of clearing them together with this batch.
+    const auto pending = std::exchange(m_pendingSummons, {});
+    for (const SummonRequest &request : pending) {
+        insertPlayerMidGame(request.before, request.after, request.generalName, request.role);
     }
-    m_pendingSummons.clear();
 }
 
 ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
                                                           ServerPlayer *after,
-                                                          const QString &generalName)
+                                                          const QString &generalName, const QString &role)
 {
-    Q_ASSERT(before != nullptr && after != nullptr && !generalName.isEmpty());
-    if (!before || !after || generalName.isEmpty())
-        return nullptr;
-    if (before->getNextAlive() != after) {
-        Q_ASSERT(false);
+    const auto originalPlayers = m_roster.players();
+    const General *general = Sanguosha->getGeneral(generalName);
+    // A queued request can become stale after an earlier summon or a death.
+    if (!m_room.hasGameStarted() || !originalPlayers.contains(before) || !originalPlayers.contains(after) || !general
+        || !before->isAlive() || !after->isAlive() || before->getNextAlive() != after) {
+        qWarning() << "Skipped stale or invalid summon";
         return nullptr;
     }
+    const QString resolvedRole = role.isEmpty()
+        ? (before->isLord() ? QStringLiteral("loyalist") : before->getRole()) : role;
+    if (!QStringList{"lord", "loyalist", "rebel", "renegade"}.contains(resolvedRole)) return nullptr;
 
     ServerPlayer *player = new ServerPlayer(&m_room);
-    player->setObjectName(QString("sgs%1").arg(m_roster.players().length() + 1));
+    player->setObjectName(Room::generatePlayerName());
+    player->setScreenName(Sanguosha->translate(generalName));
+    player->setRole(resolvedRole);
     player->setGeneralName(generalName);
     player->setProperty("avatar_general", generalName);
 
-    const General *general = Sanguosha->getGeneral(generalName);
-    const int hp = general ? general->getMaxHp() : 3;
+    const int hp = general->getMaxHp();
     player->setMaxHp(hp);
     player->setHp(hp);
     player->setState("robot");
 
-    before->setNext(player);
-    player->setNext(after);
-    const int aliveIndex = m_roster.alivePlayers().indexOf(before);
-    m_roster.insertAfter(before, player, aliveIndex >= 0 || before->isAlive());
+    m_roster.insertAfter(before, player, true);
+    m_dynamicPlayers.append(player);
 
     QVariantMap info{{QStringLiteral("schema_version"), 1},
                      {QStringLiteral("player_name"), player->objectName()},
                      {QStringLiteral("screen_name"), player->screenName()},
                      {QStringLiteral("avatar"), generalName}};
     m_notifier.doBroadcastNotify(S_COMMAND_ADD_PLAYER_DYNAMIC, info);
+    // Establish the same core state as an ordinary seat before its first draw.
+    for (const char *property : {"general", "maxhp", "hp", "state"})
+        m_room.broadcastProperty(player, property);
+    player->setGender(general->getGender());
 
     const QList<ServerPlayer *> players = m_roster.players();
     for (int i = 0; i < players.length(); ++i) {
@@ -890,6 +922,17 @@ ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
         seats.playerNames << existing->objectName();
     seats.playOrderReversed = m_roster.isPlayOrderReversed();
     m_notifier.doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, seats.toVariant());
+
+    if (auto *replay = m_room.m_gameSession->headlessReplay()) {
+        QString error;
+        if (replay->addPlayer(player, true, &error)) {
+            marshal(player, false, true);
+            replay->completeBootstrap(player);
+        } else {
+            m_room.setTag(QStringLiteral("HeadlessReplayError"), error);
+            qWarning().noquote() << "Headless replay bootstrap failed:" << error;
+        }
+    }
 
     foreach (const Skill *skill, player->getVisibleSkillList()) {
         const TriggerSkill *triggerSkill = qobject_cast<const TriggerSkill *>(skill);
@@ -915,7 +958,7 @@ void PlayerLifecycleService::reconnect(ServerPlayer *player, ClientSocket *socke
     m_room.broadcastProperty(player, "state");
 }
 
-void PlayerLifecycleService::marshal(ServerPlayer *player, bool managedTimelineRestore)
+void PlayerLifecycleService::marshal(ServerPlayer *player, bool managedTimelineRestore, bool replayBootstrap)
 {
     const QString syncId = QString::number(m_nextStateSyncId);
     m_nextStateSyncId = m_nextStateSyncId == std::numeric_limits<quint64>::max()
@@ -983,7 +1026,11 @@ void PlayerLifecycleService::marshal(ServerPlayer *player, bool managedTimelineR
         }
         std::sort(catalogue.begin(), catalogue.end());
         m_notifier.doNotify(player, S_COMMAND_GAME_START, JsonUtils::toJsonArray(catalogue));
-    } else if (m_room.hasGameStarted())
+    } else if (m_room.hasGameStarted() && replayBootstrap)
+        // Reuse GAME_START's catalogue without sampling the gameplay RNG again.
+        m_notifier.doNotify(player, S_COMMAND_GAME_START,
+                            m_room.m_gameSession->headlessReplay()->cardCatalog());
+    else if (m_room.hasGameStarted())
         m_notifier.doNotify(player, S_COMMAND_GAME_START,
                             JsonUtils::toJsonArray(Sanguosha->getRandomCards()));
 

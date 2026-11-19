@@ -78,3 +78,25 @@ before the changing seat snapshot and legal choices. A versioned SHA-256
 fingerprint covers only that static contract. No decisions are cached or reused
 across seats. See [prefix caching and usage](../../docs/llm-prefix-cache.md) for
 provider capabilities, counter semantics and local verification commands.
+
+## Opt-in decision provenance
+
+Set `QSAN_DECISION_TRACE=1`, `QSAN_TRACE_RUN_ID=<run-id>`, and
+`QSAN_VERIFICATION_DIR` to an existing absolute directory before starting the
+native process and its room worker. Each process appends bounded JSONL records
+to its own `provider-<pid>.jsonl`; collect these alongside the native
+`[AI_DECISION_TRACE]` stream. Each line is a raw JSON object (there is no text
+prefix). Provider records include decision/revision/player, provider, stage,
+safe reason code, whether the native result was submitted, whether a provider
+request was sent, and the call count. The request DTO has no room ID, so
+`room_id` is empty; join on run ID, decision ID, revision, and player only when
+that key uniquely identifies one native decision. Token usage appears only
+when returned as valid numeric usage.
+They never include prompts, cards, state, credentials, or raw response/error
+bodies. Diagnostic write failures are ignored. The room worker's stderr is not
+collected, so a configured verification directory is required for its trace.
+
+`provider_answer` and `queued` describe the adapter/provider path only. They do
+not establish native acceptance or gameplay; correlate with the native trace
+using run ID, decision ID, revision, and player, and treat non-unique joins as
+unknown.

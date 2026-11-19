@@ -101,6 +101,8 @@ bool ControllerService::isAvailable() const { return d->initialized; }
 bool ControllerService::hasConnectedDevice() const { return d->pad && SDL_GamepadConnected(d->pad); }
 QString ControllerService::error() const { return d->failure; }
 quint64 ControllerService::deviceEpoch() const { return d->epoch; }
+bool ControllerService::isDirectionalRemote() const { return false; }
+bool ControllerService::acceptsNativeKeyEvent(const QEvent *) const { return false; }
 
 QVariantMap ControllerService::buttonLabels() const
 {

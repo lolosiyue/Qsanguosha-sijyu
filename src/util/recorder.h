@@ -44,6 +44,12 @@ class Replayer : public QThread
     Q_OBJECT
 
 public:
+    struct Perspective {
+        QString playerName;
+        QString screenName;
+        QString path;
+        qint64 availableFromMs = 0;
+    };
     explicit Replayer(QObject *parent, const QString &filename);
     ~Replayer();
 
@@ -60,6 +66,12 @@ public:
     QSanReplay::ReplayFormatVersion formatVersion() const;
     QSanProtocol::ProtocolVersion messageProtocolVersion() const;
     const QList<QSanReplay::ReplayEvent> &events() const;
+    const QList<Perspective> &perspectives() const { return m_perspectives; }
+    QString sourcePlayerName() const { return m_sourcePlayerName; }
+    int positionAtElapsed(qint64 elapsedMs) const;
+    // Configure a fresh worker before start(); its prefix is dispatched once,
+    // without delays, before normal playback or the paused boundary begins.
+    bool preparePlayback(int pairIndex, bool paused, qreal playbackSpeed);
 
     ReplayIndex* getIndex() const;
     QSharedPointer<GameSnapshot> getSnapshot(int nodeIndex) const;
@@ -108,16 +120,16 @@ private:
 
     void buildIndex();
     void loadSnapshots();
-    void emitCommand(int pairIndex);
+    void loadPerspectives();
+    bool emitCommand(int pairIndex, bool obeyPause = true);
     bool waitForStateCaptureBoundary();
     bool waitWhilePlaybackPaused();
 
     QString filename;
     qreal speed;
     bool playing;
-    bool m_seeking;
-    quint64 m_seekGeneration;
     std::atomic<int> m_currentPairIndex;
+    std::atomic<int> m_lastDispatchedPairIndex{-1};
     QMutex mutex;
     QMutex m_dispatchMutex;
     QSemaphore play_sem;
@@ -140,6 +152,9 @@ private:
     mutable QMap<int, QSharedPointer<GameSnapshot> > m_takeoverSnapshotsByNode;
     bool m_takeoverSnapshotsValid;
     bool m_stopRequested;
+    int m_startupPosition = -1;
+    QList<Perspective> m_perspectives;
+    QString m_sourcePlayerName;
 
 signals:
     void command_parsed(const QSanProtocol::ProtocolMessage &message);
@@ -149,8 +164,9 @@ signals:
     void speed_changed(qreal speed);
     void node_reached(int nodeIndex);
     void seek_finished();
-    void seek_started();
     void stateCaptureBoundaryReached(quint64 requestId);
+    void reconstructionRequested(int pairIndex);
+    void startup_finished();
 };
 
 #endif

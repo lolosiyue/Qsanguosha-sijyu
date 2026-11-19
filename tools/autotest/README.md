@@ -1,5 +1,59 @@
 # 自動化測試工具 (tools/autotest)
 
+## Linux 武將包批次驗收
+
+`package_acceptance.py plan/run/status` 依當前引擎 registry 排程 `standard → nos → wind → fire` 等包，
+沿用專用 server＋TUI 真實托管、逐決策追蹤與技能分支報告，提供來源凍結、總預算、逐局續跑與保留失敗的重試。
+不使用舊腳本的固定武將清單或假定雲端具有 Windows H/L 路徑；詳見 [批次使用說明](../../docs/package-acceptance.md)。
+
+## 決策、接管與技能分支證據
+
+在既有 headless 或單武將 runner 加 `--verify-decisions`，會為子程序啟用
+`QSAN_DECISION_TRACE=1`、獨立 `QSAN_TRACE_RUN_ID` 及 `QSAN_VERIFICATION_DIR`。
+原生 `AiDecisionAudit` 保留逐決策路由、實際來源、候選摘要、拒絕原因與接受結果；
+provider adapter 記錄實際成功回答及排隊回執。這些開關只增加觀測，不選模型、不呼叫
+額外 API，也不改變既有 SmartAI／isolated／Agent 路由。
+
+isolated 無法作答時，envelope attempt 的 `isolated_diagnostics` 保留 bootstrap
+既有的 `outcome`、`reason`、`key`；一般模式與國戰使用同一份資料。它與原生
+`error` 分開：unsupported／unhandled 是覆蓋缺口，不能只從籠統的
+`isolated_envelope_rejected` 推斷為卡牌合法性拒絕。需要 Lua 呼叫位置時另外設定
+`QSAN_AI_UNSUPPORTED_TRACE=1`，呼叫堆疊只寫入本機診斷日誌。
+
+```powershell
+# 明確的一局與種子；沿用已部署的 Debug 執行檔及 Qt runtime 環境。
+python tools/autotest/headless_runner.py --exe debug/QSanguosha.exe --exe-root . `
+    --seed 20261113 --modes 02p --games 1 --parallel 1 --verify-decisions
+
+# 只整理已保存的實戰證據，不啟動遊戲或付費 API。
+python tools/autotest/verification_report.py --input <run-directory> --output <report-directory>
+```
+
+輸出為 `verification/verification.json` 與 `verification.md`。`--require-controller`
+可重複指定 `isolated`、`external_agent`、`deepseek`、`jev`；只檢查實際接管，
+不啟用該控制者。DeepSeek/JEV 的確認必須同時有成功模型回答、提交排隊回執及唯一
+對應的原生接受紀錄；缺失或跨房間識別不唯一時列 `UNCONFIRMED`。接受空過與接受用牌
+分開統計。原生接受是決策邊界，技能實際效果由結算歷史判讀。
+
+連續三個觀測到的出牌回合，有可用候選卻整回合未用牌，只列 `REVIEW`，不直接判
+策略錯誤。已出牌後正常結束出牌階段不計入這個警示。候選數是已投影的行動機會，
+不代替引擎所有合法行動的完整枚舉。
+
+`--skill-branches <spec.json>`（可重複）會啟用同樣觀測，並按
+[結算歷史文件](../../docs/resolution-history.md) 的已審核規格逐分支列出
+`PASS`、`FAIL`、`NOT_COVERED`、`UNKNOWN`。未提供規格則列 `NOT_SPECIFIED`，
+技能發動次數單獨列為觀察資料。規格描述預期與觸發機會，不建造或改寫對局。
+
+伺服器在既有 Room worker 的最終結算邊界，用 `SnapshotJsonWriter` 輸出
+`history-*.json`。崩潰或強制終止來不及輸出時，分支報告保留 `UNKNOWN`。
+此歷史包含伺服器完整資訊，只保存本機 QA 目錄，不能送入 Agent／模型觀察輸入。
+Android／XP／Web／Sheets 的證據需從實際擁有引擎的程序收集；未收集的平台不補造結果。
+
+報告 CLI 的退出碼：`0` 已觀測且沒有待處理判定；`1` 明確失敗；`2` 資料缺失、
+分支未覆蓋、可疑行為或指定控制者未觀測到。既有 runner 的對局結果仍獨立保留。
+多平台範圍可先用 `tools/ci/verification_scope.py --base HEAD` 規劃；它只產生計畫，
+不自行編譯或啟動整批驗收。
+
 使用獨立 runner 執行 headless、網路對局與 GUI 契約檢查。
 參數與預設值由各 runner 的 `main()` 及
 [`runner_common.py`](runner_common.py) 的 `common_args()` 定義；以 `--help` 查詢。

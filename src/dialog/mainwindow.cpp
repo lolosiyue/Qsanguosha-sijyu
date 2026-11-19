@@ -54,6 +54,7 @@
 #include <QDialogButtonBox>
 #include <QDesktopServices>
 #include <QPointer>
+#include <limits>
 #include <QUuid>
 #include <QMenu>
 #endif
@@ -549,6 +550,10 @@ void MainWindow::setupHomePage()
 
 	connect(homeController, &HomeController::quickJoinRequested,
 		this, &MainWindow::startLocalConsoleGame);
+#ifdef Q_OS_ANDROID
+	connect(homeController, &HomeController::contentManagerRequested, this,
+		[this]() { AndroidContentDialog::openManager(this); });
+#endif
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 	connect(homeController, &HomeController::scenarioWorksRequested,
 		this, &MainWindow::openScenarioWorks);
@@ -1037,6 +1042,7 @@ void MainWindow::setupAndroidUi()
 	m_androidMenuButton->setToolTip(tr("Floating menu"));
 	m_androidMenuButton->setAccessibleName(tr("Floating menu"));
 	auto *resources = new QAction(tr("Resources and extensions..."), m_androidMenuButton);
+	resources->setObjectName(QStringLiteral("actionAndroidContentManager"));
 	connect(resources, &QAction::triggered, this, [this]() {
 		AndroidContentDialog::openManager(this);
 	});
@@ -1862,7 +1868,8 @@ void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &s
 
 	ReplayRestoreState restore;
 	restore.path = oldReplayer->getPath();
-	restore.pairIndex = oldReplayer->getCurrentPairIndex();
+	restore.pairIndex = oldClient->lastReplayPairIndex();
+	restore.speed = oldReplayer->getSpeed();
 	restore.perspective = Self ? Self->objectName() : QString();
 	restore.previousGameMode = Config.GameMode;
 	restore.wasPaused = true;
@@ -1962,53 +1969,106 @@ void MainWindow::rollbackTakeover(const QString &reason)
 		QMessageBox::warning(this, tr("Takeover"), reason);
 }
 
-void MainWindow::reopenReplay(const ReplayRestoreState &state)
+bool MainWindow::openReplayAt(QString path, qint64 elapsedMs,
+    bool paused, qreal playbackSpeed)
 {
-	if (state.path.isEmpty())
-		return;
-
-	Client *client = new Client(this, state.path);
-	Replayer *replayer = client->getReplayer();
-	if (replayer == nullptr || !replayer->isValid()) {
-		const QString detail = replayer ? replayer->errorString()
-			: tr("Replay loader is unavailable");
-		delete client;
-		QMessageBox::warning(this, tr("Replay error"), detail);
-		return;
-	}
-
-	QMetaObject::Connection *restoreConnection = new QMetaObject::Connection;
-	*restoreConnection = connect(client, &Client::server_connected, this,
-		[this, client, state, restoreConnection]() {
-		enterRoom();
-		// The setup notification has already materialized the replay players.
-		// Disconnect before seeking so replay setup does not create a second UI.
-		disconnect(*restoreConnection);
-		delete restoreConnection;
-		QTimer::singleShot(0, this, [this, state]() {
-			applyReplayRestoreState(state);
-		});
-	});
-	client->signup();
+    return openReplayPosition(path, -1, paused, playbackSpeed, qMax<qint64>(0, elapsedMs));
 }
 
-void MainWindow::applyReplayRestoreState(const ReplayRestoreState &state)
+bool MainWindow::openReplayPosition(QString path, int pairIndex,
+    bool paused, qreal playbackSpeed, qint64 elapsedMs)
 {
-	if (!ClientInstance || !ClientInstance->getReplayer())
-		return;
+    if (path.isEmpty() || (ClientInstance && !ClientInstance->getReplayer()))
+        return false;
+    // Validate the destination before retiring the visible replay. This object
+    // has no Client globals and never starts a worker.
+    Replayer inspected(nullptr, path);
+    if (!inspected.isValid()) {
+        emit replayOpenFailed(inspected.errorString());
+        QMessageBox::warning(this, tr("Replay error"), inspected.errorString());
+        return false;
+    }
+    if (elapsedMs >= 0) pairIndex = inspected.positionAtElapsed(elapsedMs);
+    if (!inspected.preparePlayback(pairIndex, paused, playbackSpeed)) return false;
 
-	Replayer *replayer = ClientInstance->getReplayer();
-	if (state.pairIndex > 0)
-		replayer->seekToPosition(state.pairIndex);
+    Client *previous = ClientInstance;
+    if (previous) {
+        QString error;
+        if (!stopReplayForTakeover(previous->getReplayer(), &error)) {
+            emit replayOpenFailed(error);
+            QMessageBox::warning(this, tr("Replay error"), error);
+            return false;
+        }
+    }
+    // Destroy presentation before its players and documents. Pending events
+    // targeting the old Client disappear with it; no stale prefix survives.
+    gameView->setScene(nullptr);
+    delete scene;
+    scene = nullptr;
+    delete previous;
 
-	if (!state.perspective.isEmpty()) {
-		ClientPlayer *target = ClientInstance->getPlayer(state.perspective);
-		if (target)
-			ClientInstance->setSelf(target);
-	}
+    Client *client = new Client(this, path);
+    Replayer *replayer = client->getReplayer();
+    if (!replayer || !replayer->preparePlayback(pairIndex, paused, playbackSpeed)) {
+        const QString error = replayer ? replayer->errorString() : tr("Replay loader is unavailable");
+        delete client;
+        showHomePage();
+        emit replayOpenFailed(error);
+        QMessageBox::warning(this, tr("Replay error"), error);
+        return false;
+    }
+    // Each new Client receives SETUP once. All subsequent replay events remain
+    // queued behind scene construction, including dynamic roster snapshots.
+    connect(client, &Client::server_connected, this, &MainWindow::enterRoom,
+        Qt::SingleShotConnection);
+    const QPointer<Client> pendingClient(client);
+    connect(replayer, &Replayer::reconstructionRequested, this,
+        [this, pendingClient](int position) {
+            if (pendingClient && ClientInstance == pendingClient) seekReplayToPosition(position);
+        }, Qt::QueuedConnection);
+    connect(replayer, &Replayer::startup_finished, this, [this, pendingClient] {
+        if (!pendingClient || ClientInstance != pendingClient) return;
+        Client *client = pendingClient.data();
+        // The controls were created while consuming SETUP, after the worker
+        // queued its prefix. Publish the applied coordinate now, not its cursor.
+        emit client->getReplayer()->elasped(int(qMin<qint64>(
+            client->lastReplayElapsedMs() / 1000, std::numeric_limits<int>::max())));
+        emit client->getReplayer()->seek_finished();
+        emit replayPositionReady(client);
+    }, Qt::QueuedConnection);
+    client->signup();
+    return true;
+}
 
-	if (state.wasPaused == replayer->isPlaying())
-		replayer->toggle();
+void MainWindow::seekReplayToPosition(int pairIndex)
+{
+    Client *client = ClientInstance;
+    Replayer *replayer = client ? client->getReplayer() : nullptr;
+    if (!replayer || pairIndex < 0 || pairIndex >= replayer->events().size()) return;
+    openReplayPosition(replayer->getPath(), pairIndex,
+        !replayer->isPlaying(), replayer->getSpeed());
+}
+
+void MainWindow::switchReplayPerspective(const QString &playerName)
+{
+    Client *client = ClientInstance;
+    Replayer *replayer = client ? client->getReplayer() : nullptr;
+    if (!replayer || playerName == replayer->sourcePlayerName()) return;
+    const qint64 elapsed = client->lastReplayElapsedMs();
+    for (const Replayer::Perspective &seat : replayer->perspectives()) {
+        if (seat.playerName == playerName && seat.availableFromMs <= elapsed
+            && client->getPlayer(playerName)) {
+            // The stream identity is independent of historical SWITCH_CONTEXT.
+            // Preserve that stream's native operating player and card visibility.
+            openReplayAt(seat.path, elapsed, !replayer->isPlaying(), replayer->getSpeed());
+            return;
+        }
+    }
+}
+
+void MainWindow::reopenReplay(const ReplayRestoreState &state)
+{
+    openReplayPosition(state.path, state.pairIndex, state.wasPaused, state.speed);
 }
 
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod, int card_num)
@@ -2159,34 +2219,14 @@ void MainWindow::on_actionReplay_triggered()
 	last_dir = file_info.absoluteDir().path();
 	Config.setValue("LastReplayDir", last_dir);
 
-	Client *client = new Client(this, filename);
-	Replayer *replayer = client->getReplayer();
-	if (replayer == nullptr || !replayer->isValid()) {
-		const QString detail = replayer != nullptr
-			? replayer->errorString() : tr("Replay loader is unavailable");
-		QMessageBox::warning(this, tr("Replay error"), detail);
-		delete client;
-		return;
-	}
-	connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
-	client->signup();
+	openReplayAt(filename);
 }
 
 #if QSAN_ENABLE_QML
 // The home replays page has already picked the file, so this skips the legacy file dialog.
 void MainWindow::playReplayFile(const QString &filename)
 {
-	Client *client = new Client(this, filename);
-	Replayer *replayer = client->getReplayer();
-	if (replayer == nullptr || !replayer->isValid()) {
-		const QString detail = replayer != nullptr
-			? replayer->errorString() : tr("Replay loader is unavailable");
-		QMessageBox::warning(this, tr("Replay error"), detail);
-		delete client;
-		return;
-	}
-	connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
-	client->signup();
+	openReplayAt(filename);
 }
 #endif
 
@@ -2335,6 +2375,8 @@ void MainWindow::enterRoom()
 	connect(room_scene, SIGNAL(game_over_dialog_rejected()), this, SLOT(enableDialogButtons()));
 	connect(room_scene, &RoomScene::takeoverRequested,
 		this, &MainWindow::startTakeoverGame);
+	connect(room_scene, &RoomScene::replayPerspectiveRequested,
+		this, &MainWindow::switchReplayPerspective, Qt::QueuedConnection);
 
 	showGamePage(room_scene);
 #ifdef Q_OS_ANDROID

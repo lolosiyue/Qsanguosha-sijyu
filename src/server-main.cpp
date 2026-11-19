@@ -2,6 +2,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QTextStream>
 #include <QTimer>
@@ -22,6 +23,9 @@
 #include "core/asset-manifest.h"
 #include "core/engine-bootstrap.h"
 #include "core/engine.h"
+#include "core/general.h"
+#include "core/skill.h"
+#include "core/rules-bundle-exporter.h"
 #include "core/runtime-paths.h"
 #include "core/settings.h"
 #include "core/version.h"
@@ -144,6 +148,50 @@ void printAvailableGameModes(QTextStream &out)
         out << it.key() << '\t' << it.value().player_count << '\t'
             << it.value().display_name << Qt::endl;
     }
+}
+
+void printAcceptanceCatalog(QTextStream &out)
+{
+    // Query the loaded registry, including referenced and related skills. Do
+    // not infer V2 adoption from class names (most concrete skills lack Q_OBJECT).
+    QMap<QString, const General *> generals;
+    for (const General *general : Sanguosha->getAllGenerals())
+        generals.insert(general->objectName(), general);
+    QJsonArray rows;
+    for (const General *general : generals) {
+        QMap<QString, const Skill *> skills;
+        QSet<QString> direct;
+        QList<const Skill *> pending = general->getSkillList();
+        for (const Skill *skill : pending) direct.insert(skill->objectName());
+        while (!pending.isEmpty()) {
+            const Skill *skill = pending.takeFirst();
+            if (!skill || skills.contains(skill->objectName())) continue;
+            skills.insert(skill->objectName(), skill);
+            pending.append(Sanguosha->getRelatedSkills(skill->objectName()));
+        }
+        QJsonArray definitions;
+        for (const Skill *skill : skills) {
+            const bool v2 = dynamic_cast<const AmountSkillV2 *>(skill)
+                || dynamic_cast<const ProhibitSkillV2 *>(skill);
+            definitions.append(QJsonObject{{"name", skill->objectName()},
+                {"translation", Sanguosha->translate(skill->objectName())},
+                {"description", Sanguosha->translate(":" + skill->objectName())},
+                {"visible", skill->isVisible()}, {"direct", direct.contains(skill->objectName())},
+                {"v2", v2}, {"lord", skill->isLordSkill()}});
+        }
+        rows.append(QJsonObject{{"name", general->objectName()},
+            {"translation", Sanguosha->translate(general->objectName())},
+            {"package", general->getPackage()}, {"kingdom", general->getKingdom()},
+            {"hidden", general->isHidden()}, {"totally_hidden", general->isTotallyHidden()},
+            {"skills", definitions}});
+    }
+    QJsonArray modes;
+    const auto available = Sanguosha->getAvailableModes();
+    for (auto it = available.cbegin(); it != available.cend(); ++it)
+        modes.append(QJsonObject{{"id", it.key()}, {"players", it.value().player_count}});
+    const QJsonObject catalog{{"schema", 1}, {"generals", rows}, {"modes", modes},
+        {"code_identity", QSanRules::exportCodeIdentity()}};
+    out << QString::fromUtf8(QJsonDocument(catalog).toJson(QJsonDocument::Indented));
 }
 
 QVariantMap effectiveServerConfiguration()
@@ -272,7 +320,7 @@ int main(int argc, char **argv)
         return assetReport.complete() ? 0 : 7;
     }
 
-    const bool startsServer = !options.listGameModes
+    const bool startsServer = !options.listGameModes && !options.acceptanceCatalog
         && !options.printConfig && !options.checkConfig;
     ServerLogger logger;
     QString error;
@@ -328,6 +376,11 @@ int main(int argc, char **argv)
             EngineBootstrap::shutdown();
             return ConfigErrorExitCode;
         }
+    }
+    if (options.acceptanceCatalog) {
+        printAcceptanceCatalog(out);
+        EngineBootstrap::shutdown();
+        return 0;
     }
     if (options.listGameModes && !options.printConfig && !options.checkConfig) {
         printAvailableGameModes(out);

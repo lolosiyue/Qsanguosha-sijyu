@@ -69,6 +69,92 @@ Normal playback provides timeline seeking, perspective switching, and indexed
 state reconstruction. Takeover creates a new local game from a validated
 snapshot; it does not resume or mutate the historical server.
 
+Seeking reconstructs the recorded prefix in a fresh native `Client` and scene.
+It preserves paused state and playback speed; old player objects, hand cards,
+marks and dynamic seats are discarded before the new prefix is applied.
+The perspective menu is populated only by a valid sibling headless game index.
+Each choice opens that seat's own recipient stream at the current elapsed time,
+so private hands come from the messages actually sent to that seat. Historical
+control-context messages still select the operating player. A dynamically added
+seat becomes selectable from its birth time; dead seats remain selectable.
+
+## Headless recording and inspection
+
+Network servers can opt into the same per-seat recorder with `--record-dir
+<new-directory>`. The ordinary TCP signup and gameplay paths remain active;
+SETUP is copied into the recorder without sending a second SETUP to the client.
+Each room has its own game index and finalizes before its players are destroyed.
+The index's round count follows recorded ADD_ROUND / STATE_SYNC notifications,
+so it survives room-tag cleanup and includes a late seat's bootstrap round.
+
+Native `--headless` games automatically record Replay V2, independently of the
+GUI recorder settings. Override the batch directory with `--headless-record-dir`
+or opt out with `--no-headless-record`. The default is a unique timestamp/PID
+directory below the runtime record directory's `headless/` folder. An existing
+batch index or game directory is never overwritten.
+
+```powershell
+.\QSanguosha.exe --headless --games 1 --game-mode 05p --seed 20261112 --headless-record-dir L:/finaldebug/QSanguosha-v2/record/headless-example --headless-log L:/finaldebug/QSanguosha-v2/record/headless-example.log
+```
+
+Each batch has `index.json`; each `game-000001/` contains its own `index.json`
+and `seat-001.txt`, `seat-002.txt`, etc. The indexes record mode, gameplay seed,
+status, winner, player/general/role metadata, event counts and, on finalization,
+file sizes and SHA-256 hashes. Open any seat TXT through the usual Replay entry;
+keep the sibling index and other seat files together to retain the menu.
+These recordings contain private hands and identities for every recorded seat.
+
+All streams share one monotonic clock. Initial signup is recorded before the
+game starts. A new mid-game seat records a native marshal bootstrap at its birth
+coordinate, using the original card catalogue without advancing gameplay RNG.
+The record buffer appends complete JSON lines and flushes every 128 events or
+one second of event time, then finalizes after room workers stop. A hard process
+termination leaves a `running` index and may lose the unflushed tail; such a file
+is a partial recording, not a completed game, and strict parsing still applies.
+
+The product QA inspector loads real recordings with the ordinary
+`MainWindow`/`Client` playback lifecycle; it does not create a game or synthetic
+fixture. Run it from the deployed application's working directory:
+
+```powershell
+$env:QT_QPA_PLATFORM = 'offscreen'
+.\QSanguosha.exe --inspect-replay L:/finaldebug/QSanguosha-v2/record/headless-example/game-000001/seat-001.txt --replay-report L:/finaldebug/QSanguosha-v2/record/headless-example/inspection.json
+```
+
+The inspector defaults to a 60-second deadline. After explicitly authorizing a
+longer inspection, pass `--replay-timeout-ms <milliseconds>` (at most 2700000);
+application startup and shutdown must also fit the process's authorized limit.
+Use `--replay-perspectives sgs1,sgs2` to focus native inspection on selected
+recorded seats. Native loading validates sibling catalogue identities and paths;
+`tools/autotest/replay_recording_audit.py` separately checks every stream's
+recorded byte count, event count and SHA-256 against the final index.
+Streams without both gain/loss card-movement notifications fail the hand-coverage
+check before an empty hand can become a comparison baseline.
+Its JSON report includes each seat's
+middle/end state, native hand IDs and counts, ClientCore state, backward-seek
+comparison against a fresh prefix, perspective switches, pause/speed retention,
+and the final `GAME_OVER` state, including native cleanup notifications that
+follow the result event. It closes only identified native result dialogs during
+inspection. A passing report covers the events present in that recording;
+control transfers or mid-game additions require a recording containing them.
+No computer-use automation is needed.
+
+For a real network QA game, `--network-ui-smoke-script <file.lua>` submits a
+server script once at the first ordinary play-phase request, using the existing
+cheat-script API. Enable cheats only in that game's isolated server settings.
+This can invoke control transfer and `requestSummonBetween` without fabricated
+hands or an injected result; the native responder continues normal play.
+Movement notifications resolve the complete recipient/controller set once,
+then render each recipient's visibility and deliver one body directly.
+
+Replay reconstruction retires the previous Client and its engine runtime
+registration together. This also applies when leaving a paused middle position
+before `GAME_OVER`; the next Client must never inherit the retired context.
+Independent hand audits must include `TAKE_AG` acquisitions with `move_cards`,
+in addition to the ordinary gain/loss movement notifications.
+
+## Takeover eligibility
+
 A takeover node is eligible only when all of the following are true:
 
 - it is in an ordinary fixed-player mode such as `02p`, not a scenario,

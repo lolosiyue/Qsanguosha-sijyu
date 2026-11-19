@@ -272,6 +272,12 @@ Item {
                             Layout.fillWidth: true
                             spacing: HomeTheme.settingsRowGap
 
+                            FormButton {
+                                objectName: "androidContentManagerButton"
+                                visible: homeController.contentManagerAvailable
+                                text: qsTr("Resources and extensions...")
+                                onClicked: homeController.openContentManager()
+                            }
                             SettingsGroupTitle { text: qsTranslate("ConfigDialog", "界面") }
                             SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "主题") }

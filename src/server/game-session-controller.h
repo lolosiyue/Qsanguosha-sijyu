@@ -4,9 +4,11 @@
 #include <QList>
 #include <QString>
 #include <QStringList>
+#include <memory>
 
 class Room;
 class ServerPlayer;
+class HeadlessReplaySession;
 
 class GameSessionController
 {
@@ -40,6 +42,10 @@ public:
     };
 
     explicit GameSessionController(Room &room);
+    ~GameSessionController();
+    bool enableHeadlessRecording(const QString &batchDirectory, int gameNumber, QString *error);
+    HeadlessReplaySession *headlessReplay() const;
+    void finalizeRecording();
 
     State state() const;
     PreparationPhase preparationPhase() const;
@@ -81,6 +87,9 @@ private:
     PreparationPhase m_preparationPhase;
     TerminationCause m_terminationCause;
     bool m_workResultEmitted = false;
+    std::unique_ptr<HeadlessReplaySession> m_headlessReplay;
+    QString m_replayWinner;
+    QString m_replayCompletionError;
 };
 
 #endif

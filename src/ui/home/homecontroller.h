@@ -164,6 +164,9 @@ public:
     Q_INVOKABLE void openSettings();
     Q_INVOKABLE void openAbout();
     Q_INVOKABLE void checkUpdates();
+    Q_PROPERTY(bool contentManagerAvailable READ contentManagerAvailable CONSTANT)
+    bool contentManagerAvailable() const;
+    Q_INVOKABLE void openContentManager();
 
     // Replays page: manages the replay files directly inside the record directory.
     Q_INVOKABLE QString recordFolder() const;
@@ -240,6 +243,7 @@ signals:
     void replayFileRequested(const QString &path);
     void aboutRequested();
     void updateCheckRequested();
+    void contentManagerRequested();
 
     void qmlSceneRequested(const QUrl &source);
     void updateAvailableChanged();

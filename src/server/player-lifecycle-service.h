@@ -29,7 +29,7 @@ public:
     void signup(ServerPlayer *player, const QString &screenName,
                 const QString &avatar, bool isRobot);
     void reconnect(ServerPlayer *player, ClientSocket *socket);
-    void marshal(ServerPlayer *player, bool managedTimelineRestore = false);
+    void marshal(ServerPlayer *player, bool managedTimelineRestore = false, bool replayBootstrap = false);
 
     void killPlayer(ServerPlayer *victim, DamageStruct *reason, HpLostStruct *hpLost);
     bool hasActiveDeathCursor() const { return m_deathCursorDepth != 0; }
@@ -49,12 +49,12 @@ public:
     void changePlayerGeneral2(ServerPlayer *player, const QString &newGeneral);
 
     void requestSummonBetween(ServerPlayer *before, ServerPlayer *after,
-                              const QString &generalName);
+                              const QString &generalName, const QString &role = QString());
     bool hasPendingSummons() const;
     void processPendingSummons();
     void finishDeferredCascade(quint64 cascadeId, bool cancelled, quint64 parentCascadeId = 0);
     ServerPlayer *insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
-                                      const QString &generalName);
+                                      const QString &generalName, const QString &role = QString());
 
 private:
     friend struct PlayerLifecycleServiceTestAccess;
@@ -66,6 +66,7 @@ private:
         ServerPlayer *before;
         ServerPlayer *after;
         QString generalName;
+        QString role;
         quint64 cascadeId = 0;
     };
 

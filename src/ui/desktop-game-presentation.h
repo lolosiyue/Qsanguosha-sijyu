@@ -56,6 +56,7 @@ private:
     QString playerLabel(const QString &name) const;
     QString cardLabel(int id) const;
     void updateKeyboardCursor();
+    QString keyboardFocusLabel() const;
     void updateFocusLayer();
     void showControllerDetails();
     void refreshManagedRewindControls();

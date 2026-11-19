@@ -194,6 +194,9 @@ class Acceptance:
             self.env["PATH"] = args.qt_bin + os.pathsep + self.env.get("PATH", "")
             self.env.setdefault("QT_PLUGIN_PATH", str(Path(args.qt_bin).parent / "plugins"))
         self.env["PYTHONIOENCODING"] = "utf-8"
+        if args.verify_decisions or args.skill_branches or args.require_controller:
+            from runner_common import verification_env
+            self.env = verification_env(self.env, self.out / "verification-evidence")
         self.info = {}
         self.results = {}
         self.crashes = []
@@ -698,18 +701,34 @@ class Acceptance:
                 self.results["describe"] = self.record("describe")
             self.results[name] = self.record(name)
             print(f"[{self.results[name]['status']}] {name}: {self.results[name]['detail']}", flush=True)
+        verification = None
+        if self.args.verify_decisions or self.args.skill_branches or self.args.require_controller:
+            from verification_report import build_report, write_report, report_exit
+            verification = build_report([self.out], self.args.skill_branches, self.args.require_controller,
+                                        run_ids=[self.env["QSAN_TRACE_RUN_ID"]])
+            write_report(verification, self.out / "verification")
+            self.results["verification"] = {
+                "status": "FAIL" if report_exit(verification) == 1 else
+                          "WARN" if report_exit(verification) == 2 else "PASS",
+                "detail": "see verification/verification.md; branch coverage is reported separately"}
         summary = {"general": self.general, "seed": self.args.seed, "platform_mode": PLATFORM_MODE,
                    "profile": self.args.profile,
                    "skill_branch_coverage": "NOT RUN" if self.args.profile == "trustee" else "see skill stage",
                    "stages": self.results, "crashes": self.crashes}
+        if verification is not None:
+            summary["verification_report"] = "verification/verification.json"
+            if self.args.skill_branches:
+                summary["skill_branch_coverage"] = verification["skill_branches"]
         (self.out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
         (self.out / "crashes.json").write_text(json.dumps(self.crashes, ensure_ascii=False, indent=2),
                                                encoding="utf-8")
         lines = [f"# {self.general} acceptance (seed {self.args.seed}, {self.args.profile})", "",
                  "| stage | status | detail |", "|---|---|---|"]
         lines += [f"| {k} | {v['status']} | {v['detail']} |" for k, v in self.results.items()]
-        if self.args.profile == "trustee":
+        if self.args.profile == "trustee" and not self.args.skill_branches:
             lines += ["", "Skill branches: NOT RUN (Trustee client playback)."]
+        if verification is not None:
+            lines += ["", "Decision and skill evidence: [verification report](verification/verification.md)."]
         lines += ["", "## Crashes", ""]
         if not self.crashes:
             lines.append("None.")
@@ -723,7 +742,10 @@ class Acceptance:
                 lines += ["", "```", *c["context"], "```"]
         (self.out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"summary: {self.out / 'summary.md'} ({len(self.crashes)} crashes)")
-        return 1 if any(v["status"] in ("FAIL", "CRASH") for v in self.results.values()) else 0
+        if any(v["status"] in ("FAIL", "CRASH") for v in self.results.values()):
+            return 1
+        # Missing required controller/branch evidence must survive the stage summary.
+        return report_exit(verification) if verification is not None else 0
 
     def collect_dumps(self, stage, before):
         """Move the dumps this stage left in dmp/ into crashes/<stage>/ of the run directory."""
@@ -769,6 +791,13 @@ def main():
     parser.add_argument("--stages",
                         help="comma list from: " + ", ".join(LOCAL_STAGES + DEVICE_STAGES + INDEPENDENT_STAGES + UNAVAILABLE_STAGES))
     parser.add_argument("--cases", help="skill scenario case directory (scratchpad)")
+    parser.add_argument("--verify-decisions", action="store_true",
+                        help="capture and summarize real decision/controller provenance")
+    parser.add_argument("--skill-branches", action="append", default=[],
+                        help="reviewed branch specification, evaluated against observed real histories")
+    parser.add_argument("--require-controller", action="append", default=[],
+                        choices=("isolated", "external_agent", "deepseek", "jev"),
+                        help="require authority-confirmed participation; does not enable any provider")
     parser.add_argument("--qt-bin", help="Qt bin directory for every child process")
     parser.add_argument("--jobs", type=int, default=4, help="parallel skill cases / headless modes")
     parser.add_argument("--exclude-modes", default="", help="headless modes to skip, comma separated")

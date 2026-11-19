@@ -1034,8 +1034,12 @@ isolated 拒答仍可回退 legacy。國戰二十個公開 callback 強制為 `I
 | `players` | 候選玩家的 object name；選人族與 yiji 的收牌對象都在這裡 |
 
 `discard` 的 pattern 沿用 `request.pattern`（與出牌詢問同一個欄位），數量上下限在
-`min_count`／`max_count`，`optional` 表示可以不選。`card_chosen` 只給 `players`（被選牌的人）
-與 `choices`（牌區字母），不給 ID：別人的手牌沒有投影，候選要等牌區投影批次。
+`min_count`／`max_count`，`optional` 表示可以不選。`card_chosen` 提供 `players`（被選牌的人）、
+`choices`（牌區字母）及可見且合法的 `card_ids`／牌面；有隱藏手牌時，該 ID 集合標為不完整。
+`context.random_card_choices` 另提供各合法牌區組合的不透明憑證、完整候選數量及已公開的牌位置。
+共用策略隨機選取他人手牌時直接回 `{kind="answer", random_card_choice={token=…, index=…}}`，
+不先讀取 owner-only 手牌介面，也不把未知手牌當成空集合。一般策略僅使用 `complete=true`、
+`original_full_domain=false` 的合法集合；原生端解析索引後重驗持有者、禁選清單及處理方法。
 
 | Handler 回傳 | 轉換 |
 |---|---|
@@ -1118,6 +1122,15 @@ SmartAI，且 fallback 不算 isolated 驗收通過。
 
 共用入口常問的衍生值改由快照提供，缺投影就沒有那個 getter，不會回一個看起來合理的預設值。
 
+標準身份模式缺少公開 `role_counts` 時，模式結果標記 `public_role_counts_unknown`，
+isolated facade 以 `ai_unsupported` 拒絕依賴該策略的決策。需要身份配額的意圖交易在消耗
+mark 或亂數前整筆拒絕，原生日誌分類為 `AI_EVENT_UNSUPPORTED_PUBLIC_ROLE_COUNTS`；
+不使用舊的關係／局勢快取，也不讀取隱藏身份補齊總數。原生公開事件觀察與既有 observer
+mind 保留，不依賴配額的獨立 flag／mark 交易仍可提交。
+代理物件建立階段同樣保留 `AIUnsupported` 類型；決策入口回報未支援，事件入口依
+該訊號分類。原生端只讀取訊號的 metatable 與原始欄位，指令／記憶體超限及一般 Lua
+例外仍沿用各自的錯誤分類。
+
 | 來源 | 欄位 | 對應查詢 |
 |---|---|---|
 | `AIPlayerView` | `max_cards`、`hujia`、`attack_range`、`gender`、`lord` | `getMaxCards()`、`getHujia()`、`getAttackRange()`、`getGender()`、`isLord()` |
@@ -1126,7 +1139,7 @@ SmartAI，且 fallback 不算 isolated 驗收通過。
 | `AISkillView` | `skill_classes`（原生類別鏈）、`frequency`、`lord_skill`、`attached_lord_skill`、`lord_skill_effective` | `getSkillClass()`、`inherits(name)`、`getFrequency()`、`isLordSkill()`、`isLordSkillEffective()` |
 | `AIWorldView` | `turn_count`（公開輪數 `TurnLengthCount`）、`enable_hegemony`、`ai_humanized`、`ai_chat_enabled` | `RoomView:getTurnCount()`；其餘讀 `world` 同名欄位 |
 | `AIWorldView` | `hegemony_facts`：native 依 viewer 產生的國戰 facts；`shown`／`known` 身份與技能分開，並帶 `public_friends`、來源／`slots`、viewer 可見的 `card_counts`（手牌與 Wooden Ox）、公開牌 `general_definitions`／`general_piles` catalog／pile、owner history／recovery 與 `duanchang` | `AIHegemony.facts(world)` 只消費這份純值 facts，不擴張可見性 |
-| `AIWorldView` | `role_counts`：模式身份組成扣掉 viewer 看得到身份的死者；自訂身份或有身份未公開的死者時不出現 | `getRoleCounts()` |
+| `AIWorldView` | `role_counts`：模式身份組成扣掉 viewer 看得到身份的死者；自訂身份、動態增員令實際名冊與模式配置不同，或有身份未公開的死者時不出現 | `getRoleCounts()` |
 | `AIPlayerView` | `state`（`robot`／`online`／`trust`…）、`skills_complete`（國戰隱藏了部分技能時為 false）、`marks_complete`（viewer 本人為 true，未列出的 mark 即 0） | `getState()`、`areSkillsComplete()`、`getMark(name)` |
 | `AICardView` | `legacy_string_key`／`legacy_sort_key`（只有實體牌）、`name_length`、`can_recast`、`will_throw`、`single_target`；`source_skill` 只在自己的牌或發動技能即其來源時出現 | `getLegacyStringKey()`、`nameLength()`、`canRecast()`、`willThrow()`、`isSingleTargetCard()`、`getSourceSkillName()` |
 | `AICardView`（viewer 自己的手牌、裝備、開放牌堆） | `skill_names`（`skill_names_complete` 為 true）、`engine_class_name`、`locked`、`jilei`、`using` | `PlayerView:isLocked(card)`、`isJilei(card)`、`hasFlag("using")` |
@@ -1142,7 +1155,7 @@ SmartAI，且 fallback 不算 isolated 驗收通過。
 | `CandidateView`／`ConversionView` | `extra_target_count`、`extra_target_by_player`（ExtraTarget 修正）、`target_filter_empty`（空前綴的 `targetFilter`，每名存活者） | `getExtraTargetCount([target])`、`canTargetWithEmptyPrefix(target)` |
 | `AIPlayerView` | `attack_range_without_weapon`、`skipped_phases`、`prototype_rules`（只在決策請求投影，事件與 TriggerOrder 不帶）：Slash／Jink／Peach／Analeptic／Nullification 原型的 `use_limited`、`response_limited`、`available`、`target_mod_residue`／`target_mod_distance`／`target_mod_extra`、`residue_unlimited`（`Engine::hasResidueUnlimited`，國戰只計明置來源；連弩的大額 Residue 不算），viewer 自己的 Slash 另有 `target_filter_empty`、`extra_target` | `getAttackRange(false)`、`isSkipped(phase)`、`sgs.Slash_IsAvailable`、`isResidueUnlimited(class_name)`；Lua 端組出的轉化牌評估沿用其原型規則 |
 | `AISkillView`（viewer 自己的 view-as 技能，只在決策請求投影，事件不帶） | `enabled_at_response`：對 `slash`、`jink`、`peach`、`analeptic`、`nullification`、`peach+analeptic` 的 `isEnabledAtResponse` | `getConversionPolicy(class)` 的 V1 列 |
-| `AIChoiceOptions`（AmazingGrace） | `context.acquired_card_evaluations[id]`：每張可拿的牌以 viewer 為持有者的 `card`（owner 欄位，`limits_hand` 照手牌算）、同一組規則的 `card_rules`、出牌 `candidate`（目標組合同手牌 candidate，`candidate_id` 為 -1，不是票）；`context.printed_card_evaluations[name]`：每個展示牌名的印刷牌（無花色、無子卡）同樣三欄 | `SmartAIView:getAcquiredCardEvaluation(card)`、`evaluateAcquiredCard(card)`；這些牌的 `isAvailable`／`isCardLimited` 也讀 `card_rules`。`getEvaluationCard(name)` 與無材料的 `evaluateOwnerViewAsCard` 帶上印刷列的規則與 candidate；沒有印刷列的 owner view-as 評估 `complete_coverage` 為 false |
+| `AIChoiceOptions`（AmazingGrace） | `context.acquired_card_evaluations[id]`：每張可拿的牌以 viewer 為持有者的 `card`（owner 欄位，`limits_hand` 照手牌算）、同一組規則的 `card_rules`、出牌 `candidate`（目標組合同手牌 candidate，`candidate_id` 為 -1，不是票）；`context.printed_card_evaluations[name]`：每個展示牌名的印刷牌（無花色、無子卡）同樣三欄 | `SmartAIView:getAcquiredCardEvaluation(card)`、`evaluateAcquiredCard(card)`；這些牌的 `isAvailable`／`isCardLimited` 也讀 `card_rules`。`getEvaluationCard(name)` 帶上印刷列的規則與 candidate；`evaluateOwnerViewAsCard` 則由共用原生唯讀評估器取得當次實際規則與 candidate，保持原生 coverage 狀態 |
 
 `inherits` 只比對快照裡的類別鏈，所以 `LuaTriggerSkill` 也答得出 `TriggerSkill`；沒有類別
 投影回 nil，不會退回「不是」。主公技是否生效由權威端算好（`hasLordSkill`），不是由 AI 自己
@@ -1183,8 +1196,10 @@ QStringList 的 data 投影為 `context.string_list`（`data:toStringList()`）�
 
 技能卡由 `bindSkillCard` 產生收據：V2 技能以本題 `skill_actions` 中的實例回答
 `{skill_action, cards, user_string}`。權威端重建牌並重驗 canActivate、次數與目標，收據本身不宣稱
-目標合法性。規劃期間的技能卡與轉化牌（`evaluateTurnSkillCard`、`evaluateOwnerViewAsCard`）是依
-牌目錄與材料牌面在 Lua 端組出的評估牌，選中後才換成收據。
+目標合法性。規劃期間的技能卡與轉化牌（`evaluateTurnSkillCard`、`evaluateOwnerViewAsCard`）
+仍是評估牌，選中後才換成收據。`evaluateOwnerViewAsCard` 在一般模式與國戰共用原生唯讀
+評估器，按當次持有者、技能及材料取得實際牌面與規則，包含 `subtype` 與
+`target_residue`；牌目錄不能代替這些依材料而變的規則。
 
 V1 技能只有在 native 提供 typed projection 時才由 isolated 回答，isolated 不送 legacy 牌字串。
 V1 技能卡、出牌階段的 V1 轉化

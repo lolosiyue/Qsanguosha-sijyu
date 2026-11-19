@@ -17,6 +17,7 @@ struct AICardView {
     int effectiveId;
     QString objectName;
     QString className;
+    QString subtype;
     int suit;
     int number;
     QString skillName;
@@ -631,6 +632,8 @@ struct AIResult {
     quint64 stateRevision;
     CardActionSpec action;
     QString errorCode;
+    // Bounded isolated coverage diagnostics; never authority or strategy input.
+    QJsonObject isolatedDiagnostics;
 
     // Resolved only by the matching CardChosen authority.
     QString randomCardToken;

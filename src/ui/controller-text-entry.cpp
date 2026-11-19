@@ -1,7 +1,10 @@
 #include "controller-text-entry.h"
+#include "build-features.h"
 
 #include <QGridLayout>
 #include <QGuiApplication>
+#include <QInputMethod>
+#include <QInputMethodEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -15,6 +18,9 @@
 #include <QTextEdit>
 #include <QValidator>
 #include <QVBoxLayout>
+#if QSAN_ENABLE_QML
+#include <QQuickItem>
+#endif
 
 namespace {
 
@@ -38,9 +44,19 @@ bool isLowSurrogate(QChar character)
     return character.isLowSurrogate();
 }
 
+bool quickTextField(const QObject *target)
+{
+#if QSAN_ENABLE_QML
+    return target && (target->inherits("QQuickTextInput") || target->inherits("QQuickTextEdit"));
+#else
+    Q_UNUSED(target);
+    return false;
+#endif
+}
+
 } // namespace
 
-ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
+ControllerTextEntry::ControllerTextEntry(QObject *target, QWidget *parent)
     : QDialog(parent), m_target(target)
 {
     setObjectName(QStringLiteral("controllerTextEntryDialog"));
@@ -69,6 +85,17 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
         m_buffer = plainTextEdit->toPlainText();
         m_cursor = plainTextEdit->textCursor().position();
         m_multiline = true;
+    } else if (quickTextField(target)) {
+        m_buffer = target->property("text").toString();
+        m_cursor = target->property("cursorPosition").toInt();
+        m_maxLength = targetMaxLength();
+        m_multiline = target->inherits("QQuickTextEdit");
+        if (m_multiline) {
+            QString plain;
+            if (QMetaObject::invokeMethod(target, "getText", Q_RETURN_ARG(QString, plain),
+                    Q_ARG(int, 0), Q_ARG(int, target->property("length").toInt())))
+                m_buffer = plain;
+        }
     }
     m_cursor = qBound(0, m_cursor, static_cast<int>(m_buffer.size()));
 
@@ -220,21 +247,28 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
     refreshPreview();
 }
 
-void ControllerTextEntry::edit(QWidget *target, QWidget *parent)
+void ControllerTextEntry::edit(QObject *target, QWidget *parent)
 {
     auto *lineEdit = qobject_cast<QLineEdit *>(target);
     auto *textEdit = qobject_cast<QTextEdit *>(target);
     auto *plainTextEdit = qobject_cast<QPlainTextEdit *>(target);
     if ((!lineEdit || lineEdit->isReadOnly())
         && (!textEdit || textEdit->isReadOnly())
-        && (!plainTextEdit || plainTextEdit->isReadOnly())) return;
+        && (!plainTextEdit || plainTextEdit->isReadOnly())
+        && (!quickTextField(target) || target->property("readOnly").toBool())) return;
 
-    QPointer<QWidget> targetGuard(target);
+    QPointer<QObject> targetGuard(target);
+    // A button editor owns the entire edit transaction; don't cover it with an IME.
+    QGuiApplication::inputMethod()->hide();
     auto *dialogWidget = new ControllerTextEntry(target, parent);
     QPointer<ControllerTextEntry> dialog(dialogWidget);
     dialogWidget->exec();
-    if (targetGuard && targetGuard->isVisible() && targetGuard->isEnabled())
-        targetGuard->setFocus(Qt::OtherFocusReason);
+    if (auto *widget = qobject_cast<QWidget *>(targetGuard.data()); widget && widget->isVisible() && widget->isEnabled())
+        widget->setFocus(Qt::OtherFocusReason);
+#if QSAN_ENABLE_QML
+    if (auto *item = qobject_cast<QQuickItem *>(targetGuard.data()); item && item->isVisible() && item->isEnabled())
+        item->forceActiveFocus(Qt::OtherFocusReason);
+#endif
     if (dialog) delete dialog.data();
 }
 
@@ -247,6 +281,7 @@ bool ControllerTextEntry::targetIsEditable() const
         return !textEdit->isReadOnly();
     if (const auto *plainTextEdit = qobject_cast<const QPlainTextEdit *>(m_target.data()))
         return !plainTextEdit->isReadOnly();
+    if (quickTextField(m_target)) return !m_target->property("readOnly").toBool();
     return false;
 }
 
@@ -254,6 +289,10 @@ int ControllerTextEntry::targetMaxLength() const
 {
     if (const auto *lineEdit = qobject_cast<const QLineEdit *>(m_target.data()))
         return lineEdit->maxLength();
+    if (quickTextField(m_target)) {
+        const auto maximum = m_target->property("maximumLength");
+        return maximum.isValid() ? maximum.toInt() : -1;
+    }
     return -1;
 }
 
@@ -380,6 +419,14 @@ void ControllerTextEntry::refreshPreview()
             hiddenPassword = true;
         }
     }
+    if (quickTextField(m_target)) {
+        const int echo = m_target->property("echoMode").toInt();
+        if (echo == QLineEdit::NoEcho) { visibleText.clear(); hiddenPassword = true; }
+        else if (echo != QLineEdit::Normal) {
+            visibleText = QString(m_buffer.size(), QChar(0x2022));
+            hiddenPassword = true;
+        }
+    }
     m_preview->setPlainText(visibleText);
     QTextCursor cursor = m_preview->textCursor();
     cursor.setPosition(qBound(0, m_cursor, static_cast<int>(visibleText.size())));
@@ -446,6 +493,31 @@ void ControllerTextEntry::commit()
         QTextCursor cursor = target->textCursor();
         cursor.setPosition(qBound(0, m_cursor, static_cast<int>(m_buffer.size())));
         target->setTextCursor(cursor);
+        if (!self || !target) return;
+    } else if (quickTextField(m_target)) {
+        QPointer<QObject> target = m_target;
+        if (target->inherits("QQuickTextInput")) {
+            QLineEdit probe;
+            const int maximum = targetMaxLength();
+            if (maximum >= 0) probe.setMaxLength(maximum);
+            probe.setInputMask(target->property("inputMask").toString());
+            if (const auto *validator = qobject_cast<QValidator *>(target->property("validator").value<QObject *>()))
+                probe.setValidator(validator);
+            probe.setText(m_buffer);
+            if (!probe.hasAcceptableInput() || probe.text() != m_buffer) {
+                m_validationMessage->setText(tr("Text does not satisfy this field's input mask or validator."));
+                m_validationMessage->show();
+                return;
+            }
+        }
+        // Deliver an ordinary text commit, preserving QML textEdited/bindings and
+        // validation. Setting the text property directly would skip user-edit signals.
+        if (!QMetaObject::invokeMethod(target, "selectAll") || !target) return;
+        QInputMethodEvent commitEvent;
+        commitEvent.setCommitString(m_buffer);
+        QCoreApplication::sendEvent(target, &commitEvent);
+        if (!self || !target) return;
+        target->setProperty("cursorPosition", qBound(0, m_cursor, static_cast<int>(m_buffer.size())));
         if (!self || !target) return;
     }
     accept();

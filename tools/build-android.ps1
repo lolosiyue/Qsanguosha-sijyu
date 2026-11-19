@@ -15,11 +15,16 @@ param(
     [string]$AudioBackend = 'ANDROID',
     [ValidateRange(1, 32)]
     [int]$Parallel = 8,
+    # Opt-in release signing with the same persistent local identity as Debug.
+    [switch]$SignRelease,
     # Development devices track the APK's rule content; this keeps the product missing-only rule.
     [switch]$PreserveDeviceContent
 )
 
 $ErrorActionPreference = 'Stop'
+if ($SignRelease -and $Configuration -ne 'Release') {
+    throw '-SignRelease requires -Configuration Release.'
+}
 $repoRoot = Split-Path -Parent $PSScriptRoot
 # Qt kit names differ from the ABI and preset names; keep each ABI's cache separate.
 $qtAbiTag = switch ($Abi) {
@@ -86,6 +91,9 @@ $environment = @{
     JAVA_HOME = $JavaRoot
     ANDROID_USER_HOME = (Join-Path $ToolchainRoot 'android-user')
     GRADLE_USER_HOME = (Join-Path $ToolchainRoot 'gradle')
+    # androiddeployqt expects the unsigned Release output. Sign in the final
+    # incremental Gradle pass using the same validated local signing profile.
+    QSAN_ANDROID_SIGN_RELEASE = '0'
     PATH = "$(Join-Path $JavaRoot 'bin');$(Split-Path -Parent $NinjaExe);$(Join-Path $QtHostPath 'bin');$env:PATH"
 }
 $savedEnvironment = @{}
@@ -119,6 +127,22 @@ try {
         "-DQSAN_ANDROID_DEV_CONTENT_SYNC=$(if ($PreserveDeviceContent) { 'OFF' } else { 'ON' })")
     Invoke-CMake -CMakeArguments $configureArguments
     Invoke-CMake -CMakeArguments @('--build', '--preset', "$preset-apk", '--parallel', "$Parallel")
+    if ($SignRelease) {
+        $androidBuild = Join-Path $repoRoot "builds/$preset/cmake/android-app/android-build"
+        $env:QSAN_ANDROID_SIGN_RELEASE = '1'
+        Push-Location $androidBuild
+        try {
+            & (Join-Path $androidBuild 'gradlew.bat') assembleRelease
+            if ($LASTEXITCODE -ne 0) { throw "Release signing failed ($LASTEXITCODE)." }
+            $signedApk = Join-Path $androidBuild 'build/outputs/apk/release/android-build-release.apk'
+            & (Join-Path $SdkRoot 'build-tools/36.0.0/apksigner.bat') verify $signedApk
+            if ($LASTEXITCODE -ne 0) { throw 'Release APK signature verification failed.' }
+            Copy-Item -LiteralPath $signedApk -Destination (Join-Path $androidBuild 'QSanguosha.apk') -Force
+            Write-Output "Signed Release APK: $signedApk"
+        } finally {
+            Pop-Location
+        }
+    }
 } finally {
     Pop-Location
     foreach ($key in $savedEnvironment.Keys) {

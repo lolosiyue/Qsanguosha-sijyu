@@ -386,8 +386,6 @@ private:
     KOFOrderBox *enemy_box, *self_box;
     QPointF m_tableCenterPos;
     RoomReplayController *m_replay;
-    QAction *m_switchPerspectiveAction;
-    QString m_currentPerspective;
 
     struct _MoveCardsClassifier
     {
@@ -592,6 +590,7 @@ signals:
     // Semantic draft/eligibility changes, independent of animation repainting.
     void presentationDraftChanged();
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+    void replayPerspectiveRequested(const QString &playerName);
     void responsiveGeometryChanged();
     void qmlLayerAttached();
     void seatCountChanged();

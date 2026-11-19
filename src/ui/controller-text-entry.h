@@ -1,6 +1,7 @@
 #ifndef CONTROLLER_TEXT_ENTRY_H
 #define CONTROLLER_TEXT_ENTRY_H
 
+#include <QCoreApplication>
 #include <QDialog>
 #include <QList>
 #include <QPointer>
@@ -17,12 +18,13 @@ class QWidget;
 // user activates Done; closing/cancelling the dialog leaves it untouched.
 class ControllerTextEntry final : public QDialog
 {
+    Q_DECLARE_TR_FUNCTIONS(ControllerTextEntry)
 public:
-    explicit ControllerTextEntry(QWidget *target, QWidget *parent = nullptr);
+    explicit ControllerTextEntry(QObject *target, QWidget *parent = nullptr);
 
-    // Opens a modal editor only for editable QLineEdit/QTextEdit/QPlainTextEdit.
+    // Opens the same modal editor for editable QWidget and Qt Quick text fields.
     // The target is guarded while the nested dialog loop is active.
-    static void edit(QWidget *target, QWidget *parent);
+    static void edit(QObject *target, QWidget *parent);
 
 private:
     bool appendText(const QString &text);
@@ -40,7 +42,7 @@ private:
     bool targetIsEditable() const;
     int targetMaxLength() const;
 
-    QPointer<QWidget> m_target;
+    QPointer<QObject> m_target;
     QPlainTextEdit *m_preview = nullptr;
     QLabel *m_cursorStatus = nullptr;
     QLineEdit *m_codePointPreview = nullptr;

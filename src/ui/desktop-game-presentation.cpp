@@ -226,6 +226,22 @@ void DesktopGamePresentation::clearKeyboardCursor()
     }
 }
 
+QString DesktopGamePresentation::keyboardFocusLabel() const
+{
+    if (m_keyboardKind == QLatin1String("command")) {
+        if (m_keyboardId == QLatin1String("confirm")) return tr("Confirm");
+        if (m_keyboardId == QLatin1String("cancel")) return tr("Cancel");
+        if (m_keyboardId == QLatin1String("finish")) return tr("End turn");
+        if (m_keyboardId == QLatin1String("controller-inspect")) return tr("Details");
+        if (m_keyboardId == QLatin1String("controller-menu")) return tr("Game menu");
+        if (m_keyboardId == QLatin1String("controller-add-vote")) return tr("Add target vote");
+        if (m_keyboardId == QLatin1String("controller-remove-vote")) return tr("Remove target vote");
+    }
+    for (const auto &entries : {m_model.cards, m_model.players, m_model.skills, m_model.actions})
+        for (const auto &entry : entries) if (entry.id == m_keyboardId) return entry.label;
+    return m_keyboardId;
+}
+
 void DesktopGamePresentation::updateKeyboardCursor()
 {
     const auto *tracker = InputModeTracker::existing();
@@ -239,11 +255,11 @@ void DesktopGamePresentation::updateKeyboardCursor()
             status->setProperty("controllerHintStyled", true);
             status->setStyleSheet(original + QStringLiteral("\nQStatusBar { color: #ffffff; background-color: #222222; }"));
         }
-        QString label = m_keyboardId;
-        for (const auto &entries : {m_model.cards, m_model.players, m_model.skills, m_model.actions})
-            for (const auto &entry : entries) if (entry.id == m_keyboardId) label = entry.label;
+        const QString label = keyboardFocusLabel();
         const QObject *window = m_scene->mainWindow();
-        status->showMessage(tr("Controller focus: %1 — %2: select; %3: confirm; %4: back")
+        if (window->property("controllerButtons").toMap().value("remote").toBool())
+            status->showMessage(tr("Remote focus: %1 — OK: select; Up/Down: groups and commands; Back: cancel").arg(label));
+        else status->showMessage(tr("Controller focus: %1 — %2: select; %3: confirm; %4: back")
             .arg(label, padButton(window, "south"), padButton(window, "west"), padButton(window, "east")));
     }
     QGraphicsObject *item = nullptr;
@@ -529,9 +545,11 @@ void DesktopGamePresentation::updateFocusLayer()
 {
     const auto *tracker = InputModeTracker::existing();
     const bool gamepad = tracker && tracker->mode() == InputModeTracker::Mode::Gamepad;
+    const QObject *window = m_scene->mainWindow();
+    const bool remote = window && window->property("controllerButtons").toMap().value("remote").toBool();
     const bool tableVisible = !QApplication::activeModalWidget() && !QApplication::activePopupWidget()
         && m_scene->mainWindow() && m_scene->mainWindow()->isVisible();
-    if (!m_model.supported || !tableVisible || m_model.arrangingCards) {
+    if ((!m_model.supported && !remote) || !tableVisible || m_model.arrangingCards) {
         if (m_legend) m_legend->hide();
         if (m_keyboardMarker) m_keyboardMarker->hide();
         return;
@@ -583,9 +601,22 @@ void DesktopGamePresentation::updateFocusLayer()
         if (m_legend) m_legend->hide();
         return;
     }
-    const bool keyboard = tracker && tracker->mode() == InputModeTracker::Mode::Keyboard;
-    const QObject *window = m_scene->mainWindow();
+    const bool keyboard = !remote && tracker && tracker->mode() == InputModeTracker::Mode::Keyboard;
     QList<TableButtonLegend::Entry> entries;
+    if (remote) {
+        // Every operation is in the existing command group; don't advertise pad
+        // face/shoulder buttons that a five-way TV remote does not have.
+        if (m_model.supported) {
+            entries.append({QStringLiteral("← / →"), tr("Move")});
+            entries.append({QStringLiteral("↑ / ↓"), tr("Cards / targets / skills / commands")});
+            // Commands without a native table button still have a visible,
+            // localized focus destination in the same table legend.
+            entries.append({tr("OK"), m_keyboardKind == QLatin1String("command") ? keyboardFocusLabel() : tr("Select")});
+            entries.append({tr("Back"), tr("Cancel")});
+        } else {
+            entries.append({QStringLiteral("↑ / OK"), tr("Game menu")});
+        }
+    } else {
     entries.append({keyboard ? QStringLiteral("← / →") : tr("D-pad"), tr("Move")});
     if (!m_model.cards.isEmpty() || !m_model.players.isEmpty() || !m_model.actions.isEmpty() || !m_model.skills.isEmpty())
         entries.append({keyboard ? QStringLiteral("Space") : padButton(window, "south"), tr("Select")});
@@ -596,6 +627,7 @@ void DesktopGamePresentation::updateFocusLayer()
     if (!keyboard) entries.append({padButton(window, "north"), tr("Details")});
     entries.append({keyboard ? QStringLiteral("Tab") : padButton(window, "shoulders"), tr("Switch group")});
     if (!keyboard) entries.append({padButton(window, "menu"), tr("Game menu")});
+    }
     if (!m_legend) {
         auto *legend = new TableButtonLegend;
         legend->setZValue(10001);

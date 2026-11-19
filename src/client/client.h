@@ -83,6 +83,8 @@ public:
     void requestSurrender();
 
     bool isReplayState() const { return nullptr != replayer; }
+    int lastReplayPairIndex() const { return m_lastReplayPairIndex; }
+    qint64 lastReplayElapsedMs() const { return m_lastReplayElapsedMs; }
 
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());

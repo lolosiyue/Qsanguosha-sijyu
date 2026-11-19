@@ -21,6 +21,8 @@ Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與�
 - `ask-for-choice.lua` 與 `ask-for-use-card.lua` 已提供 ask-for defaults；`respond_card` 會消費純值 request 與 conversion proposal。
 - C++ response conversion 使用實際 active skill instance 建立 authority ticket。Lua 的 `card_spec` 回答需回到 native 端核對 request kind、conversion identity、activation/source identity、cost 與 offered cards；show/pindian 不接受 spec。
 - `decision-core.lua` 已消費 `ai_suit_priority`、`ai_card_priority`、`ai_chaofeng`、`ai_weapon_value`、`ai_armor_value`、`ai_skill_defense`、`ai_NeedPeach`，以及 dynamic damage/value inputs；draw/discard/damage/best-damage wrappers 只在 projected candidates 上工作。
+- 實體牌與發出的轉化牌透過共用 `AICardView` 保留原生 `subtype`。`evaluateOwnerViewAsCard` 在一般模式與國戰都使用同一個有界唯讀原生評估器，取得實際技能、材料、目標次數修正與限制；不再以牌目錄拼出的近似牌面代替規則。評估牌仍不具提交權限，選中後須取得既有收據並重驗。
+- 共用選牌策略在隨機選取他人手牌（含混合牌區）時，直接使用當次 `random_card_choices` 的完整合法候選憑證，不先呼叫 owner-only `getCards("h")`。isolated 只選擇索引，原生端解析牌 ID 並重驗持有者、禁選與處理方法；已公開的裝備位置仍可用於避開白銀獅子。自己的牌與純公開區域沿用可見牌排序。
 - event coordinator 在指定事件階段對每個 observer 產生可見 event/world，runtime 先累積及驗證 delta，再準備單一觀察者狀態；移除指令 hook 後才提交。內部 skill choice/invoke 答案只給當事者，Yiji 不投影私有支付牌 ID。
 
 ## bounded policy

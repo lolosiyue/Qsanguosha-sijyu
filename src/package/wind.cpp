@@ -735,7 +735,26 @@ public:
         if (!source.isValid()) return false;
         if (ctx.original_data->value<PhaseChangeStruct>().to == Player::Judge)
             room->askForUseCard(ctx.owner, "@@shensu1", "@shensu1", 1);
-        else room->askForUseCard(ctx.owner, "@@shensu2", "@shensu2", 2, Card::MethodDiscard);
+        else {
+            // The play-skip ask demands one equip as its material (ShensuViewAsSkill::
+            // canSelectCard). Without any equip the ask has no expressible answer: the
+            // projection offers no empty selection and an external agent's pass bounces
+            // at room level, so the prompt would loop forever. The option is simply
+            // unavailable without the material — do not ask.
+            QList<int> materialIds = ctx.owner->handCards();
+            materialIds += ctx.owner->getEquipsId();
+            bool hasMaterial = false;
+            for (int id : materialIds) {
+                const Card *card = Sanguosha->getCard(id);
+                if (card && card->isKindOf("EquipCard") && !ctx.owner->isJilei(card)
+                    && !card->hasFlag("using")) {
+                    hasMaterial = true;
+                    break;
+                }
+            }
+            if (!hasMaterial) return false;
+            room->askForUseCard(ctx.owner, "@@shensu2", "@shensu2", 2, Card::MethodDiscard);
+        }
         return false;
     }
     int getEffectIndex(const ServerPlayer *player, const Card *) const override

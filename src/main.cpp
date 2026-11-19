@@ -56,6 +56,7 @@
 #include "testing/multimedia-smoke-controller.h"
 #include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
+#include "testing/replay-inspector.h"
 #include "websocket-gateway.h"
 #ifdef Q_OS_ANDROID
 #include "android-content-store.h"
@@ -209,6 +210,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
+#if defined(Q_OS_ANDROID) && QSAN_CONTROLLER_ENABLED
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--android-tv") == 0)
+            qputenv("QSAN_ANDROID_TV", "1");
+    if (ControllerService::isTelevision()) {
+        // Select the existing TV presentation before creating any Qt window.
+        qputenv("QSAN_BIG_PICTURE", "1");
+        qInfo("Android TV: directional remote and big-picture mode enabled");
+    }
+#endif
     // Big-picture (10-foot) mode: --big-picture, the persisted BigPicture/Enabled
     // key, or a preset QSAN_BIG_PICTURE env var. Resolve it now so every later
     // stage only checks qsanBigPictureModeActive().
@@ -293,7 +304,8 @@ int main(int argc, char *argv[]) {
 
     // --asset-report is pure diagnostic output and must not require a display: like -server
     // it runs the QCoreApplication path.
-    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke && !effectsSmoke
+    const bool replayInspection = appArgs.contains(QStringLiteral("--inspect-replay"));
+    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke && !effectsSmoke && !replayInspection
         && (appArgs.contains("-server")
             || appArgs.contains("--headless")
             || appArgs.contains("--asset-report")
@@ -324,7 +336,7 @@ int main(int argc, char *argv[]) {
     } else if (headlessApp)
         new QCoreApplication(argc, argv);
     else {
-#if QSAN_CONTROLLER_ENABLED
+#if QSAN_CONTROLLER_ENABLED && !defined(Q_OS_ANDROID)
         // Native platform file pickers do not expose a Qt focus/control tree.
         // Controller builds use Qt's widget picker and on-screen text entry.
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
@@ -361,6 +373,14 @@ int main(int argc, char *argv[]) {
 #endif
     }
 
+#if defined(Q_OS_ANDROID) && QSAN_CONTROLLER_ENABLED
+    if (qobject_cast<QApplication *>(qApp)
+        && !qApp->arguments().contains(QStringLiteral("--controller-keyboard-fallback"))) {
+        // The first-run content/recovery dialog must already accept the remote.
+        auto *controllers = new ControllerService(qApp);
+        new ControllerRouter(controllers, qApp);
+    }
+#endif
 #ifdef Q_OS_ANDROID
     AndroidContentStore androidContent;
 #endif
@@ -528,7 +548,7 @@ int main(int argc, char *argv[]) {
     // The boot animation runs on its own render thread while the engine blocks this one.
     BootSplash *bootSplash = nullptr;
     if (!headlessApp && !uiStartupSmoke && !multimediaSmoke && !effectsSmoke
-        && !NetworkUiSmokeController::isRequested(appArgs) && BootSplash::wanted(appArgs))
+        && !replayInspection && !NetworkUiSmokeController::isRequested(appArgs) && BootSplash::wanted(appArgs))
         bootSplash = BootSplash::show();
     // Windows marks a window that stops reading messages for 5 s as hung and may freeze
     // it behind a ghost copy; the Lua extensions alone take longer than that.
@@ -570,7 +590,7 @@ int main(int argc, char *argv[]) {
 #endif
     startupPhase.next("main.settings");
     Config.init();
-#if QSAN_CONTROLLER_ENABLED
+#if QSAN_CONTROLLER_ENABLED && !defined(Q_OS_ANDROID)
     if (qobject_cast<QApplication *>(qApp)
         && !qApp->arguments().contains(QStringLiteral("--controller-keyboard-fallback"))) {
         auto *controllers = new ControllerService(qApp);
@@ -791,6 +811,13 @@ int main(int argc, char *argv[]) {
     if (effectsSmoke) {
         const int rc = EffectsSmokeController::run();
         CrashHandler::beginShutdown();
+        return rc;
+    }
+
+    if (replayInspection) {
+        const int rc = ReplayInspector::run(arguments);
+        CrashHandler::beginShutdown();
+        delete QCoreApplication::instance();
         return rc;
     }
 

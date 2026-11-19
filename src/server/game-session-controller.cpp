@@ -1,4 +1,5 @@
 #include "game-session-controller.h"
+#include "headless-replay-session.h"
 
 #include "ai.h"
 #include "banpair.h"
@@ -46,6 +47,32 @@ GameSessionController::GameSessionController(Room &room)
 GameSessionController::State GameSessionController::state() const
 {
     return m_state;
+}
+
+GameSessionController::~GameSessionController() = default;
+
+void GameSessionController::finalizeRecording()
+{
+    // Network rooms retire through the normal server lifecycle. Their recorder
+    // is finalized after the workers stop, while ServerPlayer children exist.
+    if (m_headlessReplay) {
+        QString error;
+        const QString status = !m_replayCompletionError.isEmpty() ? QStringLiteral("failed")
+            : (m_state == State::Finished ? QStringLiteral("completed") : QStringLiteral("interrupted"));
+        if (!m_headlessReplay->finish(status, m_replayWinner, m_replayCompletionError, &error))
+            qWarning().noquote() << "Replay finalization failed:" << error;
+    }
+}
+
+bool GameSessionController::enableHeadlessRecording(const QString &batchDirectory, int gameNumber, QString *error)
+{
+    m_headlessReplay = std::make_unique<HeadlessReplaySession>(m_room, batchDirectory, gameNumber);
+    return m_headlessReplay->initialize(error);
+}
+
+HeadlessReplaySession *GameSessionController::headlessReplay() const
+{
+    return m_headlessReplay.get();
 }
 
 GameSessionController::PreparationPhase GameSessionController::preparationPhase() const
@@ -195,6 +222,8 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 
     m_room.markBattleStatisticsTerminal(winner, int(cause));
     m_room.thread->trigger(GameOver, &m_room, target, data);
+    m_replayWinner = winner;
+    m_replayCompletionError = m_room.getTag(QStringLiteral("HeadlessReplayError")).toString();
 
 	if (transitionTo(State::Finished))
 		m_terminationCause = cause;
@@ -936,6 +965,7 @@ void GameSessionController::run()
 		return;
 	if (m_state != State::Preparing)
 		return;
+    if (m_headlessReplay) m_headlessReplay->completeBootstrap();
 	LuaRuntime::Binding luaBinding(m_room.m_runtime->lua());
 	GameRng::Binding rngBinding(m_room.m_runtime->rng());
 	EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
@@ -1345,7 +1375,9 @@ void GameSessionController::startGame()
         }
         m_room.setTag("ImperialEdictTrick", edictTricks);
     }
-	m_room.doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(m_room.m_cardMovement->drawPile()));
+	const QVariant cardCatalog = JsonUtils::toJsonArray(m_room.m_cardMovement->drawPile());
+	if (m_headlessReplay) m_headlessReplay->setCardCatalog(cardCatalog);
+	m_room.doBroadcastNotify(S_COMMAND_GAME_START, cardCatalog);
 	m_room.notifyResolutionState(QStringLiteral("reset"));
 
 	if (!transitionTo(State::Initializing))

@@ -22,19 +22,41 @@
 #include <ctime>
 #include <vector>
 
+// Benchmark clocks: monotonic wall ns and process CPU ns. Windows has no
+// clock_gettime; steady_clock is QPC-backed there, and GetProcessTimes sums
+// kernel+user time in 100ns ticks. POSIX keeps the original clockids.
+#if defined(Q_OS_WIN)
+#include <qt_windows.h>
+static qint64 hybridMonotonicNs()
+{
+    using namespace std::chrono;
+    return duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+static qint64 hybridProcessCpuNs()
+{
+    FILETIME creation{}, exitTime{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &creation, &exitTime, &kernel, &user)) return -1;
+    const auto ticks = [](const FILETIME &value) {
+        return (quint64(value.dwHighDateTime) << 32) | quint64(value.dwLowDateTime);
+    };
+    return qint64((ticks(kernel) + ticks(user)) * 100ULL);
+}
+#else
 static qint64 hybridMonotonicNs()
 {
     timespec stamp{};
     if (clock_gettime(CLOCK_MONOTONIC, &stamp) != 0) return -1;
-    return qint64(stamp.tv_sec) * Q_INT64_C(1000000000) + stamp.tv_nsec;
+    return qint64(stamp.tv_sec) * Q_INT64_C(1000000000) + qint64(stamp.tv_nsec);
 }
 
 static qint64 hybridProcessCpuNs()
 {
     timespec stamp{};
     if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stamp) != 0) return -1;
-    return qint64(stamp.tv_sec) * Q_INT64_C(1000000000) + stamp.tv_nsec;
+    return qint64(stamp.tv_sec) * Q_INT64_C(1000000000) + qint64(stamp.tv_nsec);
 }
+#endif
 
 // The journal and roster have no cross-thread read lock. Sample them only in
 // their ordinary worker callbacks, then give the main loop primitive values.
@@ -444,14 +466,25 @@ static int hybrid50Host(QCoreApplication &app)
     EngineBootstrap::shutdown(); return result;
 }
 
-// A runnable two-seat native-role host. The bootstrap is written only to stdout,
-// intended for a parent process's private pipe, never to the game logs.
+// A runnable native-role host: --mode <id> (default 02p) opens that room with
+// --external-seats (default 1) external seats and SmartAI companions; --seed
+// defaults to 20261003. Every external seat prints its own
+// QSAN_AGENT_BOOTSTRAP line on stdout, intended for a parent process's
+// private pipe, never to the game logs.
 int main(int argc, char **argv)
 {
     for (int i = 1; i < argc; ++i)
         if (qstrcmp(argv[i], "--hybrid-50p") == 0) QHashSeed::setDeterministicGlobalSeed();
     QCoreApplication app(argc,argv);
     if (app.arguments().contains("--hybrid-50p")) return hybrid50Host(app);
+    const auto args = app.arguments();
+    const auto option = [&](const QString &name) {
+        const int at = args.indexOf(name);
+        if (at >= 0 && at + 1 < args.size() && !args.at(at + 1).startsWith("--")) return args.at(at + 1);
+        for (const auto &arg : args)
+            if (arg.startsWith(name + '=')) return arg.mid(name.size() + 1);
+        return QString();
+    };
     QString error;
     if (!QSanRuntimePaths::resolve(app.arguments(),&error)) { qCritical() << error; return 1; }
     Config.setValueOverrides({{"AiLegacyDirectCallbacks",QStringLiteral(
@@ -463,19 +496,68 @@ int main(int argc, char **argv)
     if (!EngineBootstrap::initialize(false,&error)) { qCritical() << error; return 1; }
     QObject::disconnect(&app,SIGNAL(aboutToQuit()),Sanguosha,SLOT(deleteLater()));
     Config.init(); Config.EnableAI = true; Config.Enable2ndGeneral = false;
-    Config.EnableHegemony = false; Config.GameMode = Sanguosha->getGameMode("02p");
+    Config.EnableHegemony = false;
+    const QString modeId = [&] {
+        const auto requested = option(QStringLiteral("--mode"));
+        return requested.isEmpty() ? QStringLiteral("02p") : requested;
+    }();
+    Config.GameMode = Sanguosha->getGameMode(modeId);
+    const int playerCount = Sanguosha->getPlayerCount(modeId);
+    if (!Config.GameMode.isValid() || playerCount < 2) {
+        qCritical() << "AGENT invalid-mode" << modeId;
+        EngineBootstrap::shutdown(); return 2;
+    }
     Config.AIDelay = Config.OriginAIDelay = 0; Config.CountDownSeconds = 0;
     Config.BanPackages.clear();
     const QStringList allowed = {"standard","standard_cards","standard_ex_cards","maneuvering"};
     for (const auto *package : Sanguosha->getPackages())
         if (!allowed.contains(package->objectName())) Config.BanPackages << package->objectName();
-    auto *room = new Room(nullptr,"02p",GameSessionConfig(20261003));
+    quint32 seed = 20261003;
+    const auto seedText = option(QStringLiteral("--seed"));
+    if (!seedText.isEmpty()) {
+        bool seedOk = false;
+        const quint64 parsed = seedText.toULongLong(&seedOk);
+        if (!seedOk || parsed > Q_UINT64_C(4294967295)) {
+            qCritical() << "AGENT invalid-seed" << seedText;
+            EngineBootstrap::shutdown(); return 2;
+        }
+        seed = static_cast<quint32>(parsed);
+    }
+    int externalSeats = 1;
+    const auto seatText = option(QStringLiteral("--external-seats"));
+    if (!seatText.isEmpty()) {
+        bool seatsOk = false;
+        externalSeats = seatText.toInt(&seatsOk);
+        if (!seatsOk || externalSeats < 1 || externalSeats > playerCount) {
+            qCritical() << "AGENT invalid-external-seats" << seatText;
+            EngineBootstrap::shutdown(); return 2;
+        }
+    }
+    auto *room = new Room(nullptr,modeId,GameSessionConfig(seed));
     room->setProperty("to_test","headless"); room->setNoClock(true);
-    auto *seat = room->addAIPlayer(); seat->setOwner(true); room->signup(seat,"External","",true);
-    auto endpoint = room->attachExternalAgent(seat,ExternalAgentEndpoint::Pause);
-    if (!endpoint) { delete room; EngineBootstrap::shutdown(); return 1; }
-    ExternalAgentLocalTransport transport(endpoint);
-    if (!transport.listen()) { delete room; EngineBootstrap::shutdown(); return 1; }
+    std::vector<std::shared_ptr<ExternalAgentEndpoint>> endpoints;
+    std::vector<std::unique_ptr<ExternalAgentLocalTransport>> transports;
+    QList<ServerPlayer *> seats;
+    for (int i = 0; i < playerCount; ++i) {
+        auto *seat = room->addAIPlayer();
+        if (i == 0) seat->setOwner(true);
+        seats << seat;
+    }
+    // Attach every capability before the first signup: signup may start a full
+    // room automatically, and attachExternalAgent rejects started workers.
+    for (int i = 0; i < externalSeats; ++i) {
+        auto endpoint = room->attachExternalAgent(seats.at(i),ExternalAgentEndpoint::Pause);
+        if (!endpoint) {
+            qCritical() << "AGENT attach-failed" << seats.at(i)->objectName();
+            delete room; EngineBootstrap::shutdown(); return 1;
+        }
+        auto transport = std::make_unique<ExternalAgentLocalTransport>(endpoint);
+        if (!transport->listen()) {
+            qCritical() << "AGENT transport-listen-failed";
+            delete room; EngineBootstrap::shutdown(); return 1;
+        }
+        endpoints.push_back(endpoint); transports.push_back(std::move(transport));
+    }
     bool finished = false;
     QString winner;
     int callbackErrors = 0;
@@ -485,25 +567,32 @@ int main(int argc, char **argv)
     QObject::connect(room,&Room::game_over,&app,[&](const QString &value) {
         finished = true; winner = value;
     });
-    auto *opponent = room->addAIPlayer(); room->signup(opponent,"SmartAI","",true);
+    for (int i = 0; i < playerCount; ++i)
+        room->signup(seats.at(i), i < externalSeats ? QStringLiteral("External") : QStringLiteral("SmartAI"), "", true);
     QTimer lifecycle;
     QObject::connect(&lifecycle,&QTimer::timeout,&app,[&] {
-        if ((!finished && endpoint->status() != "cancelled") || !room->allGameThreadsStopped()) return;
+        bool cancelled = false;
+        for (const auto &endpoint : endpoints) cancelled |= endpoint->status() == "cancelled";
+        if ((!finished && !cancelled) || !room->allGameThreadsStopped()) return;
         const bool valid = callbackErrors == 0 && (!finished || !winner.isEmpty());
         lifecycle.stop(); delete room; room = nullptr;
-        transport.complete(winner);
+        for (auto &transport : transports) transport->complete(winner);
         qInfo() << "EXTERNAL_HOST_TERMINAL winner=" << winner << "callback_errors=" << callbackErrors
-                << "workers_stopped=true room_destroyed=true endpoint=" << endpoint->status();
+                << "workers_stopped=true room_destroyed=true external_seats=" << endpoints.size();
         QTimer::singleShot(500,&app,[&,valid] { app.exit(valid ? 0 : 1); });
     });
     lifecycle.start(10);
-    auto bootstrap = transport.bootstrap();
-    bootstrap.insert("hostPid",QString::number(QCoreApplication::applicationPid()));
-    const auto line = QByteArray("QSAN_AGENT_BOOTSTRAP ") + QJsonDocument(bootstrap).toJson(QJsonDocument::Compact) + '\n';
-    std::fwrite(line.constData(),1,size_t(line.size()),stdout); std::fflush(stdout);
+    for (size_t i = 0; i < transports.size(); ++i) {
+        auto bootstrap = transports[i]->bootstrap();
+        bootstrap.insert("hostPid",QString::number(QCoreApplication::applicationPid()));
+        bootstrap.insert("objectName",seats.at(static_cast<int>(i))->objectName());
+        const auto line = QByteArray("QSAN_AGENT_BOOTSTRAP ") + QJsonDocument(bootstrap).toJson(QJsonDocument::Compact) + '\n';
+        std::fwrite(line.constData(),1,size_t(line.size()),stdout);
+    }
+    std::fflush(stdout);
     room->start();
     const int result = app.exec();
-    transport.close();
+    for (auto &transport : transports) transport->close();
     if (room) { room->requestStopGameThreads(); room->wait(); delete room; }
     EngineBootstrap::shutdown();
     return result;

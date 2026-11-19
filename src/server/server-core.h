@@ -14,6 +14,7 @@ class ServerSocket;
 class ClientSocket;
 class QtUpnpPortMapping;
 class ServerPlayer;
+class RecordBuffer;
 class BanIpDialog;
 class ServerConnectionContext;
 namespace QSanProtocol { struct SignupRequestPayload; }
@@ -50,6 +51,7 @@ public:
     // so its Lua is re-read from disk. Only takeover, takeoverSnapshotPath, takeoverSeatName and seed are used.
     static GameSessionConfig headlessTakeover;
     static bool configureGameSeed(const QString &seedText, QString *error = nullptr);
+    static bool sendSetup(ServerPlayer *player, QString *error = nullptr, RecordBuffer *recordOnly = nullptr);
 
     void broadcast(const QString &msg);
     ServerStatusSnapshot statusSnapshot() const;
@@ -125,6 +127,7 @@ private:
     bool m_maintenanceMode = false;
     int playerCount;
     quint64 m_nextGameSeedIndex;
+    QString m_headlessReplayDirectory;
     GameSessionConfig m_nextSessionConfig;
     bool m_hasNextSessionConfig = false;
     QElapsedTimer m_uptimeTimer;

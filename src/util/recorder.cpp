@@ -111,8 +111,7 @@ QByteArray Recorder::PNG2TXT(const QString filename)
 
 Replayer::Replayer(QObject *parent, const QString &filename)
     : QThread(parent), m_commandSeriesCounter(1),
-    filename(filename), speed(1.0), playing(true), m_seeking(false),
-    m_seekGeneration(0), m_currentPairIndex(0),
+    filename(filename), speed(1.0), playing(true), m_currentPairIndex(0),
     m_stateCaptureState(StateCaptureState::Idle), m_stateCaptureRequestId(0),
     m_stateCaptureResumePlaying(false),
     m_loadError(ReplayLoadError::None),
@@ -152,6 +151,97 @@ Replayer::Replayer(QObject *parent, const QString &filename)
     m_index = new ReplayIndex(this);
     buildIndex();
     loadSnapshots();
+    loadPerspectives();
+}
+
+void Replayer::loadPerspectives()
+{
+    // Only an explicit sibling manifest grants access to other seat streams.
+    // Reject the whole catalogue on malformed identities or escaping paths.
+    const QFileInfo current(filename);
+    const QDir directory = current.absoluteDir();
+    QFile file(directory.filePath(QStringLiteral("index.json")));
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024)
+        return;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return;
+    const QJsonObject root = document.object();
+    if (root.value(QStringLiteral("format")).toString() != QLatin1String("qsanguosha-headless-game")
+        || root.value(QStringLiteral("schema_version")) != QJsonValue(1)
+        || !root.value(QStringLiteral("perspectives")).isArray())
+        return;
+    const QJsonArray entries = root.value(QStringLiteral("perspectives")).toArray();
+    if (entries.isEmpty())
+        return;
+    const QString canonicalDirectory = directory.canonicalPath();
+    if (canonicalDirectory.isEmpty())
+        return;
+    QList<Perspective> parsed;
+    QSet<QString> names, paths;
+    QString source;
+    for (const QJsonValue &entry : entries) {
+        if (!entry.isObject()) return;
+        const QJsonObject object = entry.toObject();
+        Perspective seat;
+        seat.playerName = object.value(QStringLiteral("player_name")).toString();
+        seat.screenName = object.value(QStringLiteral("screen_name")).toString();
+        const QString basename = object.value(QStringLiteral("file")).toString();
+        const QString elapsed = object.value(QStringLiteral("available_from_ms")).toString();
+        bool elapsedOk = false;
+        seat.availableFromMs = elapsed.toLongLong(&elapsedOk);
+        if (seat.playerName.isEmpty() || names.contains(seat.playerName)
+            || !object.value(QStringLiteral("screen_name")).isString()
+            || basename.isEmpty() || basename.contains('/') || basename.contains('\\')
+            || basename.contains(':') || basename == QLatin1String(".")
+            || basename == QLatin1String("..")
+            || !basename.endsWith(QStringLiteral(".txt"), Qt::CaseInsensitive)
+            || !elapsedOk || seat.availableFromMs < 0
+            || elapsed != QString::number(seat.availableFromMs))
+            return;
+        const QFileInfo sibling(directory.filePath(basename));
+        if (!sibling.isFile() || sibling.canonicalPath() != canonicalDirectory)
+            return;
+        seat.path = sibling.canonicalFilePath();
+        if (paths.contains(seat.path)) return;
+        names.insert(seat.playerName);
+        paths.insert(seat.path);
+        if (seat.path == current.canonicalFilePath()) source = seat.playerName;
+        parsed << seat;
+    }
+    if (source.isEmpty()) return;
+    m_perspectives = parsed;
+    m_sourcePlayerName = source;
+}
+
+int Replayer::positionAtElapsed(qint64 elapsedMs) const
+{
+    int position = -1;
+    for (int i = 0; i < m_events.size(); ++i) {
+        if (m_events.at(i).elapsedMs > elapsedMs) break;
+        position = i;
+    }
+    return position;
+}
+
+bool Replayer::preparePlayback(int pairIndex, bool paused, qreal playbackSpeed)
+{
+    if (isRunning() || m_stopRequested || !isValid() || m_events.isEmpty()
+        || !std::isfinite(playbackSpeed) || playbackSpeed <= 0)
+        return false;
+    // Even an initial seek needs SETUP to create the native replay scene.
+    int setupIndex = 0;
+    for (int i = 0; i < m_events.size(); ++i) {
+        if (m_events.at(i).message.command == S_COMMAND_SETUP) {
+            setupIndex = i;
+            break;
+        }
+    }
+    m_startupPosition = qBound(setupIndex, pairIndex, int(m_events.size()) - 1);
+    playing = !paused;
+    speed = qBound<qreal>(0.5, playbackSpeed, 6.0);
+    return true;
 }
 
 Replayer::~Replayer()
@@ -444,20 +534,11 @@ bool Replayer::hasTakeoverSnapshots() const
 
 quint64 Replayer::requestStateCaptureBoundary()
 {
-    // A re-entrant export request from a seek presentation callback must not
-    // wait on the dispatch lock already held by the same GUI thread.
-    {
-        QMutexLocker locker(&mutex);
-        if (m_seeking)
-            return 0;
-    }
-
     QMutexLocker dispatchLocker(&m_dispatchMutex);
     quint64 requestId = 0;
     {
         QMutexLocker locker(&mutex);
         if (m_stopRequested || !isRunning()
-            || m_seeking
             || m_stateCaptureState != StateCaptureState::Idle)
             return 0;
 
@@ -512,7 +593,7 @@ int Replayer::getCurrentPairIndex() const
 {
     if (m_events.isEmpty())
         return 0;
-    return qBound(0, m_currentPairIndex.load(std::memory_order_relaxed),
+    return qBound(0, m_lastDispatchedPairIndex.load(std::memory_order_relaxed),
                   m_events.size() - 1);
 }
 
@@ -677,152 +758,39 @@ bool Replayer::waitWhilePlaybackPaused()
 void Replayer::run()
 {
     qint64 last = 0;
-    quint64 handledSeekGeneration = 0;
+    // A new Client owns an empty reducer and scene. Reconstruct its prefix
+    // exactly once; queued delivery preserves SETUP/UI creation/event order.
+    for (int i = 0; i <= m_startupPosition; ++i) {
+        m_currentPairIndex.store(i, std::memory_order_relaxed);
+        if (!emitCommand(i, false)) return;
+        last = m_events.at(i).elapsedMs;
+    }
+    emit startup_finished();
 
-    QList<CommandType> nondelays;
-    nondelays << S_COMMAND_ADD_PLAYER
-        << S_COMMAND_REMOVE_PLAYER
-        << S_COMMAND_SPEAK;
-
-    for (m_currentPairIndex.store(0, std::memory_order_relaxed);
+    const QList<CommandType> nondelays{
+        S_COMMAND_ADD_PLAYER, S_COMMAND_REMOVE_PLAYER, S_COMMAND_SPEAK};
+    for (m_currentPairIndex.store(m_startupPosition + 1, std::memory_order_relaxed);
          m_currentPairIndex.load(std::memory_order_relaxed) < m_events.size();
          m_currentPairIndex.fetch_add(1, std::memory_order_relaxed)) {
+        if (!waitWhilePlaybackPaused()) break;
         const int pairIndex = m_currentPairIndex.load(std::memory_order_relaxed);
-        bool stopRequested = false;
-        int seekTarget = -1;
-        {
-            QMutexLocker dispatchLocker(&m_dispatchMutex);
-            QMutexLocker locker(&mutex);
-            stopRequested = m_stopRequested;
-            if (m_seekGeneration != handledSeekGeneration) {
-                handledSeekGeneration = m_seekGeneration;
-                seekTarget = m_currentPairIndex.load(std::memory_order_relaxed);
-            }
-        }
-        if (stopRequested)
-            break;
-        if (seekTarget >= 0) {
-            last = m_events.at(seekTarget).elapsedMs;
-            continue;
-        }
-
-        const ReplayEvent event = m_events.at(pairIndex);
-        qint64 delay = qMin<qint64>(event.elapsedMs - last, 2500);
+        const ReplayEvent &event = m_events.at(pairIndex);
+        const qint64 delay = qMax<qint64>(0, qMin<qint64>(event.elapsedMs - last, 2500));
+        qint64 remainingDelay = nondelays.contains(static_cast<CommandType>(event.message.command))
+            ? 0 : static_cast<qint64>(delay / getSpeed());
         last = event.elapsedMs;
-
-        bool delayed = true;
-        if (nondelays.contains(static_cast<CommandType>(event.message.command)))
-            delayed = false;
-
-        if (delayed) {
-            delay /= getSpeed();
-
-            qint64 remainingDelay = delay;
-            bool stoppedDuringDelay = false;
-            while (remainingDelay > 0) {
-                if (!waitForStateCaptureBoundary()) {
-                    stoppedDuringDelay = true;
-                    break;
-                }
-                const unsigned long slice = static_cast<unsigned long>(qMin<qint64>(remainingDelay, 20));
-                QElapsedTimer sleepTimer;
-                sleepTimer.start();
-                msleep(slice);
-                // Windows may round a sleep up to coarse timer ticks. Count
-                // actual sleep time, excluding any capture-boundary wait,
-                // so those ticks do not accumulate into playback drift.
-                remainingDelay -= qMax<qint64>(1, sleepTimer.elapsed());
-                QMutexLocker locker(&mutex);
-                if (m_stopRequested) {
-                    stoppedDuringDelay = true;
-                    break;
-                }
-                // Stop the stale delay as soon as a seek wins the race. The
-                // dispatch-locked check below performs the generation handoff.
-                if (m_seekGeneration != handledSeekGeneration)
-                    break;
-            }
-            if (stoppedDuringDelay)
-                break;
-
-            // Seek also publishes its target time under the dispatch lock.
-            // Suppress this old cursor's time if that seek won the race.
-            bool staleTimeAfterSeek = false;
-            {
-                QMutexLocker dispatchLocker(&m_dispatchMutex);
-                {
-                    QMutexLocker locker(&mutex);
-                    stopRequested = m_stopRequested;
-                    if (m_seekGeneration != handledSeekGeneration) {
-                        handledSeekGeneration = m_seekGeneration;
-                        seekTarget = m_currentPairIndex.load(
-                            std::memory_order_relaxed);
-                        staleTimeAfterSeek = true;
-                    }
-                }
-                if (!stopRequested && !staleTimeAfterSeek)
-                    emit elasped(elapsedSecondsForUi(event.elapsedMs));
-            }
-            if (stopRequested)
-                break;
-            if (staleTimeAfterSeek) {
-                if (seekTarget >= 0 && seekTarget < m_events.size())
-                    last = m_events.at(seekTarget).elapsedMs;
-                continue;
-            }
-
-            if (!waitWhilePlaybackPaused())
-                break;
+        while (remainingDelay > 0) {
+            if (!waitWhilePlaybackPaused()) return;
+            QElapsedTimer sleepTimer;
+            sleepTimer.start();
+            msleep(static_cast<unsigned long>(qMin<qint64>(remainingDelay, 20)));
+            // Count actual Windows timer ticks, excluding any pause/barrier.
+            remainingDelay -= qMax<qint64>(1, sleepTimer.elapsed());
         }
-
-        // Serialize the final boundary check with seek and capture requests.
-        // A seek replays through its target itself; this worker then skips the
-        // stale event and resumes at target + 1.
-        bool eventDispatched = false;
-        bool staleAfterSeek = false;
-        while (!eventDispatched && !staleAfterSeek) {
-            if (!waitForStateCaptureBoundary()) {
-                stopRequested = true;
-                break;
-            }
-
-            bool captureRequested = false;
-            {
-                QMutexLocker dispatchLocker(&m_dispatchMutex);
-                {
-                    QMutexLocker locker(&mutex);
-                    stopRequested = m_stopRequested;
-                    captureRequested = m_stateCaptureState
-                        == StateCaptureState::Requested;
-                    if (m_seekGeneration != handledSeekGeneration) {
-                        handledSeekGeneration = m_seekGeneration;
-                        seekTarget = m_currentPairIndex.load(
-                            std::memory_order_relaxed);
-                        staleAfterSeek = true;
-                    }
-                }
-                if (!stopRequested && !captureRequested && !staleAfterSeek) {
-                    emitCommand(pairIndex);
-                    eventDispatched = true;
-                }
-            }
-            // A request may have arrived after the earlier barrier check but
-            // before the dispatch lock. Loop once so the worker reaches it.
-            if (captureRequested)
-                continue;
-        }
-        if (stopRequested)
-            break;
-        if (staleAfterSeek) {
-            if (seekTarget >= 0 && seekTarget < m_events.size())
-                last = m_events.at(seekTarget).elapsedMs;
-            continue;
-        }
-
-        int nodeIndex = m_index ? m_index->findNearestNode(pairIndex) : -1;
-        if (nodeIndex >= 0) {
-            emit node_reached(nodeIndex);
-        }
+        if (!emitCommand(pairIndex)) break;
+        emit elasped(elapsedSecondsForUi(event.elapsedMs));
+        const int nodeIndex = m_index ? m_index->findNearestNode(pairIndex) : -1;
+        if (nodeIndex >= 0) emit node_reached(nodeIndex);
     }
 }
 
@@ -876,35 +844,36 @@ void Replayer::seekToPosition(int pairIndex)
     if (pairIndex < 0 || pairIndex >= m_events.size())
         return;
 
-    QMutexLocker dispatchLocker(&m_dispatchMutex);
     {
         QMutexLocker locker(&mutex);
         if (m_stopRequested || m_stateCaptureState != StateCaptureState::Idle)
             return;
-        m_seeking = true;
-        ++m_seekGeneration;
-        m_currentPairIndex.store(pairIndex, std::memory_order_relaxed);
     }
-
-    emit seek_started();
-    emit elasped(elapsedSecondsForUi(m_events.at(pairIndex).elapsedMs));
-
-    for (int i = 0; i <= pairIndex; i++)
-        emitCommand(i);
-
-    {
-        QMutexLocker locker(&mutex);
-        m_seeking = false;
-    }
-    emit seek_finished();
+    // MainWindow owns the clean Client/scene replacement. Reapplying a prefix
+    // to live ClientPlayers would duplicate cards, marks and dynamic seats.
+    emit reconstructionRequested(pairIndex);
 }
 
-void Replayer::emitCommand(int pairIndex)
+bool Replayer::emitCommand(int pairIndex, bool obeyPause)
 {
-    if (pairIndex >= 0 && pairIndex < m_events.size()) {
+    if (pairIndex < 0 || pairIndex >= m_events.size()) return false;
+    while (true) {
+        if (obeyPause ? !waitWhilePlaybackPaused() : !waitForStateCaptureBoundary())
+            return false;
+        QMutexLocker dispatchLocker(&m_dispatchMutex);
+        {
+            QMutexLocker locker(&mutex);
+            if (m_stopRequested) return false;
+            // A capture can arrive between the wait and this lock. Reach its
+            // boundary before emitting anything, including a startup event.
+            if (m_stateCaptureState == StateCaptureState::Requested || (obeyPause && !playing))
+                continue;
+        }
         const ReplayEvent &event = m_events.at(pairIndex);
+        m_lastDispatchedPairIndex.store(pairIndex, std::memory_order_relaxed);
         emit command_parsed(event.message);
         emit replayEventDispatched(event.message, pairIndex, event.elapsedMs);
+        return true;
     }
 }
 

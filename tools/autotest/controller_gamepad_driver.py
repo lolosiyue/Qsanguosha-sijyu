@@ -104,7 +104,14 @@ class Driver:
             scope = o.get('scope', '')
             controls = o.get('controls', [])
             if scope == 'controllerGameMenu':
-                self.widget(lambda c: c.get('id') == 'controllerStartGame')
+                # Start may finish while its modal menu is being rebuilt.
+                # Wait for the controls, then return to the same live game.
+                if not controls:
+                    time.sleep(0.12)
+                    continue
+                command = 'controllerStartGame' if any(
+                    c.get('id') == 'controllerStartGame' for c in controls) else 'controllerMenuBack'
+                self.widget(lambda c: c.get('id') == command)
                 continue
             if controls and any(c.get('class') == 'OptionButton' for c in controls):
                 self.widget(lambda c: c.get('class') == 'OptionButton')

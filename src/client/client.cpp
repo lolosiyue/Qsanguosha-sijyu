@@ -332,17 +332,6 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		recorder = nullptr;
 
 		replayer = new Replayer(this, filename);
-		connect(replayer, &Replayer::seek_started, this, [this] {
-            m_drawPileMemory.clear();
-            updatePileNum();
-            for (const ClientPlayer *player : m_players)
-                if (player) const_cast<ClientPlayer *>(player)->clearCardMemory();
-			ClientGameState *state = m_interactionCore->state();
-			state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
-			state->setGameValue(QStringLiteral("resolution_available"), false);
-			state->clearResponseFocus();
-			emit gamePresentationStateChanged();
-		}, Qt::QueuedConnection);
 		connect(replayer, &Replayer::replayEventDispatched,
 			this, &Client::processReplayEvent, Qt::QueuedConnection);
 		connect(replayer, &Replayer::stateCaptureBoundaryReached,
@@ -366,6 +355,11 @@ Client::~Client()
 		lua_close(m_client_lua);
 		m_client_lua = nullptr;
 	}
+	// Replay reconstruction can retire a Client before GAME_OVER unregisters it.
+	// Do not leave its freed runtime context attached to the UI thread, or remove
+	// a different context that an embedded server has since installed.
+	if (Sanguosha && Sanguosha->currentRoomContext() == this)
+		Sanguosha->unregisterRoom();
 	ClientInstance = nullptr;
 }
 

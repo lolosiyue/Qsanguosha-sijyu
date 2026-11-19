@@ -2,6 +2,44 @@
 
 結算歷史供伺服器規則腳本查詢。資料與查詢契約由 [ResolutionHistoryService](../src/core/resolution-history.h) 定義，Lua 入口為 [Room::queryHistoryFacts](../src/server/room.cpp) 等封裝及 [SWIG 綁定](../swig/resolution-history.i)。
 
+## 驗收分支報告
+
+`tools/autotest/skill_branch_report.py` 的 `evaluate_branches(history_documents, specification)` 以實際匯出的 ResolutionHistory V2 文件，逐 room／generation 評估人工審核的技能分支規格。它只作報告，不推導技能語意，也不執行遊戲。規格必須提供 `reviewed: true` 和 `spec_source`，指出已核對的技能規則來源；未審核或格式錯誤回報 `UNKNOWN`。
+
+規格格式固定為 version 1；未知欄位會拒絕，避免拼字錯誤被靜默忽略。`when` 選出一次具體機會（通常是 `skill` event）；技能 event 必須以 `data.skill_name` 及非空 `data.skill_owner` 明確限定技能與持有者。owner 是角色 objectName（例如 `sgs1`），不是武將名稱；缺失或空字串視為歸因未知。每個機會獨立檢查預期 event/fact 數量，可選擇加總一個數值欄位。scope 可用觸發 event（fact 觸發則用其 `event_id`）的後代範圍，或從該觸發明確取得的 turn／phase／round ID。selector 使用精確 dotted field 路徑和值；`$trigger.<path>` 可將期望 selector 值綁定到該次觸發記錄。`when` 與 `expect` 都要指定 literal `kind`，以便檢查種類 coverage。`allowed_outcomes` 可逐分支列出可接受 outcome；預設只接受 `completed`。
+
+```python
+specification = {
+    "version": 1,
+    "general_id": "ExampleGeneral",
+    "skill_id": "example_skill",
+    "spec_source": "docs/skills/example.md#example_skill",
+    "reviewed": True,
+    "branches": [{
+        "id": "commits-damage",
+        "text": "每次成功技能觸發均提交一筆實際傷害",
+        "when": {"collection": "events", "where": {
+            "kind": "skill", "outcome": "completed",
+            "data.skill_name": "example_skill", "data.skill_owner": "sgs1"
+        }},
+        "scope": "event",
+        "allowed_outcomes": ["completed"],
+        "expect": {
+            "collection": "facts",
+            "where": {"kind": "actual_damage",
+                      "data.skill_name": "$trigger.data.skill_name",
+                      "data.skill_owner": "$trigger.data.skill_owner"},
+            "count": {"min": 1},
+        },
+    }],
+}
+report = evaluate_branches(history_documents, specification)
+```
+
+`scope="event"` 用於 fact 觸發時包含該 fact 所屬事件的全部後代，可能包含較早發生或其他 sibling 的效果；它本身不是「在此 fact 之後」的因果保證。規格應選擇有完整生命週期的技能事件，或以既有因果識別欄位限定效果。要檢查「應觸發卻未觸發」，`when` 必須選擇前置機會事件，不能只選已發動的技能。完整範圍無法由現有歷史判定時保留 `UNKNOWN`。
+
+結果狀態為 `PASS`、`FAIL`、`NOT_COVERED` 或 `UNKNOWN`。`NOT_COVERED` 僅在 terminal 文件、完整歷史與觸發種類 coverage 都確認沒有機會時使用。`PASS` 及效果不足的 `FAIL` 還要求目標 kind coverage、完整歷史、無缺欄位／未解歸因，且該 event／turn／phase／round 及其 descendants 全部以允許 outcome 結束；中斷或 aborted scope 預設為 `UNKNOWN`。同 scope／kind 的候選紀錄若標示歸因不完整，即使 owner filter 不匹配也回報 `UNKNOWN`。已觀察且可歸因記錄數超過上界可以判 `FAIL`；數值加總的上下界只有在範圍封閉且資料完整時才能判 `FAIL`，避免未來負值改變總和。資料超過輸入筆數或機會上限時回報 `UNKNOWN`，不截斷後作結論。輸出保留觀察到的記錄 ID 與數值，不複製整份 payload。每份輸入文件獨立判定，不會跨 room 或 generation 合併。技能呼叫清單可另行統計，但 invocation 本身不代表分支已驗證。
+
 ## 用途與邊界
 
 Room 持有一份 server authoritative 的 `ResolutionHistoryService`。它只供 rules Lua 讀取，保存可重播、可查詢的 primitive value tree；presentation、isolated AI 與 private request body 不會經由這個介面取得。

@@ -1,5 +1,7 @@
 # Android APK 建置、更新與驗收
 
+Android TV 的自動大屏、一般遙控器操作與可側載簽章建置見 [Android TV](android-tv.md)。
+
 本機日常使用原生 `x86_64` APK，裝置是既有雷電14；`arm64-v8a` 留作實機／發行建置參考。
 日常驗收以覆蓋安裝、`adb logcat`／截圖收集為準，完整局與正常退出分開判定。
 未指定其他裝置時，直接使用 [雷電14 重用流程](#android-14-ldplayer-reuse)；
