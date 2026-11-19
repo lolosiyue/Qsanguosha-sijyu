@@ -59,7 +59,6 @@ HEGEMONY_MODE = "08p"
 SCREENSHOT_ROOT = HERE / "autotest-logs" / "skill-ui-latest"
 LUA_ERROR_RE = re.compile(r"attempt to |stack traceback|\[AI_CALLBACK_ERROR\]|lua_error|Lua error", re.I)
 FORCE_RE = re.compile(r"\[AUTOTEST\] force general (\S+) (\S+)")
-SKILL_INVOKED_RE = re.compile(r"\[AUTOTEST\] skill-invoked (\S+) (\S+)")
 ANDROID_PACKAGE = "org.qsanguosha.game"
 # AGENTS.md section 9: the H working tree is the authority for these L directories.
 EXTENSIONS_AUTHORITY = r"H:\Program file\Game\sgs\Qsgs\working\extensions"
@@ -161,7 +160,7 @@ def scan_logs(paths, general, skills):
             match = FORCE_RE.search(line)
             if match and match.group(2) == general:
                 forced.append(match.group(1))
-            called = SKILL_INVOKED_RE.search(line)
+            called = acceptance_cells.SKILL_INVOKED_RE.search(line)
             if called:
                 invoked.append((called.group(1), called.group(2)))
             if LUA_ERROR_RE.search(line):
@@ -233,8 +232,12 @@ class Acceptance:
         directory = self.stage_dir("describe")
         host = self.exe("qsanguosha_skill_scenario")
         info_path = directory / "general.json"
+        # The host loads ./lua from its cwd; a build output directory can hold a
+        # stale partial copy and then fail with "invalid extension_names
+        # declaration". Resolve the cwd the same way headless_runner does.
         code = run([host, "--describe-general", self.general, "--report", info_path],
-                   directory / "describe.log", self.env, cwd=host.parent, timeout=300)
+                   directory / "describe.log", self.env,
+                   cwd=Path(resolve_workdir(str(ROOT))), timeout=300)
         if code != 0 or not info_path.exists():
             return "FAIL", f"describe exit {code}", {}
         self.info = json.loads(info_path.read_text(encoding="utf-8"))
@@ -349,6 +352,10 @@ class Acceptance:
     def headless(self):
         directory = self.stage_dir("headless")
         matrix = self.headless_modes()
+        targets = self.args.observe_skill
+        outside = {mode for mode, _ in targets} - set(matrix)
+        if outside:
+            raise ValueError("requested skill evidence outside the matrix: " + ", ".join(sorted(outside)))
         # 本輪矩陣寫進 modes.txt，driver 的 coverage 拿它當期望格數（以前寫死 16，
         # 那是 standard 包的模式數，wind 包永遠判 INCOMPLETE）。寫的是完整矩陣，
         # 不是扣掉續跑之後的剩餘格：續跑跳過的格子仍屬本輪範圍，要算進覆蓋率。
@@ -368,7 +375,8 @@ class Acceptance:
                 # record() 解包三個值，這裡必須回三元組。
                 return "SKIP", (f"resume: all {len(matrix)} matrix modes finished in earlier runs; "
                                 "grade them with standard_matrix_judge.py"), \
-                    {"modes": {}, "budget": {"stopped": [], "not_run": []}, "summary_csv": None, "crashes": []}
+                    {"modes": {}, "budget": {"stopped": [], "not_run": []}, "summary_csv": None, "crashes": [],
+                     "skill_events": acceptance_cells.skill_evidence(directory, targets) if targets else []}
         code = run([sys.executable, HERE / "headless_runner.py", "--exe", self.exe("QSanguosha"),
                     "--exe-root", ROOT, "--seed", self.args.seed, "--modes", ",".join(modes), "--games", 1,
                     "--parallel", self.args.jobs, "--force-general", self.general, "--log-dir", directory,
@@ -414,6 +422,7 @@ class Acceptance:
             detail += (f"; budget {self.args.headless_minutes:g} min: stopped {listed(budget['stopped'])}"
                        f", NOT RUN {listed(budget['not_run'])}")
         return status, detail, {"modes": per_mode, "budget": budget,
+                                "skill_events": acceptance_cells.skill_evidence(directory, targets) if targets else [],
                                 "summary_csv": str(summaries[-1]) if summaries else None, "crashes": crashes}
 
     def gui(self):
@@ -758,6 +767,16 @@ class Acceptance:
         lines = [f"# {self.general} acceptance (seed {self.args.seed}, {self.args.profile})", "",
                  "| stage | status | detail |", "|---|---|---|"]
         lines += [f"| {k} | {v['status']} | {v['detail']} |" for k, v in self.results.items()]
+        if self.args.observe_skill:
+            events = self.results.get("headless", {}).get("evidence", {}).get("skill_events", [])
+            lines += ["", "## 指定技能事件", ""]
+            indexed = {(item["mode"], item["skill"]): item for item in events}
+            for mode, skill in dict.fromkeys(self.args.observe_skill):
+                item = indexed.get((mode, skill), {})
+                lines.append(f"- {mode} / {skill} — 對局：{item.get('game', '未判定')}；"
+                             f"技能：{item.get('status', '待驗')}")
+                if "line" in item:
+                    lines.append(f"  - `{item['log']}:{item['line']}` {item['event']}")
         if self.args.profile == "trustee":
             lines += ["", "Skill branches: NOT RUN (Trustee client playback)."]
         lines += ["", "## Crashes", ""]
@@ -824,6 +843,8 @@ def main():
     parser.add_argument("--exclude-modes", default="", help="headless modes to skip, comma separated")
     parser.add_argument("--resume", action="store_true",
                         help="skip headless modes that already have a completed log from a previous run")
+    parser.add_argument("--observe-skill", action="append", default=[], type=acceptance_cells.skill_target,
+                        metavar="MODE=SKILL", help="include exact skill events from any seat in the headless summary (repeatable)")
     parser.add_argument("--fixed-cast", action="store_true",
                         help="run ONLY the fixed-cast scenario modes (guandu, fancheng); the general matrix skips them")
     parser.add_argument("--slow-modes", action="store_true",
@@ -846,6 +867,8 @@ def main():
     selected = args.stages if args.stages is not None else ",".join(
         TRUSTEE_STAGES if args.profile == "trustee" else LOCAL_STAGES)
     stages = [s.strip() for s in selected.split(",") if s.strip()]
+    if args.observe_skill and "headless" not in stages:
+        parser.error("--observe-skill requires the headless stage")
     unknown = set(stages) - set(LOCAL_STAGES + DEVICE_STAGES + INDEPENDENT_STAGES + UNAVAILABLE_STAGES)
     if unknown:
         parser.error(f"unknown stages: {', '.join(sorted(unknown))}")

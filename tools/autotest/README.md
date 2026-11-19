@@ -180,6 +180,15 @@ python tools\skill-text-audit.py --skills skills.json # 用既有 dump
 不逐招選牌或輸入。指定 `--stages` 時只執行列出的階段；完整技能／詢問驗收須明確選 `--profile full`。
 托管結局只證明客戶端對局路徑，報告將技能分支列為 NOT RUN。
 
+驗收某項修正時，可在 headless 階段加 `--observe-skill 10_shijia=tenyearjiewei`（可重複）。
+Markdown 與 JSON 摘要會分列該模式最新一次嘗試的完局狀態，以及指定技能在任一座位的首筆發動或轉化用牌事件。
+有紀錄會列出實際座位與原始行號，找不到則列「待驗」。傷害、失去體力等結算結果由技能情境的斷言核對。
+已有對局產物可直接產生同一份事件摘要：
+
+```bash
+python3 tools/autotest/acceptance_cells.py evidence artifacts/fire-accept-20261110/raw/pangde/headless 16p=lihuo
+```
+
 ```powershell
 python tools\autotest\general_acceptance.py --general s4_cloud_huangzhong --seed 20261012 `
     --profile trustee --stages gui,tui --qt-bin H:\Qt6111\6.11.1\msvc2022_64\bin

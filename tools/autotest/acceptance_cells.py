@@ -29,7 +29,9 @@ CLI (used by the driver):
 prints one line whose first word is ok, nomodes, nocsv or incomplete:...
 """
 
+import argparse
 import csv
+import json
 import os
 import re
 import sys
@@ -39,6 +41,10 @@ FINISH = ">>> All games completed"
 CSV_NAME = re.compile(r"^summary-headless-(\d{8}-\d{6})\.csv$")
 RUN_DIR = re.compile(r"^\d{8}-\d{6}(?:-\d+)?$")
 HEADLESS_SUFFIX = "-headless.log"
+SKILL_INVOKED_RE = re.compile(r"\[AUTOTEST\] skill-invoked (\S+) (\S+)")
+CONVERTED_CARD = re.compile(
+    r"\[LOG\] #UseCard \| from: (\S+) \| (?:to: [^|]*\| )?card: [^:\s]+:([^\s\[]+)\["
+)
 
 
 def read_matrix(directory):
@@ -116,6 +122,10 @@ def cell_states(directory, modes):
     """{mode: (state, detail)}; state is done, log-only, unfinished or missing."""
     attempts = _attempts(directory)
     rows, _ = _rows(directory)
+    return _cell_states(attempts, rows, modes)
+
+
+def _cell_states(attempts, rows, modes):
     states = {}
     for mode in modes:
         if mode not in attempts:
@@ -142,6 +152,48 @@ def cell_states(directory, modes):
         else:
             states[mode] = ("unfinished", "%s no CSV row and no finish line" % run)
     return states
+
+
+def skill_target(value):
+    parts = value.split("=")
+    if len(parts) != 2 or not all(re.fullmatch(r"[\w#.-]+", part) for part in parts):
+        raise argparse.ArgumentTypeError("expected MODE=SKILL (internal IDs)")
+    return tuple(parts)
+
+
+def skill_evidence(directory, targets):
+    """Report exact events from any seat, tied to the same attempt as completion."""
+    attempts = _attempts(directory)
+    rows, _ = _rows(directory)
+    by_mode = {}
+    for mode, skill in targets:
+        by_mode.setdefault(mode, {})[skill] = {"mode": mode, "skill": skill}
+    states = _cell_states(attempts, rows, by_mode)
+    for mode, skills in by_mode.items():
+        state, _ = states[mode]
+        for item in skills.values():
+            item.update(game=state, status="待驗")
+        if mode not in attempts:
+            continue
+        run, run_dir = attempts[mode]
+        for item in skills.values():
+            item["attempt"] = run
+        pending = set(skills)
+        # The process and game logs can mirror one another. Keep one witness per skill.
+        for suffix in (HEADLESS_SUFFIX, ".log"):
+            path = run_dir / (mode + suffix)
+            if not pending or not path.is_file():
+                continue
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                for number, line in enumerate(handle, 1):
+                    match = SKILL_INVOKED_RE.search(line) or CONVERTED_CARD.search(line)
+                    if match and match[2] in pending:
+                        skills[match[2]].update(status="有事件紀錄", seat=match[1], log=str(path),
+                                                line=number, event=line.strip())
+                        pending.remove(match[2])
+                        if not pending:
+                            break
+    return [item for skills in by_mode.values() for item in skills.values()]
 
 
 def completed(directory, modes):
@@ -171,6 +223,15 @@ def coverage(directory):
 
 
 def main(argv):
+    if argv[1:2] == ["evidence"]:
+        parser = argparse.ArgumentParser(description="Read targeted events from the latest headless attempts.")
+        parser.add_argument("directory", type=Path)
+        parser.add_argument("targets", type=skill_target, nargs="+", metavar="MODE=SKILL")
+        args = parser.parse_args(argv[2:])
+        if not args.directory.is_dir():
+            parser.error("headless directory does not exist")
+        print(json.dumps(skill_evidence(args.directory, args.targets), ensure_ascii=False, indent=2))
+        return 0
     if len(argv) == 3 and argv[1] == "coverage":
         print(coverage(argv[2]))
         return 0
@@ -179,7 +240,8 @@ def main(argv):
         for mode, (state, detail) in cell_states(argv[2], matrix).items():
             print("%s\t%s\t%s" % (mode, state, detail))
         return 0
-    print("usage: acceptance_cells.py coverage|states <headless dir>", file=sys.stderr)
+    print("usage: acceptance_cells.py coverage|states <headless dir>\n"
+          "       acceptance_cells.py evidence <headless dir> MODE=SKILL ...", file=sys.stderr)
     return 2
 
 
