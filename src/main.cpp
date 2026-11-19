@@ -687,7 +687,7 @@ int main(int argc, char *argv[]) {
             if (seedOk)
                 Server::headlessTakeover.seed = seed;
         }
-        Server *server = new Server(qApp);
+        Server *server = new Server(qApp, GameSessionConfig(), Server::InitialRoomPolicy::Deferred);
         qDebug() << ">>> Headless Mode: Starting stress test with"
                  << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";
         QTimer::singleShot(0, server, &Server::startHeadlessGame);
