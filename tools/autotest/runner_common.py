@@ -107,6 +107,35 @@ def verification_env(env, directory):
     result.update(QSAN_DECISION_TRACE="1", QSAN_VERIFICATION_DIR=directory,
                   QSAN_TRACE_RUN_ID=uuid.uuid4().hex)
     return result
+def ensure_core_dumps():
+    """把 core dump 上限拉到硬上限, 讓崩潰的對局留下 core。
+
+    子行程繼承本行程的 rlimit, 所以在這裡調一次就覆蓋之後 spawn 的每一個
+    對局。不用 preexec_fn: Popen 的 preexec_fn 在多執行緒 fork 之後可能踩到
+    已持鎖的 mutex 而死鎖, 而本模組被 parallel 的 runner import 時就是多執行緒。
+    Windows 沒有 core dump, 直接略過。
+
+    回傳 True 表示已提高 (或本來就是 unlimited), False 表示硬上限禁止或平台不支援。
+    """
+    if IS_WINDOWS:
+        return False
+    try:
+        import resource
+    except ImportError:
+        return False
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_CORE)
+        if soft == resource.RLIM_INFINITY:
+            return True
+        # hard 可能是有限值, 也可能本身是 unlimited; soft 不能超過 hard。
+        target = hard
+        resource.setrlimit(resource.RLIMIT_CORE, (target, hard))
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+CORE_DUMPS_ENABLED = ensure_core_dumps()
 
 
 # Prefer RelWithDebInfo, then release, then debug: the build tree is what the

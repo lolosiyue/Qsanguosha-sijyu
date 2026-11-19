@@ -461,10 +461,11 @@ public:
             DeathStruct death = data.value<DeathStruct>();
             DamageStruct *damage = death.damage;
             if (damage && damage->from) {
-                if (damage->from->getRole() == damage->to->getRole())
+                // Direct-kill causes may omit "to"; player is the burial victim.
+                if (damage->from->getRole() == player->getRole())
                     damage->from->throwAllHandCards();
                 else {
-                    if (damage->to->hasSkill("huilei")) {
+                    if (player->hasSkill("huilei")) {
                         damage->from->throwAllHandCards();
                         damage->from->throwAllEquips();
                     }

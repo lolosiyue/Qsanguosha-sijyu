@@ -16,6 +16,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from runner_common import resolve_workdir
+
 PLACES = ["hand", "equip", "delayed_trick", "judge", "special", "discard_pile",
           "draw_pile", "table", "unknown", "wugu", "draw_pile_bottom"]
 SUITS = ["spade", "club", "heart", "diamond", "no_suit_black", "no_suit_red", "no_suit"]
@@ -123,7 +125,7 @@ def run_case(case_path, args, env):
                "--seed", str(args.seed), "--timeout", str(args.timeout)]
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
         try:
-            code = subprocess.run(command, cwd=args.exe.parent, env=env, stdout=log,
+            code = subprocess.run(command, cwd=args.cwd, env=env, stdout=log,
                                   stderr=subprocess.STDOUT, timeout=args.timeout + 30).returncode
         except subprocess.TimeoutExpired:
             code = None
@@ -154,12 +156,30 @@ def main():
     parser.add_argument("--qt-bin", help="Qt bin directory to prepend to PATH")
     parser.add_argument("--out-dir", help="where reports go (default: results/ next to each case)")
     parser.add_argument("--timeout", type=int, default=120, help="seconds per case")
+    # The scenario binary loads ./lua from its cwd. A build output directory can
+    # hold a stale partial copy (relwithdebinfo/lua was 9.8M vs the repository's
+    # 26M), which fails with "extension_names must be a dense array of strings".
+    # The default therefore resolves the cwd exactly like headless_runner does.
+    parser.add_argument("--cwd", type=Path,
+                        help="working directory for the scenario binary (default: resolved "
+                             "the same way as headless_runner)")
+    parser.add_argument("--exe-root", type=Path,
+                        help="repository root for the default cwd resolution "
+                             "(default: the exe's grandparent directory)")
     parser.add_argument("--jobs", type=int, default=1, help="cases run in parallel")
     args = parser.parse_args()
     args.exe = args.exe.resolve()
     env = dict(os.environ)
     if args.qt_bin:
         env["PATH"] = args.qt_bin + os.pathsep + env.get("PATH", "")
+
+    if args.cwd:
+        workdir = args.cwd
+    else:
+        exe_root = args.exe_root or args.exe.parent.parent
+        workdir = Path(resolve_workdir(str(exe_root)))
+    args.cwd = workdir
+    print("cwd: %s" % workdir)
 
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         results = list(pool.map(lambda case: run_case(case, args, env), args.cases))

@@ -29,9 +29,26 @@ from runner_common import (  # noqa: E402
 )
 from headless_runner import SCENARIO_MODES  # noqa: E402
 from minidump_parse import parse_dump  # noqa: E402
+import acceptance_cells  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+# 指定角色剧本：这些模式按固定武将名分配座位并给指定角色装牌/授技，跟「这一局有没有
+# 抽到某个武将」无关。拿它们跑武将验收等于每次都把房主武将从剧本里挤掉，量出来的是
+# 剧本的座位洗牌，不是武将本身的行为。所以完整武将验收矩阵跳过它们，另见
+# FIXED_CAST_MODES 单独清单。
+FIXED_CAST_MODES = frozenset({"guandu", "fancheng"})
+# 超长局模式：单局实测耗时远超 runner 的 per-game timeout（3600s），在常规矩阵里
+# 只会稳定地变成 exit=-9 SIGKILL，永远判不过。50p 实测 2026-11-17 用不限时直开
+# 打了 5小时12分才自然收局（>>> All games completed <<<），证明它不是卡死，只是
+# 慢到过不了木人桩。所以跟指定角色剧本一样移出常规矩阵，另立清单单独记录。
+# 10pd 曾在 2026-11-17 因同一条理由被移出：caoren 那轮跑到 93 分钟仍无
+# >>> All games completed <<<，log 停在 21:54:22 后 CPU 满但 stdout 一行不印。
+# 但那个数字是索引优化之前量的。2026-11-18 两层 CardLifetimeManager 索引上线后由
+# Codex 重测同一格：caoren + seed 20261220 用新 binary 3 分 18 秒正常收局（exit=0，
+# finished 1/1，最长日志间隔 5.1 秒），同 seed 同阵容的旧 binary 两次是 27 分 40 秒
+# 与 57 分 34 秒。3.3 分钟与矩阵平均 2.5 分钟同级，故 10pd 移回常规矩阵。
+SLOW_MODES = frozenset({"50p"})
 LOCAL_STAGES = ["describe", "skill", "ui", "headless", "gui", "gui_heg", "tui"]
 TRUSTEE_STAGES = ["gui", "tui"]
 DEVICE_STAGES = ["android", "xp"]
@@ -42,7 +59,6 @@ HEGEMONY_MODE = "08p"
 SCREENSHOT_ROOT = HERE / "autotest-logs" / "skill-ui-latest"
 LUA_ERROR_RE = re.compile(r"attempt to |stack traceback|\[AI_CALLBACK_ERROR\]|lua_error|Lua error", re.I)
 FORCE_RE = re.compile(r"\[AUTOTEST\] force general (\S+) (\S+)")
-SKILL_INVOKED_RE = re.compile(r"\[AUTOTEST\] skill-invoked (\S+) (\S+)")
 ANDROID_PACKAGE = "org.qsanguosha.game"
 # AGENTS.md section 9: the H working tree is the authority for these L directories.
 EXTENSIONS_AUTHORITY = r"H:\Program file\Game\sgs\Qsgs\working\extensions"
@@ -144,7 +160,7 @@ def scan_logs(paths, general, skills):
             match = FORCE_RE.search(line)
             if match and match.group(2) == general:
                 forced.append(match.group(1))
-            called = SKILL_INVOKED_RE.search(line)
+            called = acceptance_cells.SKILL_INVOKED_RE.search(line)
             if called:
                 invoked.append((called.group(1), called.group(2)))
             if LUA_ERROR_RE.search(line):
@@ -219,8 +235,12 @@ class Acceptance:
         directory = self.stage_dir("describe")
         host = self.exe("qsanguosha_skill_scenario")
         info_path = directory / "general.json"
+        # The host loads ./lua from its cwd; a build output directory can hold a
+        # stale partial copy and then fail with "invalid extension_names
+        # declaration". Resolve the cwd the same way headless_runner does.
         code = run([host, "--describe-general", self.general, "--report", info_path],
-                   directory / "describe.log", self.env, cwd=host.parent, timeout=300)
+                   directory / "describe.log", self.env,
+                   cwd=Path(resolve_workdir(str(ROOT))), timeout=300)
         if code != 0 or not info_path.exists():
             return "FAIL", f"describe exit {code}", {}
         self.info = json.loads(info_path.read_text(encoding="utf-8"))
@@ -319,12 +339,47 @@ class Acceptance:
         modes = [line.split("\t")[0].strip() for line in listing.splitlines()[1:] if "\t" in line]
         modes += sorted(SCENARIO_MODES)
         excluded = {m.strip() for m in self.args.exclude_modes.split(",") if m.strip()}
+        if self.args.fixed_cast:
+            # 单独清单：只跑指定角色剧本，其余全部跳过。
+            excluded |= (set(modes) - FIXED_CAST_MODES)
+        elif self.args.slow_modes:
+            # 单独清单：只跑超长局，其余全部跳过。
+            excluded |= (set(modes) - SLOW_MODES)
+        else:
+            # 武将验收矩阵：指定角色剧本与超长局一律不跑（理由见两个常量）。
+            excluded |= FIXED_CAST_MODES
+            excluded |= SLOW_MODES
         # emjr Cao Cao stage modes are not part of general acceptance.
         return [m for m in modes if m and m not in excluded and "_emjr_cc" not in m]
 
     def headless(self):
         directory = self.stage_dir("headless")
-        modes = self.headless_modes()
+        matrix = self.headless_modes()
+        targets = self.args.observe_skill
+        outside = {mode for mode, _ in targets} - set(matrix)
+        if outside:
+            raise ValueError("requested skill evidence outside the matrix: " + ", ".join(sorted(outside)))
+        # 本輪矩陣寫進 modes.txt，driver 的 coverage 拿它當期望格數（以前寫死 16，
+        # 那是 standard 包的模式數，wind 包永遠判 INCOMPLETE）。寫的是完整矩陣，
+        # 不是扣掉續跑之後的剩餘格：續跑跳過的格子仍屬本輪範圍，要算進覆蓋率。
+        acceptance_cells.write_matrix(directory, matrix)
+        modes = list(matrix)
+        resumed = 0
+        if self.args.resume:
+            # 續跑：跳過本輪矩陣裡「最新一次嘗試已收局」的格子。判定規則與 driver
+            # 的 coverage 共用 acceptance_cells.py，兩邊不會再對不上；矩陣外的舊格
+            # （50p、guandu 的舊 log）不會被算進來。
+            done = acceptance_cells.completed(directory, matrix)
+            modes = [m for m in matrix if m not in done]
+            resumed = len(matrix) - len(modes)
+            print("續跑：本輪矩陣 %d 格，已完成 %d 格，剩 %d 格" % (len(matrix), resumed, len(modes)), flush=True)
+            if not modes:
+                # 不叫 runner：headless_runner 收到空模式表會 exit 1。
+                # record() 解包三個值，這裡必須回三元組。
+                return "SKIP", (f"resume: all {len(matrix)} matrix modes finished in earlier runs; "
+                                "grade them with standard_matrix_judge.py"), \
+                    {"modes": {}, "budget": {"stopped": [], "not_run": []}, "summary_csv": None, "crashes": [],
+                     "skill_events": acceptance_cells.skill_evidence(directory, targets) if targets else []}
         code = run([sys.executable, HERE / "headless_runner.py", "--exe", self.exe("QSanguosha"),
                     "--exe-root", ROOT, "--seed", self.args.seed, "--modes", ",".join(modes), "--games", 1,
                     "--parallel", self.args.jobs, "--force-general", self.general, "--log-dir", directory,
@@ -360,6 +415,9 @@ class Acceptance:
             status = "WARN"  # a partial matrix is not full coverage
         graded = len(modes) - len(unfinished)
         detail = f"{graded - len(bad)}/{graded} graded modes clean" + (f"; {', '.join(bad)}" if bad else "")
+        if resumed:
+            # 這裡只評了本輪真的跑的格子；續跑跳過的格子由 standard_matrix_judge.py 統一判。
+            detail += f"; resume skipped {resumed} finished mode(s) of {len(matrix)}"
         if unfinished:
             def listed(names):  # full lists stay in summary.json
                 return f"{len(names)}" + (f" ({', '.join(names[:8])}{', ...' if len(names) > 8 else ''})"
@@ -367,6 +425,7 @@ class Acceptance:
             detail += (f"; budget {self.args.headless_minutes:g} min: stopped {listed(budget['stopped'])}"
                        f", NOT RUN {listed(budget['not_run'])}")
         return status, detail, {"modes": per_mode, "budget": budget,
+                                "skill_events": acceptance_cells.skill_evidence(directory, targets) if targets else [],
                                 "summary_csv": str(summaries[-1]) if summaries else None, "crashes": crashes}
 
     def gui(self):
@@ -725,6 +784,16 @@ class Acceptance:
         lines = [f"# {self.general} acceptance (seed {self.args.seed}, {self.args.profile})", "",
                  "| stage | status | detail |", "|---|---|---|"]
         lines += [f"| {k} | {v['status']} | {v['detail']} |" for k, v in self.results.items()]
+        if self.args.observe_skill:
+            events = self.results.get("headless", {}).get("evidence", {}).get("skill_events", [])
+            lines += ["", "## 指定技能事件", ""]
+            indexed = {(item["mode"], item["skill"]): item for item in events}
+            for mode, skill in dict.fromkeys(self.args.observe_skill):
+                item = indexed.get((mode, skill), {})
+                lines.append(f"- {mode} / {skill} — 對局：{item.get('game', '未判定')}；"
+                             f"技能：{item.get('status', '待驗')}")
+                if "line" in item:
+                    lines.append(f"  - `{item['log']}:{item['line']}` {item['event']}")
         if self.args.profile == "trustee" and not self.args.skill_branches:
             lines += ["", "Skill branches: NOT RUN (Trustee client playback)."]
         if verification is not None:
@@ -801,6 +870,14 @@ def main():
     parser.add_argument("--qt-bin", help="Qt bin directory for every child process")
     parser.add_argument("--jobs", type=int, default=4, help="parallel skill cases / headless modes")
     parser.add_argument("--exclude-modes", default="", help="headless modes to skip, comma separated")
+    parser.add_argument("--resume", action="store_true",
+                        help="skip headless modes that already have a completed log from a previous run")
+    parser.add_argument("--observe-skill", action="append", default=[], type=acceptance_cells.skill_target,
+                        metavar="MODE=SKILL", help="include exact skill events from any seat in the headless summary (repeatable)")
+    parser.add_argument("--fixed-cast", action="store_true",
+                        help="run ONLY the fixed-cast scenario modes (guandu, fancheng); the general matrix skips them")
+    parser.add_argument("--slow-modes", action="store_true",
+                        help="run ONLY the slow modes (50p); the general matrix skips them")
     parser.add_argument("--headless-minutes", type=float, default=60,
                         help="headless matrix budget in minutes (0 = unlimited); unfinished modes are reported")
     parser.add_argument("--extensions-authority", default=EXTENSIONS_AUTHORITY,
@@ -819,6 +896,8 @@ def main():
     selected = args.stages if args.stages is not None else ",".join(
         TRUSTEE_STAGES if args.profile == "trustee" else LOCAL_STAGES)
     stages = [s.strip() for s in selected.split(",") if s.strip()]
+    if args.observe_skill and "headless" not in stages:
+        parser.error("--observe-skill requires the headless stage")
     unknown = set(stages) - set(LOCAL_STAGES + DEVICE_STAGES + INDEPENDENT_STAGES + UNAVAILABLE_STAGES)
     if unknown:
         parser.error(f"unknown stages: {', '.join(sorted(unknown))}")

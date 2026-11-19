@@ -467,7 +467,23 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             print("  [%s] [%s] 第 %d/%d 局進行中..." % (label, time.strftime("%H:%M:%S"), g, games))
         prev_started = started
         prev = report_progress(label, games, prev, finished, failed)
-        time.sleep(2)
+        # 等子進程而不是固定睡 2 秒：遊戲若在這段等待期間退出，這裡立刻拿到退出碼，
+        # 不必再多空轉一整圈（原本最多白等 2 秒/格）。等待上限仍夾在 2 秒，所以
+        # 時限（deadline）與時間預算（stop_at）的檢查反應延遲跟原本一樣，不會被拖長；
+        # 崩潰退出碼照樣由 wait() 原樣交回，下游的 exit/crashed 判定語義不變。
+        wait_s = 2.0
+        remaining = deadline - time.monotonic()
+        if remaining < wait_s:
+            wait_s = max(0.0, remaining)
+        if stop_at is not None:
+            budget_left = stop_at - time.time()
+            if budget_left < wait_s:
+                wait_s = max(0.0, budget_left)
+        try:
+            code = proc.wait(wait_s)
+            break
+        except subprocess.TimeoutExpired:
+            pass
     close_proc(proc)
     finished, failed, _ = parse_headless_log(headless_log)
     shutdown_count = shutdown_marker_count(headless_log)
@@ -601,6 +617,7 @@ def main():
           % (", ".join(modes), args.games, parallel, len(tasks)))
 
     results = []
+    csv_path = None
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(run_mode, args, exe, workdir, m, args.games, tag): m
                    for (m, tag) in tasks}
@@ -636,6 +653,38 @@ def main():
                 if r.get("smart_ai_failed"):
                     print("        smart-ai 載入失敗 (檔案/環境問題), 後續局未跑")
 
+            # Rewrite this run's summary after every mode, not only at the end: a run
+            # killed midway (WSL stop, 05:00 scheduled shutdown) used to leave no CSV
+            # at all, so every finished mode of that run had to be played again.
+            csv_path = write_summary(args, log_root, results, csv_path)
+
+    csv_path = write_summary(args, log_root, results, csv_path)
+    print("結果: %s" % csv_path)
+
+    ok = sum(1 for r in results if r.get("ok"))
+    # Budget-stopped and unstarted modes are reported separately; they are not failures.
+    budgeted = sum(1 for r in results if r.get("budget"))
+    print("總計: %d/%d 通過" % (ok, len(results))
+          + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
+    game_exit = 0 if ok + budgeted == len(results) else 1
+    if args.verify_decisions or args.skill_branches or args.require_controller:
+        from verification_report import build_report, write_report, report_exit
+        report = build_report([args.run_dir], args.skill_branches, args.require_controller)
+        write_report(report, os.path.join(args.run_dir, "verification"))
+        print("verification: %s" % os.path.join(args.run_dir, "verification", "verification.md"))
+        return game_exit or report_exit(report)
+    return game_exit
+
+
+def write_summary(args, log_root, results, previous):
+    """Write the summary CSV for the modes finished so far; return its path.
+
+    The file is named by the time of this write, so its stamp is never older than
+    any mode it lists (standard_matrix_judge.py treats a log newer than its CSV as
+    still running). Each rewrite replaces the run's previous file, so a finished
+    run still leaves exactly one CSV. The temporary name starts with a dot and
+    ends in .tmp, so no summary-headless-*.csv glob can pick up a half-written file.
+    """
     csv_path = (
         os.path.abspath(args.output)
         if args.output
@@ -676,22 +725,15 @@ def main():
                 process_failure or result.get("error", ""),
                 result.get("log", "").replace("\\", "/"), result.get("budget", ""),
             ])
-    write_csv(csv_path, header, csv_rows)
-    print("結果: %s" % csv_path)
-
-    ok = sum(1 for r in results if r.get("ok"))
-    # Budget-stopped and unstarted modes are reported separately; they are not failures.
-    budgeted = sum(1 for r in results if r.get("budget"))
-    print("總計: %d/%d 通過" % (ok, len(results))
-          + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
-    game_exit = 0 if ok + budgeted == len(results) else 1
-    if args.verify_decisions or args.skill_branches or args.require_controller:
-        from verification_report import build_report, write_report, report_exit
-        report = build_report([args.run_dir], args.skill_branches, args.require_controller)
-        write_report(report, os.path.join(args.run_dir, "verification"))
-        print("verification: %s" % os.path.join(args.run_dir, "verification", "verification.md"))
-        return game_exit or report_exit(report)
-    return game_exit
+    tmp_path = os.path.join(os.path.dirname(csv_path), "." + os.path.basename(csv_path) + ".tmp")
+    write_csv(tmp_path, header, csv_rows)
+    os.replace(tmp_path, csv_path)
+    if previous and os.path.abspath(previous) != os.path.abspath(csv_path):
+        try:
+            os.remove(previous)
+        except OSError:
+            pass
+    return csv_path
 
 
 if __name__ == "__main__":

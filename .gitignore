@@ -113,3 +113,17 @@ web/public/rules/
 /GER.lua
 /gbackup.json
 /artifacts/
+
+# 崩潰留下的 core。kernel 的 core_pattern 是相對路徑 `core`，core_uses_pid=1，
+# 實際檔名是 core.<pid>，落在對局 cwd（倉庫根）。單檔可達 1 GB，不能進 repo。
+/core
+/core.*
+
+# 本機自訂的優先序／雙將／劇本（使用者環境設定），不入庫（2026-11-19 定案）。
+/etc/1v1-priority.txt
+/etc/3v3-priority.txt
+/etc/double-generals.txt
+/etc/customScenes/
+
+# 改檔前的同名備份，只在本地留存，不進 repo。
+*.bak

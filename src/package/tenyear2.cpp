@@ -30854,15 +30854,15 @@ public:
 							int id = room->showDrawPile(player,1,objectName()).first();
 							const Card*c = Sanguosha->getCard(id);
 							room->getThread()->delay();
-							if(c->isKindOf("Slash")||c->isNDTrick()){
+							if((c->isKindOf("Slash")||c->isNDTrick())&&!c->isKindOf("Nullification")){
 								Card*dc = Sanguosha->cloneCard(c->objectName());
-								if(c->getTypeId()<2||dc->isAvailable(player)){
+								if(dc&&(c->getTypeId()<2||dc->isAvailable(player))){
 									if(!c->sameNameWith(use.card))player->broadcastSkillInvoke(c);
 									dc->addSubcards(use.card->getSubcards());
 									use.card = dc;
 									data.setValue(use);
 								}
-								dc->deleteLater();
+								if(dc) dc->deleteLater();
 								room->throwCard(id,objectName(),nullptr);
 							}else{
 								room->obtainCard(player,c,objectName());
@@ -38522,11 +38522,15 @@ public:
 		if (player->isDead() || player->isKongcheng()) return false;
 		const Card *shown = player->getHandcards().last();
 		room->showCard(player, shown->getEffectiveId(), QList<ServerPlayer *>(), objectName());
-		if (shown->isKindOf("Slash") || shown->isNDTrick()) {
+		if ((shown->isKindOf("Slash") || shown->isNDTrick()) && !shown->isKindOf("Nullification")) {
 			Card *rep = Sanguosha->cloneCard(shown->objectName());
 			if (!rep) return false;
 			rep->setSkillName(objectName());
 			rep->addSubcards(use.card->getSubcards());
+			if (!rep->isKindOf("Slash") && !rep->isAvailable(player)) {
+				rep->deleteLater();
+				return false;
+			}
 			rep->deleteLater();
 			use.card = rep;
 			data = QVariant::fromValue(use);

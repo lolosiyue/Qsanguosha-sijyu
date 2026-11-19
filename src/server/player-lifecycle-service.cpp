@@ -443,6 +443,9 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
                 cursor->stage = DeathCursor::Detach;
                 try { event(BuryVictim, victim); }
                 catch (TriggerEvent e) {
+                    // Scenario winners may be decided while burying a victim.
+                    // Unwind the turn before post-victory phases can run.
+                    if (e == GameFinished) throw;
                     if (e == TurnBroken || e == StageChange) victim->setMark("wujieNoRewardAndPunish-Keep", 0);
                 }
                 break;

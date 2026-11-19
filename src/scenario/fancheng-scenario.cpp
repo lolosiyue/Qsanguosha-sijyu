@@ -320,20 +320,28 @@ public:
             room->acquireSkill(player, "flood");
             room->acquireSkill(player, "xiansheng");
 
+            // 固定剧本指定角色的初始配置。--force-general 等情形下角色可能缺席，
+            // 此处逐个判空：缺席者跳过其配置，不让空指针进入 installEquip/acquireSkill。
             ServerPlayer *sp_pangde = room->findPlayer("sp_pangde");
-            room->acquireSkill(sp_pangde, "taichen_fight");
+            if (sp_pangde)
+                room->acquireSkill(sp_pangde, "taichen_fight");
 
             ServerPlayer *nos_huatuo = room->findPlayer("nos_huatuo");
-            room->installEquip(nos_huatuo, "hualiu");
-            room->acquireSkill(nos_huatuo, "guagu");
+            if (nos_huatuo) {
+                room->installEquip(nos_huatuo, "hualiu");
+                room->acquireSkill(nos_huatuo, "guagu");
+            }
 
             ServerPlayer *lvmeng = room->findPlayer("lvmeng");
-            room->acquireSkill(lvmeng, "dujiang");
+            if (lvmeng)
+                room->acquireSkill(lvmeng, "dujiang");
 
             ServerPlayer *caoren = room->findPlayer("caoren");
-            room->installEquip(caoren, "renwang_shield");
-            room->acquireSkill(caoren, "zhiyuan");
-            room->acquireSkill(caoren, "#caoren-max-cards", false);
+            if (caoren) {
+                room->installEquip(caoren, "renwang_shield");
+                room->acquireSkill(caoren, "zhiyuan");
+                room->acquireSkill(caoren, "#caoren-max-cards", false);
+            }
 
 
             break;

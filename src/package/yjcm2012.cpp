@@ -1296,11 +1296,13 @@ public:
         return false;
     }
 };
-static void stampLihuoEffect(Room *room, const Card *card, const SkillContext &ctx, int amount)
+// actor is the slash user the CardFinished receipt check compares against. Trigger
+// dispatch leaves ctx.initiator null, so each caller passes its own user.
+static void stampLihuoEffect(Room *room, const Card *card, const SkillContext &ctx, const ServerPlayer *actor, int amount)
 {
     const int serial = room->getTag("LihuoReceiptSerial").toInt() + 1;
     room->setTag("LihuoReceiptSerial", serial);
-    card->setTag("LihuoEffect", QVariantMap{{"serial", serial}, {"actor", ctx.initiator->objectName()},
+    card->setTag("LihuoEffect", QVariantMap{{"serial", serial}, {"actor", actor->objectName()},
         {"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
         {"amount", amount}});
 }
@@ -1343,7 +1345,7 @@ public:
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
-        if (ctx.initiator && ctx.use_card) stampLihuoEffect(ctx.initiator->getRoom(), ctx.use_card, ctx, getEffectiveAmount(ctx));
+        if (ctx.initiator && ctx.use_card) stampLihuoEffect(ctx.initiator->getRoom(), ctx.use_card, ctx, ctx.initiator, getEffectiveAmount(ctx));
         return ContinueEffects;
     }
 };
@@ -1416,7 +1418,7 @@ public:
         use.sourceRef = ctx.sourceRef;
         use.activationRef = ctx.activationRef;
         use.changeCard(slash);
-        stampLihuoEffect(room, use.card, ctx, getEffectiveAmount(ctx));
+        stampLihuoEffect(room, use.card, ctx, target, getEffectiveAmount(ctx));
         *ctx.original_data = QVariant::fromValue(use);
         return false;
     }

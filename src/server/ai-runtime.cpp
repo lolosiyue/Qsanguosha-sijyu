@@ -909,6 +909,9 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "ai_humanized");
     lua_pushboolean(state, world.aiChatEnabled);
     lua_setfield(state, -2, "ai_chat_enabled");
+    pushAIJsonValue(state, QJsonObject{{"origin_ai_delay", world.originAiDelay},
+                                     {"humanized", world.aiHumanized}});
+    lua_setfield(state, -2, "response_policy");
     if (world.roleCountsKnown) {
         pushAIJsonValue(state, world.roleCounts);
         lua_setfield(state, -2, "role_counts");

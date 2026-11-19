@@ -199,21 +199,28 @@ public:
             room->installEquip(player, "renwang_shield");
             room->installEquip(player, "hualiu");
 
+            // 固定剧本指定角色的初始配置。--force-general 等情形下角色可能缺席，
+            // 此处逐个判空：缺席者跳过其配置，不让空指针进入 installEquip/acquireSkill。
             ServerPlayer *caocao = room->findPlayer("caocao");
-            room->installEquip(caocao, "qinggang_sword");
-            room->installEquip(caocao, "zhuahuangfeidian");
+            if (caocao) {
+                room->installEquip(caocao, "qinggang_sword");
+                room->installEquip(caocao, "zhuahuangfeidian");
+            }
 
             ServerPlayer *liubei = room->findPlayer("liubei");
-            room->installEquip(liubei, "double_sword");
+            if (liubei)
+                room->installEquip(liubei, "double_sword");
 
             ServerPlayer *guanyu = room->findPlayer("guanyu");
-            room->installEquip(guanyu, "blade");
-            room->installEquip(guanyu, "chitu");
-            room->acquireSkill(guanyu, "zhanshuangxiong");
-
+            if (guanyu) {
+                room->installEquip(guanyu, "blade");
+                room->installEquip(guanyu, "chitu");
+                room->acquireSkill(guanyu, "zhanshuangxiong");
+            }
 
             ServerPlayer *zhangliao = room->findPlayer("nos_zhangliao");
-            room->handleAcquireDetachSkills(zhangliao, "-nostuxi|smalltuxi");
+            if (zhangliao)
+                room->handleAcquireDetachSkills(zhangliao, "-nostuxi|smalltuxi");
 
             break;
         }
