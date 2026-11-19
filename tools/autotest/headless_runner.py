@@ -463,7 +463,23 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             print("  [%s] [%s] 第 %d/%d 局進行中..." % (label, time.strftime("%H:%M:%S"), g, games))
         prev_started = started
         prev = report_progress(label, games, prev, finished, failed)
-        time.sleep(2)
+        # 等子進程而不是固定睡 2 秒：遊戲若在這段等待期間退出，這裡立刻拿到退出碼，
+        # 不必再多空轉一整圈（原本最多白等 2 秒/格）。等待上限仍夾在 2 秒，所以
+        # 時限（deadline）與時間預算（stop_at）的檢查反應延遲跟原本一樣，不會被拖長；
+        # 崩潰退出碼照樣由 wait() 原樣交回，下游的 exit/crashed 判定語義不變。
+        wait_s = 2.0
+        remaining = deadline - time.monotonic()
+        if remaining < wait_s:
+            wait_s = max(0.0, remaining)
+        if stop_at is not None:
+            budget_left = stop_at - time.time()
+            if budget_left < wait_s:
+                wait_s = max(0.0, budget_left)
+        try:
+            code = proc.wait(wait_s)
+            break
+        except subprocess.TimeoutExpired:
+            pass
     close_proc(proc)
     finished, failed, _ = parse_headless_log(headless_log)
     shutdown_count = shutdown_marker_count(headless_log)
