@@ -1209,169 +1209,163 @@ const Card* PlayerDecisionService::askForNullification(const Card*trick, ServerP
 
 const Card* PlayerDecisionService::_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive)
 {
-	m_room.tryPause();
-	CardUseStruct card_use = m_room.getTag("UseHistory"+trick->toString()).value<CardUseStruct>();
-	if (card_use.no_respond_list.contains("_ALL_TARGETS")||card_use.no_offset_list.contains("_ALL_TARGETS")) return nullptr;
-	
-	m_room.m_runtime->state().setCurrentCardUsePattern("nullification");
-	m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
-	
-	CardEffectStruct trickEffect,TrickEffect = to->getTag("TrickEffectData").value<CardEffectStruct>();
-	if(TrickEffect.card==trick)
-		trickEffect = TrickEffect;
-	else{
-		trickEffect.card = trick;
-		trickEffect.from = from;
-		trickEffect.to = to;
-	}
-
+    // The limit applies to rejected answers for this effect, not to legal counterspells.
+    constexpr int maxAttempts = 3;
     Room::AiNullificationContext observation;
-    observation.trick = trick;
-    observation.from = from;
-    observation.to = to;
-    observation.positive = positive;
-    observation.rootEffect = trickEffect;
-    observation.complete = trick && !trick->isKindOf("Nullification")
-        && trickEffect.card == trick && trickEffect.from == from && trickEffect.to == to;
-    auto *previousNullification = m_room.m_aiNullificationContext;
-    if (previousNullification) {
-        const auto *response = previousNullification->responseUse;
-        // The native UseHistory receipt proves that this is the parent's
-        // accepted response, not an unrelated nested trick or a stale tag.
-        const bool counter = response && response->card == trick && response->from == from
-            && previousNullification->to == to && previousNullification->positive != positive
-            && card_use.card == trick && card_use.from == from
-            && card_use.whocard == previousNullification->trick;
-        const bool retry = previousNullification->retrying
-            && previousNullification->trick == trick && previousNullification->from == from
-            && previousNullification->to == to && previousNullification->positive == positive;
-        if (counter || retry) {
-            observation.rootEffect = previousNullification->rootEffect;
-            observation.times = previousNullification->times + (counter ? 1 : 0);
-            observation.all = counter ? previousNullification->responseAll : previousNullification->all;
-            observation.complete = previousNullification->complete
-                && (!counter || previousNullification->responseTypeKnown);
+    for (int attempt = 0; attempt < maxAttempts; ++attempt) {
+        m_room.tryPause();
+        CardUseStruct card_use = m_room.getTag("UseHistory"+trick->toString()).value<CardUseStruct>();
+        if (card_use.no_respond_list.contains("_ALL_TARGETS")||card_use.no_offset_list.contains("_ALL_TARGETS")) return nullptr;
+
+        m_room.m_runtime->state().setCurrentCardUsePattern("nullification");
+        m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+
+        CardEffectStruct trickEffect,TrickEffect = to->getTag("TrickEffectData").value<CardEffectStruct>();
+        if(TrickEffect.card==trick)
+            trickEffect = TrickEffect;
+        else{
+            trickEffect.card = trick;
+            trickEffect.from = from;
+            trickEffect.to = to;
         }
+
+        auto *previousNullification = m_room.m_aiNullificationContext;
+        if (!observation.retrying) {
+            observation.trick = trick;
+            observation.from = from;
+            observation.to = to;
+            observation.positive = positive;
+            observation.rootEffect = trickEffect;
+            observation.complete = trick && !trick->isKindOf("Nullification")
+                && trickEffect.card == trick && trickEffect.from == from && trickEffect.to == to;
+            if (previousNullification) {
+                const auto *response = previousNullification->responseUse;
+                // UseHistory distinguishes an accepted counter from an unrelated nested trick.
+                const bool counter = response && response->card == trick && response->from == from
+                    && previousNullification->to == to && previousNullification->positive != positive
+                    && card_use.card == trick && card_use.from == from
+                    && card_use.whocard == previousNullification->trick;
+                if (counter) {
+                    observation.rootEffect = previousNullification->rootEffect;
+                    observation.times = previousNullification->times + 1;
+                    observation.all = previousNullification->responseAll;
+                    observation.complete = previousNullification->complete
+                        && previousNullification->responseTypeKnown;
+                }
+            }
+        }
+        CardUseStruct use(nullptr, nullptr);
+        if (Config.EnableHegemony) m_room.m_aiNullificationContext = &observation;
+        const auto nullificationObservation = qScopeGuard([&] {
+            m_room.m_aiNullificationContext = previousNullification;
+        });
+
+        QList<ServerPlayer*> validPlayers, raceHumanPlayers, controlledHumanPlayers;
+        QVariant data = QVariant::fromValue(trickEffect);
+        foreach(ServerPlayer*player, m_room.getAllPlayers()){
+            if (card_use.no_respond_list.contains(player->objectName())||card_use.no_offset_list.contains(player->objectName())) continue;
+            if (player->hasNullification()){
+                if(m_eventDispatcher.dispatch(TrickCardCanceling, player,data)) continue;
+                validPlayers << player;
+            }
+        }
+        if (validPlayers.isEmpty())
+            return nullptr;
+
+        JsonArray args;
+        args << trick->objectName();
+        args << (from?from->objectName():"");
+        args << (to?to->objectName():"");
+        foreach(ServerPlayer*player, validPlayers){
+            if (!player->isOnline())
+                continue;
+
+            ServerPlayer *actual = m_room.getActualController(player);
+            bool redirectedToController = actual != nullptr && actual != player && actual->isOnline() && m_room.getRequestTarget(player) == actual;
+            if (redirectedToController)
+                controlledHumanPlayers << player;
+            else
+                raceHumanPlayers << player;
+
+            player->m_commandArgs = args;
+            if (card_use.to.length()>1)
+                m_room.doNotify(player, S_COMMAND_NULLIFICATION_ASKED, trick->objectName());
+        }
+
+        time_t timeOut = ServerInfo.getCommandTimeout(S_COMMAND_NULLIFICATION, S_SERVER_INSTANCE);
+        if (!raceHumanPlayers.isEmpty()) {
+            use.from = m_room.doBroadcastRaceRequest(raceHumanPlayers, S_COMMAND_NULLIFICATION, timeOut, &Room::verifyNullificationResponse);
+            if (use.from) {
+                use.tryParse(use.from->getClientReply(), &m_room);
+                if (!m_room.resolveCardSkillInstance(use))
+                    use.card = nullptr;
+            }
+        }
+        if (!use.card) {
+            foreach(ServerPlayer*player, controlledHumanPlayers){
+                m_room.notifyMoveFocus(player, S_COMMAND_NULLIFICATION);
+                if (!m_room.doRequest(player, S_COMMAND_NULLIFICATION, args, timeOut, true))
+                    continue;
+                if (!m_room.verifyNullificationResponse(player, player->getClientReply(), nullptr))
+                    continue;
+
+                CardUseStruct candidate;
+                candidate.from = player;
+                if (candidate.tryParse(player->getClientReply(), &m_room) && m_room.resolveCardSkillInstance(candidate)) {
+                    use = candidate;
+                    break;
+                }
+            }
+        }
+        if (!use.card){
+            QElapsedTimer timer;
+            timer.start();
+            qsanShuffle(validPlayers);
+            foreach(ServerPlayer*player, validPlayers){
+                AI*ai = player->getAI();
+                if (ai){
+                    if (qEnvironmentVariableIsSet("QSAN_TAG_DISCRIMINATOR_BOUNDARY")) {
+                        std::fprintf(stderr,
+                                     "NULLIFICATION_BOUNDARY trickEffect.to=%p passed_to=%p "
+                                     "from=%p positive=%d\n",
+                                     static_cast<const void *>(trickEffect.to),
+                                     static_cast<const void *>(to),
+                                     static_cast<const void *>(trickEffect.from), positive ? 1 : 0);
+                    }
+                    // Use the effect already matched to this ask, including the
+                    // explicit arguments when the target's tag belongs to an older trick.
+                    use.card = m_room.decideAiNullification(player, trickEffect.card, trickEffect.from, trickEffect.to, positive);
+                    if (use.card){
+                        use.from = player;
+                        if (Config.AIDelay>timer.elapsed())
+                            m_room.thread->delay(Config.AIDelay-timer.elapsed());
+                        break;
+                    }
+                }
+            }
+        }
+        if (!use.card) return nullptr;
+        use.whocard = trick;
+        use.who = from;
+        trickEffect.nullified = positive;
+        use.from->setTag("NullifyingEffect", QVariant::fromValue(trickEffect));
+        observation.responseUse = &use;
+        observation.responseAll = observation.all;
+        observation.responseTypeKnown = observation.complete;
+        if (use.card->isKindOf("HegNullification") && trick->isNDTrick()
+            && !trick->isKindOf("Nullification")) observation.responseTypeKnown = false;
+        if (!m_room.useCard(use)) {
+            // Retry this effect without retaining the rejected response or its stack frame.
+            observation.responseUse = nullptr;
+            observation.retrying = true;
+            continue;
+        }
+        card_use = m_room.getTag("UseHistory" + use.card->toString()).value<CardUseStruct>();
+        if (card_use.no_offset_list.contains("_HAS_EFFECT"))
+            return use.card;
+        return nullptr;
     }
-    if (Config.EnableHegemony) m_room.m_aiNullificationContext = &observation;
-    const auto nullificationObservation = qScopeGuard([&] {
-        m_room.m_aiNullificationContext = previousNullification;
-    });
-	
-	QList<ServerPlayer*> validPlayers, raceHumanPlayers, controlledHumanPlayers;
-	QVariant data = QVariant::fromValue(trickEffect);
-	foreach(ServerPlayer*player, m_room.getAllPlayers()){
-		if (card_use.no_respond_list.contains(player->objectName())||card_use.no_offset_list.contains(player->objectName())) continue;
-		if (player->hasNullification()){
-			if(m_eventDispatcher.dispatch(TrickCardCanceling, player,data)) continue;
-			validPlayers << player;
-		}
-	}
-	if (validPlayers.isEmpty())
-		return nullptr;
-	
-	JsonArray args;
-	args << trick->objectName();
-	args << (from?from->objectName():"");
-	args << (to?to->objectName():"");
-	foreach(ServerPlayer*player, validPlayers){
-		if (!player->isOnline())
-			continue;
-
-		ServerPlayer *actual = m_room.getActualController(player);
-		bool redirectedToController = actual != nullptr && actual != player && actual->isOnline() && m_room.getRequestTarget(player) == actual;
-		if (redirectedToController)
-			controlledHumanPlayers << player;
-		else
-			raceHumanPlayers << player;
-
-		player->m_commandArgs = args;
-		if (card_use.to.length()>1)
-			m_room.doNotify(player, S_COMMAND_NULLIFICATION_ASKED, trick->objectName());
-	}
-	
-	CardUseStruct use(nullptr,nullptr);
-	time_t timeOut = ServerInfo.getCommandTimeout(S_COMMAND_NULLIFICATION, S_SERVER_INSTANCE);
-	if (!raceHumanPlayers.isEmpty()) {
-		use.from = m_room.doBroadcastRaceRequest(raceHumanPlayers, S_COMMAND_NULLIFICATION, timeOut, &Room::verifyNullificationResponse);
-		if (use.from) {
-			use.tryParse(use.from->getClientReply(), &m_room);
-			if (!m_room.resolveCardSkillInstance(use))
-				use.card = nullptr;
-		}
-	}
-	if (!use.card) {
-		foreach(ServerPlayer*player, controlledHumanPlayers){
-			m_room.notifyMoveFocus(player, S_COMMAND_NULLIFICATION);
-			if (!m_room.doRequest(player, S_COMMAND_NULLIFICATION, args, timeOut, true))
-				continue;
-			if (!m_room.verifyNullificationResponse(player, player->getClientReply(), nullptr))
-				continue;
-
-			CardUseStruct candidate;
-			candidate.from = player;
-			if (candidate.tryParse(player->getClientReply(), &m_room) && m_room.resolveCardSkillInstance(candidate)) {
-				use = candidate;
-				break;
-			}
-		}
-	}
-	if (!use.card){
-		QElapsedTimer timer;
-		timer.start();
-		qsanShuffle(validPlayers);
-		foreach(ServerPlayer*player, validPlayers){
-			AI*ai = player->getAI();
-			if (ai){
-				if (qEnvironmentVariableIsSet("QSAN_TAG_DISCRIMINATOR_BOUNDARY")) {
-					std::fprintf(stderr,
-					             "NULLIFICATION_BOUNDARY trickEffect.to=%p passed_to=%p "
-					             "from=%p positive=%d\n",
-					             static_cast<const void *>(trickEffect.to),
-					             static_cast<const void *>(to),
-					             static_cast<const void *>(trickEffect.from), positive ? 1 : 0);
-				}
-                // Use the effect already matched to this ask, including the
-                // explicit arguments when the target's tag belongs to an older trick.
-				use.card = m_room.decideAiNullification(player, trickEffect.card, trickEffect.from, trickEffect.to, positive);
-				if (use.card){
-					use.from = player;
-					if (Config.AIDelay>timer.elapsed())
-						m_room.thread->delay(Config.AIDelay-timer.elapsed());
-					break;
-				}
-			}
-		}
-	}
-	if (!use.card) return nullptr;
-	use.whocard = trick;
-	use.who = from;
-	trickEffect.nullified = positive;
-	use.from->setTag("NullifyingEffect", QVariant::fromValue(trickEffect));
-    observation.responseUse = &use;
-    observation.responseAll = observation.all;
-    observation.responseTypeKnown = observation.complete;
-    if (use.card->isKindOf("HegNullification") && trick->isNDTrick()
-        && !trick->isKindOf("Nullification")) observation.responseTypeKnown = false;
-	if (!m_room.useCard(use)) {
-        observation.retrying = true;
-        return _askForNullification(trick, from, to, positive);
-    }/*
-	QString tn = use.from->objectName();
-	if (to) tn = to->objectName();
-	m_room.thread->delay(Config.AIDelay/2);
-	data = "Nullification:"+trick->getClassName()+":"+tn+":"+(positive?"true":"false");
-	m_eventDispatcher.dispatch(ChoiceMade, use.from, data);*/
-	card_use = m_room.getTag("UseHistory"+use.card->toString()).value<CardUseStruct>();
-	if(card_use.no_offset_list.contains("_HAS_EFFECT")) {
-		return use.card;
-	}
-	return nullptr;/*
-	if (useNullified(use.card))
-		return _askForNullification(trick, from, to, positive);
-	if (_askForNullification(use.card, use.from, to, !positive))
-		return nullptr;
-	return use.card;*/
+    return nullptr;
 }
 
 // Native custody belongs to a single nested askForCard chain. No receipt is

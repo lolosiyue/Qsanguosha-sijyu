@@ -2187,7 +2187,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.initiator && ViewAsSkillV2::canSelectCard(request, card) && !card->hasFlag("using")
-            && request.initiator->getEquips().contains(card);
+            && request.initiator->getEquips().contains(card->getRealCard());
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
