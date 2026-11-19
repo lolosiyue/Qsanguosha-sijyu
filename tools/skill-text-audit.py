@@ -41,6 +41,9 @@ if sys.platform == "win32":
 
 ROOT = Path(os.path.dirname(os.path.abspath(__file__))).parent
 
+sys.path.insert(0, str(ROOT / "tools" / "autotest"))
+from runner_common import resolve_workdir  # noqa: E402  (needs ROOT first)
+
 # Leading tag -> claim kind (see code_has). Traditional spellings appear in a
 # few extensions.
 TAGS = {
@@ -152,11 +155,11 @@ def audit(skills):
     return findings, stats
 
 
-def run_host(exe):
+def run_host(exe, cwd):
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "skills.json")
         proc = subprocess.run([str(exe), "--describe-skills", "--report", out],
-                              cwd=str(Path(exe).parent), capture_output=True, timeout=600)
+                              cwd=str(cwd), capture_output=True, timeout=600)
         if proc.returncode != 0 or not os.path.exists(out):
             sys.stderr.write(proc.stderr.decode("utf-8", "replace")[-2000:])
             raise SystemExit("describe-skills failed with exit code %d" % proc.returncode)
@@ -187,6 +190,15 @@ def main():
     p.add_argument("--skills", help="existing --describe-skills JSON (default: run the host)")
     p.add_argument("--exe", default=str(ROOT / "release" / "qsanguosha_skill_scenario.exe"),
                    help="qsanguosha_skill_scenario executable")
+    # The host loads ./lua from its cwd. A build output directory can hold a
+    # stale partial copy (relwithdebinfo/lua was 9.8M vs the repository's 26M),
+    # which fails with "extension_names must be a dense array of strings".
+    # Resolve the cwd exactly like headless_runner and skill_scenario_runner.
+    p.add_argument("--cwd", type=Path,
+                   help="working directory for the host (default: resolved like headless_runner)")
+    p.add_argument("--exe-root", type=Path,
+                   help="repository root for the default cwd resolution "
+                        "(default: the exe's grandparent directory)")
     p.add_argument("-o", "--output", default=str(ROOT / "artifacts" / "skill-text-audit"),
                    help="output directory for report.json + summary.md")
     p.add_argument("--rule", action="append", help="only report these rule ids")
@@ -197,7 +209,14 @@ def main():
         with open(args.skills, encoding="utf-8") as f:
             dump = json.load(f)
     else:
-        dump = run_host(args.exe)
+        exe_path = Path(args.exe).resolve()
+        if args.cwd:
+            workdir = args.cwd
+        else:
+            exe_root = args.exe_root or exe_path.parent.parent
+            workdir = Path(resolve_workdir(str(exe_root)))
+        print("cwd: %s" % workdir)
+        dump = run_host(str(exe_path), workdir)
     findings, stats = audit(dump["skills"])
     if args.rule:
         findings = [f for f in findings if f["rule"] in args.rule]
