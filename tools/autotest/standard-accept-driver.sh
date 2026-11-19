@@ -106,6 +106,13 @@ run_one() {
     return 0
   fi
 
+  # 已知缺陷格還在修：跳過整個武將，避免每次開機都重跑一遍、卡在同一格崩潰
+  # 浪費一兩個小時。這裡刻意不寫 status 檔，所以修好後把名字移出清單就會重跑。
+  if [[ " ${SKIP_GENERALS:-} " == *" $general "* ]]; then
+    log "SKIP $general (in SKIP_GENERALS)"
+    return 0
+  fi
+
   mkdir -p "$dir"
   # 上一輪留下的 modes.txt 不能拿來判這一輪：general_acceptance.py 若在寫出新表之前
   # 就失敗，coverage 會拿舊矩陣判成 ok。先刪掉，失敗時 coverage 會報 nomodes。
