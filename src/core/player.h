@@ -205,6 +205,7 @@ public:
     bool hasSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasSkill(const Skill *skill, bool include_lose = false) const;
     bool hasSkills(const QString &skill_name, bool include_lose = false) const;
+    bool hasSkillFamily(const QString &family, bool include_lose = false) const;
     bool ownsSkill(const QString &skill_name) const;
     bool hasInnateSkill(const QString &skill_name) const;
     bool hasInnateSkill(const Skill *skill) const;

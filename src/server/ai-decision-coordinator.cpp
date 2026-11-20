@@ -1856,6 +1856,7 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
             }
             skillView.description = skill->getDescription();
             skillView.limitMark = skill->getLimitMark();
+            skillView.families = skill->familyList();
             if (const TriggerSkill *trigger = Sanguosha->getTriggerSkill(instance.skillName))
                 for (TriggerEvent event : trigger->getTriggerEvents())
                     skillView.triggerEvents << int(event);

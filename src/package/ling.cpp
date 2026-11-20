@@ -381,6 +381,7 @@ class NeoGanglie : public TriggerSkillV2
 public:
     NeoGanglie() : TriggerSkillV2("neoganglie")
     {
+        addFamily("ganglie");
         events << Damaged;
     }
 

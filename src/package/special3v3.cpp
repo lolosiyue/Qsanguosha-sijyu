@@ -265,7 +265,7 @@ static ServerPlayer *vsGanglieJudgedTarget(Room *room, ServerPlayer *owner)
 class VsGanglie : public TriggerSkillV2
 {
 public:
-    VsGanglie() : TriggerSkillV2("vsganglie") { events << Damaged; }
+    VsGanglie() : TriggerSkillV2("vsganglie") { addFamily("ganglie"); events << Damaged; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
         return player && player->isAlive() && player->hasSkill(objectName()) ? TriggerList{{player, {objectName()}}} : TriggerList();
@@ -284,6 +284,7 @@ public:
             || !ctx.owner || !ctx.owner->isAlive()
             || !isSourceAvailable(room, ctx) || !vsGanglieTargets(room, ctx.owner).contains(target))
             return false;
+        // Deliberate: vsganglie has no voice lines of its own and borrows nosganglie's.
         room->broadcastSkillInvoke("nosganglie");
         JudgeStruct judge;
         judge.pattern = ".|heart";

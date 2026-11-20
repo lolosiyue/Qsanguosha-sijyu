@@ -4915,6 +4915,7 @@ class GuJianxiong : public TriggerSkill
 public:
 	GuJianxiong() : TriggerSkill("mobilejianxiong")
 	{
+		addFamily("jianxiong");
 		events << Damaged;
 	}
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override

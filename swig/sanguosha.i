@@ -383,6 +383,7 @@ public:
 	bool hasSkill(const char*skill_name, bool include_lose = false) const;
 	bool hasSkill(const Skill*skill, bool include_lose = false) const;
 	bool hasSkills(const char*skill_name, bool include_lose = false) const;
+	bool hasSkillFamily(const char*family, bool include_lose = false) const;
 	bool hasSkillInstance(const char*skill_name, int instanceID) const;
 	bool hasLordSkill(const char*skill_name, bool include_lose = false) const;
 	bool hasLordSkill(const Skill*skill, bool include_lose = false) const;
@@ -2293,6 +2294,9 @@ bool isHideSkill() const;
 	QString getNotice(int index) const;
 	bool isVisible() const;
 	bool setTargetTipRules(const QString &json);
+	void addFamily(const QString &family);
+	bool inFamily(const QString &family) const;
+	QStringList familyList() const;
 
 	virtual int getEffectIndex(const ServerPlayer*player, const Card*card) const;
 	virtual SkillDialogInfo getDialogInfo() const;

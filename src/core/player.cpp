@@ -729,6 +729,19 @@ bool Player::hasSkills(const QString &skill_name, bool include_lose) const
     return false;
 }
 
+bool Player::hasSkillFamily(const QString &family, bool include_lose) const
+{
+    if (family.isEmpty()) return false;
+    // Same answer as hasSkills() over every owned member: hasSkill() keeps the
+    // include_lose, invalidity and hidden-general rules.
+    for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+        if (it->isEmpty()) continue;
+        const Skill *skill = Sanguosha->getSkill(it.key());
+        if (skill && skill->inFamily(family) && hasSkill(it.key(), include_lose)) return true;
+    }
+    return false;
+}
+
 bool Player::hasInnateSkill(const QString &skill_name) const
 {
     QString baseName;

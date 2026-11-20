@@ -567,6 +567,12 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     }
     pushAIJsonValue(state, skill.correctState);
     lua_setfield(state, -2, "correct_state");
+    lua_createtable(state, int(skill.families.size()), 0);
+    for (int index = 0; index < skill.families.size(); ++index) {
+        pushQString(state, skill.families.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "families");
 }
 
 void pushAISkills(lua_State *state, const QList<AISkillView> &skills)

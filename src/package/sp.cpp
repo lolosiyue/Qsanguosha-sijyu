@@ -8124,7 +8124,7 @@ public:
 
 class XcxJiJianxiong : public TriggerSkillV2 {
 public:
-    XcxJiJianxiong() : TriggerSkillV2("xcx_ji_jianxiong") { events << Damaged; }
+    XcxJiJianxiong() : TriggerSkillV2("xcx_ji_jianxiong") { addFamily("jianxiong"); events << Damaged; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *p, QVariant &) const override
     { return p && p->isAlive() && p->hasSkill(objectName()) ? TriggerList{{p, {objectName()}}} : TriggerList(); }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override

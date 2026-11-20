@@ -218,6 +218,8 @@ struct AISkillView {
     QString description;
     QString limitMark;
     QList<int> triggerEvents;
+    // Families the skill declares itself (Skill::familyList), for hasSkillFamily.
+    QStringList families;
     // Owner-only: whether the view-as part is a V2 skill, ViewAsSkill::isEnabledAtPlay,
     // and isEnabledAtResponse for the basic response patterns SmartAI asks about.
     bool viewAsKnown = false;

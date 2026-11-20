@@ -119,7 +119,7 @@ public:
 
 class HGanglie : public HWeiDamagedSkill {
 public:
-    HGanglie() : HWeiDamagedSkill("heg_ganglie") {}
+    HGanglie() : HWeiDamagedSkill("heg_ganglie") { addFamily("ganglie"); }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         room->broadcastSkillInvoke(objectName(), ctx.owner);
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();

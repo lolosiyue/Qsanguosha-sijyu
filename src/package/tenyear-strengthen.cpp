@@ -958,6 +958,7 @@ class TenyearJianxiong : public TriggerSkillV2
 public:
 	TenyearJianxiong() : TriggerSkillV2("tenyearjianxiong")
 	{
+		addFamily("jianxiong");
 		frequency = Frequent;
 		events << Damaged;
 	}
