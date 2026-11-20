@@ -1425,6 +1425,28 @@ void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 	LuaRuntime::protectedCall(L, 5, 0, 0);
 }
 
+static QStringList splitLuaV2TriggerNames(const QString &names)
+{
+    const QString arrowToken = QStringLiteral("->");
+    const auto arrow = names.indexOf(arrowToken);
+    if (arrow < 0)
+        return names.split(QLatin1Char('+'));
+
+    if (names.indexOf(arrowToken, arrow + arrowToken.size()) >= 0) {
+        qWarning("Lua V2 can_trigger ignored an owner group with multiple '->': %s", qUtf8Printable(names));
+        return {};
+    }
+
+    // After the first arrow, '+' separates targets within the last trigger entry.
+    const auto separator = names.lastIndexOf(QLatin1Char('+'), arrow);
+    if (separator < 0)
+        return QStringList{names};
+
+    QStringList entries = names.left(separator).split(QLatin1Char('+'));
+    entries << names.mid(separator + 1);
+    return entries;
+}
+
 template <typename LuaSkill>
 static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfType,
                                   TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
@@ -1475,7 +1497,7 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 				// Find the player by objectName, not general name.
 				ServerPlayer *who = room->findPlayerByObjectName(obj_name_list.at(i), true);
 				if (who && !skill_list.at(i).isEmpty()) {
-					QStringList names = skill_list.at(i).split("+");
+					QStringList names = splitLuaV2TriggerNames(skill_list.at(i));
 					foreach (const QString &name, names) {
 						QString skillName = name.trimmed();
 						if (!skillName.isEmpty()) {
@@ -1501,7 +1523,7 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 		lua_pop(L, 2);
 
 		if (!names.isEmpty()) {
-			QStringList nameList = names.split("+");
+			QStringList nameList = splitLuaV2TriggerNames(names);
 			foreach (const QString &name, nameList) {
 				QString skillName = name.trimmed();
 				if (!skillName.isEmpty()) {

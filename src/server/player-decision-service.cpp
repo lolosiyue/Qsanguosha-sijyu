@@ -264,9 +264,10 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
                 answer = legalChoices.isEmpty() ? QStringLiteral("cancel")
                     : legalChoices.at(qsanRandomBounded(legalChoices.length()));
             }
-        } else if (!effectiveChoices.contains(answer)) {
-            QStringList _choices = effectiveChoices.split("+");
-            answer = _choices.at(qsanRandomBounded(_choices.length()));
+        } else {
+            const QStringList legalChoices = effectiveChoices.split("+");
+            if (!legalChoices.contains(answer))
+                answer = legalChoices.at(qsanRandomBounded(legalChoices.length()));
         }
     }
     observeNullificationChoice(answer);

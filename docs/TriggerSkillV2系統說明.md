@@ -605,7 +605,7 @@ end
 
 ## Lua triggerable 返回值格式
 
-本系統支援三種返回格式（格式三本項目不支援）：
+Lua 支援單一擁有者、多個擁有者和有序目標三種寫法。有序目標可與前兩種擁有者寫法搭配。
 
 ### 格式一：單一技能擁有者觸發
 
@@ -613,8 +613,8 @@ end
 -- 單一技能
 return "baGua"
 
--- 多技能（同一玩家，用 + 分隔多次觸發）
-return "baGua+baGua"  -- 觸發 2 次
+-- 同一玩家的兩個同名觸發候選，以 + 分隔
+return "baGua+baGua"
 
 -- 指定玩家（返回兩個值）
 return "baGua", ownerPlayer
@@ -627,6 +627,8 @@ return "baGua#" .. instance_id
 -- 攜帶 multiplier（觸發多次）
 return "baGua*3"
 ```
+
+`"skillA+skillB"` 與 `"baGua+baGua"` 都合法，分別提供兩個不同名或同名的候選。對同一擁有者的同一實例，派發器共用觸發次數計數。要讓同一實例在同一事件中有兩次結算機會，使用 `"baGua*2"`。
 
 ### 格式二：多個技能擁有者可觸發
 
@@ -646,10 +648,10 @@ return table.concat(trigger_list_skill, "|"), table.concat(trigger_list_who, "|"
 
 | 欄位 | 格式一 | 格式二 |
 |------|--------|--------|
-| `ctx.owner` | `target`（事件觸發者） | 技能擁有者（返回值 2 中的玩家） |
+| `ctx.owner` | 指定的玩家，預設為 `target` | 技能擁有者（返回值 2 中的玩家） |
 | `ctx.invoker` | `target`（事件觸發者） | `target`（事件觸發者） |
 | `on_cost(player)` | 技能擁有者 | **技能擁有者** |
-| `on_cost(ctx.invoker)` | 技能擁有者 | **事件觸發者** |
+| `on_cost(ctx.invoker)` | 事件觸發者 | **事件觸發者** |
 
 #### 完整範例：襲射（s4_xishe）
 
@@ -751,10 +753,17 @@ return false
 
 #### 重要說明
 
-1. **格式二不支援 `+` 分隔多次觸發**：每個 `|` 分隔項只觸發一次
-2. **格式二時 `ctx.owner` ≠ `ctx.invoker`**：技能擁有者和事件觸發者不同
+1. 每個 `|` 分隔項對應一個擁有者，項內沿用格式一的 `+` 規則。
+2. `ctx.owner` 由第二個返回值決定，`ctx.invoker` 仍是事件觸發者。
 3. **格式二與格式一互斥**：第二返回值為字符串時按格式二解析；為 `ServerPlayer*` 或 `nil` 時按格式一解析
-4. 格式三（`skill->target1+target2`）本專案不支援
+
+### 格式三：有序目標
+
+`return "skillName->a+b", ownerPlayer` 為該擁有者指定目標 `a`、`b`。省略第二個返回值時，擁有者仍是事件觸發者。也可回傳 `"skillName->a+b|skillName->c", "owner1|owner2"`，讓兩個擁有者各自取得目標。
+
+SWIG 先按 `|` 配對擁有者。每組在 `->` 之前的 `+` 分隔觸發候選，從 `->` 起保留整段交給 C++。例如 `"skillA+skillName->a+b"` 產生兩個候選，其中 `skillName` 的目標為 `a`、`b`。
+
+每組最多一個 `->`，有序目標候選必須放在組尾。若同組有第二個 `->`（例如 `"a->x+b->y"`），SWIG 會記錄警告並忽略整組，其餘 `|` 分隔組照常解析。見[逐目標觸發](#逐目標觸發有序目標語法)。
 
 ## Instance ID 相關 API（現行）
 
@@ -1375,7 +1384,9 @@ multiplier 用法見上；`trigger_count` 由框架在重檢時注入，可用�
 
 ### 逐目標觸發（有序目標語法）
 
-`can_trigger`／`triggerable()` 可返回 `"skillName->a+b+c"`（以 `+` 串接角色 objectName；實例寫作 `skillName->a+b#instanceId`），裝備技與一般 V2 技能皆適用。框架為每個目標建立一個 context，`ctx.targets = {target}`、`ctx.preferredTarget = target`；拒絕某目標只跳過該目標；一般技能的各目標互相獨立，可依任意順序處理，結算一個只消耗該目標（裝備技則沿用「選較後的目標視為放棄較前的目標」）；已亮出的鎖定技每輪只提供第一個未處理的目標。`cost` 讀 `ctx.preferredTarget`，不需再自行加入 `ctx.targets`。
+`can_trigger`／`triggerable()` 可返回 `"skillName->a+b+c"`（以 `+` 串接角色 objectName；實例寫作 `skillName->a+b#instanceId`），裝備技與一般 V2 技能皆適用。C++ 解析器先取尾端的 `*N`、`#instanceId`，再取 `->` 的目標串。派發器把目標串按 `+` 拆開，每個目標各建一個 context，設定 `ctx.targets = {target}` 和 `ctx.preferredTarget = target`。有序分支逐目標派發，`*N` 不會重複同一目標。
+
+一般技能的各目標互相獨立，可依任意順序處理，結算或拒絕一個只消耗該目標。裝備技沿用「選較後的目標視為放棄較前的目標」。已亮出的鎖定技每輪只提供第一個未處理的目標。`cost` 直接讀取 `ctx.preferredTarget`。
 
 ### 注意事項
 
