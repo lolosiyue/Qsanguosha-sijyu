@@ -8,6 +8,7 @@
 #include "lua-runtime.h"
 #include "lua.hpp"
 #include "miniscenarios.h"
+#include "package.h"
 #include "room.h"
 #include "roomthread.h"
 #include "runtime-paths.h"
@@ -460,11 +461,17 @@ bool parseCase(const QJsonObject &root, CaseSetup &setup, QString *error)
     return true;
 }
 
-bool writeJson(const QString &path, const QVariantMap &value)
+bool writeJsonDocument(const QString &path, const QJsonDocument &document)
 {
     QFile file(path);
+    const QByteArray json = document.toJson();
     return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        && file.write(QJsonDocument::fromVariant(value).toJson()) >= 0;
+        && file.write(json) == json.size();
+}
+
+bool writeJson(const QString &path, const QVariantMap &value)
+{
+    return writeJsonDocument(path, QJsonDocument::fromVariant(value));
 }
 
 QString optionValue(const QStringList &args, const QString &name)
@@ -495,6 +502,24 @@ int describeGeneral(const QString &name, const QString &reportPath)
         {"max_hp", general->getMaxHp()}, {"start_hp", general->getStartHp()}, {"male", general->isMale()},
         {"skills", skills}};
     return writeJson(reportPath, info) ? 0 : 1;
+}
+
+int listPackageGenerals(const QString &name, const QString &reportPath)
+{
+    const Package *package = Sanguosha->getPackage(name);
+    if (!package) {
+        fprintf(stderr, "unknown package '%s'\n", qPrintable(name));
+        return 2;
+    }
+    QStringList names;
+    for (const General *general : package->findChildren<const General *>())
+        names << general->objectName();
+    names.sort();
+    if (!writeJsonDocument(reportPath, QJsonDocument(QJsonArray::fromStringList(names)))) {
+        fprintf(stderr, "cannot write general list to '%s'\n", qPrintable(reportPath));
+        return 1;
+    }
+    return 0;
 }
 
 // Prints every registered skill's text with the metadata its text claims (frequency
@@ -539,22 +564,27 @@ int main(int argc, char **argv)
     const int timeoutSeconds = optionValue(args, QStringLiteral("--timeout")).toInt();
     const QString describe = optionValue(args, QStringLiteral("--describe-general"));
     const bool describeAll = args.contains(QStringLiteral("--describe-skills"));
+    const bool listGenerals = args.contains(QStringLiteral("--list-generals"));
+    const QString package = optionValue(args, QStringLiteral("--package"));
     bool seedOk = false;
     const quint64 seed = optionValue(args, QStringLiteral("--seed")).toULongLong(&seedOk);
-    if (reportPath.isEmpty() || (describe.isEmpty() && !describeAll && (casePath.isEmpty() || !seedOk))) {
+    if (reportPath.isEmpty() || (listGenerals && package.isEmpty())
+        || (!listGenerals && describe.isEmpty() && !describeAll && (casePath.isEmpty() || !seedOk))) {
         fprintf(stderr, "usage: qsanguosha_skill_scenario --case <case.json> --report <report.json> "
                         "--seed <n> [--timeout <seconds>]\n"
                         "       qsanguosha_skill_scenario --describe-general <name> --report <info.json>\n"
-                        "       qsanguosha_skill_scenario --describe-skills --report <skills.json>\n");
+                        "       qsanguosha_skill_scenario --describe-skills --report <skills.json>\n"
+                        "       qsanguosha_skill_scenario --list-generals --package <name> --report <generals.json>\n");
         return 64;
     }
-    if (!describe.isEmpty() || describeAll) {
+    if (listGenerals || !describe.isEmpty() || describeAll) {
         QString error;
         if (!QSanRuntimePaths::resolve(args, &error) || !EngineBootstrap::initialize(false, &error)) {
             fprintf(stderr, "%s\n", qPrintable(error));
             return 1;
         }
-        const int result = describeAll ? describeSkills(reportPath) : describeGeneral(describe, reportPath);
+        const int result = listGenerals ? listPackageGenerals(package, reportPath)
+            : describeAll ? describeSkills(reportPath) : describeGeneral(describe, reportPath);
         EngineBootstrap::shutdown();
         return result;
     }
