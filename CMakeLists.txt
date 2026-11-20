@@ -455,6 +455,8 @@ add_library(qsanguosha_engine STATIC
     src/core/skill.cpp
     src/core/skill-declaration.cpp
     src/core/skill-declaration.h
+    src/core/skill-receipt.cpp
+    src/core/skill-receipt.h
     src/core/skill-registry.cpp
     src/core/skill-registry.h
     src/core/skill-instance-utils.cpp

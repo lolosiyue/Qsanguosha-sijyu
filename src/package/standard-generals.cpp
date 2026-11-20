@@ -21,142 +21,10 @@
 #include "wrapped-card.h"
 #include "roomthread.h"
 #include "skill-instance-utils.h"
+#include "skill-receipt.h"
 #include "card-lifetime-manager.h"
 #include "room-state.h"
 #include <QScopeGuard>
-
-namespace {
-// Pin nested responses to the invoking instance and unwind only transient prompt state.
-auto standardPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry, const QVariantMap &prompt)
-{
-    const QString name = entry.key.skillName;
-    const int id = entry.key.instanceID;
-    const QString selector = ViewAsSkillV2::borrowedActivationMarkName(name);
-    const int previousSelector = player->getMark(selector);
-    const QVariant previousPrompt = player->getSkillInstanceStateValue(name, id, "prompt");
-    room->setPlayerMark(player, selector, id);
-    player->setSkillInstanceStateValue(name, id, "prompt", prompt);
-    return qScopeGuard([=] {
-        room->setPlayerMark(player, selector, previousSelector);
-        if (!player->findSkillInstance(name, id)) return;
-        if (previousPrompt.isValid()) player->setSkillInstanceStateValue(name, id, "prompt", previousPrompt);
-        else player->removeSkillInstanceStateValue(name, id, "prompt");
-    });
-}
-QVariantMap standardPrompt(const Player *player, const SkillInstanceRef &entry)
-{
-    return player ? player->getSkillInstanceStateValue(entry.key.skillName, entry.key.instanceID, "prompt").toMap() : QVariantMap();
-}
-QString standardReceiptProperty(const QString &name) { return name + "_v2_effects"; }
-int nextStandardReceiptId(Room *room, ServerPlayer *recipient, const QString &name)
-{
-    // Source instance numbers are owner-local; continuations need their own stable key.
-    const QByteArray key = (name + "_v2_receipt_sequence").toUtf8();
-    const int id = recipient->property(key.constData()).toInt() + 1;
-    room->setPlayerProperty(recipient, key.constData(), id);
-    return id;
-}
-SkillInstanceRef standardReceiptRef(const QVariantMap &receipt)
-{
-    return SkillInstanceRef(receipt.value("owner").toString(),
-        SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
-}
-// The property stays authoritative after skill loss; the source state only mirrors it for the UI.
-void syncStandardReceiptState(Room *room, const QVariantMap &receipt, bool clear)
-{
-    ServerPlayer *owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true);
-    const SkillInstanceRef source = standardReceiptRef(receipt);
-    if (!owner || !source.isValid()) return;
-    if (clear) owner->removeSkillInstanceStateValue(source.key.skillName, source.key.instanceID, "receipt_amount");
-    else owner->setSkillInstanceStateValue(source.key.skillName, source.key.instanceID,
-        "receipt_amount", receipt.value("amount"), SkillStatePublic);
-}
-void clearStandardReceipts(Room *room, ServerPlayer *recipient, const QString &name)
-{
-    const QByteArray property = standardReceiptProperty(name).toUtf8();
-    for (const QVariant &entry : recipient->property(property.constData()).toList())
-        syncStandardReceiptState(room, entry.toMap(), true);
-    room->setPlayerProperty(recipient, property.constData(), QVariantList());
-}
-QVariantMap newStandardReceipt(Room *room, ServerPlayer *recipient, const QString &name, const SkillContext &ctx, int amount)
-{
-    return QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
-        {"instance", ctx.sourceRef.key.instanceID}, {"actor", recipient->objectName()}, {"amount", amount},
-        {"dispatch", nextStandardReceiptId(room, recipient, name)}};
-}
-// Adds to the recipient's receipt from the same source, or appends a new one; returns the result.
-QVariantMap mergeStandardReceipt(QVariantList &receipts, Room *room, ServerPlayer *recipient, const QString &name,
-    const SkillContext &ctx, int amount)
-{
-    for (QVariant &entry : receipts) {
-        QVariantMap receipt = entry.toMap();
-        if (standardReceiptRef(receipt) != ctx.sourceRef || receipt.value("actor").toString() != recipient->objectName()) continue;
-        receipt.insert("amount", receipt.value("amount").toInt() + amount);
-        entry = receipt;
-        return receipt;
-    }
-    receipts << newStandardReceipt(room, recipient, name, ctx, amount);
-    return receipts.last().toMap();
-}
-void addStandardReceipt(Room *room, ServerPlayer *recipient, const QString &name, const SkillContext &ctx, int amount)
-{
-    if (!recipient || !ctx.sourceRef.isValid() || amount <= 0) return;
-    const QByteArray property = standardReceiptProperty(name).toUtf8();
-    QVariantList receipts = recipient->property(property.constData()).toList();
-    const QVariantMap receipt = mergeStandardReceipt(receipts, room, recipient, name, ctx, amount);
-    room->setPlayerProperty(recipient, property.constData(), receipts);
-    syncStandardReceiptState(room, receipt, false);
-}
-// Per-use receipts live on the card, keyed by the enclosing use so nested uses of one card stay apart.
-QString standardUseReceiptKey(Room *room, const QString &name)
-{
-    const qint64 id = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
-    return id > 0 ? name + ":" + QString::number(id) : QString();
-}
-void clearStandardUseReceipt(Room *room, const QVariant &data, const QString &name)
-{
-    const CardUseStruct use = data.value<CardUseStruct>();
-    const QString key = standardUseReceiptKey(room, name);
-    if (use.card && !key.isEmpty()) use.card->removeTag(key);
-}
-SkillContext standardReceiptContext(const QString &definition, TriggerEvent event, ServerPlayer *player, QVariant &data,
-    const QVariantMap &receipt)
-{
-    SkillContext ctx;
-    ctx.skill_name = definition;
-    ctx.owner = ctx.invoker = ctx.initiator = player;
-    ctx.sourceRef = standardReceiptRef(receipt);
-    // This is a previously applied effect, not a new activation of a removed skill.
-    ctx.instanceID = receipt.value("dispatch").toInt();
-    ctx.original_data = &data;
-    ctx.current_event = event;
-    ctx.setModifiedAmount(receipt.value("amount").toInt());
-    return ctx;
-}
-bool hasStandardReceipt(const SkillContext &ctx, const QString &name)
-{
-    if (!ctx.owner || !ctx.owner->isAlive()) return false;
-    for (const QVariant &entry : ctx.owner->property(standardReceiptProperty(name).toUtf8().constData()).toList()) {
-        const QVariantMap receipt = entry.toMap();
-        if (standardReceiptRef(receipt) == ctx.sourceRef && receipt.value("actor").toString() == ctx.owner->objectName()
-            && receipt.value("amount").toInt() > 0) return true;
-    }
-    return false;
-}
-void collectStandardReceipts(const QString &definition, const QString &name, TriggerEvent event,
-    ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts)
-{
-    if (!player || !player->isAlive()) return;
-    for (const QVariant &entry : player->property(standardReceiptProperty(name).toUtf8().constData()).toList()) {
-        const QVariantMap receipt = entry.toMap();
-        const SkillInstanceRef source = standardReceiptRef(receipt);
-        if (!source.isValid() || receipt.value("actor").toString() != player->objectName()
-            || receipt.value("amount").toInt() <= 0) continue;
-        contexts << standardReceiptContext(definition, event, player, data, receipt);
-    }
-}
-
-}
 
 ZhihengCard::ZhihengCard()
 {
@@ -675,6 +543,7 @@ class Jianxiong : public TriggerSkillV2
 public:
     Jianxiong() : TriggerSkillV2("jianxiong")
     {
+        addFamily("jianxiong");
         events << Damaged;
     }
 
@@ -803,7 +672,7 @@ public:
                          const Player *target) const override
     {
         return request.initiator && target && target != request.initiator && tuxiCanGetHand(request.initiator, target)
-            && selected.size() < standardPrompt(request.initiator, request.activationRef).value("limit").toInt()
+            && selected.size() < SkillPromptScope::read(request.initiator, request.activationRef).value("limit").toInt()
             && target->getHandcardNum() >= request.initiator->getHandcardNum();
     }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return !targets.isEmpty(); }
@@ -817,9 +686,9 @@ public:
             room->obtainCard(ctx.invoker, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_EXTRACTION,
                 ctx.invoker->objectName(), target->objectName(), objectName(), QString()), false);
             if (ctx.initiator) {
-                QVariantMap prompt = standardPrompt(ctx.initiator, ctx.activationRef);
+                QVariantMap prompt = SkillPromptScope::read(ctx.initiator, ctx.activationRef);
                 prompt.insert("obtained", prompt.value("obtained").toInt() + 1);
-                ctx.initiator->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "prompt", prompt);
+                SkillPromptScope::write(ctx.initiator, {objectName(), ctx.activationRef.key.instanceID}, prompt);
             }
         }
         return ContinueEffects;
@@ -855,9 +724,9 @@ public:
         ServerPlayer *zhangliao = ctx.owner;
         const int num = targetCount(room, zhangliao, ctx.original_data->value<DrawStruct>().num);
         if (num <= 0) return false;
-        const auto prompt = standardPromptScope(room, zhangliao, ctx.activationRef, {{"limit", num}});
+        const SkillPromptScope prompt(room, zhangliao, ctx.activationRef, {{"limit", num}});
         const bool used = room->askForUseCard(zhangliao, "@@tuxi", "@tuxi-card:::" + QString::number(num));
-        ctx.extra_data = standardPrompt(zhangliao, ctx.activationRef).value("obtained", 0);
+        ctx.extra_data = SkillPromptScope::read(zhangliao, ctx.activationRef).value("obtained", 0);
         return used;
     }
 
@@ -992,7 +861,7 @@ public:
         if (!target->isAlive()) return false;
         room->broadcastSkillInvoke(objectName());
         target->drawCards(2 * getEffectiveAmount(ctx), objectName());
-        const auto prompt = standardPromptScope(room, target, ctx.activationRef, {});
+        const SkillPromptScope prompt(room, target, ctx.activationRef, {});
         room->askForUseCard(target, "@@yiji", "@yiji");
         return false;
     }
@@ -1031,6 +900,7 @@ class Ganglie : public TriggerSkillV2
 public:
     Ganglie() : TriggerSkillV2("ganglie")
     {
+        addFamily("ganglie");
         events << Damaged;
     }
 
@@ -1158,6 +1028,7 @@ class Fankui : public TriggerSkillV2
 public:
     Fankui() : TriggerSkillV2("fankui")
     {
+        addFamily("fankui");
         events << Damaged;
     }
 
@@ -1286,10 +1157,10 @@ public:
         const DamageStruct damage = data.value<DamageStruct>();
         if (!damage.chain && !damage.transfer && (!requireUserDamage || damage.by_user) && damage.card
             && (damage.card->isKindOf("Slash") || damage.card->isKindOf("Duel")))
-            collectStandardReceipts(objectName(), receiptName, event, player, data, contexts);
+            SkillReceipt::collectForPlayer(objectName(), receiptName, event, player, data, contexts);
         return true;
     }
-    bool isSourceAvailable(Room *, const SkillContext &ctx) const override { return hasStandardReceipt(ctx, receiptName); }
+    bool isSourceAvailable(Room *, const SkillContext &ctx) const override { return SkillReceipt::containsForPlayer(ctx, receiptName); }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
@@ -1332,7 +1203,7 @@ public:
         // The buff expires even if Xu Chu lost the skill during the round.
         if (triggerEvent == EventPhaseStart && player && player->getPhase() == Player::RoundStart) {
             room->setPlayerMark(player, "&luoyi", 0);
-            clearStandardReceipts(room, player, objectName());
+            SkillReceipt::clearPlayer(room, player, objectName());
         }
         return true;
     }
@@ -1361,7 +1232,7 @@ public:
     {
         ServerPlayer *player = ctx.owner;
         room->broadcastSkillInvoke(objectName());
-        addStandardReceipt(room, player, objectName(), ctx, getEffectiveAmount(ctx));
+        SkillReceipt::addToPlayer(room, player, objectName(), ctx, getEffectiveAmount(ctx));
         room->setPlayerMark(player, "&luoyi", 1);
 
         QList<int> ids = room->getNCards(3 * getEffectiveAmount(ctx), false);
@@ -1448,7 +1319,16 @@ public:
         const QVariant previousPending = player->getTag(pendingKey);
         player->setTag(pendingKey, QVariantList());
         player->setSkillInstanceStateValue(objectName(), ctx.instanceID, "deferred_key", pendingKey);
-        const bool deferred = player->hasSkills("guicai|nosguicai|guidao|huanshi");
+        // Retrial skills are recognised by event, not by name: any owned trigger skill answering
+        // AskForRetrial defers the cards, so new variants need no edit here.
+        bool deferred = false;
+        for (const Skill *skill : player->getSkillList(true, false)) {
+            const TriggerSkill *trigger = qobject_cast<const TriggerSkill *>(skill);
+            if (trigger && trigger->getTriggerEvents().contains(AskForRetrial) && player->hasSkill(skill)) {
+                deferred = true;
+                break;
+            }
+        }
         player->setSkillInstanceStateValue(objectName(), ctx.instanceID, "judging", true);
         player->setSkillInstanceStateValue(objectName(), ctx.instanceID, "deferred", deferred);
         const auto restore = qScopeGuard([=] {
@@ -1573,14 +1453,14 @@ public:
             return objectName() == "nosrende" || !player->getSkillInstanceStateValue(objectName(),
                 request.activationRef.key.instanceID, "started", false).toBool();
         return objectName() == "rende" && request.pattern == "@@rende"
-            && standardPrompt(player, request.activationRef).value("continuation").toBool();
+            && SkillPromptScope::read(player, request.activationRef).value("continuation").toBool();
     }
     bool checkCustomUsage(const SkillContext &ctx) const override
     {
         if (!ctx.initiator) return false;
         return objectName() == "nosrende" || !ctx.initiator->getSkillInstanceStateValue(objectName(),
             ctx.activationRef.key.instanceID, "started", false).toBool()
-            || standardPrompt(ctx.initiator, ctx.activationRef).value("continuation").toBool();
+            || SkillPromptScope::read(ctx.initiator, ctx.activationRef).value("continuation").toBool();
     }
     void addUsage(const SkillContext &ctx) const override
     {
@@ -1662,7 +1542,7 @@ public:
             ctx.invoker->objectName(), target->objectName(), objectName(), QString()), false);
         if (objectName() == "rende" && ctx.initiator->isAlive() && !ctx.initiator->isKongcheng()
             && ctx.initiator->findSkillInstance(objectName(), ctx.activationRef.key.instanceID)) {
-            const auto prompt = standardPromptScope(ctx.initiator->getRoom(), ctx.initiator,
+            const SkillPromptScope prompt(ctx.initiator->getRoom(), ctx.initiator,
                 ctx.activationRef, {{"continuation", true}});
             ctx.initiator->getRoom()->askForUseCard(ctx.initiator, "@@rende", "@rende-give", -1, Card::MethodNone, false);
         }
@@ -1906,7 +1786,7 @@ public:
 class XcxJianxiong : public TriggerSkillV2
 {
 public:
-    XcxJianxiong() : TriggerSkillV2("xcx_jianxiong") { events << Damage << EventPhaseChanging; global = true; }
+    XcxJianxiong() : TriggerSkillV2("xcx_jianxiong") { addFamily("jianxiong"); events << Damage << EventPhaseChanging; global = true; }
 
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
@@ -3078,7 +2958,7 @@ public:
     }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
-        if (event == CardFinished) clearStandardUseReceipt(room, data, objectName());
+        if (event == CardFinished) SkillReceipt::clearUse(room, data, objectName());
         return true;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
@@ -3086,12 +2966,12 @@ public:
     {
         if (event != PreHpRecover) return false;
         const RecoverStruct recover = data.value<RecoverStruct>();
-        const QString key = standardUseReceiptKey(room, objectName());
+        const QString key = SkillReceipt::useKey(room, objectName());
         if (!player || !player->isAlive() || !recover.card || key.isEmpty()) return true;
         for (const QVariant &entry : recover.card->getTag(key).toList()) {
             const QVariantMap receipt = entry.toMap();
-            if (receipt.value("actor").toString() != player->objectName() || !standardReceiptRef(receipt).isValid()) continue;
-            contexts << standardReceiptContext(objectName(), event, player, data, receipt);
+            if (receipt.value("actor").toString() != player->objectName() || !SkillReceipt::sourceRef(receipt).isValid()) continue;
+            contexts << SkillReceipt::toTriggerContext(objectName(), event, player, data, receipt);
         }
         return true;
     }
@@ -3100,23 +2980,23 @@ public:
         if (ctx.activationRef.isValid()) return TriggerSkillV2::isSourceAvailable(room, ctx);
         if (!ctx.owner || !ctx.owner->isAlive() || !ctx.original_data) return false;
         const RecoverStruct recover = ctx.original_data->value<RecoverStruct>();
-        const QString key = standardUseReceiptKey(room, objectName());
+        const QString key = SkillReceipt::useKey(room, objectName());
         if (!recover.card || key.isEmpty()) return false;
         for (const QVariant &entry : recover.card->getTag(key).toList()) {
             const QVariantMap receipt = entry.toMap();
-            if (standardReceiptRef(receipt) == ctx.sourceRef && receipt.value("actor").toString() == ctx.owner->objectName())
+            if (SkillReceipt::sourceRef(receipt) == ctx.sourceRef && receipt.value("actor").toString() == ctx.owner->objectName())
                 return true;
         }
         return false;
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        const QString key = standardUseReceiptKey(room, objectName());
+        const QString key = SkillReceipt::useKey(room, objectName());
         if (key.isEmpty()) return false;
         if (event == TargetConfirmed) {
             const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
             QVariantList receipts = use.card->getTag(key).toList();
-            mergeStandardReceipt(receipts, room, ctx.owner, objectName(), ctx, getEffectiveAmount(ctx));
+            SkillReceipt::merge(receipts, room, ctx.owner, objectName(), ctx, getEffectiveAmount(ctx));
             use.card->setTag(key, receipts);
         } else {
             RecoverStruct recover = ctx.original_data->value<RecoverStruct>();
@@ -3464,7 +3344,7 @@ public:
     TargetMode targetMode() const override { return SelectTargets; }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &, const Player *target) const override
     {
-        return target && standardPrompt(request.initiator, request.activationRef).value("candidates").toStringList().contains(target->objectName());
+        return target && SkillPromptScope::read(request.initiator, request.activationRef).value("candidates").toStringList().contains(target->objectName());
     }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return !targets.isEmpty(); }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
@@ -3478,11 +3358,11 @@ public:
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
         if (!ctx.initiator) return ContinueEffects;
-        QVariantMap prompt = standardPrompt(ctx.initiator, ctx.activationRef);
+        QVariantMap prompt = SkillPromptScope::read(ctx.initiator, ctx.activationRef);
         QStringList chosen = prompt.value("chosen").toStringList();
         chosen << target->objectName();
         prompt.insert("chosen", chosen);
-        ctx.initiator->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "prompt", prompt);
+        SkillPromptScope::write(ctx.initiator, {objectName(), ctx.activationRef.key.instanceID}, prompt);
         return ContinueEffects;
     }
 };
@@ -3521,7 +3401,7 @@ public:
         QStringList target_list;
         foreach(ServerPlayer *p, ctx.original_data->value<CardUseStruct>().to)
             target_list << p->objectName();
-        const auto prompt = standardPromptScope(room, ganning, ctx.activationRef, {{"candidates", target_list}});
+        const SkillPromptScope prompt(room, ganning, ctx.activationRef, {{"candidates", target_list}});
         const QVariant previousProperty = ganning->property("fenwei_targets");
         const QVariant previousTag = ganning->getTag("fenwei");
         room->setPlayerProperty(ganning, "fenwei_targets", target_list.join("+"));
@@ -3532,7 +3412,7 @@ public:
             else ganning->removeTag("fenwei");
         });
         const bool used = room->askForUseCard(ganning, "@@fenwei", "@fenwei-card");
-        ctx.extra_data = standardPrompt(ganning, ctx.activationRef).value("chosen");
+        ctx.extra_data = SkillPromptScope::read(ganning, ctx.activationRef).value("chosen");
         return used;
     }
 
@@ -3632,7 +3512,7 @@ public:
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
             if (player && (change.to == Player::NotActive || change.to == Player::RoundStart)) {
                 room->setPlayerMark(player, objectName(), 0);
-                clearStandardReceipts(room, player, objectName());
+                SkillReceipt::clearPlayer(room, player, objectName());
             }
         }
         return true;
@@ -3655,7 +3535,7 @@ public:
         for (int i = 0; i < lose; i++) {
             player->drawCards(3 * getEffectiveAmount(ctx), objectName());
             if (player->getPhase() == Player::Play) {
-                addStandardReceipt(room, player, objectName(), ctx, getEffectiveAmount(ctx));
+                SkillReceipt::addToPlayer(room, player, objectName(), ctx, getEffectiveAmount(ctx));
                 room->addPlayerMark(player, objectName(), getEffectiveAmount(ctx));
             }
         }
@@ -3677,10 +3557,10 @@ public:
     {
         const CardUseStruct use = data.value<CardUseStruct>();
         if (use.card && use.card->isKindOf("Slash") && use.card->isRed())
-            collectStandardReceipts(objectName(), "zhaxiang", event, player, data, contexts);
+            SkillReceipt::collectForPlayer(objectName(), "zhaxiang", event, player, data, contexts);
         return true;
     }
-    bool isSourceAvailable(Room *, const SkillContext &ctx) const override { return hasStandardReceipt(ctx, "zhaxiang"); }
+    bool isSourceAvailable(Room *, const SkillContext &ctx) const override { return SkillReceipt::containsForPlayer(ctx, "zhaxiang"); }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         const QList<ServerPlayer *> targets = ctx.original_data->value<CardUseStruct>().to;
@@ -3710,7 +3590,7 @@ public:
     {
         int mark = 0;
         if (ctx.primary)
-            for (const QVariant &entry : ctx.primary->property("zhaxiang_v2_effects").toList())
+            for (const QVariant &entry : SkillReceipt::forPlayer(ctx.primary, "zhaxiang"))
                 mark += qMax(0, entry.toMap().value("amount").toInt());
         if (mark <= 0) return CorrectSkillResult::noEffect();
         if (ctx.modType == TargetModSkill::Residue)
@@ -3865,7 +3745,7 @@ public:
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         return request.initiator && request.reason != CardUseStruct::CARD_USE_REASON_PLAY && request.pattern == "@@liuli"
-            && !standardPrompt(request.initiator, request.activationRef).isEmpty();
+            && !SkillPromptScope::read(request.initiator, request.activationRef).isEmpty();
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
@@ -3896,7 +3776,7 @@ public:
                          const Player *target) const override
     {
         if (!request.initiator || !target || target == request.initiator || !target->isAlive() || !selected.isEmpty()) return false;
-        const QVariantMap prompt = standardPrompt(request.initiator, request.activationRef);
+        const QVariantMap prompt = SkillPromptScope::read(request.initiator, request.activationRef);
         if (target->objectName() == prompt.value("attacker").toString()
             || prompt.value("original_targets").toStringList().contains(target->objectName())) return false;
         const Player *attacker = nullptr;
@@ -3915,9 +3795,9 @@ public:
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
         if (!ctx.initiator) return ContinueEffects;
-        QVariantMap prompt = standardPrompt(ctx.initiator, ctx.activationRef);
+        QVariantMap prompt = SkillPromptScope::read(ctx.initiator, ctx.activationRef);
         prompt.insert("redirected", target->objectName());
-        ctx.initiator->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "prompt", prompt);
+        SkillPromptScope::write(ctx.initiator, {objectName(), ctx.activationRef.key.instanceID}, prompt);
         return ContinueEffects;
     }
 };
@@ -3946,7 +3826,7 @@ public:
         if (!canRedirect(room, daqiao, use)) return false;
         QStringList names;
         for (ServerPlayer *target : use.to) names << target->objectName();
-        const auto prompt = standardPromptScope(room, daqiao, ctx.activationRef,
+        const SkillPromptScope prompt(room, daqiao, ctx.activationRef,
             {{"slash", use.card->toString()}, {"attacker", use.from->objectName()}, {"original_targets", names}});
         const QVariant previousCard = daqiao->getTag("liuli-card");
         const QVariant previousProperty = daqiao->property("liuli");
@@ -3961,7 +3841,7 @@ public:
             if (!oldFlag) room->setPlayerFlag(use.from, "-LiuliSlashSource");
         });
         room->askForUseCard(daqiao, "@@liuli", "@liuli:" + use.from->objectName(), -1, Card::MethodDiscard);
-        ctx.choice = standardPrompt(daqiao, ctx.activationRef).value("redirected").toString();
+        ctx.choice = SkillPromptScope::read(daqiao, ctx.activationRef).value("redirected").toString();
         return !ctx.choice.isEmpty();
     }
 
@@ -4075,7 +3955,7 @@ public:
                          const Player *target) const override
     {
         return target && target->isAlive()
-            && selected.size() < standardPrompt(request.initiator, request.activationRef).value("limit").toInt();
+            && selected.size() < SkillPromptScope::read(request.initiator, request.activationRef).value("limit").toInt();
     }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return !targets.isEmpty(); }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
@@ -4112,7 +3992,7 @@ public:
         for (int i = 0; i < move.from_places.length(); i++) {
             if (move.from_places[i] == Player::PlaceHand) count++;
         }
-        const auto prompt = standardPromptScope(room, luxun, ctx.activationRef, {{"limit", count}});
+        const SkillPromptScope prompt(room, luxun, ctx.activationRef, {{"limit", count}});
         const QVariant previous = luxun->getTag("LianyingMoveData");
         luxun->setTag("LianyingMoveData", *ctx.original_data);
         const auto restore = qScopeGuard([=] {
@@ -4245,7 +4125,7 @@ public:
 
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
-        if (event == CardFinished) clearStandardUseReceipt(room, data, objectName());
+        if (event == CardFinished) SkillReceipt::clearUse(room, data, objectName());
         return true;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
@@ -4254,7 +4134,7 @@ public:
         if (event != CardResponded) return false;
         const CardResponseStruct response = data.value<CardResponseStruct>();
         const Card *duel = response.m_toCard;
-        const QString key = standardUseReceiptKey(room, objectName());
+        const QString key = SkillReceipt::useKey(room, objectName());
         if (!player || !player->isAlive() || !duel || !duel->isKindOf("Duel") || !response.m_who || key.isEmpty())
             return true;
         const QVariantMap receipt = duel->getTag(key).toMap();
@@ -4266,7 +4146,7 @@ public:
                 && source.value("amount").toInt() > strongest.value("amount").toInt()) strongest = source;
         }
         if (strongest.isEmpty()) return true;
-        SkillContext ctx = standardReceiptContext(objectName(), event, player, data, strongest);
+        SkillContext ctx = SkillReceipt::toTriggerContext(objectName(), event, player, data, strongest);
         ctx.extra_data = key;
         contexts << ctx;
         return true;
@@ -4278,7 +4158,7 @@ public:
         const Card *duel = ctx.original_data->value<CardResponseStruct>().m_toCard;
         if (!duel) return false;
         for (const QVariant &entry : duel->getTag(ctx.extra_data.toString()).toMap().value("sources").toList())
-            if (standardReceiptRef(entry.toMap()) == ctx.sourceRef
+            if (SkillReceipt::sourceRef(entry.toMap()) == ctx.sourceRef
                 && entry.toMap().value("dispatch").toInt() == ctx.instanceID) return true;
         return false;
     }
@@ -4344,11 +4224,11 @@ public:
         if (!use.card || !use.from) return false;
         const int amount = getEffectiveAmount(ctx);
         if (use.card->isKindOf("Duel")) {
-            const QString key = standardUseReceiptKey(room, objectName());
+            const QString key = SkillReceipt::useKey(room, objectName());
             if (key.isEmpty()) return false;
             QVariantMap receipt = use.card->getTag(key).toMap();
             QVariantList sources = receipt.value("sources").toList();
-            QVariantMap source = newStandardReceipt(room, target, objectName(), ctx, amount);
+            QVariantMap source = SkillReceipt::create(room, target, objectName(), ctx, amount);
             source.insert("responders", QStringList{target->objectName()});
             sources << source;
             receipt.insert("sources", sources);
@@ -5011,7 +4891,7 @@ private:
 class NosJianxiong : public TriggerSkillV2
 {
 public:
-    NosJianxiong() : TriggerSkillV2("nosjianxiong") { events << Damaged; }
+    NosJianxiong() : TriggerSkillV2("nosjianxiong") { addFamily("jianxiong"); events << Damaged; }
 
     static bool available(Room *room, const Card *card)
     {
@@ -5053,7 +4933,7 @@ public:
 class NosFankui : public TriggerSkillV2
 {
 public:
-    NosFankui() : TriggerSkillV2("nosfankui") { events << Damaged; }
+    NosFankui() : TriggerSkillV2("nosfankui") { addFamily("fankui"); events << Damaged; }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -5148,6 +5028,7 @@ class NosGanglie : public TriggerSkillV2
 public:
     NosGanglie() : TriggerSkillV2("nosganglie")
     {
+        addFamily("ganglie");
         events << Damaged;
     }
 
@@ -5159,7 +5040,7 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!room->askForSkillInvoke(ctx.owner, "nosganglie", *ctx.original_data))
+        if (!room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data))
             return false;
         ctx.targets.clear();
         if (ServerPlayer *from = ctx.original_data->value<DamageStruct>().from)
@@ -5171,7 +5052,7 @@ public:
     {
         ctx.manual_effect = true;
         ServerPlayer *xiahou = ctx.owner;
-        room->broadcastSkillInvoke("nosganglie");
+        room->broadcastSkillInvoke(objectName());
 
         JudgeStruct judge;
         judge.pattern = ".|heart";
@@ -5291,7 +5172,7 @@ public:
     {
         if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
             for (ServerPlayer *player : room->getAllPlayers(true))
-                clearStandardReceipts(room, player, objectName());
+                SkillReceipt::clearPlayer(room, player, objectName());
         return true;
     }
 
@@ -5303,7 +5184,7 @@ public:
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         room->broadcastSkillInvoke(objectName());
-        addStandardReceipt(room, ctx.owner, objectName(), ctx, getEffectiveAmount(ctx));
+        SkillReceipt::addToPlayer(room, ctx.owner, objectName(), ctx, getEffectiveAmount(ctx));
         DrawStruct draw = ctx.original_data->value<DrawStruct>();
         draw.num = qMax(0, draw.num - 1);
         *ctx.original_data = QVariant::fromValue(draw);

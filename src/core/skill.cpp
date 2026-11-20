@@ -6,6 +6,7 @@
 #include "settings.h"
 #include "engine.h"
 #include "room.h"
+#include "room-state.h"
 #include "roomthread.h"
 #if !defined(QSAN_ENGINE_BUILD)
 #include "clientplayer.h"
@@ -595,6 +596,60 @@ QString ViewAsSkillV2::borrowedActivationMarkName(const QString &skillName)
 {
     // An internal selector must not trigger gameplay MarkChanged callbacks.
     return QStringLiteral("sys_BorrowedActivation_%1").arg(skillName);
+}
+
+BorrowedActivationScope::BorrowedActivationScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry)
+    : m_room(room), m_player(player),
+      m_selector(ViewAsSkillV2::borrowedActivationMarkName(entry.key.skillName)),
+      m_previous(player->getMark(m_selector))
+{
+    m_room->setPlayerMark(m_player, m_selector, entry.key.instanceID);
+}
+
+BorrowedActivationScope::~BorrowedActivationScope()
+{
+    m_room->setPlayerMark(m_player, m_selector, m_previous);
+}
+
+SkillPromptScope::SkillPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry,
+                                   const QVariantMap &prompt)
+    : m_prompt{player, entry.key, player->getSkillInstanceStateValue(entry.key.skillName, entry.key.instanceID, "prompt")},
+      m_activation(room, player, entry)
+{
+    write(player, m_prompt.key, prompt);
+}
+
+SkillPromptScope::PromptState::~PromptState()
+{
+    if (!player->findSkillInstance(key.skillName, key.instanceID)) return;
+    if (previous.isValid()) player->setSkillInstanceStateValue(key.skillName, key.instanceID, "prompt", previous);
+    else player->removeSkillInstanceStateValue(key.skillName, key.instanceID, "prompt");
+}
+
+QVariantMap SkillPromptScope::read(const Player *player, const SkillInstanceRef &entry)
+{
+    return player ? player->getSkillInstanceStateValue(entry.key.skillName, entry.key.instanceID, "prompt").toMap() : QVariantMap();
+}
+
+void SkillPromptScope::write(ServerPlayer *player, const SkillInstanceKey &key, const QVariantMap &prompt)
+{
+    player->setSkillInstanceStateValue(key.skillName, key.instanceID, "prompt", prompt);
+}
+
+SkillResponsePromptScope::SkillResponsePromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry)
+    : m_useState(Sanguosha->currentRoomState()), m_activation(room, player, entry)
+{
+}
+
+SkillResponsePromptScope::UseState::UseState(RoomState *state)
+    : state(state), reason(state->getCurrentCardUseReason()), pattern(state->getCurrentCardUsePattern())
+{
+}
+
+SkillResponsePromptScope::UseState::~UseState()
+{
+    state->setCurrentCardUseReason(reason);
+    state->setCurrentCardUsePattern(pattern);
 }
 
 bool ViewAsSkillV2::canActivateRequest(const ActiveSkillRequest &request) const

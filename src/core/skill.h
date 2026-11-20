@@ -2,6 +2,7 @@
 #define _SKILL_H
 
 class Room;
+class RoomState;
 class Skill;
 class SkillRuntimeCoordinator;
 
@@ -311,6 +312,12 @@ public:
 
     virtual bool isEquipSkill() const;
 
+    // A family names the skill this one is a version of (nosganglie, vsganglie -> "ganglie").
+    // Declared by the skill itself while packages load; read-only afterwards.
+    void addFamily(const QString &family) { if (!family.isEmpty() && !m_families.contains(family)) m_families << family; }
+    bool inFamily(const QString &family) const { return m_families.contains(family); }
+    QStringList familyList() const { return m_families; }
+
 protected:
     Frequency frequency;
     QString limit_mark;
@@ -335,6 +342,7 @@ private:
     TargetTipRules m_targetTipRules;
     bool lord_skill;
     QStringList sources;
+    QStringList m_families;
     mutable QHash<QString, QStringList> skinSourceHash;
     int m_instanceId;
     static int m_globalInstanceCount;
@@ -478,6 +486,60 @@ private:
     // Recover UI-selected inputs from a produced card. Fixed native material
     // (for example a deck-top conversion) is not a second player selection.
     virtual QList<int> selectionIdsFromCard(const ActiveSkillRequest &request, const Card *card) const;
+};
+
+// Pins a nested response to a skill instance that already exists.
+class BorrowedActivationScope
+{
+public:
+    BorrowedActivationScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry);
+    ~BorrowedActivationScope();
+
+    BorrowedActivationScope(const BorrowedActivationScope &) = delete;
+    BorrowedActivationScope &operator=(const BorrowedActivationScope &) = delete;
+    BorrowedActivationScope(BorrowedActivationScope &&) = delete;
+    BorrowedActivationScope &operator=(BorrowedActivationScope &&) = delete;
+
+private:
+    Room *m_room;
+    ServerPlayer *m_player;
+    QString m_selector;
+    int m_previous;
+};
+
+class SkillPromptScope
+{
+public:
+    SkillPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry, const QVariantMap &prompt);
+
+    static QVariantMap read(const Player *player, const SkillInstanceRef &entry);
+    static void write(ServerPlayer *player, const SkillInstanceKey &key, const QVariantMap &prompt);
+
+private:
+    struct PromptState {
+        ServerPlayer *player;
+        SkillInstanceKey key;
+        QVariant previous;
+        ~PromptState();
+    } m_prompt;
+    BorrowedActivationScope m_activation; // Restore the mark before restoring the prompt.
+};
+
+class SkillResponsePromptScope
+{
+public:
+    SkillResponsePromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry);
+
+private:
+    struct UseState {
+        explicit UseState(RoomState *state);
+        ~UseState();
+
+        RoomState *state;
+        CardUseStruct::CardUseReason reason;
+        QString pattern;
+    } m_useState;
+    BorrowedActivationScope m_activation; // Restore the mark before restoring the room state.
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill
