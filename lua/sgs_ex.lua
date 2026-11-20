@@ -280,6 +280,7 @@ function sgs.CreateViewAsSkillV2(spec)
 	if spec.allow_declaration then skill.allow_declaration = spec.allow_declaration end
 	if spec.build_card then skill.build_card = spec.build_card end
 	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
+	configureFamily(skill, spec)
 	return skill
 end
 
