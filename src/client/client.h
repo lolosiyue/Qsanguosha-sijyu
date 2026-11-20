@@ -83,6 +83,8 @@ public:
     void requestSurrender();
 
     bool isReplayState() const { return nullptr != replayer; }
+    int lastReplayPairIndex() const { return m_lastReplayPairIndex; }
+    qint64 lastReplayElapsedMs() const { return m_lastReplayElapsedMs; }
 
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
@@ -576,6 +578,7 @@ signals:
     void player_speak(const QString &who, const QString &text);
     void line_spoken(const QString &line);
     void card_used();
+    void pile_num_changed(int draw_count);
 
     void game_started();
     void game_over();

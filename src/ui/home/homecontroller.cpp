@@ -853,6 +853,20 @@ void HomeController::startServer()
     setCurrentPage(QStringLiteral("server"));
 }
 
+bool HomeController::contentManagerAvailable() const
+{
+#ifdef Q_OS_ANDROID
+    return true;
+#else
+    return false;
+#endif
+}
+
+void HomeController::openContentManager()
+{
+    if (contentManagerAvailable()) emit contentManagerRequested();
+}
+
 bool HomeController::scenarioWorksAvailable() const
 {
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)

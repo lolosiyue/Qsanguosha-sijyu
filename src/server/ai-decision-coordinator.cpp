@@ -28,6 +28,7 @@
 #include "skill-set-generation.h"
 #include <QElapsedTimer>
 #include <QLoggingCategory>
+#include <QJsonObject>
 
 namespace {
 // The event log is bounded so a long game cannot grow the snapshot without limit.
@@ -102,25 +103,92 @@ class AiDecisionAudit
 public:
     AiDecisionAudit(const Room &room, const ServerPlayer *player,
                     const AIRequest &request, const QString &callback)
-        : m_enabled(Config.EnableHegemony), m_request(request), m_callback(callback),
+        : m_enabled(Config.EnableHegemony), m_traceEnabled(qgetenv("QSAN_DECISION_TRACE") == "1"),
+          m_request(request), m_callback(callback),
           m_player(player ? player->objectName() : QStringLiteral("?")),
           m_historyEvent(room.currentHistoryEventId()),
           m_source(room.externalAgent(m_player) ? QStringLiteral("external_or_isolated")
                                                 : QStringLiteral("isolated")),
+          m_traceSource(QStringLiteral("unknown")),
           m_route(Config.EnableAI
               ? routeName(const_cast<Room &>(room).roomRuntime()->ai().routes().routeFor(
                   request.kind, callback, request.choiceOptions.reason))
-              : QStringLiteral("legacy_direct"))
+              : QStringLiteral("legacy_direct")), m_nativeRoomId(room.getId()),
+          m_phase(player ? int(player->getPhase()) : -1)
     {
+        if (!m_traceEnabled) return;
+        if (m_route == QLatin1String("isolated")) m_traceSource = QStringLiteral("isolated");
+        else if (m_route == QLatin1String("legacy_direct")) m_traceSource = QStringLiteral("legacy_direct");
+        m_traceRunId = QString::fromUtf8(qgetenv("QSAN_TRACE_RUN_ID")).left(128);
+        m_roomMatchId = room.statisticsRootMatchId();
+        m_generation = room.statisticsGeneration();
+        m_scopes = room.historyScopes();
+        m_elapsed.start();
     }
 
     ~AiDecisionAudit()
     {
-        if (!m_enabled) return;
+        if (!m_enabled && !m_traceEnabled) return;
         if (!m_accepted && m_error.isEmpty()) {
             m_stage = QStringLiteral("authority");
             m_error = QStringLiteral("authority_rejected");
         }
+        if (m_traceEnabled) {
+            QJsonObject record;
+            record.insert(QStringLiteral("schema"), 1);
+            record.insert(QStringLiteral("trace_run_id"), m_traceRunId);
+            record.insert(QStringLiteral("decision_id"), QString::number(m_request.decisionId));
+            record.insert(QStringLiteral("revision"), QString::number(m_request.stateRevision));
+            record.insert(QStringLiteral("generation"), QString::number(m_generation));
+            record.insert(QStringLiteral("room_id"), m_roomMatchId);
+            record.insert(QStringLiteral("native_room_id"), QString::number(m_nativeRoomId));
+            record.insert(QStringLiteral("player"), m_player);
+            record.insert(QStringLiteral("kind"), int(m_request.kind));
+            record.insert(QStringLiteral("callback"), m_callback);
+            record.insert(QStringLiteral("reason"), m_request.choiceOptions.reason.left(128));
+            record.insert(QStringLiteral("configured_route"), m_route);
+            record.insert(QStringLiteral("actual_source"), m_traceSource);
+            record.insert(QStringLiteral("stage"), m_stage);
+            record.insert(QStringLiteral("result"), m_traceResult);
+            record.insert(QStringLiteral("accepted"), m_accepted);
+            record.insert(QStringLiteral("error"), m_error.left(160));
+            record.insert(QStringLiteral("attempts"), m_attempts);
+            record.insert(QStringLiteral("elapsed_ms"), m_elapsed.elapsed());
+            record.insert(QStringLiteral("history_event"), QString::number(m_historyEvent));
+            for (const QString &scope : {QStringLiteral("round"), QStringLiteral("turn"), QStringLiteral("phase")})
+                record.insert(scope, QString::number(m_scopes.value(scope + QStringLiteral("_id")).toLongLong()));
+            record.insert(QStringLiteral("phase_value"), m_phase);
+            int candidateCount = m_request.cardCandidates.size() + m_request.cardConversions.size();
+            int usableCount = 0;
+            bool complete = m_request.choiceOptions.candidatesComplete
+                && m_request.conversionsEnumerated && m_request.equipmentActionsComplete;
+            for (const AICardCandidateView &candidate : m_request.cardCandidates) {
+                if (candidate.available && !candidate.limited && !candidate.jilei
+                    && (candidate.feasibleWithNoTarget || !candidate.targetCombinations.isEmpty()))
+                    ++usableCount;
+                if (candidate.available && !candidate.completeCoverage) complete = false;
+            }
+            for (const AICardConversionView &conversion : m_request.cardConversions) {
+                if (conversion.available && !conversion.jilei && conversion.activationQuotaAvailable
+                    && conversion.sourceQuotaAvailable
+                    && (conversion.feasibleWithNoTarget || !conversion.targetCombinations.isEmpty()))
+                    ++usableCount;
+                if (conversion.available && !conversion.completeCoverage) complete = false;
+            }
+            if (m_request.cardCandidates.isEmpty() && m_request.cardConversions.isEmpty()) {
+                candidateCount = qMax(m_request.choiceOptions.cardIds.size(),
+                    qMax(m_request.choiceOptions.playerNames.size(), m_request.choiceOptions.choices.size()));
+                usableCount = candidateCount;
+            }
+            if ((m_request.hasSkillActionContext || !m_request.skillActions.isEmpty())
+                && !m_request.stagedActionsComplete) complete = false;
+            if (!m_request.physicalClassOrderComplete && !m_request.physicalClassOrder.isEmpty()) complete = false;
+            record.insert(QStringLiteral("candidate_count"), candidateCount);
+            record.insert(QStringLiteral("candidates_complete"), complete);
+            record.insert(QStringLiteral("usable_offered_action_count"), usableCount);
+            qInfo().noquote() << "[AI_DECISION_TRACE]" << QJsonDocument(record).toJson(QJsonDocument::Compact);
+        }
+        if (!m_enabled) return;
         qInfo().noquote() << QString("[AI_HEGEMONY_DECISION] decision=%1 revision=%2 kind=%3 "
                                     "callback=%4 reason=%5 route=%6 source=%7 stage=%8 result=%9 "
                                     "error=%10 accepted=%11 player=%12 history_event=%13")
@@ -138,13 +206,41 @@ public:
             .arg(m_player).arg(m_historyEvent);
     }
 
-    void setSource(const QString &source) { m_source = source; }
+    void setSource(const QString &source)
+    {
+        m_traceSource = source;
+        m_source = source == QLatin1String("external_agent") ? QStringLiteral("external") : source;
+    }
+    QString traceSource() const { return m_traceSource; }
+
+    void attempt(const QString &source, const QString &stage, const QString &result,
+                 const QString &error, bool accepted = false)
+    {
+        if (!m_traceEnabled) return;
+        QJsonObject entry;
+        entry.insert(QStringLiteral("source"), source);
+        entry.insert(QStringLiteral("stage"), stage);
+        entry.insert(QStringLiteral("result"), result);
+        entry.insert(QStringLiteral("error"), error.left(160));
+        entry.insert(QStringLiteral("accepted"), accepted);
+        m_attempts.append(entry);
+    }
 
     void envelope(const AIResult &result)
     {
         m_stage = QStringLiteral("envelope");
         m_result = QString::number(int(result.kind));
+        m_traceResult = result.kind == AIResult::Pass ? QStringLiteral("pass")
+            : result.kind == AIResult::Answer ? QStringLiteral("answer")
+            : result.kind == AIResult::UseCard ? QStringLiteral("use_card")
+            : QStringLiteral("unknown");
         m_error = result.errorCode;
+        attempt(m_traceSource, m_stage, m_traceResult, m_error, false);
+        if (m_traceEnabled && !result.isolatedDiagnostics.isEmpty()) {
+            QJsonObject entry = m_attempts.last().toObject();
+            entry.insert(QStringLiteral("isolated_diagnostics"), result.isolatedDiagnostics);
+            m_attempts.replace(m_attempts.size() - 1, entry);
+        }
     }
 
     void reject(const QString &error)
@@ -152,14 +248,23 @@ public:
         m_stage = QStringLiteral("authority");
         m_error = error;
         m_accepted = false;
+        attempt(m_traceSource, m_stage, m_traceResult, m_error, false);
     }
 
     void accept(const QString &result)
     {
         m_stage = QStringLiteral("authority");
         m_result = result;
+        m_traceResult = result;
+        if (result == QLatin1String("card")) {
+            if (m_request.kind == AIRequest::Activate || m_request.kind == AIRequest::UseCard)
+                m_traceResult = QStringLiteral("use_card");
+            else if (m_request.kind == AIRequest::RespondCard)
+                m_traceResult = QStringLiteral("response_card");
+        }
         m_error.clear();
         m_accepted = true;
+        attempt(m_traceSource, m_stage, m_traceResult, QString(), true);
     }
 
 private:
@@ -174,15 +279,26 @@ private:
     }
 
     bool m_enabled;
+    bool m_traceEnabled;
     const AIRequest &m_request;
     QString m_callback;
     QString m_player;
     qint64 m_historyEvent;
     QString m_route;
     QString m_source;
+    QString m_traceSource;
     QString m_stage = QStringLiteral("authority");
     QString m_result = QStringLiteral("none");
+    QString m_traceResult = QStringLiteral("none");
     QString m_error;
+    QString m_traceRunId;
+    QJsonArray m_attempts;
+    int m_nativeRoomId = -1;
+    int m_phase = -1;
+    QString m_roomMatchId;
+    QVariantMap m_scopes;
+    quint64 m_generation = 0;
+    QElapsedTimer m_elapsed;
     bool m_accepted = false;
 };
 
@@ -667,6 +783,7 @@ static AICardView makeAICardView(const Card *card)
     view.effectiveId = card->getEffectiveId();
     view.objectName = card->objectName();
     view.className = card->getClassName();
+    view.subtype = card->getSubtype();
     if (!card->isVirtualCard())
         view.legacyStringKey = card->toString();
     view.nameLength = card->nameLength();
@@ -3547,7 +3664,8 @@ static void logExternalNativeDuration(const ServerPlayer *player, const AIReques
 }
 
 bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest &request,
-    AIResult &result, const std::function<bool(const AIResult &)> &validate) const
+    AIResult &result, const std::function<bool(const AIResult &)> &validate,
+    AiDecisionAudit *audit, bool validationIsAuthority) const
 {
     auto endpoint = m_room.externalAgent(player->objectName());
     if (!endpoint) return false;
@@ -3555,6 +3673,8 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
     while (true) {
         const auto outcome = endpoint->awaitReply(result);
         if (outcome == ExternalAgentEndpoint::Fallback) {
+            if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("transport"),
+                                      QStringLiteral("fallback"), QStringLiteral("disconnected"));
             endpoint->finish();
             qInfo() << (Config.EnableHegemony
                 ? "[EXTERNAL_AGENT] disconnect; isolated route remains required"
@@ -3563,6 +3683,8 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
             return false;
         }
         if (outcome == ExternalAgentEndpoint::Cancelled) {
+            if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("transport"),
+                                      QStringLiteral("aborted"), QStringLiteral("cancelled"));
             endpoint->finish();
             m_room.requestStopGameThreads();
             throw GameFinished;
@@ -3570,6 +3692,8 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
         if (request.stateRevision != m_room.roomRuntime()->stateRevision()) {
             // Never restamp a snapshot or silently choose for an obsolete prompt.
             endpoint->reject(QStringLiteral("stale-world"));
+            if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("authority"),
+                                      QStringLiteral("retry"), QStringLiteral("stale-world"));
             if (endpoint->boundedHybrid()) {
                 endpoint->disconnect();
                 endpoint->finish();
@@ -3579,6 +3703,9 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
             continue;
         }
         if (outcome == ExternalAgentEndpoint::Local) {
+            if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("transport"),
+                                      QStringLiteral("native_local"), QString());
+            if (audit && !Config.EnableHegemony) audit->setSource(QStringLiteral("native_local"));
             endpoint->finish();
             qInfo() << (Config.EnableHegemony
                 ? "[EXTERNAL_AGENT] explicit local route rejected in isolated mode"
@@ -3588,10 +3715,15 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
             return false; // non-Hegemony callers retain their existing native callback
         }
         if (validate(result)) {
+            if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("authority"),
+                validationIsAuthority ? QStringLiteral("validated") : QStringLiteral("envelope_validated"),
+                QString(), validationIsAuthority);
             endpoint->finish();
             return true;
         }
         endpoint->reject(QStringLiteral("illegal-action"));
+        if (audit) audit->attempt(QStringLiteral("external_agent"), QStringLiteral("authority"),
+                                  QStringLiteral("retry"), QStringLiteral("illegal-action"));
         if (endpoint->boundedHybrid()) {
             endpoint->disconnect();
             endpoint->finish();
@@ -3608,8 +3740,8 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     if (fromIsolated)
         *fromIsolated = false;
     if (!player || !player->getAI()) return false;
-    if (externalAnswer(player, request, result, [](const AIResult &) { return true; })) {
-        audit.setSource(QStringLiteral("external"));
+    if (externalAnswer(player, request, result, [](const AIResult &) { return true; }, &audit, false)) {
+        audit.setSource(QStringLiteral("external_agent"));
         audit.envelope(result);
         if (fromIsolated) *fromIsolated = true; // strict candidate/count gates
         return true;
@@ -3655,6 +3787,8 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
         : AiRouteLegacyDirect;
     bool isolatedAnswer = false;
     if (m_room.externalAgent(player->objectName())) {
+        if (audit.traceSource() != QLatin1String("native_local"))
+            audit.setSource(QStringLiteral("native_fallback"));
         QElapsedTimer nativeTimer;
         nativeTimer.start();
         result = legacy(request);
@@ -3684,15 +3818,24 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
             && result.decisionId == request.decisionId
             && result.stateRevision == request.stateRevision
             && request.stateRevision == m_room.roomRuntime()->stateRevision();
-        if (!isolatedAnswer)
+        if (!isolatedAnswer) {
+            audit.reject(result.errorCode.isEmpty() ? QStringLiteral("isolated_envelope_rejected") : result.errorCode);
+            audit.setSource(QStringLiteral("native_fallback"));
             result = legacy(request);
+        }
     } else {
+        audit.setSource(QStringLiteral("native_local"));
         result = legacy(request);
     }
-    if (!result.handled || !result.errorCode.isEmpty())
+    if (!result.handled || !result.errorCode.isEmpty()) {
+        audit.reject(result.errorCode.isEmpty() ? QStringLiteral("native_unhandled") : result.errorCode);
         return false;
+    }
     if (result.kind == AIResult::UseCard)
+    {
+        audit.reject(QStringLiteral("native_wrong_result_kind"));
         return false; // A card action is not an answer to a value-typed question.
+    }
     if (isolatedAnswer) {
         if (fromIsolated)
             *fromIsolated = true;
@@ -3702,6 +3845,8 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     // it produced, exactly like the LegacyAdapted card path.
     result.decisionId = request.decisionId;
     result.stateRevision = m_room.roomRuntime()->stateRevision();
+    if (!isolatedAnswer && audit.traceSource() != QLatin1String("native_local"))
+        audit.setSource(QStringLiteral("native_fallback"));
     return true;
 }
 
@@ -5017,8 +5162,8 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
             if (answer.kind == AIResult::Pass) return request.choiceOptions.optional;
             externalCard = responseCard(player, request, answer);
             return externalCard != nullptr;
-        })) {
-        audit.setSource(QStringLiteral("external"));
+        }, &audit)) {
+        audit.setSource(QStringLiteral("external_agent"));
         audit.accept(externalResult.kind == AIResult::Pass
             ? QStringLiteral("pass") : QStringLiteral("card"));
         return externalCard;
@@ -5059,10 +5204,13 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
         return nullptr;
     }
     if (m_room.externalAgent(player->objectName())) {
+        if (audit.traceSource() != QLatin1String("native_local"))
+            audit.setSource(QStringLiteral("native_fallback"));
         QElapsedTimer nativeTimer;
         nativeTimer.start();
         const Card *card = legacy();
         logExternalNativeDuration(player, request, nativeTimer);
+        audit.accept(card ? QStringLiteral("card") : QStringLiteral("pass"));
         return card;
     }
     const AiRoute route = Config.EnableAI
@@ -5070,26 +5218,38 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
             request.kind, callbackName, request.choiceOptions.reason)
         : AiRouteLegacyDirect;
     if (route == AiRouteIsolated) {
+        audit.setSource(QStringLiteral("isolated"));
         AIRequest isolated = request;
         projectDecisionContext(player, QVariant(), isolated);
         bool faultContained = false;
         const AIResult result = decideIsolatedContained(player, isolated, faultContained);
-        if (faultContained)
+        if (faultContained) {
+            audit.reject(result.errorCode.isEmpty() ? QStringLiteral("isolated_fault_contained") : result.errorCode);
             return nullptr;
+        }
         // A deliberate, current decline is an isolated decision. The fault guard
         // below must never override it or count as successful isolated coverage.
         if (result.handled && result.errorCode.isEmpty() && result.kind == AIResult::Pass
             && request.choiceOptions.optional && result.decisionId == request.decisionId
             && result.stateRevision == request.stateRevision
-            && request.stateRevision == m_room.roomRuntime()->stateRevision())
+            && request.stateRevision == m_room.roomRuntime()->stateRevision()) {
+            audit.accept(QStringLiteral("pass"));
             return nullptr;
+        }
         const Card *answered = responseCard(player, request, result);
-        if (answered)
+        if (answered) {
+            audit.accept(QStringLiteral("card"));
             return answered;
+        }
+        audit.reject(result.errorCode.isEmpty() ? QStringLiteral("authority_rejected") : result.errorCode);
         // Fault containment only: unhandled/stale/invalid answers are isolated
         // failures. Keeping the legacy pointer here does not complete that decision.
     }
-    return legacy();
+    audit.setSource(route == AiRouteIsolated ? QStringLiteral("native_fallback")
+                                             : QStringLiteral("native_local"));
+    const Card *fallback = legacy();
+    audit.accept(fallback ? QStringLiteral("card") : QStringLiteral("pass"));
+    return fallback;
 }
 
 const Card *AiDecisionCoordinator::responseCard(ServerPlayer *player, const AIRequest &request,
@@ -5362,8 +5522,8 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
             cardUse = candidate;
             return true;
         };
-    if (externalAnswer(player, request, externalResult, validateAction)) {
-        audit.setSource(QStringLiteral("external"));
+    if (externalAnswer(player, request, externalResult, validateAction, &audit)) {
+        audit.setSource(QStringLiteral("external_agent"));
         audit.accept(externalResult.kind == AIResult::Pass
             ? QStringLiteral("pass") : QStringLiteral("card"));
         return true;
@@ -5454,17 +5614,26 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         }
         cardUse = directUse;
         if (nativeTimer.isValid()) logExternalNativeDuration(player, request, nativeTimer);
+        if (audit.traceSource() != QLatin1String("native_local"))
+            audit.setSource(m_room.externalAgent(player->objectName())
+                ? QStringLiteral("native_fallback") : QStringLiteral("legacy_direct"));
+        audit.accept(directUse.card ? QStringLiteral("use_card") : QStringLiteral("pass"));
         return true;
     }
 
     AIResult result;
     bool liveLegacyResult = route == AiRouteLegacyAdapted;
+    bool isolatedFaultContained = false;
+    bool isolatedFallback = false;
     QString isolatedError;
     if (route == AiRouteIsolated) {
+        audit.setSource(QStringLiteral("isolated"));
         AIRequest isolated = request;
         projectDecisionContext(player, QVariant(), isolated);
         bool faultContained = false;
         result = decideIsolatedContained(player, isolated, faultContained);
+        audit.envelope(result);
+        isolatedFaultContained = faultContained;
         if (faultContained) {
             // Decline: Pass ends the play phase, or refuses askForUseCard.
             result = AIResult();
@@ -5472,8 +5641,11 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
             result.kind = AIResult::Pass;
             result.decisionId = request.decisionId;
             result.stateRevision = request.stateRevision;
+            audit.reject(QStringLiteral("isolated_fault_contained"));
         } else if (!result.handled || !result.errorCode.isEmpty()) {
             isolatedError = result.errorCode;
+            audit.reject(isolatedError.isEmpty() ? QStringLiteral("isolated_envelope_rejected") : isolatedError);
+            isolatedFallback = true;
             result = player->getAI()->decide(request);
             liveLegacyResult = true;
         }
@@ -5481,6 +5653,8 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         result = player->getAI()->decide(request);
     }
     if (liveLegacyResult) {
+        audit.setSource(isolatedFallback ? QStringLiteral("native_fallback")
+                                         : QStringLiteral("native_local"));
         // Live Lua already ran on the current Room. getTurnUse / fillSkillCards
         // may bump stateRevision (marks, skill instance, card moves). Stamping the
         // pre-callback revision then fail-closes a filled turnUse as Pass, which
@@ -5489,8 +5663,12 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         result.stateRevision = m_room.roomRuntime()->stateRevision();
         AIRequest liveRequest = request;
         liveRequest.stateRevision = result.stateRevision;
-        if (isolatedError.isEmpty())
-            return applyResult(player, liveRequest, result, cardUse);
+        if (isolatedError.isEmpty()) {
+            const bool applied = applyResult(player, liveRequest, result, cardUse);
+            if (applied) audit.accept(cardUse.card ? QStringLiteral("use_card") : QStringLiteral("pass"));
+            else audit.reject(QStringLiteral("authority_rejected"));
+            return applied;
+        }
         // The isolated VM faulted (e.g. AI_INSTRUCTION_LIMIT in a room at or below
         // AiLargeRoomAlive) and this live answer replaces it unseen. Hold it to the
         // contract external answers meet; an illegal answer becomes Pass instead of a
@@ -5499,6 +5677,8 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         if (applyResult(player, liveRequest, result, checked)
             && aiCardUseIsLegal(player, liveRequest, checked)) {
             cardUse = checked;
+            audit.setSource(QStringLiteral("native_fallback"));
+            audit.accept(cardUse.card ? QStringLiteral("use_card") : QStringLiteral("pass"));
             return true;
         }
         if (!result.handled) return false;
@@ -5512,9 +5692,17 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
         pass.kind = AIResult::Pass;
         pass.decisionId = liveRequest.decisionId;
         pass.stateRevision = liveRequest.stateRevision;
+        audit.setSource(QStringLiteral("native_fallback"));
+        audit.reject(QStringLiteral("fallback_rejected"));
         return applyResult(player, liveRequest, pass, cardUse);
     }
-    return applyResult(player, request, result, cardUse);
+    const bool applied = applyResult(player, request, result, cardUse);
+    if (applied && !isolatedFaultContained)
+        audit.accept(cardUse.card ? QStringLiteral("use_card") : QStringLiteral("pass"));
+    else if (isolatedFaultContained)
+        audit.reject(QStringLiteral("isolated_fault_contained"));
+    else audit.reject(result.errorCode.isEmpty() ? QStringLiteral("authority_rejected") : result.errorCode);
+    return applied;
 }
 
 bool AiDecisionCoordinator::decideSkillAction(

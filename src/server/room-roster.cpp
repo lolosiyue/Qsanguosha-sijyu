@@ -21,9 +21,12 @@ void RoomRoster::remove(ServerPlayer *player)
 
 void RoomRoster::insertAfter(ServerPlayer *before, ServerPlayer *player, bool addToAlive)
 {
-    m_players.insert(m_players.indexOf(before) + 1, player);
+    const int offset = m_playOrderReversed ? 0 : 1;
+    m_players.insert(m_players.indexOf(before) + offset, player);
     if (addToAlive)
-        m_alivePlayers.insert(m_alivePlayers.indexOf(before) + 1, player);
+        m_alivePlayers.insert(m_alivePlayers.indexOf(before) + offset, player);
+    // Keep dead seats in the ring and honor the current play direction.
+    relinkPlayers();
     invalidateSkillPresence();
 }
 

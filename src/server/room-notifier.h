@@ -9,6 +9,7 @@ class Room;
 class ServerPlayer;
 
 struct LogMessage;
+struct CardsMoveStruct;
 struct PlayerUIState;
 struct SkillInstance;
 
@@ -16,6 +17,7 @@ class RoomNotifier
 {
 public:
     explicit RoomNotifier(Room &room);
+    QList<ServerPlayer *> resolveRecipients(const QList<ServerPlayer *> &players) const;
 
     bool doNotify(ServerPlayer *player, int command, const char *arg);
     bool doNotify(ServerPlayer *player, int command, const QVariant &arg);
@@ -23,6 +25,9 @@ public:
     bool doBroadcastNotify(const QList<ServerPlayer *> &players, int command, const char *arg);
     bool doBroadcastNotify(int command, const QVariant &arg);
     bool doBroadcastNotify(const QList<ServerPlayer *> &players, int command, const QVariant &arg);
+    // Receivers must already be resolved; private bodies are sent without forwarding.
+    bool notifyMoveCards(int moveId, bool isLostPhase, const QList<CardsMoveStruct> &moves,
+                         bool visible, const QList<ServerPlayer *> &players);
 
     void sendLog(const LogMessage &log, const QList<ServerPlayer *> &players);
     void showCard(const QString &playerName, const QString &cardIds,
@@ -45,7 +50,6 @@ public:
                                   const QVariant &value, bool publicStateChanged);
 
 private:
-    QList<ServerPlayer *> resolveRecipients(const QList<ServerPlayer *> &players) const;
     bool broadcast(const QList<ServerPlayer *> &players, int command, const QVariant &body);
     bool sendPacket(const QList<ServerPlayer *> &receivers, int command, const QVariant &body);
 

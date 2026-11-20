@@ -13,7 +13,10 @@ import argparse
 import hashlib
 import json
 import os
+import signal
+import socket
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +28,8 @@ from runner_common import (  # noqa: E402
     find_exe,
     free_tcp_port,
     process_group_alive,
+    process_birth_token,
+    isolated_settings_env,
     resolve_workdir,
     spawn,
     terminate_tree,
@@ -192,11 +197,20 @@ def parse_args(argv=None):
     parser.add_argument("--process-timeout", type=int, default=900)
     parser.add_argument("--game-timeout-ms", type=int, default=600000,
                         help="TUI script wait game_over timeout in milliseconds")
+    parser.add_argument("--deadline-seconds", type=float,
+                        help="total startup/game budget; cleanup is always performed afterwards")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.deadline_seconds is not None and args.deadline_seconds <= 0:
+        raise SystemExit("--deadline-seconds must be positive")
+    deadline = time.monotonic() + args.deadline_seconds if args.deadline_seconds else None
+
+    def remaining(limit):
+        return max(0, min(limit, deadline - time.monotonic())) if deadline else limit
+
     if args.reconnect and args.connection_only:
         raise SystemExit("--reconnect cannot be combined with --connection-only")
     exe_root = os.path.abspath(args.exe_root)
@@ -233,6 +247,7 @@ def main(argv=None):
             "mode": args.mode,
             "seed": args.seed,
             "general": args.general,
+            "force_general": args.force_general,
             "reconnect": args.reconnect,
             "connection_only": args.connection_only,
             "port": port,
@@ -253,7 +268,20 @@ def main(argv=None):
             "port_released": False,
         },
         "problems": [],
+        "interrupted": False,
+        "timed_out": False,
     }
+
+    def save_summary():
+        temporary = paths["summary"] + ".tmp"
+        with open(temporary, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(summary, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temporary, paths["summary"])
+
+    summary["ownership"] = {"host": socket.gethostname(), "processes": [
+        {"role": "runner", "pid": os.getpid(), "birth": process_birth_token(os.getpid())}]}
+    save_summary()
 
     server_cmd = [
         server_exe,
@@ -263,6 +291,7 @@ def main(argv=None):
         "--game-mode", args.mode,
         "--seed", str(args.seed),
         "--config", paths["config"],
+        "--asset-root", workdir,
         "--autotest-log", paths["marker_log"],
         "--operation-timeout", str(args.operation_timeout),
         "--ai-delay", str(args.ai_delay),
@@ -283,20 +312,39 @@ def main(argv=None):
         "--asset-root", workdir,
     ]
 
-    server = spawn(server_cmd, workdir, paths["server_log"])
+    server = spawn(server_cmd, workdir, paths["server_log"],
+                   env=isolated_settings_env(os.environ, os.path.join(artifact_dir, "server-settings")))
+    summary["ownership"]["processes"].append(
+        {"role": "server", "pid": server.pid, "birth": process_birth_token(server.pid)})
+    save_summary()
     tui = None
     try:
-        if not wait_port(port, args.server_startup_timeout, proc=server):
+        if not wait_port(port, remaining(args.server_startup_timeout), proc=server):
             summary["problems"].append("server did not listen on port %d" % port)
+            summary["timed_out"] = server.poll() is None
         else:
             summary["lifecycle"]["server_started"] = True
-            tui = spawn(tui_cmd, workdir, paths["process_log"])
-            client_code = wait_exit(tui, args.process_timeout)
+            tui = spawn(tui_cmd, workdir, paths["process_log"],
+                        env=isolated_settings_env(os.environ, os.path.join(artifact_dir, "tui-settings")))
+            summary["ownership"]["processes"].append(
+                {"role": "tui", "pid": tui.pid, "birth": process_birth_token(tui.pid)})
+            save_summary()
+            client_wait = remaining(args.process_timeout)
+            client_code = wait_exit(tui, client_wait)
             if client_code is None:
-                summary["problems"].append("TUI exceeded %ds timeout" % args.process_timeout)
+                summary["timed_out"] = True
+                summary["problems"].append("TUI exceeded %.1fs remaining timeout" % client_wait)
                 client_code, _ = terminate_tree(tui)
             summary["lifecycle"]["client_exit"] = client_code
             summary["lifecycle"]["client_exit_name"] = describe_exit(client_code)
+    except KeyboardInterrupt:
+        summary["interrupted"] = True
+        summary["problems"].append("run interrupted; retained partial evidence")
+        # A second termination request must not interrupt owned-process cleanup.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if hasattr(signal, "SIGBREAK"):
+            signal.signal(signal.SIGBREAK, signal.SIG_IGN)
     finally:
         if tui is not None:
             code, how = terminate_tree(tui)
@@ -327,9 +375,8 @@ def main(argv=None):
     summary["evidence"] = evidence
     summary["problems"] = problems
     summary["ok"] = not problems
-    with open(paths["summary"], "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(summary, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    summary["ownership"]["cleanup_finished"] = True
+    save_summary()
 
     status = "PASS" if summary["ok"] else "FAIL"
     print("[AUTOTEST] TUI_REAL_TCP_RESULT status=%s connection_only=%s reconnect=%s game_over=%s summary=%s"
@@ -341,4 +388,11 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # Batch cancellation must unwind through the same owned-process cleanup.
+    def interrupt_run(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, interrupt_run)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, interrupt_run)
     raise SystemExit(main())

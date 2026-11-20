@@ -13,6 +13,7 @@
 #include "dashboard.h"
 #include "general-info-card.h"
 #include "table-pile.h"
+#include "table-decks.h"
 #include "ui-rng.h"
 #include "carditem.h"
 #include "engine.h"
@@ -390,6 +391,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_replay = new RoomReplayController(this, main_window);
 	connect(m_replay, &RoomReplayController::takeoverRequested,
 		this, &RoomScene::takeoverRequested);
+	connect(m_replay, &RoomReplayController::perspectiveRequested,
+		this, &RoomScene::replayPerspectiveRequested);
 
 	m_choiceDialog = nullptr;
     m_playerCardBox = nullptr;
@@ -424,6 +427,21 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	//m_tablePile->setZValue(0);
 	addItem(m_tablePile);
 	connect(ClientInstance,SIGNAL(card_used()),m_tablePile,SLOT(clear()));
+	// Draw pile, discard pile, processing tray and public table zones around m_tablePile.
+	m_tableDecks = new TableDecks;
+	m_tableDecks->setZValue(-0.5);
+	addItem(m_tableDecks);
+	m_tablePile->setDecks(m_tableDecks);
+	m_tableDecks->setTablePile(m_tablePile);
+	connect(m_tablePile,&TablePile::cardsSettled,m_tableDecks,&TableDecks::refreshTopDiscard);
+	connect(ClientInstance,&Client::pile_num_changed,m_tableDecks,[this](int drawCount){
+		m_tableDecks->setDrawCount(drawCount);
+		m_tableDecks->setDiscard(ClientInstance->discarded_list);
+	});
+	connect(m_tableDecks,&TableDecks::discardPileClicked,this,&RoomScene::toggleDiscards);
+	connect(m_tableDecks,&TableDecks::zoneClicked,this,[this](const QString&name){
+		showPile(m_tableZones.value(name),name);
+	});
 
 	// create dashboard
 	dashboard = new Dashboard(createDashboardButtons());
@@ -456,8 +474,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// add role ComboBox
 	connect(Self,SIGNAL(role_changed(QString)),dashboard,SLOT(updateRole(QString)));
 
-	m_switchPerspectiveAction = nullptr;
-	m_currentPerspective = QString();
 	if(ClientInstance->getReplayer()){
 		dashboard->hideControlButtons();
 		CrashHandler::setGamePhase(CrashHandler::PhaseReplay);
@@ -1423,14 +1439,9 @@ void RoomScene::switchReplayPerspective(const QString &player_name)
 {
 	if (!ClientInstance->getReplayer())
 		return;
-
-	ClientPlayer *target = ClientInstance->getPlayer(player_name);
-	if (!target || target->isDead())
-		return;
-
-	m_currentPerspective = player_name;
-	ClientInstance->setSelf(target);
-	emit ClientInstance->switch_control_context(player_name);
+	// A different source stream has different hidden information. Recreate the
+	// Client from that stream rather than relabeling the current visible hand.
+	emit replayPerspectiveRequested(player_name);
 }
 
 RoomLayoutEngine::Input RoomScene::layoutInput(const QRectF &viewport, bool clampScene) const
@@ -1926,6 +1937,7 @@ void RoomScene::applyUiElementScale(qreal scale)
 	}
 	// Photos are already fitted at this scale by the layout engine.
 	scaleCenter(m_tablePile);
+	scaleCenter(m_tableDecks);
 	scaleCenter(self_box);
 	scaleCenter(enemy_box);
 	scaleCenter(control_panel);
@@ -2088,7 +2100,9 @@ void RoomScene::applyTableLayout(const RoomLayoutEngine::Result &layout)
         m_kofArrange->setTableCenter(m_tableCenterPos);
     control_panel->setPos(m_tableCenterPos);
     m_tablePile->setPos(m_tableCenterPos);
-    m_tablePile->setSize(layout.discardPileSize.width(), layout.discardPileSize.height());
+    m_tableDecks->setPos(m_tableCenterPos);
+    const QSize processingSize = m_tableDecks->setTrayArea(layout.discardPileSize);
+    m_tablePile->setSize(processingSize.width(), processingSize.height());
     m_tablePile->adjustCards();
     card_container->setPos(m_tableCenterPos);
     m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2,
@@ -2189,6 +2203,8 @@ void RoomScene::resetManagedTimelinePresentation()
 	_m_cardsMoveStash.clear();
 	m_move_cache.clear();
 	RenPile.clear();
+	m_tableZones.clear();
+	if (m_tableDecks) m_tableDecks->clearZones();
 	if (m_tablePile) m_tablePile->resetForManagedSync();
 	if (card_container) card_container->clear();
 	if (pileContainer) pileContainer->clear();
@@ -2201,6 +2217,15 @@ void RoomScene::removePlayer(const QString&player_name)
 	if(photo){
 		photo->setPlayer(nullptr);
 		name2photo.remove(player_name);
+		if (ClientInstance->getReplayer() && game_started) {
+			// Replay rosters may shrink as well as grow. Empty lobby placeholders
+			// must not survive a removed in-game seat and break the next arrangement.
+			photos.removeOne(photo);
+			item2player.remove(photo);
+			delete photo;
+			emit seatCountChanged();
+			updateTable();
+		}
 		Sanguosha->playSystemAudioEffect("remove-player",false);
 	}
 
@@ -2722,6 +2747,13 @@ void RoomScene::showControllerMenu()
     });
     add("controllerTrust", tr("Toggle trustee (leaves controller-only play)"),
         connected && trust_button && trust_button->isEnabled(), [this]() { trust(); });
+    // Reuse the live application actions, including Android's content manager.
+    for (const char *name : {"actionConfigure", "actionAndroidContentManager", "actionReturn_to_Main_Menu"}) {
+        const QPointer<QAction> action = main_window->findChild<QAction *>(QString::fromLatin1(name));
+        if (action) add(QStringLiteral("controller_") + QString::fromLatin1(name),
+            action->text().remove(QLatin1Char('&')), action->isEnabled(),
+            [action]() { if (action && action->isEnabled()) action->trigger(); });
+    }
     auto *back = new QPushButton(tr("Return to game"), dialog);
     back->setObjectName(QStringLiteral("controllerMenuBack"));
     layout->addWidget(back);
@@ -3381,6 +3413,21 @@ bool RoomScene::_shouldIgnoreDisplayMove(CardsMoveStruct&movement)
 
 bool RoomScene::_processCardsMove(CardsMoveStruct&move,bool isLost)
 {
+	// Public table zones (ren_pile and any other named PlaceTable pile) shown on the table.
+	if(isLost&&move.from_place==Player::PlaceTable){
+		for(auto it = m_tableZones.begin();it!=m_tableZones.end();){
+			bool changed = false;
+			foreach(int id,move.card_ids)
+				changed = it.value().removeAll(id)>0||changed;
+			if(changed) m_tableDecks->setZone(it.key(),it.value());
+			if(it.value().isEmpty()) it = m_tableZones.erase(it);
+			else ++it;
+		}
+	}else if(!isLost&&move.to_place==Player::PlaceTable&&!move.to_pile_name.isEmpty()
+		&&!move.to_pile_name.startsWith('#')){
+		m_tableZones[move.to_pile_name] << move.card_ids;
+		m_tableDecks->setZone(move.to_pile_name,m_tableZones.value(move.to_pile_name));
+	}
 	if(isLost){
 		if(move.from_place==Player::PlaceTable&&RenPile.length()>0){
 			QList<int> ids;
@@ -3465,6 +3512,19 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 void RoomScene::loseCards(int moveId,QList<CardsMoveStruct> card_moves)
 {
 	for (int i = 0;i < card_moves.length();i++){
+		// Cards leaving a pile that is not on the processing area start from that pile.
+		// Resolve before _processCardsMove drops the ids from the table zones.
+		QHash<int,QPointF> pileAnchors;
+		const Player::Place fromPlace = card_moves[i].from_place;
+		if(m_tableDecks&&(fromPlace==Player::DrawPile||fromPlace==Player::DiscardPile||fromPlace==Player::PlaceTable)){
+			foreach(int id,card_moves[i].card_ids){
+				QPointF anchor;
+				// Hidden draws carry unknown ids, so the draw pile never asks the processing area.
+				if((fromPlace==Player::DrawPile||!m_tablePile->isShowingCard(id))
+					&&m_tableDecks->sourceAnchor(fromPlace,id,&anchor))
+					pileAnchors.insert(id,anchor);
+			}
+		}
 		_processCardsMove(card_moves[i],true);
 		if(_shouldIgnoreDisplayMove(card_moves[i])) continue;
 		card_container->m_currentPlayer = (ClientPlayer*)card_moves[i].to;
@@ -3475,8 +3535,16 @@ void RoomScene::loseCards(int moveId,QList<CardsMoveStruct> card_moves)
 			continue;
 		}
 		QList<CardItem*> cards = from_container->removeCardItems(card_moves[i].card_ids,card_moves[i].from_place);
-		foreach(CardItem*card,cards)
+		foreach(CardItem*card,cards){
 			card->setEnabled(false);
+			if(pileAnchors.contains(card->getId())){
+				// CardItem's pos is its centre, but addCardItems re-bases cards through scenePos(),
+				// which includes CardItem's centring transform and moves them up-left by half a card.
+				card->setPos(from_container->mapFromScene(pileAnchors.value(card->getId()))
+					+QPointF(G_COMMON_LAYOUT.m_cardNormalWidth/2.0,G_COMMON_LAYOUT.m_cardNormalHeight/2.0));
+				card->setOpacity(1.0);
+			}
+		}
 		_m_cardsMoveStash[moveId].append(cards);
 		keepLoseCardLog(card_moves[i]);
 	}

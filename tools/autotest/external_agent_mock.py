@@ -90,8 +90,11 @@ def play(bootstrap, exercise=False, cancel=False):
             assert q['viewerObjectName'] == q['worldView']['self']['objectName']
             for other in q['worldView']['players']:
                 if not other['roleVisible']: assert not other['role']
-                assert not other['privateFlags']
-                assert all(not skill['state'] for skill in other['skills'])
+                # Room::setPlayerFlag broadcasts every flag change to all clients,
+                # so the projection ships flags with privateFlagsVisible set.
+                if not other['privateFlagsVisible']: assert not other['privateFlags']
+                # Opponents carry public skill state only; private state is viewer-scoped.
+                assert all(not skill['hasPrivateState'] for skill in other['skills'])
             if cancel:
                 assert client.call({'op': 'cancel'})['ok']
                 cancelled = True

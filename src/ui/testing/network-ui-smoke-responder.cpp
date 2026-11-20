@@ -377,6 +377,15 @@ NetworkUiSmokeResponder::CardAttempt NetworkUiSmokeResponder::tryUseNextCard(boo
 
 bool NetworkUiSmokeResponder::stepPlaying()
 {
+    if (!m_serverScript.isEmpty()) {
+        // Use the product's server-script request at its normal play-phase safe
+        // point; no injected packets, hands, winners or synthetic Room are used.
+        const QString script = m_serverScript;
+        m_serverScript.clear();
+        ClientInstance->requestCheatRunScript(script);
+        recordAction(QStringLiteral("server_script"));
+        return true;
+    }
     switch (tryUseNextCard(true)) {
     case CardAttempt::Sent:
         return true;

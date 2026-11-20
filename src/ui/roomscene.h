@@ -44,6 +44,7 @@ class Photo;
 class Dashboard;
 class GenericCardContainer;
 class TablePile;
+class TableDecks;
 class PlayerCardContainer;
 class ResponseSkill;
 class ShowOrPindianSkill;
@@ -284,6 +285,8 @@ private:
     QMap<QString, Photo *> name2photo;
     Dashboard *dashboard;
     TablePile *m_tablePile;
+    TableDecks *m_tableDecks = nullptr;
+    QMap<QString, QList<int>> m_tableZones;
     QMainWindow *main_window;
     QSanButton *ok_button, *cancel_button, *discard_button;
     QSanButton *trust_button;
@@ -383,8 +386,6 @@ private:
     KOFOrderBox *enemy_box, *self_box;
     QPointF m_tableCenterPos;
     RoomReplayController *m_replay;
-    QAction *m_switchPerspectiveAction;
-    QString m_currentPerspective;
 
     struct _MoveCardsClassifier
     {
@@ -589,6 +590,7 @@ signals:
     // Semantic draft/eligibility changes, independent of animation repainting.
     void presentationDraftChanged();
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+    void replayPerspectiveRequested(const QString &playerName);
     void responsiveGeometryChanged();
     void qmlLayerAttached();
     void seatCountChanged();

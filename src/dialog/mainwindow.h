@@ -16,6 +16,7 @@ namespace Ui {
 void applyQsanStyleSheet(bool bigPictureMode);
 
 class FitView;
+class Client;
 class RoomScene;
 class QGraphicsScene;
 class QSystemTrayIcon;
@@ -98,6 +99,9 @@ public:
     HomeController *homeSceneController() const;
 
 signals:
+    // Delivered after the fresh Client has consumed its complete replay prefix.
+    void replayPositionReady(Client *client);
+    void replayOpenFailed(const QString &detail);
     void homeSceneReady();
     void homeSceneFailed(const QString &error);
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
@@ -197,6 +201,10 @@ private:
 
 public slots:
     void startConnection();
+    bool openReplayAt(QString path, qint64 elapsedMs = 0,
+                      bool paused = false, qreal playbackSpeed = 1.0);
+    void seekReplayToPosition(int pairIndex);
+    void switchReplayPerspective(const QString &playerName);
     // Starts a new live branch from a validated replay snapshot.  The
     // operation is deliberately two phase: the old replay is kept restorable
     // until the takeover server has accepted the first live client.
@@ -248,6 +256,7 @@ private:
         QString perspective;
         GameModeStruct previousGameMode;
         bool wasPaused = true;
+        qreal speed = 1.0;
         bool valid = false;
     };
 
@@ -258,7 +267,8 @@ private:
     void launchServer(int accept_type);
     void rollbackTakeover(const QString &reason);
     void reopenReplay(const ReplayRestoreState &state);
-    void applyReplayRestoreState(const ReplayRestoreState &state);
+    bool openReplayPosition(QString path, int pairIndex,
+                            bool paused, qreal playbackSpeed, qint64 elapsedMs = -1);
 #if QSAN_ENABLE_QML
     void playReplayFile(const QString &filename);
 #endif

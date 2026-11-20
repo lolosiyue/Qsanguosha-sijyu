@@ -223,6 +223,7 @@ set(QSAN_SOURCES
     src/ui/SpineIndicatorLine.cpp
     src/ui/sprite.cpp
     src/ui/startscene.cpp
+    src/ui/table-decks.cpp
     src/ui/table-pile.cpp
     src/ui/timed-progressbar.cpp
     src/ui/ui-rng.cpp
@@ -447,6 +448,7 @@ set(QSAN_MOC_HEADERS
     src/ui/SpineIndicatorLine.h
     src/ui/sprite.h
     src/ui/startscene.h
+    src/ui/table-decks.h
     src/ui/table-pile.h
     src/ui/timed-progressbar.h
     src/ui/window.h

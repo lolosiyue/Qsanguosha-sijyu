@@ -13,11 +13,100 @@ import signal
 import socket
 import subprocess
 import time
+import uuid
 from collections import Counter, defaultdict
 
 IS_WINDOWS = os.name == "nt"
 
 
+def pid_alive(pid):
+    """Conservative read-only liveness check for saved runner ownership records."""
+    if type(pid) is not int or pid <= 0:
+        return False
+    if IS_WINDOWS:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if handle:
+            code = wintypes.DWORD()
+            kernel.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+            alive = not kernel.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value == 259
+            kernel.CloseHandle(handle)
+            return alive
+        return ctypes.get_last_error() != 87  # INVALID_PARAMETER means no process
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def process_birth_token(pid):
+    """Pair a saved PID with its OS start time before later cleanup/recovery."""
+    if IS_WINDOWS:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel.GetProcessTimes.argtypes = (wintypes.HANDLE, *([ctypes.POINTER(wintypes.FILETIME)] * 4))
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return None
+        times = [wintypes.FILETIME() for _ in range(4)]
+        ok = kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times))
+        kernel.CloseHandle(handle)
+        return str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime) if ok else None
+    try:
+        # comm may contain spaces and ')'; fields after its final ')' start at 3.
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as stream:
+            return stream.read().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def recorded_process_alive(record):
+    pid = record.get("pid")
+    if not pid_alive(pid):
+        return False
+    current = process_birth_token(pid)
+    return not current or not record.get("birth") or current == record["birth"]
+
+
+def kill_recorded_process(record):
+    """Last-resort cleanup only for an unchanged, positively identified process."""
+    pid, birth = record.get("pid"), record.get("birth")
+    if not recorded_process_alive(record):
+        return "not-running"
+    if not birth or process_birth_token(pid) != birth:
+        return "identity-unavailable"
+    _kill_tree(pid, "kill" if IS_WINDOWS else signal.SIGKILL)
+    return "kill-requested"
+
+
+def isolated_settings_env(env, directory):
+    """Use the product's settings routes for each native QA process."""
+    directory = os.path.abspath(directory)
+    os.makedirs(directory, exist_ok=True)
+    return dict(env, QSAN_SESSION_SETTINGS=os.path.join(directory, "config.ini"),
+                XDG_CONFIG_HOME=os.path.join(directory, "xdg-config"))
+
+
+def verification_env(env, directory):
+    """Give one run a shared correlation ID and local, opt-in evidence directory."""
+    result = dict(env)
+    directory = os.path.abspath(directory)
+    os.makedirs(directory, exist_ok=True)
+    result.update(QSAN_DECISION_TRACE="1", QSAN_VERIFICATION_DIR=directory,
+                  QSAN_TRACE_RUN_ID=uuid.uuid4().hex)
+    return result
 def ensure_core_dumps():
     """把 core dump 上限拉到硬上限, 讓崩潰的對局留下 core。
 
@@ -214,7 +303,8 @@ def is_crash_code(code):
         signo = _posix_signal_number(code)
         return signo is not None and signo in {int(s) for s in _POSIX_CRASH_SIGNALS}
     h = code & 0xFFFFFFFF
-    return h == 0x80000003 or h >= 0xC0000000
+    # CTRL_BREAK/CTRL_C cleanup returns STATUS_CONTROL_C_EXIT, not a crash.
+    return h != 0xC000013A and (h == 0x80000003 or h >= 0xC0000000)
 
 def tail_lines(path, n=20):
     """讀檔尾最後 n 行 (檔案可能數百 KB, 只讀尾部 64KB)。"""

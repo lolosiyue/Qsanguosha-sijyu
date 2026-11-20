@@ -46,7 +46,7 @@ QRectF ReplayerControlBar::boundingRect() const
 	// the original control bar reserved after its time-label origin.
 	return QRectF(0, 0,
 		(S_BUTTON_WIDTH + S_BUTTON_GAP) * 4 + (52 + S_BUTTON_GAP) * 2 + 49,
-		S_BUTTON_HEIGHT);
+		S_BUTTON_HEIGHT * (perspective_box ? 2 : 1) + (perspective_box ? S_BUTTON_GAP : 0));
 }
 
 void ReplayerControlBar::paint(QPainter*,const QStyleOptionGraphicsItem*,QWidget*)
@@ -54,7 +54,7 @@ void ReplayerControlBar::paint(QPainter*,const QStyleOptionGraphicsItem*,QWidget
 }
 
 ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
-	: time_label(nullptr), takeover_button(nullptr), export_button(nullptr),
+	: time_label(nullptr), takeover_button(nullptr), export_button(nullptr), perspective_box(nullptr),
 	  speed(1.0), export_in_progress(false)
 {
 	QSanButton*play,*uniform,*slow_down,*speed_up;
@@ -103,6 +103,31 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	widget->setPos(step*4 + (52 + S_BUTTON_GAP)*2, 0);
 
 	Replayer*replayer = ClientInstance->getReplayer();
+	if (!replayer->perspectives().isEmpty()) {
+		QLabel *label = new QLabel(tr("Perspective"));
+		QGraphicsProxyWidget *labelWidget = new QGraphicsProxyWidget(this);
+		labelWidget->setWidget(label);
+		labelWidget->setPos(0, S_BUTTON_HEIGHT + S_BUTTON_GAP);
+		perspective_box = new QComboBox;
+		perspective_box->setObjectName(QStringLiteral("replayPerspective"));
+		perspective_box->setToolTip(tr("Recorded seat perspective"));
+		perspective_box->setFixedSize(190, S_BUTTON_HEIGHT);
+		for (const Replayer::Perspective &seat : replayer->perspectives()) {
+			perspective_box->addItem(QStringLiteral("%1 (%2)").arg(
+				seat.screenName.isEmpty() ? seat.playerName : seat.screenName, seat.playerName), seat.playerName);
+			if (seat.playerName == replayer->sourcePlayerName())
+				perspective_box->setCurrentIndex(perspective_box->count() - 1);
+		}
+		QGraphicsProxyWidget *selector = new QGraphicsProxyWidget(this);
+		selector->setWidget(perspective_box);
+		selector->setPos(80, S_BUTTON_HEIGHT + S_BUTTON_GAP);
+		connect(perspective_box, QOverload<int>::of(&QComboBox::activated), this, [this](int) {
+			emit perspectiveRequested(perspective_box->currentData().toString());
+		});
+		connect(ClientInstance, &Client::gamePresentationStateChanged,
+			this, &ReplayerControlBar::updatePerspectiveAvailability);
+		updatePerspectiveAvailability();
+	}
 	connect(play,SIGNAL(clicked()),replayer,SLOT(toggle()));
 	connect(uniform,SIGNAL(clicked()),replayer,SLOT(uniform()));
 	connect(slow_down,SIGNAL(clicked()),replayer,SLOT(slowDown()));
@@ -110,10 +135,11 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	connect(replayer, &Replayer::elasped, this, &ReplayerControlBar::setTime,
 		Qt::QueuedConnection);
 	connect(replayer,SIGNAL(speed_changed(qreal)),this,SLOT(setSpeed(qreal)));
+	play->setState(replayer->isPlaying() ? QSanButton::S_STATE_UP : QSanButton::S_STATE_DOWN);
 
 	speed = replayer->getSpeed();
 	setParentItem(dashboard);
-	setPos(S_BUTTON_GAP,-S_BUTTON_GAP-S_BUTTON_HEIGHT);
+	setPos(S_BUTTON_GAP,-S_BUTTON_GAP-boundingRect().height());
 
 	duration_str = FormatTime(replayer->getDuration());
 	updateTakeoverAvailability();
@@ -121,6 +147,23 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 		this, &ReplayerControlBar::updateTakeoverAvailability);
 	connect(replayer, &Replayer::node_reached,
 		this, [this](int) { updateTakeoverAvailability(); });
+}
+
+void ReplayerControlBar::updatePerspectiveAvailability()
+{
+	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
+	if (!perspective_box || !replayer) return;
+	QStandardItemModel *model = qobject_cast<QStandardItemModel *>(perspective_box->model());
+	if (!model) return;
+	const auto &seats = replayer->perspectives();
+	for (int i = 0; i < seats.size(); ++i) {
+		if (QStandardItem *item = model->item(i)) {
+			const bool available = seats.at(i).availableFromMs <= ClientInstance->lastReplayElapsedMs()
+				&& ClientInstance->getPlayer(seats.at(i).playerName);
+			item->setEnabled(available);
+			item->setToolTip(available ? QString() : tr("This seat has not joined yet"));
+		}
+	}
 }
 
 void ReplayerControlBar::updateTakeoverAvailability()
@@ -164,8 +207,7 @@ void ReplayerControlBar::requestTakeover()
 	QComboBox *seatBox = new QComboBox(&dialog);
 
 	int preferredRow = -1;
-	RoomScene *roomScene = qobject_cast<RoomScene *>(scene());
-	QString preferredSeat = roomScene ? roomScene->m_currentPerspective : QString();
+	QString preferredSeat = Self ? Self->objectName() : QString();
 	bool preferredAlive = false;
 	for (const PlayerSnapshot &player : state.players) {
 		if (player.objectName == preferredSeat && player.alive)
@@ -292,6 +334,8 @@ void RoomReplayController::createReplayControlBar(Dashboard *dashboard)
 		this, &RoomReplayController::takeoverRequested);
 	connect(m_replayControl, &ReplayerControlBar::exportRequested,
 		this, &RoomReplayController::exportReplayDiagnosticBundle);
+	connect(m_replayControl, &ReplayerControlBar::perspectiveRequested,
+		this, &RoomReplayController::perspectiveRequested);
 	connect(ClientInstance, &Client::replayStateCaptureReady,
 		this, &RoomReplayController::onReplayStateCaptureReady);
 	Replayer *replayer = ClientInstance->getReplayer();

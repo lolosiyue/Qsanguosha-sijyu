@@ -92,6 +92,7 @@ private:
     int m_stallMs = NetworkUiSmokeReport::defaultStallMs();
     QString m_resultPath;
     QString m_screenshotPath;
+    QString m_serverScript;
     QSize m_windowSize;
     QStringList m_preshowRequested; // skills to pre-show through their Dashboard buttons
     QStringList m_preshowConfirmed; // instance names the server confirmed as pre-shown

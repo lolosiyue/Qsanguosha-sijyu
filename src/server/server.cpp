@@ -7,6 +7,10 @@
 #include "rules-bundle-exporter.h"
 #include "settings.h"
 #include "room.h"
+#include "game-session-controller.h"
+#include "headless-replay-session.h"
+#include "record-buffer.h"
+#include "runtime-paths.h"
 #include "card-lifetime-manager.h"
 #include "roomthread.h"
 #include "engine.h"
@@ -85,13 +89,15 @@ static void releaseFreedRoomHeap()
 // deadline makes its destructor join while a worker can still be waiting on main.
 template <typename OnDisposed, typename OnSlowStop>
 void disposeRoomWhenStopped(QObject *owner, QPointer<Room> room,
-                            OnDisposed onDisposed, OnSlowStop onSlowStop)
+                            OnDisposed onDisposed, OnSlowStop onSlowStop,
+                            const std::function<void(Room *)> &beforeDispose = {})
 {
-    const auto dispose = [owner, onDisposed](const QPointer<Room> &finishedRoom) {
+    const auto dispose = [owner, onDisposed, beforeDispose](const QPointer<Room> &finishedRoom) {
         if (!finishedRoom) {
             onDisposed();
             return;
         }
+        if (beforeDispose) beforeDispose(finishedRoom.data());
         QObject::connect(finishedRoom.data(), &QObject::destroyed, owner,
             [owner, onDisposed]() {
                 // destroyed precedes QObject child destruction. Continue only
@@ -217,7 +223,10 @@ SetupPayload currentSetupPayload()
 	return payload;
 }
 
-bool sendSetup(ServerPlayer *player, QString *error)
+}
+
+#if !defined(QSAN_SERVER_DIALOGS_ONLY)
+bool Server::sendSetup(ServerPlayer *player, QString *error, RecordBuffer *recordOnly)
 {
 	if (player == nullptr)
 		return false;
@@ -227,7 +236,14 @@ bool sendSetup(ServerPlayer *player, QString *error)
 	message.destination = ProtocolEndpoint::Client;
 	message.command = S_COMMAND_SETUP;
 	message.hasPayload = true;
-	message.payload = currentSetupPayload().toVariant();
+	SetupPayload payload = currentSetupPayload();
+	if (Room *room = player->getRoom()) {
+		payload.gameMode = room->getMode();
+		payload.playerCount = qMax(Sanguosha->getPlayerCount(payload.gameMode), int(room->getPlayers().size()));
+	}
+	message.payload = payload.toVariant();
+	if (recordOnly)
+		return recordOnly->recordMessage(message, error);
 	if (player->sendProtocolMessage(message) == 0) {
 		if (error != nullptr)
 			*error = QStringLiteral("Unable to send typed V2 SETUP");
@@ -235,7 +251,7 @@ bool sendSetup(ServerPlayer *player, QString *error)
 	}
 	return true;
 }
-}
+#endif
 
 #if !defined(QSAN_SERVER_CORE_ONLY)
 static QLayout *HLay(QWidget *left, QWidget *right)
@@ -2273,6 +2289,29 @@ Room *Server::createNewRoom()
 		delete room;
 		return nullptr;
 	}
+    // Opt-in recording also serves real network clients during replay debugging.
+    const auto arguments = QCoreApplication::arguments();
+    QString recordDirectory;
+    bool recordRequested = false;
+    for (int i = 1; i < arguments.size(); ++i) {
+        if (arguments.at(i) == QLatin1String("--record-dir")) {
+            recordRequested = true;
+            recordDirectory = arguments.value(i + 1);
+        } else if (arguments.at(i).startsWith(QLatin1String("--record-dir="))) {
+            recordRequested = true;
+            recordDirectory = arguments.at(i).mid(13);
+        }
+    }
+    if (recordRequested) {
+        QString error;
+        if (recordDirectory.isEmpty() || recordDirectory.startsWith('-')
+            || !room->m_gameSession->enableHeadlessRecording(
+                QFileInfo(recordDirectory).absoluteFilePath(), room->getId(), &error)) {
+            qWarning().noquote() << "Cannot initialize network replay recording:" << error;
+            delete room;
+            return nullptr;
+        }
+    }
 	return publishRoom(room);
 }
 
@@ -3024,6 +3063,28 @@ void Server::startHeadlessGame()
     const int gameLimit = headlessGameLimit;
 
     if (gameCount == 0) {
+        const QStringList arguments = QCoreApplication::arguments();
+        if (!arguments.contains(QStringLiteral("--no-headless-record"))) {
+            const int directoryIndex = arguments.indexOf(QStringLiteral("--headless-record-dir"));
+            if (directoryIndex >= 0) {
+                if (directoryIndex + 1 >= arguments.size() || arguments.at(directoryIndex + 1).startsWith(QLatin1Char('-'))) {
+                    writeHeadlessLog(QStringLiteral("ERROR: --headless-record-dir requires a directory"));
+                    qApp->exit(1);
+                    return;
+                }
+                m_headlessReplayDirectory = QFileInfo(arguments.at(directoryIndex + 1)).absoluteFilePath();
+            } else {
+                m_headlessReplayDirectory = QDir(QSanRuntimePaths::recordDir()).filePath(
+                    QStringLiteral("headless/%1-%2").arg(QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")))
+                        .arg(QCoreApplication::applicationPid()));
+            }
+            if (QFileInfo::exists(QDir(m_headlessReplayDirectory).filePath(QStringLiteral("index.json")))) {
+                writeHeadlessLog(QStringLiteral("ERROR: Replay batch already exists: %1").arg(m_headlessReplayDirectory));
+                qApp->exit(1);
+                return;
+            }
+            writeHeadlessLog(QStringLiteral("[AUTOTEST] Replay batch: %1").arg(m_headlessReplayDirectory));
+        }
         Server::writeHeadlessLog(QString(">>> Headless stress test started - %1 games, mode %2, %3 players <<<")
             .arg(gameLimit).arg(mode).arg(playerCount));
     }
@@ -3054,6 +3115,15 @@ void Server::startHeadlessGame()
         qApp->exit(1);
         return;
     }
+    if (!m_headlessReplayDirectory.isEmpty()) {
+        QString error;
+        if (!room->m_gameSession->enableHeadlessRecording(m_headlessReplayDirectory, gameCount, &error)) {
+            writeHeadlessLog(QStringLiteral("ERROR: Cannot initialize replay recording: %1").arg(error));
+            delete room;
+            qApp->exit(1);
+            return;
+        }
+    }
 
     // Automated tests: speed up headless runs by skipping AI pacing and the start countdown (see
     // roomthread.cpp delay() and room.cpp run()'s using_countdown), and clear
@@ -3067,10 +3137,15 @@ void Server::startHeadlessGame()
         Server::writeHeadlessLog(QString("ERROR: Game %1 preparation failed: %2").arg(currentGameCount).arg(reason));
         // Preparation runs in Room itself. Dispose only after its worker has returned.
         auto disposed = std::make_shared<bool>(false);
-        auto finishFailure = [roomPtr, disposed]() {
+        auto finishFailure = [roomPtr, disposed, reason]() {
             if (*disposed) return;
             *disposed = true;
             if (!roomPtr) { qApp->exit(1); return; }
+            if (auto *replay = roomPtr->m_gameSession->headlessReplay()) {
+                QString error;
+                if (!replay->finish(QStringLiteral("failed"), QString(), reason, &error))
+                    Server::writeHeadlessLog(QStringLiteral("ERROR: Replay save failed: %1").arg(error));
+            }
             QObject::connect(roomPtr.data(), &QObject::destroyed, qApp, []() { qApp->exit(1); });
             roomPtr->deleteLater();
         };
@@ -3085,12 +3160,16 @@ void Server::startHeadlessGame()
     connect(room, &Room::takeover_failed, this, [this, roomPtr, currentGameCount](const QString &reason) {
         Server::writeHeadlessLog(QString("ERROR: Game %1 takeover failed: %2").arg(currentGameCount).arg(reason));
         QTimer *pollTimer = new QTimer(this);
-        connect(pollTimer, &QTimer::timeout, this, [roomPtr, pollTimer]() {
+        connect(pollTimer, &QTimer::timeout, this, [roomPtr, pollTimer, reason]() {
             RoomThread *rt = roomPtr ? roomPtr->getThread() : nullptr;
             if (rt && rt->isRunning())
                 return;
             pollTimer->stop();
             pollTimer->deleteLater();
+            if (roomPtr && roomPtr->m_gameSession->headlessReplay()) {
+                QString error;
+                roomPtr->m_gameSession->headlessReplay()->finish(QStringLiteral("failed"), QString(), reason, &error);
+            }
             qApp->exit(1);
         });
         pollTimer->start(100);
@@ -3098,8 +3177,10 @@ void Server::startHeadlessGame()
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
-        auto continueAfterRoom = [this, currentGameCount, gameLimit]() {
+        auto recordingSaved = std::make_shared<bool>(true);
+        auto continueAfterRoom = [this, currentGameCount, gameLimit, recordingSaved]() {
             releaseFreedRoomHeap();
+            if (!*recordingSaved) { qApp->exit(1); return; }
             if (currentGameCount < gameLimit) {
                 startHeadlessGame();
             } else {
@@ -3110,6 +3191,16 @@ void Server::startHeadlessGame()
         disposeRoomWhenStopped(this, roomPtr, continueAfterRoom, [currentGameCount]() {
             Server::writeHeadlessLog("WARNING: Room workers still stopping (game "
                 + QString::number(currentGameCount) + "); continuing asynchronous wait");
+        }, [recordingSaved, winner](Room *finishedRoom) {
+            if (auto *replay = finishedRoom->m_gameSession->headlessReplay()) {
+                QString error;
+                const QString failure = finishedRoom->getTag(QStringLiteral("HeadlessReplayError")).toString();
+                *recordingSaved = replay->finish(failure.isEmpty() ? QStringLiteral("completed") : QStringLiteral("failed"),
+                                                winner, failure, &error) && failure.isEmpty();
+                Server::writeHeadlessLog(*recordingSaved
+                    ? QStringLiteral("[AUTOTEST] Replay saved: %1/index.json").arg(replay->directory())
+                    : QStringLiteral("ERROR: Replay save failed: %1 %2").arg(failure, error));
+            }
         });
     });
 
@@ -3120,6 +3211,7 @@ void Server::startHeadlessGame()
         room->signup(player, QString("AI_Bot_%1").arg(i), "", true);
     }
 
+    if (auto *replay = room->m_gameSession->headlessReplay()) replay->completeBootstrap();
     room->start();
 }
 

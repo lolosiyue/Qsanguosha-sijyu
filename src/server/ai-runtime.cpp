@@ -129,6 +129,27 @@ bool readBoundedString(lua_State *state, int index, QString &value)
     return true;
 }
 
+bool readUnsupportedSignal(lua_State *state, QString &key)
+{
+    // Match the sandbox's signal type without executing __index/__tostring
+    // after the host's instruction hook has been removed.
+    const int signal = lua_gettop(state);
+    if (!lua_istable(state, signal) || !lua_getmetatable(state, signal)) return false;
+    lua_pushglobaltable(state);
+    lua_pushliteral(state, "AIUnsupported");
+    lua_rawget(state, -2);
+    lua_remove(state, -2);
+    const bool typed = lua_istable(state, -1) && lua_rawequal(state, -1, -2);
+    lua_pop(state, 2);
+    if (!typed) return false;
+    lua_pushliteral(state, "key");
+    lua_rawget(state, signal);
+    const bool valid = lua_isnil(state, -1)
+        || (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, key));
+    lua_pop(state, 1);
+    return valid;
+}
+
 bool isPlainTable(lua_State *state, int index)
 {
     if (!lua_istable(state, index))
@@ -324,6 +345,9 @@ void pushAICardView(lua_State *state, const AICardView &card)
     lua_setfield(state, -2, "effective_id");
     setStringField(state, "name", card.objectName);
     setStringField(state, "class_name", card.className);
+    // Preserve the actual visible face for held cards and issued conversions,
+    // just as publicDecisionCard does for declared/evaluated cards.
+    setStringField(state, "subtype", card.subtype);
     if (!card.legacyStringKey.isEmpty()) {
         setStringField(state, "legacy_string_key", card.legacyStringKey);
         setStringField(state, "legacy_sort_key", card.legacyStringKey);
@@ -1286,7 +1310,7 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
             lua_pop(state, 1);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else {
-            if (Config.EnableHegemony) {
+            if (Config.EnableHegemony || qgetenv("QSAN_DECISION_TRACE") == "1") {
                 // Coverage is not a runtime fault. Read only bounded primitive
                 // diagnostics; never call Lua again after the budget is removed.
                 const bool unanswered = lua_isnil(state, -1);
@@ -1320,8 +1344,11 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
                 // Keep that debt visible without marking the proposal accepted;
                 // normal result parsing and authority validation still follow.
                 if (unanswered || !reason.isEmpty()) {
-                    qWarning().noquote() << (unanswered ? "[AI_HEGEMONY_NOT_COVERED] decision="
-                                                       : "[AI_HEGEMONY_PARTIAL_COVERAGE] decision=")
+                    result.isolatedDiagnostics = QJsonObject{{"outcome", outcome},
+                        {"reason", reason}, {"key", key}};
+                    qWarning().noquote() << (Config.EnableHegemony
+                        ? (unanswered ? "[AI_HEGEMONY_NOT_COVERED] decision=" : "[AI_HEGEMONY_PARTIAL_COVERAGE] decision=")
+                        : (unanswered ? "[AI_ISOLATED_NOT_COVERED] decision=" : "[AI_ISOLATED_PARTIAL_COVERAGE] decision="))
                         << request.decisionId << "player=" << request.viewerObjectName << "outcome=" << outcome
                         << "reason=" << reason << "key=" << key;
                     // Correlate the rejected request with its issued incomplete tickets.
@@ -1337,7 +1364,8 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request, int budgetScale)
                         }
                     }
                     if (!traceback.isEmpty())
-                        qWarning().noquote() << "[AI_HEGEMONY_UNSUPPORTED_TRACE] decision=" << request.decisionId << traceback;
+                        qWarning().noquote() << (Config.EnableHegemony ? "[AI_HEGEMONY_UNSUPPORTED_TRACE] decision="
+                            : "[AI_ISOLATED_UNSUPPORTED_TRACE] decision=") << request.decisionId << traceback;
                 }
             }
             if (!lua_isnil(state, -1)) {
@@ -1419,10 +1447,18 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
         const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
         lua_sethook(state, nullptr, 0, 0);
         if (status != 0 || m_instructionLimitExceeded) {
-            failure = m_instructionLimitExceeded ? QStringLiteral("AI_EVENT_INSTRUCTION_LIMIT")
-                : status == LUA_ERRMEM ? QStringLiteral("AI_EVENT_MEMORY_LIMIT")
-                                      : QStringLiteral("AI_EVENT_RUNTIME_ERROR");
-            if (status != 0 && !m_instructionLimitExceeded && status != LUA_ERRMEM)
+            QString unsupportedKey;
+            const bool unsupported = status != 0 && !m_instructionLimitExceeded
+                && status != LUA_ERRMEM && readUnsupportedSignal(state, unsupportedKey);
+            if (unsupported)
+                failure = unsupportedKey == QStringLiteral("mode_policy.role_counts")
+                    ? QStringLiteral("AI_EVENT_UNSUPPORTED_PUBLIC_ROLE_COUNTS")
+                    : QStringLiteral("AI_EVENT_UNSUPPORTED");
+            else
+                failure = m_instructionLimitExceeded ? QStringLiteral("AI_EVENT_INSTRUCTION_LIMIT")
+                    : status == LUA_ERRMEM ? QStringLiteral("AI_EVENT_MEMORY_LIMIT")
+                                          : QStringLiteral("AI_EVENT_RUNTIME_ERROR");
+            if (status != 0 && !m_instructionLimitExceeded && status != LUA_ERRMEM && !unsupported)
                 logLuaErrorOnce("AI_EVENT_RUNTIME_ERROR", state);
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else if (!parseIntentionDeltas(state, world, deltas)) {
@@ -1490,8 +1526,18 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
     lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
     const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
     lua_sethook(state, nullptr, 0, 0);
-    // A rejected preparation returns its reason string instead of raising.
-    if ((status != 0 && !m_instructionLimitExceeded) || (status == 0 && !lua_istable(state, -1)))
+    // Missing public composition is an expected unsupported inference, not a
+    // Lua hook failure. Preparation has not committed any observational mind.
+    QString preparationReason;
+    const bool countsUnknown = status == 0 && !m_instructionLimitExceeded
+        && lua_type(state, -1) == LUA_TSTRING
+        && readBoundedString(state, -1, preparationReason)
+        && preparationReason == QStringLiteral("public_role_counts_unknown");
+    if (countsUnknown)
+        failure = QStringLiteral("AI_EVENT_UNSUPPORTED_PUBLIC_ROLE_COUNTS");
+    // Other rejected preparations retain their original diagnostic category.
+    if (!countsUnknown && ((status != 0 && !m_instructionLimitExceeded)
+            || (status == 0 && !lua_istable(state, -1))))
         logLuaErrorOnce("AI_EVENT_MODE_ERROR", state);
     bool accepted = false;
     if (status == 0 && lua_istable(state, -1) && !m_instructionLimitExceeded) {
@@ -2682,8 +2728,9 @@ int AiLuaRuntime::luaEvaluateCard(lua_State *state)
         pushAIJsonValue(state, spec);
         return 1;
     }
-    if (!Config.EnableHegemony)
-        return unknown(QStringLiteral("card hypothesis requires an isolated Hegemony decision"));
+    // Owner/material/revision admission belongs to the shared isolated evaluator.
+    // General modes need the same exact-card rules as Hegemony; a catalog face
+    // cannot supply target residue or material-dependent limitations.
     AIChoiceCardEvaluation evaluation;
     QString error;
     if (!AiDecisionCoordinator::evaluateCard(*runtime->m_room, *request, spec, evaluation,

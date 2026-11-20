@@ -4248,6 +4248,26 @@ Recent events:</source>
         <source>%1. %2</source>
         <translation>%1. %2</translation>
     </message>
+    <message>
+        <source>Cards / targets / skills / commands</source>
+        <translation>卡牌／目標／技能／操作</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>確定</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>返回</translation>
+    </message>
+    <message>
+        <source>Remote focus: %1 — OK: select; Up/Down: groups and commands; Back: cancel</source>
+        <translation>遙控器焦點：%1 — 確定：選取；上下：群組與操作；返回：取消</translation>
+    </message>
+    <message>
+        <source>End turn</source>
+        <translation>結束回合</translation>
+    </message>
 </context>
 <context>
     <name>DialogSLSettings</name>
@@ -8279,6 +8299,18 @@ Waiting for %1 to respond</source>
 <context>
     <name>ReplayerControlBar</name>
     <message>
+        <source>Perspective</source>
+        <translation>視角</translation>
+    </message>
+    <message>
+        <source>Recorded seat perspective</source>
+        <translation>錄影來源席位視角</translation>
+    </message>
+    <message>
+        <source>This seat has not joined yet</source>
+        <translation>此席位尚未加入</translation>
+    </message>
+    <message>
         <location filename="../src/ui/room-replay-controller.cpp" line="76"/>
         <location filename="../src/ui/room-replay-controller.cpp" line="219"/>
         <source>Take over</source>
@@ -11677,6 +11709,10 @@ P = 你自己, R = 你所在的房间</translation>
         <source>保存</source>
         <translation>保存</translation>
     </message>
+    <message>
+        <source>Resources and extensions...</source>
+        <translation>資源與擴充套件…</translation>
+    </message>
 </context>
 <context>
     <name>SkillAssignDialog</name>
@@ -13744,6 +13780,110 @@ V1 持有者未知；零值或无效果是实际观察到的返回结果，不�
     <message>
         <source>PASS - close when finished inspecting</source>
         <translation>通过，请在检查完毕后关闭</translation>
+    </message>
+</context>
+
+<context>
+    <name>ControllerTextEntry</name>
+    <message>
+        <source>On-screen text entry</source>
+        <translation>螢幕文字輸入</translation>
+    </message>
+    <message>
+        <source>Text buffer (read-only preview)</source>
+        <translation>文字預覽</translation>
+    </message>
+    <message>
+        <source>Cursor left</source>
+        <translation>游標向左</translation>
+    </message>
+    <message>
+        <source>Cursor right</source>
+        <translation>游標向右</translation>
+    </message>
+    <message>
+        <source>Backspace</source>
+        <translation>退格</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>清除</translation>
+    </message>
+    <message>
+        <source>Case: lower</source>
+        <translation>小寫字母</translation>
+    </message>
+    <message>
+        <source>Case: upper</source>
+        <translation>大寫字母</translation>
+    </message>
+    <message>
+        <source>Space</source>
+        <translation>空格</translation>
+    </message>
+    <message>
+        <source>Newline</source>
+        <translation>換行</translation>
+    </message>
+    <message>
+        <source>Unicode code point</source>
+        <translation>Unicode 字元碼</translation>
+    </message>
+    <message>
+        <source>Enter hexadecimal digits, e.g. 4E2D</source>
+        <translation>輸入十六進位數字，例如 4E2D</translation>
+    </message>
+    <message>
+        <source>Insert U+</source>
+        <translation>插入 U+</translation>
+    </message>
+    <message>
+        <source>Use the buttons below to enter 1–6 hex digits.</source>
+        <translation>使用下方按鈕輸入 1–6 位十六進位數字。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>完成</translation>
+    </message>
+    <message>
+        <source>Maximum text length reached.</source>
+        <translation>已達文字長度上限。</translation>
+    </message>
+    <message>
+        <source>Code point: U+%1</source>
+        <translation>字元碼：U+%1</translation>
+    </message>
+    <message>
+        <source>Invalid Unicode scalar value.</source>
+        <translation>無效的 Unicode 字元碼。</translation>
+    </message>
+    <message>
+        <source>Could not insert U+%1; check the field length.</source>
+        <translation>無法插入 U+%1，請檢查欄位長度。</translation>
+    </message>
+    <message>
+        <source>Inserted U+%1.</source>
+        <translation>已插入 U+%1。</translation>
+    </message>
+    <message>
+        <source>Password text is hidden.</source>
+        <translation>密碼文字已隱藏。</translation>
+    </message>
+    <message>
+        <source>Cursor position: %1 / %2</source>
+        <translation>游標位置：%1 / %2</translation>
+    </message>
+    <message>
+        <source>Text exceeds this field's maximum length.</source>
+        <translation>文字超過此欄位的長度上限。</translation>
+    </message>
+    <message>
+        <source>Text does not satisfy this field's input mask or validator.</source>
+        <translation>文字不符合此欄位的格式要求。</translation>
     </message>
 </context>
 </TS>

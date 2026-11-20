@@ -421,7 +421,11 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         cmd += ["--test-general2", args.general2]
     if getattr(args, "force_general", ""):
         cmd += ["--force-general", args.force_general]
-    proc = spawn(cmd, workdir, log_path, env=qt_console_env())
+    env = qt_console_env()
+    if getattr(args, "verify_decisions", False) or getattr(args, "skill_branches", None) or getattr(args, "require_controller", None):
+        from runner_common import verification_env
+        env = verification_env(env, os.path.join(run_dir, "%s%s-evidence" % (mode, suffix)))
+    proc = spawn(cmd, workdir, log_path, env=env)
     timeout = games * PER_GAME_TIMEOUT + 120
     # Measure the per-game deadline on the monotonic clock: a VM pause/restore jumps
     # time.time() forward and would SIGKILL a game that never ran for `timeout` seconds.
@@ -554,6 +558,13 @@ def main():
     parser.add_argument("--output", default=None)
     parser.add_argument("--exe", required=True)
     parser.add_argument("--seed", required=True, type=parse_seed)
+    parser.add_argument("--verify-decisions", action="store_true",
+                        help="record decision/controller provenance and write verification.json/md")
+    parser.add_argument("--skill-branches", action="append", default=[],
+                        help="reviewed branch specification for real game history (repeatable)")
+    parser.add_argument("--require-controller", action="append", default=[],
+                        choices=("isolated", "external_agent", "deepseek", "jev"),
+                        help="require at least one authority-confirmed decision; enables tracing, never changes routing")
     args = parser.parse_args()
     if args.repeat is not None:
         args.games = args.repeat
@@ -655,7 +666,14 @@ def main():
     budgeted = sum(1 for r in results if r.get("budget"))
     print("總計: %d/%d 通過" % (ok, len(results))
           + (", %d 個因時間預算未完成" % budgeted if budgeted else ""))
-    return 0 if ok + budgeted == len(results) else 1
+    game_exit = 0 if ok + budgeted == len(results) else 1
+    if args.verify_decisions or args.skill_branches or args.require_controller:
+        from verification_report import build_report, write_report, report_exit
+        report = build_report([args.run_dir], args.skill_branches, args.require_controller)
+        write_report(report, os.path.join(args.run_dir, "verification"))
+        print("verification: %s" % os.path.join(args.run_dir, "verification", "verification.md"))
+        return game_exit or report_exit(report)
+    return game_exit
 
 
 def write_summary(args, log_root, results, previous):

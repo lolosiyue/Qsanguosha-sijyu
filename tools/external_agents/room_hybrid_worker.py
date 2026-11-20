@@ -44,6 +44,24 @@ def route_diagnostic(request, route, reason):
 
 def decide(client, request, adapter, paid_disabled, observe=None):
     """Queue one exact native ticket; return (ack, route, disable_paid, notice)."""
+    trace = p._TRACE.get()
+    def set_source(source):
+        canonical = 'jev' if source in ('jev', 'jev_staged') else source
+        if trace is not None:
+            trace['provider'] = canonical
+        p._trace_write('route', provider=canonical, reason='planned')
+    def local_result(reason):
+        set_source('local_native')
+        ack = local(client, request)
+        p._trace_write('queued' if ack.get('ok') and ack.get('queued') else 'rejected',
+                       submitted=True, reason='ack_ok_queued' if ack.get('ok') and ack.get('queued') else reason)
+        return ack
+    def submit_result(result, source):
+        set_source(source)
+        ack = client.call({'op': 'submit', 'result': result})
+        p._trace_write('queued' if ack.get('ok') and ack.get('queued') else 'rejected',
+                       submitted=True, reason='ack_ok_queued' if ack.get('ok') and ack.get('queued') else 'native_rejected')
+        return ack
     def report(route, reason):
         if observe is not None:
             # Optional diagnostics cannot change native routing or authority.
@@ -53,38 +71,42 @@ def decide(client, request, adapter, paid_disabled, observe=None):
                 pass
     if paid_disabled:
         report('local_native', 'paid_disabled')
-        return local(client, request), 'local_native', True, None
+        return local_result('paid_disabled'), 'local_native', True, None
     if getattr(adapter, 'native_opening_pending', False):
         if request['kind'] == 0:  # Native Activate starts the ordinary Play policy.
             adapter.native_opening_pending = False
         else:
             report('local_native', 'native_opening_preamble')
-            return local(client, request), 'local_native', paid_disabled, None
+            return local_result('native_opening_preamble'), 'local_native', paid_disabled, None
     route, reason, answers, data = h.route(request, adapter)
+    set_source(route)
     report(route, reason)
     if route == 'local_native':
-        return local(client, request), 'local_native', paid_disabled, None
+        return local_result(reason), 'local_native', paid_disabled, None
     if route == 'local_forced':
         choice = next(iter(answers))
     else:
         try:
             if route == 'jev_staged':
                 result = data.choose(client, adapter)
-                return client.call({'op': 'submit', 'result': result}), route, paid_disabled, None
+                # Singleton plan continuations can finish without a paid call;
+                # only provider-backed plans count as provider contributions.
+                source = 'jev' if trace is not None and trace['provider_call_count'] else 'local_forced'
+                return submit_result(result, source), route, paid_disabled, None
             choice = adapter.choose('jev', *data)
         except h.staged.Invalidated:
             raise  # The caller closes this seat; never restamp or submit Local to a stale plan.
         except h.staged.Unsupported as error:
             report('local_native', str(error))
-            return local(client, request), 'local_native', paid_disabled, None
+            return local_result(str(error)), 'local_native', paid_disabled, None
         except p.BudgetExhausted:
             report('local_native', 'budget')
-            return local(client, request), 'local_native', True, 'budget'
+            return local_result('budget'), 'local_native', True, 'budget'
         except p.DecisionError:
             report('local_native', 'provider')
-            return local(client, request), 'local_native', True, 'provider'
+            return local_result('provider'), 'local_native', True, 'provider'
     # Exact result produced from native legal candidates. No stale re-stamping.
-    return client.call({'op': 'submit', 'result': answers[choice]}), route, paid_disabled, None
+    return submit_result(answers[choice], 'jev' if route == 'jev' else 'local_forced'), route, paid_disabled, None
 
 
 def main():
@@ -157,7 +179,8 @@ def main():
                 ticket = (request['decisionId'], request['stateRevision'])
                 if ticket == old:
                     continue
-                ack, _, paid_disabled, code = decide(client, request, adapter, paid_disabled)
+                with p.decision_trace(request) as trace:
+                    ack, _, paid_disabled, code = decide(client, request, adapter, paid_disabled)
                 if code:
                     notice(code)
                 if not ack.get('ok'):

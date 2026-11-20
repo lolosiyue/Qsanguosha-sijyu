@@ -7,6 +7,7 @@
 #include <QString>
 
 class Dashboard;
+class QComboBox;
 class QLabel;
 class QMainWindow;
 class QPushButton;
@@ -35,6 +36,7 @@ signals:
     // only chooses a verified snapshot and a live seat key.
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
     void exportRequested();
+    void perspectiveRequested(const QString &playerName);
 
 protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
@@ -45,10 +47,12 @@ protected:
 private:
     void requestTakeover();
     void updateTakeoverAvailability();
+    void updatePerspectiveAvailability();
 
     QLabel *time_label;
     QPushButton *takeover_button;
     QPushButton *export_button;
+    QComboBox *perspective_box;
     QString duration_str;
     qreal speed;
     bool export_in_progress;
@@ -81,6 +85,7 @@ public:
 signals:
     // Forwarded from the control bar; MainWindow owns the teardown/restart.
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+    void perspectiveRequested(const QString &playerName);
 
 private:
     void createReplayControlBar(Dashboard *dashboard);

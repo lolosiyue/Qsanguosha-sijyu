@@ -3,6 +3,7 @@
 
 class AI;
 class RecordBuffer;
+class HeadlessReplaySession;
 
 class CardMoveReason;
 struct PhaseStruct;
@@ -136,7 +137,7 @@ public:
     QList<ServerPlayer *> getVictims() const;
 
     void startRecord();
-    void saveRecord(const QString &filename);
+    bool saveRecord(const QString &filename);
 
     void setNext(ServerPlayer *next);
     ServerPlayer *getNext() const;
@@ -331,6 +332,7 @@ protected:
     static const int S_NUM_SEMAPHORES;
 
 private:
+    friend class HeadlessReplaySession;
     friend class Room;
     friend class RoomManagedState;
     friend class PlayerLifecycleService;

@@ -141,7 +141,9 @@ private:
                    const LegacyAnswer &legacy, AIResult &result, AiDecisionAudit &audit,
                    bool *fromIsolated = nullptr) const;
     bool externalAnswer(ServerPlayer *player, const AIRequest &request, AIResult &result,
-                        const std::function<bool(const AIResult &)> &validate) const;
+                        const std::function<bool(const AIResult &)> &validate,
+                        AiDecisionAudit *audit = nullptr,
+                        bool validationIsAuthority = true) const;
     static AIResult legacyAnswerResult(const AIRequest &request, const QString &answer);
     // Above AiLargeRoomAlive players a SmartAI fallback costs minutes per decision.
     // There an isolated fault retries once at double budget, then sets faultContained

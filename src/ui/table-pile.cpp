@@ -4,6 +4,7 @@
 #include "structs.h"
 #include "carditem.h"
 #include "effects/effects-policy.h"
+#include "table-decks.h"
 #include <QAbstractAnimation>
 
 QList<CardItem *> TablePile::removeCardItems(const QList<int> &card_ids, Player::Place)
@@ -19,6 +20,17 @@ QList<CardItem *> TablePile::removeCardItems(const QList<int> &card_ids, Player:
 		}
 	}
 	return result;
+}
+
+bool TablePile::isShowingCard(int cardId) const
+{
+	// Unknown cards and virtual visuals share id -1; never treat them as the same card.
+	if (cardId < 0)
+		return false;
+	foreach (const CardItem *card, m_visibleCards)
+		if (card->getId() == cardId)
+			return true;
+	return false;
 }
 
 QRectF TablePile::boundingRect() const
@@ -82,6 +94,9 @@ void TablePile::resetForManagedSync()
 	_m_mutex_pileCards.lock();
 	oldCards.swap(m_visibleCards);
 	m_convertedCards.clear();
+	for (const QPointer<CardItem> &fading : m_fadingCards)
+		if (fading) oldCards.append(fading.data());
+	m_fadingCards.clear();
 	_m_mutex_pileCards.unlock();
 	for (CardItem *item : oldCards) {
 		if (!item) continue;
@@ -92,6 +107,7 @@ void TablePile::resetForManagedSync()
 		item->deleteLater();
 	}
 	updateContainer();
+	emit cardsSettled();
 }
 
 void TablePile::setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
@@ -118,6 +134,7 @@ void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 			toRemove->setVisible(false);
 			toRemove->deleteLater();
 		}
+		emit cardsSettled();
 		return;
 	}
 
@@ -125,11 +142,30 @@ void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 	foreach (CardItem *toRemove, cards) {
 		toRemove->setZValue(0.0);
 		toRemove->setHomeOpacity(0.0);
-		toRemove->setHomePos(QPointF(toRemove->homePos().x(), toRemove->homePos().y()));
+		// Cards that now rest in the discard pile or a table zone fly there; others fade in place.
+		QPointF anchor;
+		int duration = 1000;
+		if (m_decks && m_decks->restingAnchor(toRemove->getId(), &anchor)) {
+			toRemove->setHomePos(mapFromScene(anchor));
+			duration = 700;
+		}
 		// getGoBackAnimation() scales the duration itself; do not scale it a second time here.
-		group->addAnimation(toRemove->getGoBackAnimation(true, false, 1000));
-		toRemove->deleteLater();
+		QAbstractAnimation *fade = toRemove->getGoBackAnimation(true, false, duration);
+		// The group owns the animation; let the card forget it before the group deletes it,
+		// and delete the card only once the fade has played.
+		connect(fade, SIGNAL(destroyed()), toRemove, SLOT(currentAnimationDestroyed()));
+		group->addAnimation(fade);
+		connect(group, &QAbstractAnimation::finished, toRemove, &QObject::deleteLater);
+		m_fadingCards.append(toRemove);
 	}
+	QList<QPointer<CardItem> > batch;
+	foreach (CardItem *card, cards)
+		batch.append(card);
+	connect(group, &QAbstractAnimation::finished, this, [this, batch]() {
+		for (const QPointer<CardItem> &card : batch)
+			m_fadingCards.removeAll(card);
+		emit cardsSettled();
+	});
 	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	group->start(QAbstractAnimation::DeleteWhenStopped);
 }
@@ -169,7 +205,17 @@ bool TablePile::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStru
 		}
 	}
 	if (card_items.isEmpty())
-		return false;/*
+		return false;
+	// Cards put back into the draw pile fly onto it and are destroyed there.
+	QPointF drawAnchor;
+	if (moveInfo.to_place == Player::DrawPile && m_decks
+		&& m_decks->sourceAnchor(Player::DrawPile, -1, &drawAnchor)) {
+		foreach (CardItem *card_item, card_items) {
+			card_item->setHomePos(mapFromScene(drawAnchor));
+			card_item->setHomeOpacity(0.0);
+		}
+		return true;
+	}/*
 	else if (moveInfo.from_place == Player::PlaceDelayedTrick
 		&& moveInfo.reason.m_reason == CardMoveReason::S_REASON_NATURAL_ENTER) {
 		foreach(CardItem *item, card_items)
@@ -193,7 +239,12 @@ bool TablePile::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStru
 	foreach (CardItem *card_item, card_items) {
 		card_item->setHomeOpacity(1.0);
 		card_item->showFootnote();
-		if (moveInfo.from_place == Player::DrawPile
+		QPointF deckAnchor;
+		if (moveInfo.from_place == Player::DrawPile && m_decks
+			&& m_decks->sourceAnchor(Player::DrawPile, -1, &deckAnchor)) {
+			// RoomScene::loseCards already placed it on the draw pile; fly from there.
+			card_item->setOpacity(1.0);
+		} else if (moveInfo.from_place == Player::DrawPile
 			|| moveInfo.from_place == Player::PlaceJudge
 			|| moveInfo.from_place == Player::PlaceTable) {
 			card_item->setOpacity(0.0);

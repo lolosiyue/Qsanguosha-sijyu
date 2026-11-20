@@ -500,6 +500,8 @@ add_library(qsanguosha_engine STATIC
     src/server/game-session-controller.h
     src/server/game-snapshot-service.cpp
     src/server/game-snapshot-service.h
+    src/server/headless-replay-session.cpp
+    src/server/headless-replay-session.h
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
@@ -1455,51 +1457,55 @@ if(QSAN_BUILD_GUI)
     endif()
     set_target_properties(${QSAN_GUI_TARGET} PROPERTIES FOLDER "Clients")
 
-    # Qt owns windows and input focus; SDL is a GUI-only gamepad backend. Android
-    # QtActivity and the XP toolchain need their own validated platform adapter.
-    option(QSAN_ENABLE_CONTROLLER "Enable desktop SDL3 controller input" ON)
+    # One action router, with Qt Android remote input or the desktop SDL backend.
+    option(QSAN_ENABLE_CONTROLLER "Enable controller and Android TV remote input" ON)
     option(QSAN_FETCH_SDL3 "Fetch the pinned official SDL3 source if no package is installed" ON)
-    if(QSAN_ENABLE_CONTROLLER AND NOT ANDROID AND NOT QSAN_BUILD_XP_LEGACY)
-        find_package(SDL3 3.4.18 CONFIG QUIET)
-        if(NOT SDL3_FOUND)
-            if(NOT QSAN_FETCH_SDL3)
-                message(FATAL_ERROR "Controller input requires SDL3 >= 3.4.18; set SDL3_DIR or enable QSAN_FETCH_SDL3")
-            endif()
-            include(FetchContent)
-            set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-            set(SDL_STATIC ON CACHE BOOL "" FORCE)
-            set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-            set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
-            set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
-            set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
-            set(SDL_RENDER OFF CACHE BOOL "" FORCE)
-            set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
-            FetchContent_Declare(qsan_sdl3
-                URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
-                URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
-                DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-            FetchContent_MakeAvailable(qsan_sdl3)
-        endif()
+    if(QSAN_ENABLE_CONTROLLER AND NOT QSAN_BUILD_XP_LEGACY)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
             src/ui/controller-action.h
-            src/ui/controller-service.h src/ui/controller-service.cpp
+            src/ui/controller-service.h
             src/ui/controller-router.h src/ui/controller-router.cpp
             src/ui/controller-custom-dialog.h src/ui/controller-custom-dialog.cpp
             src/ui/controller-text-entry.h src/ui/controller-text-entry.cpp)
         target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_CONTROLLER_ENABLED=1)
-        # Prefer the static target so Qt's deployment graph needs no new DLL. A
-        # system shared package still uses CMake's imported runtime dependency.
-        if(TARGET SDL3::SDL3-static)
-            target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3-static)
+        if(ANDROID)
+            target_sources(${QSAN_GUI_TARGET} PRIVATE src/ui/controller-service-android.cpp)
         else()
-            target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3)
+            find_package(SDL3 3.4.18 CONFIG QUIET)
+            if(NOT SDL3_FOUND)
+                if(NOT QSAN_FETCH_SDL3)
+                    message(FATAL_ERROR "Controller input requires SDL3 >= 3.4.18; set SDL3_DIR or enable QSAN_FETCH_SDL3")
+                endif()
+                include(FetchContent)
+                set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+                set(SDL_STATIC ON CACHE BOOL "" FORCE)
+                set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+                set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
+                set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
+                set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
+                set(SDL_RENDER OFF CACHE BOOL "" FORCE)
+                set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
+                FetchContent_Declare(qsan_sdl3
+                    URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+                    URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+                    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+                FetchContent_MakeAvailable(qsan_sdl3)
+            endif()
+            target_sources(${QSAN_GUI_TARGET} PRIVATE src/ui/controller-service.cpp)
+            # Prefer the static target so Qt's deployment graph needs no new DLL. A
+            # system shared package still uses CMake's imported runtime dependency.
+            if(TARGET SDL3::SDL3-static)
+                target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3-static)
+            else()
+                target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3)
+            endif()
+            install(FILES docs/controller-SDL-LICENSE.txt
+                DESTINATION "${CMAKE_INSTALL_DOCDIR}" COMPONENT qsan_data)
         endif()
-        install(FILES docs/controller-SDL-LICENSE.txt
-            DESTINATION "${CMAKE_INSTALL_DOCDIR}" COMPONENT qsan_data)
     else()
         target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_CONTROLLER_ENABLED=0)
         if(QSAN_ENABLE_CONTROLLER)
-            message(STATUS "Controller backend unavailable for Android/XP: platform adapter is not yet certified")
+            message(STATUS "Controller backend unavailable for XP: platform adapter is not yet certified")
         endif()
     endif()
 
@@ -1570,6 +1576,8 @@ if(QSAN_BUILD_GUI)
             src/ui/testing/network-ui-smoke-responder.h
             src/ui/testing/test-client-socket.cpp
             src/ui/testing/test-client-socket.h
+            src/ui/testing/replay-inspector.cpp
+            src/ui/testing/replay-inspector.h
             src/ui/testing/ui-startup-smoke-controller.cpp
             src/ui/testing/ui-startup-smoke-controller.h
             src/ui/testing/ui-startup-smoke-report.cpp
@@ -2112,5 +2120,7 @@ if(QSAN_BUILD_EXTERNAL_AGENT_HOST)
     get_target_property(qsan_agent_host_includes qsanguosha_engine INCLUDE_DIRECTORIES)
     target_include_directories(qsanguosha_external_agent_host PRIVATE ${qsan_agent_host_includes})
     target_link_libraries(qsanguosha_external_agent_host PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+    # The Release crash handler needs the Windows DbgHelp library.
+    target_link_libraries(qsanguosha_external_agent_host PRIVATE "$<$<CONFIG:Release>:dbghelp>")
     qsan_link_websocket_gateway(qsanguosha_external_agent_host)
 endif()

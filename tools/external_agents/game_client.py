@@ -124,17 +124,28 @@ def play(bootstrap, adapter, mode, limit):
                 continue
             observation = envelope(q)
             answers, descriptions = actions(q)
-            if len(answers) == 1:
-                choice = next(iter(answers))
-                provider = 'forced_legal_action'
-            elif mode == 'combined':
-                routed = adapter.route(observation, descriptions)
-                choice, provider = routed['choice'], routed['provider']
-            else:
-                provider = mode
-                choice = adapter.choose(provider, observation, descriptions)
-            if not client.call({'op': 'submit', 'result': answers[choice]}).get('ok'):
-                raise p.DecisionError('native_validation_rejected')
+            request = {'decisionId': q['decisionId'], 'stateRevision': q['stateRevision'],
+                       'viewerObjectName': q.get('viewerObjectName', '')}
+            with p.decision_trace(request) as trace:
+                if len(answers) == 1:
+                    choice = next(iter(answers))
+                    provider = 'local_forced'
+                elif mode == 'combined':
+                    routed = adapter.route(observation, descriptions)
+                    choice, provider = routed['choice'], routed['provider']
+                else:
+                    provider = mode
+                    choice = adapter.choose(provider, observation, descriptions)
+                if trace is not None:
+                    trace['provider'] = provider
+                ack = client.call({'op': 'submit', 'result': answers[choice]})
+                if ack.get('ok') and ack.get('queued'):
+                    p._trace_write('queued', submitted=True, reason='ack_ok_queued')
+                elif not ack.get('ok'):
+                    p._trace_write('rejected', submitted=True, reason='native_validation_rejected')
+                    raise p.DecisionError('native_validation_rejected')
+                else:
+                    p._trace_write('route', submitted=True, reason='ack_not_queued')
             rows.append({'kind': q['kind'], 'provider': provider, 'options': len(answers),
                          'choice': choice, 'submitted_kind': answers[choice]['kind']})
     except p.DecisionError as error:

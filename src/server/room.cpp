@@ -74,6 +74,9 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
+#include <QCryptographicHash>
+#include "snapshot-json-writer.h"
 #include <QStandardPaths>
 #include <vector>
 #include <type_traits>
@@ -390,6 +393,53 @@ void Room::markBattleStatisticsTerminal(const QString &winner, int terminationCa
 
 void Room::freezeBattleStatistics()
 {
+    // Reuse the worker's final, unwound history boundary for opt-in QA evidence.
+    // This local artifact never enters a client projection or an Agent request.
+    const QString verificationDirectory = qEnvironmentVariable("QSAN_VERIFICATION_DIR");
+    if (!verificationDirectory.isEmpty()) {
+        const auto exportHistory = [&]() {
+            QDir directory(verificationDirectory);
+            if (!directory.isAbsolute() || !directory.mkpath(QStringLiteral("."))) {
+                qWarning() << "[VERIFICATION_HISTORY_ERROR] invalid output directory";
+                return;
+            }
+            QVariantMap metadata;
+            {
+                QMutexLocker lock(&m_statisticsMutex);
+                metadata = m_statisticsMatch.metadata;
+            }
+            const auto history = m_resolutionHistory.snapshot();
+            const QString roomId = statisticsRootMatchId();
+            const QString generation = QString::number(statisticsGeneration());
+            const QString key = QString::fromLatin1(QCryptographicHash::hash(
+                roomId.toUtf8(), QCryptographicHash::Sha256).toHex());
+            QSaveFile file(directory.filePath(QStringLiteral("history-%1-%2.json").arg(key, generation)));
+            if (!file.open(QIODevice::WriteOnly)) {
+                qWarning() << "[VERIFICATION_HISTORY_ERROR] cannot open artifact";
+                return;
+            }
+            SnapshotJsonWriter writer(file);
+            const bool written = writer.beginObject()
+                && writer.field(QStringLiteral("schema"), 1)
+                && writer.field(QStringLiteral("trace_run_id"), qEnvironmentVariable("QSAN_TRACE_RUN_ID"))
+                && writer.field(QStringLiteral("room_id"), roomId)
+                && writer.field(QStringLiteral("generation"), generation)
+                && writer.field(QStringLiteral("terminal"), metadata.value(QStringLiteral("terminal")).toBool())
+                && writer.field(QStringLiteral("winner"), metadata.value(QStringLiteral("winner")).toString())
+                && writer.key(QStringLiteral("history")) && history.writeJson(writer)
+                && writer.endObject() && writer.finish();
+            if (!written || !file.commit()) {
+                qWarning() << "[VERIFICATION_HISTORY_ERROR] cannot commit artifact";
+                return;
+            }
+            qInfo().noquote() << "[VERIFICATION_HISTORY]" << QString::fromUtf8(QJsonDocument(QJsonObject{
+                {QStringLiteral("schema"), 1}, {QStringLiteral("room_id"), roomId},
+                {QStringLiteral("generation"), generation},
+                {QStringLiteral("complete"), history.isComplete()},
+                {QStringLiteral("path"), file.fileName()}}).toJson(QJsonDocument::Compact));
+        };
+        exportHistory();
+    }
     BattleStatistics::Match match;
     {
         QMutexLocker lock(&m_statisticsMutex);
@@ -1182,6 +1232,7 @@ Room::~Room()
 	thread_xmode = nullptr;
 	thread_1v1 = nullptr;
 	thread_hegemony = nullptr;
+	m_gameSession->finalizeRecording();
 	foreach(ServerPlayer*player, getPlayers())
 		delete player;
 	if (thread != nullptr)
@@ -4487,9 +4538,9 @@ bool Room::hasPendingSummons() const
 }
 
 void Room::requestSummonBetween(ServerPlayer *before, ServerPlayer *after,
-                                const QString &general_name)
+                                const QString &general_name, const QString &role)
 {
-	m_playerLifecycle->requestSummonBetween(before, after, general_name);
+	m_playerLifecycle->requestSummonBetween(before, after, general_name, role);
 }
 
 void Room::processPendingSummons()
@@ -4498,9 +4549,9 @@ void Room::processPendingSummons()
 }
 
 ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
-                                       const QString &general_name)
+                                       const QString &general_name, const QString &role)
 {
-	return m_playerLifecycle->insertPlayerMidGame(before, after, general_name);
+	return m_playerLifecycle->insertPlayerMidGame(before, after, general_name, role);
 }
 
 ServerPlayer*Room::getFront(ServerPlayer*a, ServerPlayer*b) const
@@ -4831,50 +4882,13 @@ void Room::updateCardsChange(const CardsMoveStruct&move)
 
 bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool visible, QList<ServerPlayer*> players)
 {
-	// Notify clients
-	int moveId;
-	if (isLostPhase) moveId = _m_lastMovementId++;
-	else moveId = --_m_lastMovementId;
-	//Q_ASSERT(_m_lastMovementId >= 0);
+	const int moveId = isLostPhase ? _m_lastMovementId++ : --_m_lastMovementId;
 	if (players.isEmpty()) players = getPlayers();
-	// A public move is identical for every recipient; build it once.
-	JsonArray publicArg;
-	if (visible) {
-		publicArg << moveId;
-		for (int i = 0; i < moves.length(); i++){
-			CardsMoveStruct recipientMove = moves[i];
-			recipientMove.open = true;
-			publicArg << recipientMove.toVariant();
-		}
-	}
-	foreach(ServerPlayer*player, players){
-		if (player->isOffline()) continue;
-		if (visible) {
-			doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, publicArg);
-			continue;
-		}
-		JsonArray arg;
-		arg << moveId;
-		for (int i = 0; i < moves.length(); i++){
-			CardsMoveStruct recipientMove = moves[i];
-			recipientMove.open = visible || recipientMove.isRelevant(player);
-			if (!recipientMove.open) {
-				// Keep redaction at the recipient boundary; the shared move retains its real IDs.
-				for (int &cardId : recipientMove.card_ids) {
-					const Card *card = cardId >= 0 ? this->getCard(cardId) : nullptr;
-					const bool visibleSpecialOrigin = card
-						&& (recipientMove.from_place == Player::PlaceSpecial
-							|| recipientMove.from_place == Player::DrawPile)
-						&& card->hasFlag("visible");
-					if (!visibleSpecialOrigin)
-						cardId = Card::S_UNKNOWN_CARD_ID;
-				}
-			}
-			arg << recipientMove.toVariant();
-		}
-		doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, arg);
-	}
-	return true;
+	const auto recipients = m_notifier->resolveRecipients(players);
+	players.clear();
+	for (ServerPlayer *player : recipients)
+		if (!player->isOffline() || player->recordBuffer) players << player;
+	return m_notifier->notifyMoveCards(moveId, isLostPhase, moves, visible, players);
 }
 
 void Room::giveCard(ServerPlayer*from, ServerPlayer*to, const Card*card, const QString&reason, bool visible)

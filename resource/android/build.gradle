@@ -23,6 +23,7 @@ apply plugin: qtGradlePluginType
 def signingProfile = file(System.getenv('QSAN_ANDROID_SIGNING_PROPERTIES') ?:
         new File(System.getProperty('user.home'), '.qsanguosha/android-signing.properties').path)
 def persistentSigning = new Properties()
+def signSideloadRelease = System.getenv('QSAN_ANDROID_SIGN_RELEASE') == '1'
 if (signingProfile.isFile()) {
     signingProfile.withInputStream { persistentSigning.load(it) }
 }
@@ -45,7 +46,7 @@ def verifyPersistentDebugSigning = tasks.register('verifyPersistentDebugSigning'
         }
     }
 }
-tasks.matching { it.name == 'validateSigningDebug' }.configureEach {
+tasks.matching { it.name == 'validateSigningDebug' || (signSideloadRelease && it.name == 'validateSigningRelease') }.configureEach {
     dependsOn verifyPersistentDebugSigning
 }
 
@@ -65,6 +66,11 @@ android {
         }
     }
     namespace = androidPackageName
+    buildTypes {
+        release {
+            if (signSideloadRelease) signingConfig signingConfigs.debug
+        }
+    }
     compileSdkVersion androidCompileSdkVersion
     buildToolsVersion androidBuildToolsVersion
     ndkVersion = androidNdkVersion

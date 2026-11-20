@@ -1002,7 +1002,8 @@ public:
 
     const Card*_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
     void safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
-    void requestSummonBetween(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
+    void requestSummonBetween(ServerPlayer *before, ServerPlayer *after, const QString &general_name,
+                              const QString &role = QString());
     void processPendingSummons();
     bool hasPendingSummons() const;
 
@@ -1328,7 +1329,8 @@ private:
     void processPendingPreshows();
     void notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name);
 
-    ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
+    ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name,
+                                     const QString &role = QString());
 
 private slots:
     void reportDisconnection();

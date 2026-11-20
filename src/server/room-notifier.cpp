@@ -1,5 +1,6 @@
 #include "room-notifier.h"
 
+#include "card.h"
 #include "json.h"
 #include "protocol.h"
 #include "protocol/skill-instance-message.h"
@@ -106,6 +107,47 @@ bool RoomNotifier::doBroadcastNotify(const QList<ServerPlayer *> &players, int c
 bool RoomNotifier::doBroadcastNotify(int command, const QVariant &arg)
 {
     return doBroadcastNotify(m_room.getPlayers(), command, arg);
+}
+
+bool RoomNotifier::notifyMoveCards(int moveId, bool isLostPhase,
+                                   const QList<CardsMoveStruct> &moves, bool visible,
+                                   const QList<ServerPlayer *> &players)
+{
+    const int command = isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD;
+    JsonArray publicArg;
+    if (visible) {
+        publicArg << moveId;
+        for (CardsMoveStruct move : moves) {
+            move.open = true;
+            publicArg << move.toVariant();
+        }
+    }
+    // Room resolves and filters recipients once, before rendering private data.
+    // Forwarding each seat's rendered payload duplicates moves at its controller.
+    for (ServerPlayer *receiver : players) {
+        if (visible) {
+            sendPacket({receiver}, command, publicArg);
+            continue;
+        }
+        JsonArray arg;
+        arg << moveId;
+        for (CardsMoveStruct move : moves) {
+            move.open = move.isRelevant(receiver);
+            if (!move.open) {
+                for (int &cardId : move.card_ids) {
+                    const Card *card = cardId >= 0 ? m_room.getCard(cardId) : nullptr;
+                    const bool visibleSpecialOrigin = card
+                        && (move.from_place == Player::PlaceSpecial || move.from_place == Player::DrawPile)
+                        && card->hasFlag("visible");
+                    if (!visibleSpecialOrigin) cardId = Card::S_UNKNOWN_CARD_ID;
+                }
+            }
+            arg << move.toVariant();
+        }
+        // Already resolved: doNotify would forward the private body again.
+        sendPacket({receiver}, command, arg);
+    }
+    return true;
 }
 
 void RoomNotifier::sendLog(const LogMessage &log, const QList<ServerPlayer *> &players)

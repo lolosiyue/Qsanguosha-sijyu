@@ -12,6 +12,8 @@
 #include "client-live-session.h"
 #include "game-view.h"
 #include "general-info-card.h"
+#include "mainwindow.h"
+#include "home/homecontroller.h"
 #include <QApplication>
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -88,7 +90,7 @@ ControllerRouter::ControllerRouter(ControllerService *service, QObject *parent)
     qRegisterMetaType<ControllerAction>();
     if (qsanBigPictureModeActive())
         InputModeTracker::instance()->setHideCursorInGamepadMode(true);
-    // The SDL timer must return before a widget opens a nested dialog loop.
+    // Platform input must return before a widget opens a nested dialog loop.
     connect(service, &ControllerService::action, this, [this](ControllerAction action, quint64 epoch, bool repeat) {
         const QPointer<QWidget> scope = widgetScope();
         const QPointer<ClientCore> core = ClientInstance ? ClientInstance->interactionCore() : nullptr;
@@ -131,7 +133,8 @@ ControllerRouter::~ControllerRouter()
 
 bool ControllerRouter::isControllerOnlyRun()
 {
-    static const bool controllerOnly = !argument(QStringLiteral("--controller-virtual-input")).isEmpty();
+    static const bool controllerOnly = !argument(QStringLiteral("--controller-virtual-input")).isEmpty()
+        || qApp->arguments().contains(QStringLiteral("--controller-remote-only"));
     return controllerOnly;
 }
 
@@ -151,6 +154,9 @@ bool ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers m
     trace(QStringLiteral("native-key"), {{"key", key}, {"target", target->objectName()}});
     InputModeTracker::SyntheticInputScope synthetic;
     QKeyEvent press(QEvent::KeyPress, key, modifiers);
+    // Only an actual handler may claim this key; QKeyEvent starts accepted.
+    // In particular, an unhandled QML Back must reach home navigation.
+    press.setAccepted(false);
     QApplication::sendEvent(target, &press);
     const bool accepted = press.isAccepted();
     // Modal closure may destroy the recipient; never deliver release to its successor.
@@ -254,14 +260,29 @@ void ControllerRouter::moveFocus(QWidget *scope, ControllerAction action)
 bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
 {
     if (!scope) return false;
-    // Qt native file dialogs hide their control tree. Switching to the widget
-    // implementation is an explicit controller compatibility requirement.
+    // Android's native picker owns SAF grants and its own remote navigation.
+#ifndef Q_OS_ANDROID
     if (auto *file = qobject_cast<QFileDialog *>(scope)) file->setOption(QFileDialog::DontUseNativeDialog);
+#endif
     recoverFocus(scope);
     QWidget *focused = QApplication::focusWidget();
     if (!eligible(focused, scope)) return false;
     if (action == ControllerAction::Recover) return true;
     if (action == ControllerAction::Back) {
+#if QSAN_ENABLE_QML
+        if (m_service->isDirectionalRemote()) {
+            if (auto *window = qobject_cast<MainWindow *>(scope); window && !RoomSceneInstance) {
+                if (auto *home = window->homeSceneController()) {
+                    // QML popups and subpages get the first chance to consume Back.
+                    if (!sendKey(focused, Qt::Key_Escape)) {
+                        if (home->currentPage() != QLatin1String("home")) home->openHome();
+                        else window->close();
+                    }
+                    return true;
+                }
+            }
+        }
+#endif
         if (RoomSceneInstance && scope == RoomSceneInstance->mainWindow()) {
             for (auto *view : scope->findChildren<QGraphicsView *>())
                 if (view->scene() == RoomSceneInstance) { view->setFocus(Qt::OtherFocusReason); return true; }
@@ -287,8 +308,11 @@ bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
     if (action == ControllerAction::Activate || action == ControllerAction::Submit) {
 #if QSAN_ENABLE_QML
         if (const QObject *item = quickFocusItem(focused)) {
-            // Space would type into a QML text field, which has no pad text entry.
-            if (item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit")) return true;
+            // Reuse the same transactional text editor for QWidget and QML fields.
+            if (item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit")) {
+                ControllerTextEntry::edit(const_cast<QObject *>(item), scope);
+                return true;
+            }
             // Space closes an open combo box without taking the highlighted row.
             const QObject *popup = quickComboPopup(item);
             if (popup && popup->property("visible").toBool()) { sendKey(focused, Qt::Key_Return); return true; }
@@ -375,10 +399,20 @@ bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
         // even with only D-pad/South/East. Up/down traverse rows and scroll.
         if (action == ControllerAction::Left || action == ControllerAction::Right) moveFocus(scope, action);
         else sendKey(focused, key);
+    } else if (m_service->isDirectionalRemote() && qobject_cast<QComboBox *>(focused)) {
+        // OK opens the picker. A closed combo must not trap all four arrows.
+        moveFocus(scope, action);
+    } else if (m_service->isDirectionalRemote()
+               && (qobject_cast<QAbstractSpinBox *>(focused) || qobject_cast<QAbstractSpinBox *>(focused->parentWidget()))
+               && (action == ControllerAction::Left || action == ControllerAction::Right)) {
+        moveFocus(scope, action);
     } else if (qobject_cast<QComboBox *>(focused) || qobject_cast<QAbstractSpinBox *>(focused)
                || qobject_cast<QAbstractSpinBox *>(focused->parentWidget())
                || qobject_cast<QMenu *>(scope)) sendKey(focused, key);
     else if (auto *text = qobject_cast<QPlainTextEdit *>(focused); text && text->isReadOnly()) {
+        if (action == ControllerAction::Up || action == ControllerAction::Down) sendKey(text, key);
+        else moveFocus(scope, action);
+    } else if (auto *text = qobject_cast<QTextEdit *>(focused); text && text->isReadOnly()) {
         if (action == ControllerAction::Up || action == ControllerAction::Down) sendKey(text, key);
         else moveFocus(scope, action);
     } else moveFocus(scope, action);
@@ -435,6 +469,14 @@ void ControllerRouter::dispatch(ControllerAction action, quint64 epoch, bool rep
                 if (room) room->handleNativeKey(&release);
             }
         }
+        if (!handled && m_service->isDirectionalRemote()
+            && (!ClientInstance || !ClientInstance->interactionCore()->hasActiveRequest())
+            && (action == ControllerAction::Up || action == ControllerAction::Activate || action == ControllerAction::Back)) {
+            // The waiting room has no draft, but its menu must remain reachable
+            // without a Start/Menu button (fill seats, start, leave the room).
+            room->showControllerMenu();
+            handled = true;
+        }
         if (room) focus = presentation->controllerFocus();
     } else handled = routeWidget(scope, action);
     QWidget *focused = QApplication::focusWidget();
@@ -456,6 +498,7 @@ bool ControllerRouter::eventFilter(QObject *, QEvent *event)
         && (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease
             || event->type() == QEvent::Wheel || event->type() == QEvent::TouchBegin
             || event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease)) {
+        if (m_service->acceptsNativeKeyEvent(event)) return false;
         trace("forbidden-input", {{"event_type", int(event->type())}});
         qApp->exit(3); return true;
     }
@@ -523,6 +566,17 @@ void ControllerRouter::observe()
     observation.insert("title", scope ? scope->windowTitle() : QString());
     QWidget *focus = QApplication::focusWidget();
     observation.insert("focus", focus ? focus->objectName() : QString());
+#if QSAN_ENABLE_QML
+    if (const QObject *item = quickFocusItem(focus)) {
+        observation.insert("quick_focus", item->objectName());
+        observation.insert("quick_focus_type", item->metaObject()->className());
+        // Text values (including passwords) are never recorded by this observer.
+        if (!item->inherits("QQuickTextInput") && !item->inherits("QQuickTextEdit"))
+            observation.insert("quick_focus_label", item->property("text").toString());
+    }
+    if (const auto *window = qobject_cast<MainWindow *>(scope); window && window->homeSceneController())
+        observation.insert("home_page", window->homeSceneController()->currentPage());
+#endif
     QJsonArray controls;
     if (scope) for (QWidget *widget : scope->findChildren<QWidget *>()) {
         if (!eligible(widget, scope)) continue;
@@ -530,6 +584,8 @@ void ControllerRouter::observe()
         if (auto *button = qobject_cast<QAbstractButton *>(widget)) label = button->text();
         QJsonObject entry{{"id", widget->objectName()}, {"class", widget->metaObject()->className()},
             {"label", label}, {"focused", widget == focus}};
+        const QPoint center = widget->mapTo(scope, widget->rect().center());
+        entry.insert("x", center.x()); entry.insert("y", center.y());
         if (auto *list = qobject_cast<QListWidget *>(widget)) {
             QJsonArray rows;
             for (int i = 0; i < list->count(); ++i) rows.append(QJsonObject{{"label", list->item(i)->text()},

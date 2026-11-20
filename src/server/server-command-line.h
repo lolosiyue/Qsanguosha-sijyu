@@ -11,6 +11,7 @@ struct ServerCommandLineOptions
     bool helpRequested = false;
     bool versionRequested = false;
     bool listGameModes = false;
+    bool acceptanceCatalog = false;
     bool printConfig = false;
     bool checkConfig = false;
     bool jsonOutput = false;
@@ -25,6 +26,7 @@ struct ServerCommandLineOptions
     std::optional<QString> serverName;
     std::optional<QString> forceGeneral;
     std::optional<QString> autotestLog;
+    std::optional<QString> recordDirectory;
     std::optional<QString> configFile;
     std::optional<QString> logLevel;
     std::optional<QString> logFile;
