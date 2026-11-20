@@ -50,7 +50,11 @@ public:
 
 class HGuicai : public TriggerSkillV2 {
 public:
-    HGuicai() : TriggerSkillV2("heg_guicai") { events << AskForRetrial; }
+    HGuicai() : TriggerSkillV2("heg_guicai")
+    {
+        addFamily("guicai");
+        events << AskForRetrial;
+    }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override {
         JudgeStruct *judge = data.value<JudgeStruct *>();

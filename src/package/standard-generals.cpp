@@ -1080,6 +1080,7 @@ class Guicai : public TriggerSkillV2
 public:
     Guicai() : TriggerSkillV2("guicai")
     {
+        addFamily("guicai");
         events << AskForRetrial;
     }
 
@@ -4973,6 +4974,7 @@ class NosGuicai : public TriggerSkillV2
 public:
     NosGuicai() : TriggerSkillV2("nosguicai")
     {
+        addFamily("guicai");
         events << AskForRetrial;
     }
 
