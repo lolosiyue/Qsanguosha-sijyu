@@ -2140,13 +2140,17 @@ class GodEdictSkill : public TreasureSkillV2
 {
 public:
     GodEdictSkill() : TreasureSkillV2("god_edict", "god_edict") { events << CardsMoveOneTime; global = true; }
-    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *eventPlayer, QVariant &data) const override
     {
         TriggerList result;
         const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (move.reason.m_skillName == objectName()) return result;
         ServerPlayer *current = room->getCurrent();
         if (room->getTag("FirstRound").toBool() || !move.to || move.card_ids.isEmpty() || !current
             || current->getPhase() == Player::NotActive || move.to == current || move.to_place != Player::PlaceHand) return result;
+        // A dead recipient is absent from the move dispatch, so use the first living seat.
+        const Player *dispatchPlayer = move.to->isAlive() ? move.to : room->getAllPlayers().value(0);
+        if (!eventPlayer || eventPlayer != dispatchPlayer) return result;
         const qint64 eventId = room->historyParent(room->currentHistoryEventId(), "move_cards", true).value("id").toLongLong();
         if (!eventId) return result;
         QVariantMap filter{{"turn_id", room->historyScopes().value("turn_id")}, {"to", move.to->objectName()}, {"limit", 128}};
