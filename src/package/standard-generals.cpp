@@ -700,6 +700,7 @@ class Tuxi : public TriggerSkillV2
 public:
     Tuxi() : TriggerSkillV2("tuxi")
     {
+        addFamily("tuxi");
         events << DrawNCards;
         view_as_skill = new TuxiViewAsSkill;
     }
@@ -5106,6 +5107,7 @@ class NosTuxi : public TriggerSkillV2
 public:
     NosTuxi() : TriggerSkillV2("nostuxi")
     {
+        addFamily("tuxi");
         events << EventPhaseStart;
     }
 
