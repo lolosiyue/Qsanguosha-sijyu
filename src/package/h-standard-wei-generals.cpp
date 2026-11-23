@@ -532,6 +532,10 @@ public:
             judge.who = zhenji;
             judge.time_consuming = true;
             do {
+                // Each repeat is a fresh judgement. StartJudge only draws a card when the
+                // struct carries none, so the previous result must be cleared or the loop
+                // keeps re-judging the same card.
+                judge.card = nullptr;
                 room->judge(judge);
                 if (judge.isGood() && judge.card) {
                     const int id = judge.card->getEffectiveId();

@@ -1,0 +1,61 @@
+{
+  "hegemony": true,
+  "seats": [
+    {
+      "general": "heg_zhouyu",
+      "hidden": true,
+      "hand": [
+        "jink/heart/2"
+      ]
+    },
+    {
+      "general": "heg_xuchu",
+      "hp": 4
+    }
+  ],
+  "script": [
+    {
+      "seat": 2,
+      "type": "skill_invoke",
+      "key": "fanjian_discard",
+      "answer": false
+    }
+  ],
+  "trigger": "local p = P[1]\nlocal skill = assert(sgs.Sanguosha:getViewAsSkill('fanjian'))\nassert(not skill:canPreshow() and not sgs.Sanguosha:getTriggerSkill('fanjian'), 'expected a ViewAs skill without preshow')\nassert(p:hasInnateSkill(skill) and p:inHeadSkills('fanjian') and not p:hasAcquiredSkill('fanjian'), 'expected innate head Fanjian')\nassert(not p:hasShownOneGeneral() and not p:hasShownSkill(skill), 'expected concealed head and skill')\nlocal c = skillcard('FanjianCard', 'fanjian', p, {'jink/heart/2'})\nlocal id = p:getSkillInstanceId('fanjian')\nassert(id > 0, 'missing Fanjian instance')\nc:setActivationSkill('fanjian', id)\nc:setSourceSkill('fanjian', id)\nactivate(c, p, {P[2]})",
+  "expect": {
+    "winner": ".",
+    "invoked": [
+      {
+        "seat": 1,
+        "skill": "fanjian"
+      }
+    ],
+    "seats": {
+      "1": {
+        "general": "heg_zhouyu",
+        "general_showed_before": false,
+        "general_showed": true,
+        "general2_showed": false,
+        "has_shown_one_general": true,
+        "hand": [],
+        "general2_showed_before": false
+      },
+      "2": {
+        "hp": 3,
+        "hand": [
+          "jink/heart/2"
+        ]
+      }
+    },
+    "moves": [
+      {
+        "card": "jink/heart/2",
+        "from": 1,
+        "to": 2,
+        "from_place": "hand",
+        "to_place": "hand",
+        "skill": "fanjian"
+      }
+    ]
+  }
+}

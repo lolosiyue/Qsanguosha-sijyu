@@ -1,0 +1,61 @@
+{
+  "hegemony": true,
+  "seats": [
+    {
+      "general": "heg_xiahoudun",
+      "hidden": true,
+      "hand": [
+        "jink/heart/2"
+      ]
+    },
+    {
+      "general": "heg_xuchu",
+      "hp": 4
+    }
+  ],
+  "script": [
+    {
+      "seat": 2,
+      "type": "skill_invoke",
+      "key": "fanjian_discard",
+      "answer": false
+    }
+  ],
+  "trigger": "local p = P[1]\nassert(not p:hasSkill('fanjian', true), 'expected no existing Fanjian')\nlocal acquired = room:acquireSkill(p, 'fanjian')\nassert(acquired > 0 and p:hasAcquiredSkill('fanjian'), 'expected acquired Fanjian')\nassert(not p:hasInnateSkill('fanjian') and not p:hasShownOneGeneral(), 'expected concealed acquired Fanjian')\nlocal c = skillcard('FanjianCard', 'fanjian', p, {'jink/heart/2'})\nlocal id = p:getSkillInstanceId('fanjian')\nassert(id == acquired, 'Fanjian instance differs from acquired source')\nc:setActivationSkill('fanjian', id)\nc:setSourceSkill('fanjian', id)\nactivate(c, p, {P[2]})",
+  "expect": {
+    "winner": ".",
+    "invoked": [
+      {
+        "seat": 1,
+        "skill": "fanjian"
+      }
+    ],
+    "seats": {
+      "1": {
+        "general": "anjiang",
+        "general_showed_before": false,
+        "general_showed": false,
+        "general2_showed": false,
+        "has_shown_one_general": false,
+        "hand": [],
+        "general2_showed_before": false
+      },
+      "2": {
+        "hp": 3,
+        "hand": [
+          "jink/heart/2"
+        ]
+      }
+    },
+    "moves": [
+      {
+        "card": "jink/heart/2",
+        "from": 1,
+        "to": 2,
+        "from_place": "hand",
+        "to_place": "hand",
+        "skill": "fanjian"
+      }
+    ]
+  }
+}
