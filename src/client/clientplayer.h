@@ -56,6 +56,7 @@ public:
     void removeCard(int id, Place place);
     void addCard(int id, Place place);
     void addKnownHandCard(const Card *card);
+    void setLinkedHandCard(int id, bool shown);
     bool isLastHandCard(const Card *card, bool contain = false) const override;
     int getMaxCards() const override;
     const PlayerUIState &uiState() const;
@@ -69,6 +70,7 @@ private:
     bool useExactHandInfo() const;
     int handcard_num; // Movement count, including cards whose identity is hidden.
     ClientCardMemory::Hand m_cardMemory;
+    QList<int> m_linkedHandCards;
     QList<int> hand_ids;
     QTextDocument *mark_doc;
     PlayerUIState m_uiState;

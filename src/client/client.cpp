@@ -416,6 +416,8 @@ void Client::updateCard(const QVariant &val)
 		WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
 		if (wrapped && wrapped->isModified())*/
 			_m_roomState.resetCard(cardId);
+        for (const ClientPlayer *player : m_players)
+            const_cast<ClientPlayer *>(player)->setLinkedHandCard(cardId, false);
 	} else {
 		// update card
 		int cardId = wire.value(QStringLiteral("card_id")).toInt();
@@ -435,6 +437,9 @@ void Client::updateCard(const QVariant &val)
 		WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
 		//Q_ASSERT(wrapped != nullptr);
 		wrapped->copyEverythingFrom(card);
+        if (!wrapped->isLinkedCard() || !wrapped->hasFlag(QStringLiteral("visible")))
+            for (const ClientPlayer *player : m_players)
+                const_cast<ClientPlayer *>(player)->setLinkedHandCard(cardId, false);
 	}
 }
 
@@ -2676,16 +2681,25 @@ void Client::setCardFlag(const QVariant &pattern_str)
 	if (card != nullptr){
 		QString flag = pattern.value(QStringLiteral("flag")).toString();
 		card->setFlags(flag);
+        if (pattern.contains(QStringLiteral("linked_hand"))) {
+            const bool shown = pattern.value(QStringLiteral("linked_hand")).toBool();
+            const bool tip = pattern.value(QStringLiteral("linked_tip")).toBool();
+            card->setFlags(shown ? QStringLiteral("visible") : QStringLiteral("-visible"));
+            card->setFlags(tip ? QStringLiteral("cardTip:link_card") : QStringLiteral("-cardTip:link_card"));
+            if (ClientPlayer *owner = getPlayer(pattern.value(QStringLiteral("player_name")).toString()))
+                owner->setLinkedHandCard(id, shown);
+            emit card_tip();
+            return;
+        }
+        if (flag == QLatin1String(".") || flag == QLatin1String("-visible") || flag == QLatin1String("-link_card"))
+            for (const ClientPlayer *player : m_players)
+                const_cast<ClientPlayer *>(player)->setLinkedHandCard(id, false);
 		if(flag.contains("-cardTip:")){
 			emit card_tip();
 		}else if(flag.endsWith("visible")){
-			if(flag.startsWith("-")){
-				QList<const Card *> cards;
-				foreach (const Card *kc, Self->getKnownCards()) {
-					if(kc->getId()!=id) cards << kc;
-				}
-				Self->setKnownCards(cards);
-			}else
+			if(flag.startsWith("-"))
+				Self->forgetKnownCard(id);
+			else
 				Self->addKnownHandCard(card);
 		}
 	}

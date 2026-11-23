@@ -340,6 +340,25 @@ void setVisibleCards(ClientGameState *state, const QString &player,
     }
 }
 
+void setLinkedHandCard(ClientGameState *state, int cardId, const QString &player, bool shown)
+{
+    const QString ownerKey = QStringLiteral("linked_hand_owner");
+    const QString cardsKey = QStringLiteral("linked_hand_cards");
+    const QString previous = state->card(cardId).value(ownerKey).toString();
+    if (!previous.isEmpty() && (!shown || previous != player)) {
+        QList<int> ids = integers(state->playerValue(previous, cardsKey));
+        ids.removeAll(cardId);
+        state->setPlayerValue(previous, cardsKey, variants(ids));
+    }
+    if (shown && !player.isEmpty()) {
+        QList<int> ids = integers(state->playerValue(player, cardsKey));
+        if (!ids.contains(cardId)) ids << cardId;
+        state->setPlayerValue(player, cardsKey, variants(ids));
+    }
+    if (shown || !previous.isEmpty())
+        state->setCardValue(cardId, ownerKey, shown ? player : QString());
+}
+
 } // namespace
 
 ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
@@ -712,8 +731,13 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
     case S_COMMAND_UPDATE_CARD: {
         const int cardId = object.value(QStringLiteral("card_id")).toInt();
         if (object.value(QStringLiteral("action")).toString() == QLatin1String("reset")) {
+            setLinkedHandCard(state, cardId, QString(), false);
+            state->setCardValue(cardId, QStringLiteral("flags"), QStringList());
             state->setCardValue(cardId, QStringLiteral("modified"), false);
         } else {
+            const QStringList flags = object.value(QStringLiteral("flags")).toStringList();
+            if (!flags.contains(QStringLiteral("link_card")) || !flags.contains(QStringLiteral("visible")))
+                setLinkedHandCard(state, cardId, QString(), false);
             for (auto it = object.constBegin(); it != object.constEnd(); ++it)
                 state->setCardValue(cardId, it.key(), it.value());
             state->setCardValue(cardId, QStringLiteral("modified"), true);
@@ -745,6 +769,7 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         // response is resolved. Appending it would leave visible and cardTip:
         // flags on the card for the rest of the game.
         if (flag == QLatin1String(".")) {
+            setLinkedHandCard(state, cardId, QString(), false);
             state->setCardValue(cardId, QStringLiteral("flags"), QStringList());
             // A card's marks are flags in the engine ("cardMark:<name>:<value>",
             // card.cpp:942), so clearing the flags clears them too. They are a
@@ -754,6 +779,15 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         }
         appendOrRemove(&flags, flag.startsWith(QLatin1Char('-')) ? flag.mid(1) : flag,
                        !flag.startsWith(QLatin1Char('-')));
+        if (object.contains(QStringLiteral("linked_hand"))) {
+            const bool shown = object.value(QStringLiteral("linked_hand")).toBool();
+            const bool tip = object.value(QStringLiteral("linked_tip")).toBool();
+            appendOrRemove(&flags, QStringLiteral("visible"), shown);
+            appendOrRemove(&flags, QStringLiteral("cardTip:link_card"), tip);
+            setLinkedHandCard(state, cardId, resolvePlayerName(state, object.value(QStringLiteral("player_name"))), shown);
+        } else if (flag == QLatin1String("-visible") || flag == QLatin1String("-link_card")) {
+            setLinkedHandCard(state, cardId, QString(), false);
+        }
         state->setCardValue(cardId, QStringLiteral("flags"), flags);
         break;
     }

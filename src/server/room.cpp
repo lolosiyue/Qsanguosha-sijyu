@@ -2909,6 +2909,45 @@ void Room::setCardTip(int card_id, const QString&tip)
 	m_cardState->setCardTip(card_id, tip);
 }
 
+bool Room::setCardLinked(int card_id, bool linked)
+{
+    Card *card = card_id >= 0 ? getCard(card_id) : nullptr;
+    if (!card || card->isVirtualCard()) return false;
+    const Player::Place place = getCardPlace(card_id);
+    ServerPlayer *owner = place == Player::PlaceHand ? getCardOwner(card_id) : nullptr;
+    if (linked && !owner) return false;
+    if (card->isLinkedCard() == linked) return true;
+    const bool wasVisible = card->hasFlag(QStringLiteral("visible"));
+    m_cardState->setCardLinked(card, linked);
+    if (owner)
+        notifyLinkedHandCard(owner, card_id, linked, linked || wasVisible ? nullptr : owner);
+    else if (place == Player::PlaceEquip || place == Player::PlaceDelayedTrick
+             || place == Player::PlaceTable || place == Player::DiscardPile)
+        notifyLinkedHandCard(nullptr, card_id, false);
+    roomRuntime()->advanceStateRevision(RoomRuntime::CardIdentityChanged);
+    return true;
+}
+
+bool Room::toggleCardLinked(int card_id)
+{
+    const Card *card = card_id >= 0 ? getCard(card_id) : nullptr;
+    return card && setCardLinked(card_id, !card->isLinkedCard());
+}
+
+void Room::notifyLinkedHandCard(const ServerPlayer *owner, int cardId, bool visible,
+                                ServerPlayer *receiver)
+{
+    const Card *card = getCard(cardId);
+    if (visible) {
+        const auto *wrapped = qobject_cast<const WrappedCard *>(card);
+        if (wrapped && wrapped->isModified()) {
+            if (receiver) notifyUpdateCard(receiver, cardId, wrapped);
+            else broadcastUpdateCard(getPlayers(), cardId, wrapped);
+        }
+    }
+    m_cardState->notifyLinkedHandCard(owner, card, visible, receiver);
+}
+
 void Room::clearCardTip(int card_id)
 {
 	m_cardState->clearCardTip(card_id);

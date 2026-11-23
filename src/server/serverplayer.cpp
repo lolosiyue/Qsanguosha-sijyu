@@ -1922,6 +1922,14 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 		room->notifyMoveCards(false, moves, false, players);
 	}
 
+    for (int id : handCards()) {
+        const Card *card = room->getCard(id);
+        if (!card || !card->isLinkedCard()) continue;
+        const bool publicHandCard = card->hasFlag(QStringLiteral("visible"));
+        if (publicHandCard || player == this || room->getActualController(const_cast<ServerPlayer *>(this)) == player)
+            room->notifyLinkedHandCard(this, id, publicHandCard, player);
+    }
+
 	foreach (QString mark_name, marks.keys()) {
 		if (mark_name.startsWith("@") || mark_name.startsWith("&")) {
             if (Config.EnableHegemony && player != this) {

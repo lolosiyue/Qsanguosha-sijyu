@@ -1494,8 +1494,11 @@ void RoomThread::run()
 		lua_gc(room->getLuaState(), LUA_GCGEN, 0, 0);
 	}
 
-	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())
+	const bool legacyLinkedCards = Sanguosha->getTriggerSkill(QStringLiteral("#shixinrumo_global")) != nullptr;
+	for (const TriggerSkill *triggerSkill : Sanguosha->getGlobalTriggerSkills()) {
+		if (legacyLinkedCards && triggerSkill->objectName() == QLatin1String("#linked-card-rule")) continue;
 		addTriggerSkill(triggerSkill);
+	}
 
 	static QList<const EquipCard*> equips = Sanguosha->findChildren<const EquipCard*>();
 	foreach (const EquipCard*e, equips) {

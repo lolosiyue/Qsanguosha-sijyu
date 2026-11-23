@@ -705,6 +705,12 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
         addZone("tui_player_zone_equip", equipText, 1024);
         addZone("tui_player_zone_judge", judgeText, 1024);
         addZone("tui_player_zone_piles", pileSummary, 512);
+        QStringList linkedHand;
+        for (const QVariant &id : player.value(QStringLiteral("linked_hand_cards")).toList())
+            linkedHand << cardText(state, id.toInt());
+        if (!linkedHand.isEmpty())
+            zones << QStringLiteral("%1 [%2]").arg(nameText(QStringLiteral("link_card")),
+                                                   sanitize(linkedHand.join(separator), 512));
         addZone("tui_player_zone_marks", marks, 512);
         addZone("tui_player_zone_states", states, 512);
         if (!zones.isEmpty())

@@ -1515,6 +1515,7 @@ public:
 	void setSingleTargetCard(bool flag);
 
 	bool isVirtualCard(bool include_filter = false) const;
+	bool isLinkedCard() const;
 	virtual bool match(const char*pattern) const;
 
 	void addSubcard(int card_id);
@@ -2490,6 +2491,8 @@ public:
 	void clearCardFlag(const Card*card, ServerPlayer*who = nullptr);
 	void clearCardFlag(int card_id, ServerPlayer*who = nullptr);
 	void setCardTip(int card_id, const char*tip);
+	bool setCardLinked(int card_id, bool linked);
+	bool toggleCardLinked(int card_id);
 	void clearCardTip(int card_id);
 	bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
 	                             const QList<int> &materialIds = QList<int>());

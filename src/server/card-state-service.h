@@ -26,6 +26,9 @@ public:
 
 	void setCardTip(int cardId, const QString &tip);
 	void clearCardTip(int cardId);
+    void setCardLinked(Card *card, bool linked);
+    void notifyLinkedHandCard(const ServerPlayer *owner, const Card *card, bool visible,
+                              ServerPlayer *receiver);
 
 private:
 	RoomNotifier &m_notifier;

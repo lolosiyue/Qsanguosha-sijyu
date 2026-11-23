@@ -9,6 +9,8 @@ class Room;
 class ServerPlayer;
 class Card;
 
+const Skill *createLinkedCardRule(QObject *parent);
+
 bool tryLuaGameModeReward(Room *room, ServerPlayer *killer, ServerPlayer *victim);
 bool tryLuaGameModeGetWinner(Room *room, ServerPlayer *victim, QString *winner);
 

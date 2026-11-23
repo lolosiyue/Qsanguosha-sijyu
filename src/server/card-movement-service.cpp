@@ -1436,6 +1436,15 @@ QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMo
                 equipmentSourcesBefore.insert(id, {move.from->objectName(), card->objectName()});
         }
     }
+    for (const CardsMoveStruct &move : cardsMoves) {
+        if (!move.from || move.from_place != Player::PlaceHand) continue;
+        for (int id : move.card_ids) {
+            const Card *card = m_room.getCard(id);
+            if (card && card->isLinkedCard() && card->hasFlag(QStringLiteral("visible"))
+                && getCardOwner(id) == move.from && getCardPlace(id) == Player::PlaceHand)
+                m_room.notifyLinkedHandCard(static_cast<const ServerPlayer *>(move.from), id, false);
+        }
+    }
     if (notify) notifyCanonicalMoves(m_room, true, cardsMoves, visible);
     foreach (CardsMoveStruct move, cardsMoves) {
         foreach (int id, move.card_ids) {
@@ -1479,6 +1488,13 @@ QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMo
                     appendMoveHistoryFacts(m_room, historyGuard,
                                            QList<CardsMoveStruct>() << factMove, cardsBefore);
                 });
+                const Card *card = m_room.getCard(id);
+                if (move.to_place == Player::PlaceHand && card && card->isLinkedCard()
+                    && getCardOwner(id) == move.to && getCardPlace(id) == Player::PlaceHand) {
+                    auto *owner = static_cast<ServerPlayer *>(move.to);
+                    const bool publicHandCard = card->hasFlag(QStringLiteral("visible"));
+                    m_room.notifyLinkedHandCard(owner, id, publicHandCard, publicHandCard ? nullptr : owner);
+                }
             }
             switch (move.to_place) {
             case Player::DiscardPile:

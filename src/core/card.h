@@ -150,6 +150,7 @@ public:
         flags = fs;
     }
     bool hasFlag(const QString &flag) const;
+    bool isLinkedCard() const;
     virtual void clearFlags() const;
     virtual QStringList getTips(bool split = true) const;
     bool hasTip(const QString &tip, bool split = true) const;

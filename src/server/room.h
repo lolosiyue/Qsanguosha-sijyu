@@ -92,6 +92,7 @@ public:
     friend class SkillRuntimeCoordinator;
     friend class RequestCoordinator;
     friend class CardMovementService;
+    friend class LinkedCardRule;
     friend class PlayerStateService;
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
@@ -392,6 +393,8 @@ public:
     void clearCardFlag(const Card*card, ServerPlayer*who = nullptr);
     void clearCardFlag(int card_id, ServerPlayer*who = nullptr);
     void setCardTip(int card_id, const QString&tip);
+    bool setCardLinked(int card_id, bool linked);
+    bool toggleCardLinked(int card_id);
     void clearCardTip(int card_id);
     bool setYingBianEffectsForCard(ServerPlayer *player, const Card *card,
                                  const QList<int> &materialIds = QList<int>());
@@ -1179,6 +1182,9 @@ private:
     std::unique_ptr<CardMovementService> m_cardMovement;
     std::unique_ptr<PlayerStateService> m_playerState;
     std::unique_ptr<CardStateService> m_cardState;
+    bool m_resolvingLinkedCards = false;
+    void notifyLinkedHandCard(const ServerPlayer *owner, int cardId, bool visible,
+                              ServerPlayer *receiver = nullptr);
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
     std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;

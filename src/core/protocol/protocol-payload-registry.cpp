@@ -305,6 +305,11 @@ bool validateConditionalSchema(const QString &schema, const QVariantMap &object,
         return validateField(object, field, shape, schema, error);
     };
 
+    if (schema == QLatin1String("CardFlagPayload") && object.contains(QStringLiteral("linked_hand")))
+        return require(QStringLiteral("player_name"), FieldShape::String)
+            && require(QStringLiteral("linked_hand"), FieldShape::Boolean)
+            && require(QStringLiteral("linked_tip"), FieldShape::Boolean);
+
     if (schema == QLatin1String("UpdateCardPayload")) {
         const QString action = object.value(QStringLiteral("action")).toString();
         if (action == QLatin1String("reset"))
@@ -494,6 +499,8 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
         {QStringLiteral("set"), FieldShape::Boolean},
         {QStringLiteral("enabled"), FieldShape::Boolean},
         {QStringLiteral("loop"), FieldShape::Boolean},
+        {QStringLiteral("linked_hand"), FieldShape::Boolean},
+        {QStringLiteral("linked_tip"), FieldShape::Boolean},
         {QStringLiteral("move_cards"), FieldShape::Boolean},
         {QStringLiteral("add"), FieldShape::Boolean},
         {QStringLiteral("up_only"), FieldShape::Boolean},
