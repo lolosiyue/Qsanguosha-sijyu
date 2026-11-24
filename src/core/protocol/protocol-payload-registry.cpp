@@ -401,6 +401,8 @@ bool validateConditionalSchema(const QString &schema, const QVariantMap &object,
     }
     if (schema == QLatin1String("StateItemPayload"))
         return require(QStringLiteral("state"), FieldShape::String);
+    if (schema == QLatin1String("EquipAreaOccupancyPayload"))
+        return require(QStringLiteral("areas"), FieldShape::ObjectList);
     if (schema == QLatin1String("CardMovementPayload"))
         return validateCardMovementPayload(object, error);
     if (schema == QLatin1String("GameEventPayload"))
@@ -1223,6 +1225,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     ROOM_NOTIFICATION(S_COMMAND_ANIMATE, "Client::animate", "AnimationPayload");
     ROOM_NOTIFICATION(S_COMMAND_FIXED_DISTANCE, "Client::setFixedDistance", "FixedDistancePayload");
     ROOM_NOTIFICATION(S_COMMAND_ATTACK_RANGE, "Client::setAttackRangePair", "AttackRangePayload");
+    ROOM_NOTIFICATION(S_COMMAND_EQUIP_AREA_OCCUPANCY, "Client::updateEquipAreaOccupancy", "EquipAreaOccupancyPayload");
     ROOM_NOTIFICATION(S_COMMAND_CARD_LIMITATION, "Client::cardLimitation", "CardLimitationPayload");
     ROOM_NOTIFICATION(S_COMMAND_NULLIFICATION_ASKED, "Client::setNullification", "NullificationStatePayload");
     ROOM_NOTIFICATION(S_COMMAND_ENABLE_SURRENDER, "Client::enableSurrender", "SurrenderEnabledPayload");
@@ -1425,6 +1428,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("AnimationPayload"), {QStringLiteral("animation"), QStringLiteral("first_argument"), QStringLiteral("second_argument")}},
         {QStringLiteral("FixedDistancePayload"), {QStringLiteral("from_player"), QStringLiteral("to_player"), QStringLiteral("distance"), QStringLiteral("set")}},
         {QStringLiteral("AttackRangePayload"), {QStringLiteral("from_player"), QStringLiteral("to_player"), QStringLiteral("set")}},
+        {QStringLiteral("EquipAreaOccupancyPayload"), {QStringLiteral("areas")}},
         {QStringLiteral("CardLimitationPayload"), {QStringLiteral("action")}},
         {QStringLiteral("NullificationStatePayload"), {QStringLiteral("trick_name")}},
         {QStringLiteral("SurrenderEnabledPayload"), {QStringLiteral("enabled")}},

@@ -1974,25 +1974,27 @@ bool EquipSkillV2::prepareSource(Room *room, SkillContext &ctx) const
             for (int i = 0; i < move.card_ids.size(); ++i) {
                 const int id = move.card_ids.at(i);
                 if (id < 0) continue;
-                QPair<QString, QString> original = move.equipmentSourceBefore(id);
+                EquipmentMoveSource original = move.equipmentSourceBefore(id);
                 if (ctx.current_event == BeforeCardsMove && move.from == ctx.owner
                     && move.from_places.value(i, Player::PlaceUnknown) == Player::PlaceEquip
                     && room->getCardOwner(id) == ctx.owner && room->getCardPlace(id) == Player::PlaceEquip) {
                     const Card *card = Sanguosha->getCard(id);
-                    if (card && card->getTypeId() == Card::TypeEquip)
-                        original = {ctx.owner->objectName(), card->objectName()};
+                    const Player *beneficiary = room->getEquipAreaBeneficiary(move.from);
+                    if (card && card->getTypeId() == Card::TypeEquip && beneficiary)
+                        original = {move.from->objectName(), card->objectName(), beneficiary->objectName()};
                 }
-                if (original.first != ctx.owner->objectName() || original.second != m_equipmentName) continue;
-                ctx.physicalEquipSource = PhysicalEquipSource(original.first, original.second, objectName(), id);
+                if (original.beneficiary != ctx.owner->objectName() || original.equipment != m_equipmentName) continue;
+                ctx.physicalEquipSource = PhysicalEquipSource(original.holder, original.equipment, objectName(), id);
                 break;
             }
         }
         return true;
     }
     if (!static_cast<const TriggerSkill *>(this)->triggerable(ctx.owner)) return false;
-    for (const Card *equip : ctx.owner->getEquips()) {
-        if (equip->objectName() != m_equipmentName || equip->getEffectiveId() < 0) continue;
-        ctx.physicalEquipSource = PhysicalEquipSource(ctx.owner->objectName(), m_equipmentName, objectName(), equip->getEffectiveId());
+    const EffectiveEquip equip = ctx.owner->getEffectiveEquip(m_equipmentName);
+    if (equip.cardId >= 0) {
+        ctx.physicalEquipSource = PhysicalEquipSource(equip.areaOwner->objectName(), m_equipmentName,
+                                                       objectName(), equip.cardId);
         return true;
     }
     for (const SkillInstanceRef &source : ctx.owner->viewAsEquipSources(m_equipmentName)) {

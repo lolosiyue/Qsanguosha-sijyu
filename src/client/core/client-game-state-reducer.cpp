@@ -409,6 +409,7 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_ADD_HISTORY:
     case S_COMMAND_FIXED_DISTANCE:
     case S_COMMAND_ATTACK_RANGE:
+    case S_COMMAND_EQUIP_AREA_OCCUPANCY:
     case S_COMMAND_CARD_LIMITATION:
     case S_COMMAND_NULLIFICATION_ASKED:
     case S_COMMAND_ENABLE_SURRENDER:
@@ -926,6 +927,10 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         state->setPlayerValue(from, QStringLiteral("attack_range_pairs"), pairs);
         break;
     }
+    case S_COMMAND_EQUIP_AREA_OCCUPANCY:
+        // The whole public table, replacing the previous one.
+        state->setGameValue(QStringLiteral("equip_area_occupancy"), object.value(QStringLiteral("areas")));
+        break;
     case S_COMMAND_CARD_LIMITATION: {
         const QString player = state->selfName();
         QVariantList limitations = state->playerValue(

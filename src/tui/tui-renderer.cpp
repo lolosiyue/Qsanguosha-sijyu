@@ -600,6 +600,41 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
     return lines.join(QLatin1Char('\n'));
 }
 
+QString TuiRenderer::equipmentOccupancyText(const ClientGameState &state, const QString &name,
+                                             const Resolvers &resolvers)
+{
+    const auto label = [&](const QString &seat) {
+        const QString general = state.playerValue(seat, QStringLiteral("general")).toString();
+        if (!general.isEmpty())
+            return sanitize(resolvers.name ? resolvers.name(general) : general, 128);
+        const QString player = resolvers.player ? resolvers.player(seat) : QString();
+        return sanitize(player.isEmpty() ? seat : player, 128);
+    };
+    QString occupierLabel;
+    QStringList borrowed;
+    for (const QVariant &value : state.gameValue(QStringLiteral("equip_area_occupancy")).toList()) {
+        const QVariantMap area = value.toMap();
+        const QString owner = area.value(QStringLiteral("area_owner")).toString();
+        const QString occupier = area.value(QStringLiteral("occupier")).toString();
+        if (owner.isEmpty() || occupier.isEmpty())
+            continue;
+        if (owner == name)
+            occupierLabel = tuiText("tui_equipment_occupied_by").arg(label(occupier));
+        if (occupier == name)
+            borrowed << label(owner);
+    }
+    if (borrowed.isEmpty())
+        return occupierLabel;
+    const QString borrowedLabel = tuiText("tui_equipment_borrowed_from")
+        .arg(borrowed.join(tuiText("tui_list_separator")));
+    return occupierLabel.isEmpty() ? borrowedLabel : occupierLabel + QLatin1Char(' ') + borrowedLabel;
+}
+
+QString TuiRenderer::equipmentOccupancyText(const ClientGameState &state, const QString &name) const
+{
+    return equipmentOccupancyText(state, name, m_resolvers);
+}
+
 QString TuiRenderer::renderPlayers(const ClientGameState &state) const
 {
     QStringList lines{heading(tuiText("tui_section_players"))};
@@ -699,6 +734,13 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
         QStringList equipText;
         for (int cardId : equipment)
             equipText << cardText(state, cardId);
+        const QString occupancy = equipmentOccupancyText(state, name);
+        if (!occupancy.isEmpty()) {
+            if (equipText.isEmpty())
+                equipText << occupancy;
+            else
+                equipText.last() += QLatin1Char(' ') + occupancy;
+        }
         QStringList judgeText;
         for (int cardId : judging)
             judgeText << cardText(state, cardId);

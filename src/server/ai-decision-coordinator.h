@@ -195,7 +195,6 @@ private:
         bool roleRevealed = false;
         bool armorBasis = false;
         QString activeArmorName;
-        bool armorEffectNamesKnown = false;
         QStringList armorEffectNames;
     };
     struct PublicBoard {

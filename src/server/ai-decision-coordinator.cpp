@@ -18,9 +18,11 @@
 #include "maneuvering.h"
 #include "wrapped-card.h"
 
+#include <algorithm>
 #include <cmath>
 #include <climits>
 #include <typeinfo>
+#include <utility>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QScopeGuard>
@@ -1776,6 +1778,24 @@ QHash<QString, QJsonObject> AiDecisionCoordinator::buildPrototypeRules() const
     return result;
 }
 
+static bool hasPublicSourceArmorLimit(const Player &beneficiary, const Player &source)
+{
+    const QString ownerName = beneficiary.objectName();
+    const QString sourceName = source.objectName();
+    if (beneficiary.hasFlag(QStringLiteral("ikaoxue_bound_") + sourceName)
+        || source.property("mobilexianzhen_targets").toString().split(QLatin1Char('+')).contains(ownerName))
+        return true;
+
+    const QString pattern = QStringLiteral("Armor|.|.|.|target:") + sourceName;
+    const auto receipts = QJsonDocument::fromJson(source.property("XianzhenEffects").toByteArray()).array();
+    for (const QJsonValue &entry : receipts) {
+        const QJsonObject receipt = entry.toObject();
+        if (receipt.value("target").toString() == ownerName && receipt.value("armor_pattern").toString() == pattern)
+            return true;
+    }
+    return false;
+}
+
 AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() const
 {
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
@@ -1789,7 +1809,8 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
     board.currentPhase = current ? int(current->getPhase()) : int(Player::NotActive);
     foreach (ServerPlayer *player, m_room.getPlayers())
         board.playerOrder << player->objectName();
-    foreach (ServerPlayer *player, m_room.getAlivePlayers())
+    const auto alivePlayers = m_room.getAlivePlayers();
+    foreach (ServerPlayer *player, alivePlayers)
         board.alivePlayerOrder << player->objectName();
 
     const auto allPlayers = m_room.getAllPlayers(true);
@@ -1862,6 +1883,39 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         playerView.attackRange = player->getAttackRange();
         playerView.gender = int(player->getGender());
         playerView.lord = player->isLord();
+        if (const ServerPlayer *beneficiary = m_room.getEquipAreaBeneficiary(player))
+            playerView.equipAreaBeneficiary = beneficiary->objectName();
+        playerView.offensiveHorseCorrection = player->getEffectiveHorseCorrection(false, nullptr);
+        playerView.defensiveHorseCorrection = player->getEffectiveHorseCorrection(true, nullptr);
+        const auto limitations = player->getCardLimitationDetails();
+        const bool hasSourceLimit = std::any_of(limitations.cbegin(), limitations.cend(), [](const QVariant &entry) {
+            const QVariantMap fields = entry.toMap();
+            return fields.value("method").toInt() == int(Card::MethodEffect)
+                && fields.value("pattern").toString().contains(QStringLiteral("|target:"));
+        });
+        QStringList physicalArmorNames;
+        for (const EffectiveEquip &source : player->getEffectiveEquips()) {
+            const Card *card = Sanguosha->getCard(source.cardId);
+            const auto *equip = card ? qobject_cast<const EquipCard *>(card->getRealCard()) : nullptr;
+            if (!equip || !source.areaOwner) continue;
+            const int slot = equip->location();
+            const bool active = player->isAlive()
+                && (source.areaOwner->hasEquipArea(slot)
+                    || source.areaOwner->getMark(QStringLiteral("IgnoreArea%1").arg(slot)) > 0)
+                && !player->isEquipsNullified(equip, nullptr, source.areaOwner);
+            const auto *weapon = qobject_cast<const Weapon *>(equip);
+            AIEffectiveEquipView equipment{source.cardId, source.areaOwner->objectName(),
+                                           playerView.objectName, active,
+                                           weapon ? weapon->getRange(player) : -1, {}};
+            if (active && hasSourceLimit) {
+                for (const ServerPlayer *attacker : alivePlayers)
+                    if (player->isEquipsNullified(equip, attacker, source.areaOwner))
+                        equipment.nullifiedSources << attacker->objectName();
+            }
+            playerView.effectiveEquips << equipment;
+            if (active && slot == EquipCard::ArmorLocation)
+                physicalArmorNames << equip->objectName();
+        }
         // Armor visibility still depends on the viewer in hegemony. The blocking
         // scan and the physical armor do not, so they are resolved once.
         bool armorBlocked = false;
@@ -1882,31 +1936,35 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         row.armorBasis = !armorBlocked
             && player->property("View_As_Equips_List").toString().isEmpty();
         if (row.armorBasis) {
-            const EquipCard *armor = player->getArmor();
-            // Mirror the physical branch of hasArmorEffect only. Its fallback
-            // invokes viewAsEquip callbacks (even before checking skill validity)
-            // and can clone virtual cards when the physical armor is nullified.
-            if (armor && player->isAlive() && player->getMark("Armor_Nullified") <= 0
-                && (player->getMark("IgnoreArea1") > 0 || player->hasEquipArea(1))
-                && !player->isEquipsNullified(armor))
-                row.activeArmorName = armor->objectName();
+            physicalArmorNames.removeDuplicates();
+            row.armorEffectNames = physicalArmorNames;
+            row.activeArmorName = physicalArmorNames.value(0);
         } else {
             // A view-as equipment source: ask the full query for every armor name
             // the player could have (physical, or granted by property or skill).
-            QStringList names;
-            if (const EquipCard *armor = player->getArmor()) names << armor->objectName();
+            QStringList names = physicalArmorNames;
             names << player->property("View_As_Equips_List").toString().split('+', Qt::SkipEmptyParts);
             foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills())
                 if (skill && player->hasSkill(skill->objectName()))
                     names << skill->viewAsEquip(player).split(',', Qt::SkipEmptyParts);
             names.removeDuplicates();
-            row.armorEffectNamesKnown = true;
             for (const QString &name : names)
                 if (player->hasArmorEffect(name)) row.armorEffectNames << name;
         }
         for (int slot = 0; slot < 5; ++slot) {
             if (const EquipCard *equip = player->getEquip(slot))
                 playerView.equipSlots.insert(slot, equip->getEffectiveId());
+        }
+
+        if (playerView.alive) {
+            QSet<int> usableWoodenOxCards;
+            for (const int id : player->getHandPile()) {
+                const ServerPlayer *holder = m_room.getCardOwner(id);
+                if (holder && m_room.getCardPlace(id) == Player::PlaceSpecial
+                    && holder->getPileName(id) == QLatin1String("wooden_ox"))
+                    usableWoodenOxCards.insert(id);
+            }
+            playerView.usableWoodenOxCount = usableWoodenOxCards.size();
         }
 
         row.kingdom = player->getKingdom();
@@ -2305,9 +2363,39 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         playerView.armorEffectKnown = row.armorBasis && (player == viewer || !hegemony);
         if (playerView.armorEffectKnown)
             playerView.activeArmorName = row.activeArmorName;
-        playerView.armorEffectNamesKnown = row.armorEffectNamesKnown && (player == viewer || !hegemony);
+        playerView.armorEffectNamesKnown = player == viewer || !hegemony;
         if (playerView.armorEffectNamesKnown)
             playerView.armorEffectNames = row.armorEffectNames;
+
+        // Card limitations are normally notified only to the affected seat.
+        // Other seats can confirm exclusions backed by public skill receipts.
+        playerView.equipSourceEffectsKnown = player == viewer;
+        if (!playerView.equipSourceEffectsKnown) {
+            for (AIEffectiveEquipView &equipment : playerView.effectiveEquips) {
+                if (equipment.nullifiedSources.isEmpty()) continue;
+                const Card *card = Sanguosha->getCard(equipment.cardId);
+                QStringList publicSources;
+                if (card && card->isKindOf("Armor")) {
+                    for (const QString &name : std::as_const(equipment.nullifiedSources)) {
+                        const ServerPlayer *source = m_room.findPlayerByObjectName(name);
+                        if (source && hasPublicSourceArmorLimit(*player, *source))
+                            publicSources << name;
+                    }
+                }
+                equipment.nullifiedSources = publicSources;
+            }
+        } else if (!row.armorBasis) {
+            // A virtual armor can share a name with a physical one. Ask the
+            // engine for the union on the beneficiary's own view.
+            for (const QString &name : board.alivePlayerOrder) {
+                const ServerPlayer *source = m_room.findPlayerByObjectName(name);
+                if (!source) continue;
+                QStringList effects;
+                for (const QString &armor : row.armorEffectNames)
+                    if (player->hasArmorEffect(armor, source)) effects << armor;
+                playerView.armorEffectsBySource.insert(name, effects);
+            }
+        }
 
         const bool seesIdentity = player == viewer || !hegemony
             || row.shownOneGeneral || playerView.dead;
@@ -2356,6 +2444,21 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
                 pileView.cards = pile.cards;
             }
             playerView.piles << pileView;
+        }
+        if (player == viewer && !eventOnly) {
+            playerView.usableHandPileKnown = true;
+            QSet<int> seen;
+            for (int id : player->getHandPile()) {
+                if (seen.contains(id)) continue;
+                seen.insert(id);
+                const Card *card = Sanguosha->getCard(id);
+                if (!card || !cardVisibleTo(m_room, id, viewer)) {
+                    playerView.usableHandPileKnown = false;
+                    playerView.usableHandPile.clear();
+                    break;
+                }
+                playerView.usableHandPile << makeAICardView(card);
+            }
         }
 
         playerView.marksComplete = player == viewer;
@@ -2633,10 +2736,11 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
         // equipment buttons. A zero-ID entry carries this receipt, never ownership
         // of an invented SkillInstance.
         QMap<QString, const ViewAsSkill *> equipmentEntries;
-        for (const Card *card : player->getEquips()) {
+        for (const EffectiveEquip &source : player->getEffectiveEquips()) {
+            const Card *card = Sanguosha->getCard(source.cardId);
             const auto *equip = card ? qobject_cast<const EquipCard *>(card->getRealCard()) : nullptr;
-            const Skill *source = equip ? Sanguosha->getSkill(equip) : nullptr;
-            const ViewAsSkill *entry = source ? ViewAsSkill::parseViewAsSkill(source) : nullptr;
+            const Skill *definition = equip ? Sanguosha->getSkill(equip) : nullptr;
+            const ViewAsSkill *entry = definition ? ViewAsSkill::parseViewAsSkill(definition) : nullptr;
             if (entry) equipmentEntries.insert(entry->objectName(), entry);
         }
         QSet<QString> equipmentNames;
@@ -2785,7 +2889,8 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
     QSet<QString> instanceSkills;
     for (const SkillInstance &instance : player->getSkillInstances())
         instanceSkills.insert(instance.skillName);
-    foreach (const Card *equip, player->getEquips()) {
+    for (const EffectiveEquip &source : player->getEffectiveEquips()) {
+        const Card *equip = Sanguosha->getCard(source.cardId);
         const auto *realEquip = equip ? qobject_cast<const EquipCard *>(equip->getRealCard()) : nullptr;
         const Skill *equipSkill = realEquip ? Sanguosha->getSkill(realEquip) : nullptr;
         const ViewAsSkill *viewAs = equipSkill ? ViewAsSkill::parseViewAsSkill(equipSkill) : nullptr;
@@ -3555,6 +3660,27 @@ AIRequest AiDecisionCoordinator::makeChoiceRequest(ServerPlayer *player,
             const Card *card = Sanguosha->getCard(cardId);
             if (card) request.choiceOptions.cards << makeAICardView(card);
             else request.choiceOptions.candidatesComplete = false;
+        }
+    }
+    if (player && options.reason == QLatin1String("sy_quanqing")
+        && (kind == AIRequest::AmazingGrace || kind == AIRequest::PlayerChosen)) {
+        // This tag is the live source selected by the same player's skill,
+        // carried in the corresponding human-facing prompt.
+        const auto source = player->getTag(QStringLiteral("sy_quanqing_target")).value<ServerPlayer *>();
+        const bool live = source && liveStateRefs(m_room).player(source) && source->isAlive();
+        auto &context = request.choiceOptions.context;
+        context.insert("mojiang_quanqing_target", live ? QJsonValue(source->objectName()) : QJsonValue(false));
+        if (live && kind == AIRequest::AmazingGrace) {
+            EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
+            LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
+            QJsonObject allowed;
+            for (const auto &choice : request.choiceOptions.cards) {
+                const std::unique_ptr<Card> card(Sanguosha->cloneCard(choice.objectName, Card::NoSuit, 0));
+                if (!card) continue;
+                card->setSkillName(QStringLiteral("sy_quanqing_USECARD"));
+                allowed.insert(QString::number(choice.cardId), !source->isProhibited(player, card.get()));
+            }
+            context.insert("mojiang_quanqing_allowed_against_self", allowed);
         }
     }
     // A card this viewer may take is evaluated as the viewer would hold it, with the

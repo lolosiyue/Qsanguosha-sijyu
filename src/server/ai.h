@@ -247,6 +247,15 @@ struct AISkillView {
           attachedLordSkill(false), lordSkillEffective(false) {}
 };
 
+struct AIEffectiveEquipView {
+    int cardId;
+    QString areaOwner;
+    QString beneficiary;
+    bool active;
+    int weaponRange;
+    QStringList nullifiedSources;
+};
+
 struct AIPlayerView {
     QString objectName;
     int seat;
@@ -281,6 +290,13 @@ struct AIPlayerView {
     QString generalName;
     QString general2Name;
     QList<AICardView> equips;
+    QList<AIEffectiveEquipView> effectiveEquips;
+    QString equipAreaBeneficiary;
+    bool equipSourceEffectsKnown = false;
+    QMap<QString, QStringList> armorEffectsBySource;
+    int usableWoodenOxCount = 0;
+    int offensiveHorseCorrection = 0;
+    int defensiveHorseCorrection = 0;
     QList<AICardView> judgingArea;
     QMap<QString, int> publicMarks;
     // The viewer sees every mark it owns, so a missing mark is zero, not unknown.
@@ -305,6 +321,8 @@ struct AIPlayerView {
     QStringList armorEffectNames;
     bool armorEffectNamesKnown = false;
     QList<AICardPileView> piles;
+    QList<AICardView> usableHandPile;
+    bool usableHandPileKnown = false;
     QList<int> displayCards;
     // Derived player values the shared entries ask for.
     int maxCards;

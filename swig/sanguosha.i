@@ -275,6 +275,29 @@ enum SkillStateVisibility {
     SkillStatePublic
 };
 
+struct EffectiveEquip;
+%typemap(out) QList<EffectiveEquip> Player::getEffectiveEquips
+%{
+{
+    const QList<EffectiveEquip> &equips = $1;
+    lua_createtable(L, equips.size(), 0);
+    for (int i = 0; i < equips.size(); ++i) {
+        const EffectiveEquip &equip = equips.at(i);
+        const QByteArray owner = equip.areaOwner->objectName().toUtf8();
+        const QByteArray beneficiary = equip.beneficiary->objectName().toUtf8();
+        lua_createtable(L, 0, 3);
+        lua_pushinteger(L, equip.cardId);
+        lua_setfield(L, -2, "card_id");
+        lua_pushlstring(L, owner.constData(), owner.size());
+        lua_setfield(L, -2, "area_owner");
+        lua_pushlstring(L, beneficiary.constData(), beneficiary.size());
+        lua_setfield(L, -2, "beneficiary");
+        lua_rawseti(L, -2, i + 1);
+    }
+    SWIG_arg++;
+}
+%}
+
 class Player: public QObject {
 public:
 	enum Phase { RoundStart, Start, Judge, Draw, Play, Discard, Finish, NotActive, PhaseNone };
@@ -415,6 +438,7 @@ public:
 	WrappedCard*getTreasure() const;
 	QList<const Card*> getEquips(int index = -1) const;
 	QList<int> getEquipsId() const;
+	QList<EffectiveEquip> getEffectiveEquips() const;
 	const EquipCard*getEquip(int index) const;
 
 	QList<const EquipCard *> getWeapons() const;
@@ -2411,6 +2435,20 @@ public:
 %include "resolution-history.i"
 %include "qml-element.i"
 
+%typemap(out) quint64 Room::setEquipAreaOccupier, quint64 Room::grantEquipAreaOccupier
+%{
+    lua_pushinteger(L, static_cast<lua_Integer>($1));
+    SWIG_arg++;
+%}
+%typemap(in, checkfn = "lua_isinteger") quint64 equipAreaGeneration
+%{
+    $1 = static_cast<quint64>(lua_tointeger(L, $input));
+%}
+%typemap(typecheck, precedence = SWIG_TYPECHECK_INTEGER) quint64 equipAreaGeneration
+%{
+    $1 = lua_isinteger(L, $input);
+%}
+
 class Room: public QThread {
 public:
 	enum GuanxingType { GuanxingUpOnly = 1, GuanxingBothSides = 0, GuanxingDownOnly = -1 };
@@ -2445,6 +2483,10 @@ public:
 	ServerPlayer*getCardUser(const Card*card) const;
 	void killPlayer(ServerPlayer*victim, DamageStruct*reason = nullptr, HpLostStruct*hplost = nullptr);
 	void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
+	quint64 setEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason = QString());
+	quint64 grantEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason = QString());
+	bool clearEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *expectedOccupier, quint64 equipAreaGeneration = 0);
+	ServerPlayer *getEquipAreaBeneficiary(const Player *areaOwner) const;
 	void restPlayer(ServerPlayer*player, const char*reason = nullptr, bool discard_cards = false);
 	void attachReihouCard(ServerPlayer *player, const QString &generalName, bool isYaodao = false);
 	void removeReihouCard(ServerPlayer *player, bool isYaodao = false);

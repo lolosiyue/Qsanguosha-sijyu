@@ -189,6 +189,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_ANIMATE] = &Client::animate;
 	m_callbacks[S_COMMAND_FIXED_DISTANCE] = &Client::setFixedDistance;
 	m_callbacks[S_COMMAND_ATTACK_RANGE] = &Client::setAttackRangePair;
+	m_callbacks[S_COMMAND_EQUIP_AREA_OCCUPANCY] = &Client::updateEquipAreaOccupancy;
 	m_callbacks[S_COMMAND_CARD_LIMITATION] = &Client::cardLimitation;
 	m_callbacks[S_COMMAND_NULLIFICATION_ASKED] = &Client::setNullification;
 	m_callbacks[S_COMMAND_ENABLE_SURRENDER] = &Client::enableSurrender;
@@ -4046,6 +4047,41 @@ void Client::setAttackRangePair(const QVariant &set_arg)
 		else
 			from->removeAttackRangePair(to);
 	}
+}
+
+void Client::updateEquipAreaOccupancy(const QVariant &arg)
+{
+	// The server sends its whole table every time; replace, never merge.
+	QMap<QString, QPair<QString, QString>> table;
+	for (const QVariant &row : arg.toMap().value(QStringLiteral("areas")).toList()) {
+		const QVariantMap area = row.toMap();
+		const QString owner = area.value(QStringLiteral("area_owner")).toString();
+		const QString occupier = area.value(QStringLiteral("occupier")).toString();
+		if (!owner.isEmpty() && !occupier.isEmpty())
+			table.insert(owner, {occupier, area.value(QStringLiteral("reason")).toString()});
+	}
+	if (table == m_equipAreaOccupancy)
+		return;
+	m_equipAreaOccupancy = table;
+	emit equipAreaOccupancyChanged();
+}
+
+QString Client::equipAreaOccupier(const QString &areaOwner) const
+{
+	return m_equipAreaOccupancy.value(areaOwner).first;
+}
+
+QString Client::equipAreaOccupancyReason(const QString &areaOwner) const
+{
+	return m_equipAreaOccupancy.value(areaOwner).second;
+}
+
+QStringList Client::equipAreasOccupiedBy(const QString &occupier) const
+{
+	QStringList areas;
+	for (auto it = m_equipAreaOccupancy.cbegin(); it != m_equipAreaOccupancy.cend(); ++it)
+		if (it->first == occupier) areas << it.key();
+	return areas;
 }
 
 void Client::fillGenerals(const QVariant &generals)

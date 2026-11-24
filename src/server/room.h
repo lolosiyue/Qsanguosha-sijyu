@@ -8,6 +8,7 @@
 #include "resolution-history.h"
 #include "battle-statistics.h"
 #include "game-timeline.h"
+#include "equip-area-occupancy.h"
 #include <QMutex>
 #include "room-runtime.h"
 #include "game-session-config.h"
@@ -93,6 +94,7 @@ public:
     friend class RequestCoordinator;
     friend class CardMovementService;
     friend class LinkedCardRule;
+    friend class Player;
     friend class PlayerStateService;
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
@@ -102,6 +104,7 @@ public:
     friend class Server;
     friend class RoomRuntime;
     friend class RoomManagedState;
+    friend class TakeoverRule;
     friend class ManagedRewindLab;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
@@ -292,6 +295,15 @@ public:
     ServerPlayer*getCardUser(const Card*card) const;
     void killPlayer(ServerPlayer*victim, DamageStruct*reason = nullptr, HpLostStruct*hplost = nullptr);
     void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
+    // A null occupier releases the area. An unchanged setting keeps its token.
+    // reason names the granting skill for display (tooltip); it never affects a result.
+    quint64 setEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason = QString());
+    // Use the returned token when an independently timed grant expires.
+    quint64 grantEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason = QString());
+    bool clearEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *expectedOccupier, quint64 generation = 0);
+    ServerPlayer *getEquipAreaBeneficiary(const Player *areaOwner) const;
+    QVariantList getEquipAreaOccupancyGrants() const;
+    EquipAreaOccupancy::Snapshot equipAreaOccupancySnapshot() const;
     void restPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
     // Reihou stores a borrowed general. Reihou2 is the yaodao copy.
     // attach grants one acquired instance of each visible skill. remove drops
@@ -1033,6 +1045,13 @@ protected:
     int _m_Id;
 
 private:
+    quint64 updateEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, bool renew,
+                                    const QString &reason = QString());
+    void releaseEquipAreasForPlayer(const ServerPlayer *player);
+    void restoreEquipAreaOccupancy(EquipAreaOccupancy::Snapshot snapshot);
+    // Sends the whole public occupancy table, projected from m_equipAreaOccupancy; null broadcasts.
+    void notifyEquipAreaOccupancy(ServerPlayer *only = nullptr);
+    QList<const Player *> effectiveEquipAreaOwners(const Player *beneficiary) const;
     bool completeRuntimeInitialization(bool runtimeReady, const QString &runtimeError);
     void beginNumericStateHistory();
     void recordNumericStateCommit(ServerPlayer *player, const char *mutation,
@@ -1143,6 +1162,7 @@ private:
     std::unique_ptr<RoomManagedState> m_managedState;
     std::unique_ptr<ManagedRewindLab> m_rewindLab;
     std::unique_ptr<RoomRuntime> m_runtime;
+    EquipAreaOccupancy m_equipAreaOccupancy;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
     const SkillContext *m_aiSkillInquiryContext = nullptr;

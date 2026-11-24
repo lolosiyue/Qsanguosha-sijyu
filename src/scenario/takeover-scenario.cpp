@@ -566,6 +566,29 @@ bool TakeoverRule::restore(Room *room) const
     if (order.length() != room->getPlayers().length())
         return false;
 
+    EquipAreaOccupancy::Snapshot occupancy;
+    QString occupancyError;
+    if (!EquipAreaOccupancy::Snapshot::parse(state.equipAreaOccupancy, occupancy, &occupancyError)) {
+        qWarning() << "Takeover snapshot has invalid equip area occupancy:" << occupancyError;
+        return false;
+    }
+    QMap<QString, EquipAreaOccupancy::Grant> remappedGrants;
+    for (auto it = occupancy.grants.cbegin(); it != occupancy.grants.cend(); ++it) {
+        ServerPlayer *areaOwner = scenario->runtimePlayer(it.key());
+        ServerPlayer *occupier = scenario->runtimePlayer(it->occupier);
+        const PlayerSnapshot *ownerState = findSnapshotPlayer(state, it.key());
+        const PlayerSnapshot *occupierState = findSnapshotPlayer(state, it->occupier);
+        if (!areaOwner || !occupier || areaOwner == occupier || !ownerState || !ownerState->alive
+            || !occupierState || !occupierState->alive || remappedGrants.contains(areaOwner->objectName())) {
+            qWarning() << "Takeover snapshot has an invalid equip area occupancy seat";
+            return false;
+        }
+        auto grant = it.value();
+        grant.occupier = occupier->objectName();
+        remappedGrants.insert(areaOwner->objectName(), grant);
+    }
+    occupancy.grants.swap(remappedGrants);
+
     room->setRestoringTakeoverSnapshot(true);
     const auto restoreGuard = qScopeGuard([room]() {
         room->setRestoringTakeoverSnapshot(false);
@@ -648,6 +671,7 @@ bool TakeoverRule::restore(Room *room) const
             current->setPhase(static_cast<Player::Phase>(phase));
     }
 
+    room->restoreEquipAreaOccupancy(std::move(occupancy));
     room->updateStateItem();
     if (room->getThread())
         room->getThread()->markDistanceCacheDirty();

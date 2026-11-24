@@ -1453,6 +1453,10 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
                                   QVariant &data, bool allowNullPlayer)
 {
 	TriggerList result;
+	if (self->objectName() == QLatin1String("testoccupy"))
+		qWarning("V2NOMINATE testoccupy event=%d can_trigger=%d player=%s allowNull=%d",
+		         int(triggerEvent), self->can_trigger ? 1 : 0,
+		         player ? qPrintable(player->objectName()) : "null", allowNullPlayer ? 1 : 0);
 	if (!self->can_trigger || (!player && !allowNullPlayer)) return result;
 
 	lua_State *L = room->getLuaState();

@@ -1307,7 +1307,7 @@ void CardMovementService::reconcilePendingPiles(
 
 QVariant CardMovementService::afterMoves(QList<CardsMoveOneTimeStruct> moves)
 {
-    QMap<int, QPair<QString, QString>> equipmentSourcesBefore;
+    QMap<int, EquipmentMoveSource> equipmentSourcesBefore;
     for (const CardsMoveOneTimeStruct &move : moves)
         for (auto it = move.m_equipmentSourcesBefore.cbegin(); it != move.m_equipmentSourcesBefore.cend(); ++it)
             equipmentSourcesBefore.insert(it.key(), it.value());
@@ -1424,16 +1424,25 @@ QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMo
         callback();
         return true;
     };
-    QMap<int, QPair<QString, QString>> equipmentSourcesBefore;
+    QMap<int, EquipmentMoveSource> equipmentSourcesBefore;
     for (const CardsMoveStruct &move : cardsMoves) {
         if (!move.from || move.from_place != Player::PlaceEquip) continue;
         for (int id : move.card_ids) {
             const Card *card = Sanguosha->getCard(id);
             // A pre-move callback can move the card before this outer commit.
             // Freeze only equipment still physically held at the claimed origin.
-            if (card && card->getTypeId() == Card::TypeEquip
-                && m_room.getCardOwner(id) == move.from && m_room.getCardPlace(id) == Player::PlaceEquip)
-                equipmentSourcesBefore.insert(id, {move.from->objectName(), card->objectName()});
+            if (!card || card->getTypeId() != Card::TypeEquip
+                || m_room.getCardOwner(id) != move.from || m_room.getCardPlace(id) != Player::PlaceEquip) continue;
+            const Player *beneficiary = m_room.getEquipAreaBeneficiary(move.from);
+            const auto *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+            if (!beneficiary || !equip) continue;
+            const int slot = equip->location();
+            const bool slotAvailable = move.from->hasEquipArea(slot)
+                || move.from->getMark(QStringLiteral("IgnoreArea%1").arg(slot)) > 0;
+            const bool effective = slotAvailable && beneficiary->isAlive()
+                && !beneficiary->isEquipsNullified(equip, nullptr, move.from);
+            equipmentSourcesBefore.insert(id, {move.from->objectName(), equip->objectName(),
+                                                 beneficiary->objectName(), effective});
         }
     }
     for (const CardsMoveStruct &move : cardsMoves) {

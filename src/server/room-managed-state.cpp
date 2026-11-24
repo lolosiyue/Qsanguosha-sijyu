@@ -182,6 +182,7 @@ struct RoomManagedState::NativeSlice {
     QList<AIEventView> aiEvents;
     quint64 aiSequence = 0;
     QHash<QString, QSet<QString>> markViewers;
+    EquipAreaOccupancy::Snapshot equipAreaOccupancy;
     GameRng::State gameRng, aiRng;
     int movementId = 0;
     std::unique_ptr<GameRng> preparedGameRng, preparedAiRng;
@@ -497,6 +498,11 @@ std::unique_ptr<RoomManagedState::NativeSlice> RoomManagedState::captureNative(Q
                 || !GameState::validateValue(card->m_appliedPhysicalEffectSource, index, error)) return {};
     }
     auto result = std::make_unique<NativeSlice>();
+    result->equipAreaOccupancy = m_room.equipAreaOccupancySnapshot();
+    if (!m_running && result->equipAreaOccupancy.lastGeneration != 0) {
+        fail(error, QStringLiteral("managed setup cannot capture equip area occupancy"));
+        return {};
+    }
     result->roomTags = roomTags;
     result->revision = m_room.roomRuntime()->stateRevision();
     QVariantList topology, mutableSeats;
@@ -686,7 +692,7 @@ QVariantMap RoomManagedState::runningWire(const NativeSlice &native) const
     for(auto it=native.roomFlags.cbegin();it!=native.roomFlags.cend();++it) roomFlags.insert(it.key(),strings(it.value()));
     for(auto it=native.markViewers.cbegin();it!=native.markViewers.cend();++it) { QStringList ids=it.value().values();ids.sort();viewers.insert(it.key(),strings(ids)); }
     for(const auto &e:native.aiEvents) events<<eventWire(e);
-    return {{"version",1},{"seats",seats},{"cards",cards},{"draw",integers(native.draw)},
+    return {{"version",2},{"seats",seats},{"cards",cards},{"draw",integers(native.draw)},
         {"discard",integers(native.discard)},{"table",integers(native.table)},{"places",places},{"owners",owners},
         {"current",native.current?native.current->objectName():QString()},
         {"state_current",native.stateCurrent?native.stateCurrent->objectName():QString()},
@@ -694,13 +700,20 @@ QVariantMap RoomManagedState::runningWire(const NativeSlice &native) const
         {"history",native.nativeHistory},{"numeric_history",native.numericHistory},
         {"game_rng",rngValue(native.gameRng)},{"ai_rng",rngValue(native.aiRng)},
         {"ai_events",events},{"ai_sequence",QString::number(native.aiSequence)},
-        {"mark_viewers",viewers},{"movement_id",native.movementId}};
+        {"mark_viewers",viewers},{"movement_id",native.movementId},
+        {"equip_area_occupancy",native.equipAreaOccupancy.wire()}};
 }
 
 bool RoomManagedState::restoreRunningWire(NativeSlice &native,const QVariantMap &wire,QString *error) const
 {
-    if(wire.value("version").toInt()!=1 || wire.value("seats").toList().size()!=native.seats.size())
+    const int version = wire.value("version").toInt();
+    if((version != 1 && version != 2) || wire.value("seats").toList().size()!=native.seats.size())
         return fail(error,QStringLiteral("unsupported native world schema/inventory"));
+    if (version == 1)
+        native.equipAreaOccupancy = {};
+    else if (!EquipAreaOccupancy::Snapshot::parse(wire.value("equip_area_occupancy"),
+                                                  native.equipAreaOccupancy, error))
+        return false;
     QMap<QString,ServerPlayer*> players;
     for(const auto &s:native.seats) players.insert(s.player->objectName(),s.player.data());
     bool valid=true;
@@ -1176,6 +1189,21 @@ std::unique_ptr<RoomManagedState::Candidate> RoomManagedState::prepareRestore(co
             }
     }
     if (!data->world || !buildNativeCandidate(*native, data->world->state(), error)) return {};
+    if (m_running) {
+        const auto &world = data->world->state();
+        QSet<QString> alive;
+        for (auto it = world.players.cbegin(); it != world.players.cend(); ++it)
+            if (it->alive) alive.insert(it.key());
+        if (!native->equipAreaOccupancy.validate(alive, [&](const EquipAreaOccupancy::Grant &grant) {
+            for (const auto &skill : world.skills) {
+                if (skill.ownerId == grant.occupier && skill.definition == grant.reason
+                    && EquipAreaOccupancy::hasPersistedExpiry(skill.state, grant.generation))
+                    return true;
+            }
+            return false;
+        }, error))
+            return {};
+    }
     data->native = std::move(native);
     return std::unique_ptr<Candidate>(new Candidate(std::move(data)));
 }
@@ -1256,11 +1284,20 @@ bool RoomManagedState::publish(Candidate &&candidate, QString *error)
     if(m_running) publishRunning(*data.native);
     m_room.roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
     data.owner = nullptr;
+    // Online seats receive a full marshal from RoomThread. Recorders on
+    // offline seats still need the replacement table, including an empty one.
+    if (m_running) {
+        lifetimeLock.unlock();
+        cacheLocks.clear();
+        for (ServerPlayer *player : m_room.getPlayers())
+            if (!player->isOnline()) m_room.notifyEquipAreaOccupancy(player);
+    }
     return true;
 }
 
 void RoomManagedState::publishRunning(NativeSlice &native) noexcept
 {
+    m_room.m_equipAreaOccupancy.swapSnapshot(native.equipAreaOccupancy);
     for(auto &s:native.seats) {
         auto *p=s.player.data();
         std::swap(p->face_up,s.faceUp);std::swap(p->chained,s.chained);

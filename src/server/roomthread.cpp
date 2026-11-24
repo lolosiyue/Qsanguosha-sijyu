@@ -857,6 +857,16 @@ void RoomThread::addPlayerSkills(ServerPlayer*player, bool invoke_game_start)
 {
 	bool invoke_verify = false;
 
+	{
+		int total = 0, hit = 0;
+		foreach (const TriggerSkill *probeSkill, player->getTriggerSkills()) {
+			++total;
+			if (probeSkill->objectName() == QLatin1String("testoccupy")) ++hit;
+		}
+		if (hit > 0 || player->hasSkill(QStringLiteral("testoccupy")))
+			qWarning("V2PLAYER %s triggers=%d testoccupy=%d hasSkill=1",
+			         qPrintable(player->objectName()), total, hit);
+	}
 	foreach (const TriggerSkill*skill, player->getTriggerSkills()) {
 		addTriggerSkill(skill);
 
@@ -3554,6 +3564,8 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 		++m_triggerTableRevision[event];
 		if (traits.v2)
 			v2_skill_table[event] << registeredSkill;
+		if (skill->objectName() == QLatin1String("testoccupy"))
+			qWarning("V2REGISTER testoccupy event=%d v2=%d", int(event), traits.v2 ? 1 : 0);
 		if(skill_table[event].length()<2) continue;
 		if (traits.gameRule || room->getTag("TurnLengthCount").toInt() > 0)
 			sortTriggerSkills(event, room, true);

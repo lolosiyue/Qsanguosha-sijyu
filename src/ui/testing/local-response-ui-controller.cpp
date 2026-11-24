@@ -561,7 +561,8 @@ bool LocalResponseUiController::resolveCards(QString *error)
 {
     const QJsonArray cards = m_case.bootstrap().value(QStringLiteral("cards")).toArray();
     QSet<int> usedIds;
-    QMap<Player::Place, QList<int>> moves;
+    // Grouped per (owner, place): one move per destination area.
+    QMap<QPair<QString, Player::Place>, QList<int>> moves;
     QJsonArray resolved;
 
     for (const QJsonValue &value : cards) {
@@ -585,9 +586,8 @@ bool LocalResponseUiController::resolveCards(QString *error)
             }
         }
         const QString owner = cardObject.value(QStringLiteral("owner")).toString(Self->objectName());
-        if (owner != Self->objectName()) {
-            *error = QStringLiteral("card '%1' owner '%2' is unsupported; MVP cards must belong to self")
-                .arg(alias, owner);
+        if (m_client->getPlayer(owner) == nullptr) {
+            *error = QStringLiteral("card '%1' owner '%2' is not a seated player").arg(alias, owner);
             return false;
         }
         if (alias.isEmpty() || m_aliasToId.contains(alias) || resolvedId < 0) {
@@ -605,10 +605,11 @@ bool LocalResponseUiController::resolveCards(QString *error)
         }
         const Player::Place place = placeName == QStringLiteral("equip")
             ? Player::PlaceEquip : Player::PlaceHand;
-        moves[place] << resolvedId;
+        moves[qMakePair(owner, place)] << resolvedId;
 
         QJsonObject item;
         item.insert(QStringLiteral("alias"), alias);
+        item.insert(QStringLiteral("owner"), owner);
         item.insert(QStringLiteral("card_id"), resolvedId);
         item.insert(QStringLiteral("object_name"), resolvedCard->objectName());
         item.insert(QStringLiteral("suit"), resolvedCard->getSuitString());
@@ -622,14 +623,23 @@ bool LocalResponseUiController::resolveCards(QString *error)
         CardsMoveStruct move;
         move.card_ids = it.value();
         move.from_place = Player::PlaceTable;
-        move.to_place = it.key();
-        move.to_player_name = Self->objectName();
+        move.to_place = it.key().second;
+        move.to_player_name = it.key().first;
         move.open = true;
         movePayload << move.toVariant();
     }
     if (movePayload.size() > 1) {
         if (!injectNotification(S_COMMAND_LOSE_CARD, movePayload, error)
             || !injectNotification(S_COMMAND_GET_CARD, movePayload, error))
+            return false;
+    }
+
+    // Occupancy rows {area_owner, occupier, reason} arrive as the room's own notification.
+    const QJsonValue occupancy = m_case.bootstrap().value(QStringLiteral("equip_area_occupancy"));
+    if (occupancy.isArray()) {
+        const QVariantMap payload{{QStringLiteral("schema_version"), 1},
+                                  {QStringLiteral("areas"), occupancy.toArray().toVariantList()}};
+        if (!injectNotification(S_COMMAND_EQUIP_AREA_OCCUPANCY, payload, error))
             return false;
     }
 
@@ -1029,6 +1039,30 @@ bool LocalResponseUiController::runAction(int index, QString *error)
             m_probe->snapshot(), QStringLiteral("actions[%1].assert").arg(index));
         if (!ok)
             actionError = QStringLiteral("action assertion failed");
+    } else if (type == QStringLiteral("show_tooltip")) {
+        // Records the shown text in the report; "contains" lists substrings it must carry.
+        const QString player = action.value(QStringLiteral("player")).toString();
+        const QString target = action.value(QStringLiteral("target")).toString();
+        QString text;
+        ok = m_probe->showToolTip(player, target, &text, &actionError);
+        if (ok) {
+            QJsonObject tooltips = m_report.value(QStringLiteral("tooltips")).toObject();
+            tooltips.insert(player + QLatin1Char('/') + target, text);
+            m_report.insert(QStringLiteral("tooltips"), tooltips);
+            for (const QJsonValue &needle : action.value(QStringLiteral("contains")).toArray()) {
+                if (!text.contains(needle.toString())) {
+                    ok = false;
+                    actionError = QStringLiteral("tooltip of %1/%2 lacks '%3'").arg(player, target, needle.toString());
+                    break;
+                }
+            }
+            for (const QJsonValue &needle : action.value(QStringLiteral("not_contains")).toArray()) {
+                if (ok && text.contains(needle.toString())) {
+                    ok = false;
+                    actionError = QStringLiteral("tooltip of %1/%2 has '%3'").arg(player, target, needle.toString());
+                }
+            }
+        }
     } else if (type == QStringLiteral("take_screenshot")) {
         // settle_ms lets animations such as the prompt box fade-in finish before the capture.
         const int settleMs = action.value(QStringLiteral("settle_ms")).toInt(0);

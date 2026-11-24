@@ -21,6 +21,7 @@
 #include "util.h"
 #include "card-lifetime-manager.h"
 #include "resolution-history.h"
+#include "wooden-ox-access.h"
 
 #include <QElapsedTimer>
 #include <QMutexLocker>
@@ -1573,6 +1574,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
         return true;
     };
     if (!validPaidProvision()) return nullptr;
+	if (!paidProvisionAccepted && !canUseWoodenOxMaterials(m_room, player, resp.m_card)) return nullptr;
 	CardUseStruct responseUse;
 	responseUse.card = resp.m_card;
 	responseUse.from = player;

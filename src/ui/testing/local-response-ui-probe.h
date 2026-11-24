@@ -26,6 +26,8 @@ public:
     bool chooseOption(const QString &option, QString *error);
     bool chooseSurfaceCard(const QString &alias, QString *error);
     bool toggleGuanxingCard(const QString &alias, QString *error);
+    // Shows the tooltip of a player's "avatar" or "equip:<slot>" item; text receives it.
+    bool showToolTip(const QString &playerName, const QString &target, QString *text, QString *error);
 
 private:
     CardItem *findCard(const QString &alias) const;

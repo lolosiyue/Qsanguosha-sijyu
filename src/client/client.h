@@ -181,6 +181,12 @@ public:
     void viewGenerals(const QVariant &str);
     void setFixedDistance(const QVariant &set_str);
     void setAttackRangePair(const QVariant &set_arg);
+    void updateEquipAreaOccupancy(const QVariant &arg);
+    // Read-only view of the room's occupancy table; each notification replaces it whole.
+    QString equipAreaOccupier(const QString &areaOwner) const;
+    QString equipAreaOccupancyReason(const QString &areaOwner) const;
+    QStringList equipAreasOccupiedBy(const QString &occupier) const;
+    bool hasEquipAreaOccupancy() const { return !m_equipAreaOccupancy.isEmpty(); }
     void updateStateItem(const QVariant &state_str);
     void setAvailableCards(const QVariant &pile);
     void setCardMark(const QVariant &pattern_str);
@@ -398,6 +404,8 @@ protected:
 
 private:
     std::shared_ptr<CorrectionTraceStore> m_correctionTraces;
+    // area owner -> {occupier, reason}; written only by updateEquipAreaOccupancy.
+    QMap<QString, QPair<QString, QString>> m_equipAreaOccupancy;
     ClientLiveSession *m_liveSession;
     bool m_isGameOver;
     bool m_isDisconnected;
@@ -526,6 +534,7 @@ signals:
     void player_removed(const QString &player_name);
     void boss_level_changed();
     void managedRewindStateChanged();
+    void equipAreaOccupancyChanged();
     void add_equip_area(const QString &area);
     void card_description_updated(const QString &player_name, const QString &card_name);
     // choice signal

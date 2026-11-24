@@ -421,14 +421,6 @@ bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
     if (skill && !owner->ownsSkill(skillName)) {
         if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
             m_room.clearClub(skill->getClubName());
-        if (skill->inherits("ViewAsEquipSkill")) {
-            const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skillName);
-            const QString view = viewAsEquip->viewAsEquip(owner);
-            foreach (const QString &equipName, view.split(",", Qt::SkipEmptyParts)) {
-                if (skillName != equipName && Sanguosha->getViewAsSkill(equipName))
-                    detachSkillFromPlayer(owner, equipName, true, false, true);
-            }
-        }
     }
 
     owner->refreshUIState();
@@ -588,11 +580,8 @@ int SkillRuntimeCoordinator::acquireSkillInternal(ServerPlayer *player, const QS
         const QString view = viewAsEquip->viewAsEquip(player);
         foreach (const QString &equipName, view.split(",", Qt::SkipEmptyParts)) {
             if (Sanguosha->getViewAsSkill(equipName)) {
-                if (accepted || unbound)
-                    attachSkillToPlayer(player, equipName,
-                        SkillInstanceRef(player->objectName(), SkillInstanceKey(skillName, instanceId)));
-                else
-                    attachSkillToPlayer(player, equipName);
+                attachSkillToPlayer(player, equipName,
+                    SkillInstanceRef(player->objectName(), SkillInstanceKey(skillName, instanceId)));
             }
         }
     }

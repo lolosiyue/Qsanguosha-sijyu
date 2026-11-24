@@ -210,6 +210,8 @@ public slots:
     void updateAreas(const QString &who);
     void updateHandcards(const QString &who);
     void updateCardDescription(const QString &player_name, const QString &card_name);
+    // Repaints equip areas and avatar tooltips: occupancy changes what owner and occupier show.
+    void refreshEquipOccupancy();
     void showServerInformation();
     void surrender();
     void saveReplayRecord();

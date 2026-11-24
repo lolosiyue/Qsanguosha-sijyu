@@ -44,6 +44,9 @@ public:
                                 const std::function<QString(const QString &)> &playerName = {});
     // Feedback for a control command. Empty when there is nothing worth saying.
     static QString commandResultText(int command, bool success, const QString &message);
+    static QString equipmentOccupancyText(const ClientGameState &state, const QString &name,
+                                          const Resolvers &resolvers);
+    QString equipmentOccupancyText(const ClientGameState &state, const QString &name) const;
     QString renderState(const ClientGameState &state) const;
     QString renderPlayers(const ClientGameState &state) const;
     QString renderHand(const ClientGameState &state) const;
