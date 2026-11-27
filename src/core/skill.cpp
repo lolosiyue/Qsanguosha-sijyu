@@ -6,6 +6,7 @@
 #include "settings.h"
 #include "engine.h"
 #include "room.h"
+#include "room-state.h"
 #include "roomthread.h"
 #if !defined(QSAN_ENGINE_BUILD)
 #include "clientplayer.h"
@@ -595,6 +596,60 @@ QString ViewAsSkillV2::borrowedActivationMarkName(const QString &skillName)
 {
     // An internal selector must not trigger gameplay MarkChanged callbacks.
     return QStringLiteral("sys_BorrowedActivation_%1").arg(skillName);
+}
+
+BorrowedActivationScope::BorrowedActivationScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry)
+    : m_room(room), m_player(player),
+      m_selector(ViewAsSkillV2::borrowedActivationMarkName(entry.key.skillName)),
+      m_previous(player->getMark(m_selector))
+{
+    m_room->setPlayerMark(m_player, m_selector, entry.key.instanceID);
+}
+
+BorrowedActivationScope::~BorrowedActivationScope()
+{
+    m_room->setPlayerMark(m_player, m_selector, m_previous);
+}
+
+SkillPromptScope::SkillPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry,
+                                   const QVariantMap &prompt)
+    : m_prompt{player, entry.key, player->getSkillInstanceStateValue(entry.key.skillName, entry.key.instanceID, "prompt")},
+      m_activation(room, player, entry)
+{
+    write(player, m_prompt.key, prompt);
+}
+
+SkillPromptScope::PromptState::~PromptState()
+{
+    if (!player->findSkillInstance(key.skillName, key.instanceID)) return;
+    if (previous.isValid()) player->setSkillInstanceStateValue(key.skillName, key.instanceID, "prompt", previous);
+    else player->removeSkillInstanceStateValue(key.skillName, key.instanceID, "prompt");
+}
+
+QVariantMap SkillPromptScope::read(const Player *player, const SkillInstanceRef &entry)
+{
+    return player ? player->getSkillInstanceStateValue(entry.key.skillName, entry.key.instanceID, "prompt").toMap() : QVariantMap();
+}
+
+void SkillPromptScope::write(ServerPlayer *player, const SkillInstanceKey &key, const QVariantMap &prompt)
+{
+    player->setSkillInstanceStateValue(key.skillName, key.instanceID, "prompt", prompt);
+}
+
+SkillResponsePromptScope::SkillResponsePromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry)
+    : m_useState(Sanguosha->currentRoomState()), m_activation(room, player, entry)
+{
+}
+
+SkillResponsePromptScope::UseState::UseState(RoomState *state)
+    : state(state), reason(state->getCurrentCardUseReason()), pattern(state->getCurrentCardUsePattern())
+{
+}
+
+SkillResponsePromptScope::UseState::~UseState()
+{
+    state->setCurrentCardUseReason(reason);
+    state->setCurrentCardUsePattern(pattern);
 }
 
 bool ViewAsSkillV2::canActivateRequest(const ActiveSkillRequest &request) const
@@ -1919,25 +1974,27 @@ bool EquipSkillV2::prepareSource(Room *room, SkillContext &ctx) const
             for (int i = 0; i < move.card_ids.size(); ++i) {
                 const int id = move.card_ids.at(i);
                 if (id < 0) continue;
-                QPair<QString, QString> original = move.equipmentSourceBefore(id);
+                EquipmentMoveSource original = move.equipmentSourceBefore(id);
                 if (ctx.current_event == BeforeCardsMove && move.from == ctx.owner
                     && move.from_places.value(i, Player::PlaceUnknown) == Player::PlaceEquip
                     && room->getCardOwner(id) == ctx.owner && room->getCardPlace(id) == Player::PlaceEquip) {
                     const Card *card = Sanguosha->getCard(id);
-                    if (card && card->getTypeId() == Card::TypeEquip)
-                        original = {ctx.owner->objectName(), card->objectName()};
+                    const Player *beneficiary = room->getEquipAreaBeneficiary(move.from);
+                    if (card && card->getTypeId() == Card::TypeEquip && beneficiary)
+                        original = {move.from->objectName(), card->objectName(), beneficiary->objectName()};
                 }
-                if (original.first != ctx.owner->objectName() || original.second != m_equipmentName) continue;
-                ctx.physicalEquipSource = PhysicalEquipSource(original.first, original.second, objectName(), id);
+                if (original.beneficiary != ctx.owner->objectName() || original.equipment != m_equipmentName) continue;
+                ctx.physicalEquipSource = PhysicalEquipSource(original.holder, original.equipment, objectName(), id);
                 break;
             }
         }
         return true;
     }
     if (!static_cast<const TriggerSkill *>(this)->triggerable(ctx.owner)) return false;
-    for (const Card *equip : ctx.owner->getEquips()) {
-        if (equip->objectName() != m_equipmentName || equip->getEffectiveId() < 0) continue;
-        ctx.physicalEquipSource = PhysicalEquipSource(ctx.owner->objectName(), m_equipmentName, objectName(), equip->getEffectiveId());
+    const EffectiveEquip equip = ctx.owner->getEffectiveEquip(m_equipmentName);
+    if (equip.cardId >= 0) {
+        ctx.physicalEquipSource = PhysicalEquipSource(equip.areaOwner->objectName(), m_equipmentName,
+                                                       objectName(), equip.cardId);
         return true;
     }
     for (const SkillInstanceRef &source : ctx.owner->viewAsEquipSources(m_equipmentName)) {

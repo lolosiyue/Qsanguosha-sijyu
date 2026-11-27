@@ -195,7 +195,14 @@ bool DevLvedongCard::targetFixed() const
     } else if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE)
         return true;
 
-    card = Self->getTag("dev_lvedong").value<const Card *>();
+    if (Self) {
+        card = Self->getTag("dev_lvedong").value<const Card *>();
+    } else if (!user_string.isEmpty()) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared)
+            declared->deleteLater();
+        card = declared;
+    }
     return !card || card->targetFixed();
 }
 
@@ -2855,7 +2862,14 @@ bool DevTumouCard::targetFixed() const
 		return !card || card->targetFixed();
     }
 
-    card = Self->getTag("dev_tumou").value<const Card *>();
+    if (Self) {
+        card = Self->getTag("dev_tumou").value<const Card *>();
+    } else if (!user_string.isEmpty()) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared)
+            declared->deleteLater();
+        card = declared;
+    }
     return !card || card->targetFixed();
 }
 

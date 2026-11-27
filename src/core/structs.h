@@ -386,6 +386,13 @@ public:
     static const int S_MASK_BASIC_REASON = 0x0F;
 };
 
+struct EquipmentMoveSource {
+    QString holder;
+    QString equipment;
+    QString beneficiary;
+    bool effective = false;
+};
+
 struct CardsMoveOneTimeStruct {
     CardsMoveOneTimeStruct() = default;
     CardsMoveOneTimeStruct(const CardsMoveOneTimeStruct &other);
@@ -415,12 +422,12 @@ struct CardsMoveOneTimeStruct {
     QList<int> broken_ids;
 
     // Native pre-removal equipment identity; independent of optional history recording.
-    QPair<QString, QString> equipmentSourceBefore(int cardId) const
+    EquipmentMoveSource equipmentSourceBefore(int cardId) const
     { return m_equipmentSourcesBefore.value(cardId); }
 
 private:
     friend class CardMovementService;
-    QMap<int, QPair<QString, QString>> m_equipmentSourcesBefore;
+    QMap<int, EquipmentMoveSource> m_equipmentSourcesBefore;
 
 public:
     inline void removeCardIds(const QList<int>&to_remove)

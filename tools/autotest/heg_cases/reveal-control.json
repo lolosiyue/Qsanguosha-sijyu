@@ -1,0 +1,46 @@
+{
+  "hegemony": true,
+  "seats": [
+    {
+      "general": "heg_zhouyu",
+      "hidden": true,
+      "hand": [
+        "jink/heart/2"
+      ]
+    },
+    {
+      "general": "heg_xuchu",
+      "hp": 4
+    }
+  ],
+  "script": [
+    {
+      "seat": 2,
+      "type": "skill_invoke",
+      "key": "fanjian_discard",
+      "answer": false
+    }
+  ],
+  "trigger": "local p = P[1]\nlocal skill = assert(sgs.Sanguosha:getViewAsSkill('fanjian'))\nassert(not skill:canPreshow() and not sgs.Sanguosha:getTriggerSkill('fanjian'), 'expected a ViewAs skill without preshow')\nassert(p:hasInnateSkill(skill) and p:inHeadSkills('fanjian') and not p:hasAcquiredSkill('fanjian'), 'expected innate head Fanjian')\nassert(not p:hasShownOneGeneral() and not p:hasShownSkill(skill), 'expected concealed head and skill')\nroom:setCurrent(p)\np:setPhase(sgs.Player_Play)\nroom:broadcastProperty(p, 'phase')\n__enter_play_use()",
+  "expect": {
+    "winner": ".",
+    "invoked": [],
+    "seats": {
+      "1": {
+        "general": "anjiang",
+        "general_showed_before": false,
+        "general_showed": false,
+        "general2_showed": false,
+        "has_shown_one_general": false,
+        "hand": [
+          "jink/heart/2"
+        ],
+        "general2_showed_before": false
+      },
+      "2": {
+        "hp": 4,
+        "hand": []
+      }
+    }
+  }
+}

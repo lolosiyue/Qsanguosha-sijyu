@@ -260,7 +260,7 @@ python tools\autotest\general_acceptance.py --general s4_cloud_huangzhong --seed
 |---|---|---|
 | `sync`（自動） | 任一 stage 會載入 L 的 Lua 時先執行：`lua/ai`、`extensions`、`lua` 與 H 權威樹（`--extensions-authority`）以大小＋SHA-256 比對，列出 H 未提交檔 | L 較舊或缺檔 FAIL，載入 Lua 的 stage 一律 BLOCKED；L 較新但 H 在其後也有提交或未提交修改（兩邊都改）FAIL，須先以 H 為底合併；只有 L 較新（未回寫）WARN；`--skip-sync-check` 略過 |
 | `describe` | `qsanguosha_skill_scenario --describe-general`：package、技能與翻譯後描述 | 武將存在 |
-| `skill` | `--cases` 目錄交給 `skill_scenario_runner.py` | 全 PASS |
+| `skill` | `heg_cases/` 的內建國戰案例（暗將 innate 翻明置、對照組不翻、執行期取得技能不翻、觸發技路徑、暗副將槽位、續判換牌）＋一份依 `--describe-general` 生成的本武將接線案例（暗置時每個可見技能仍 `hasInnateSkill`／`inHeadSkills` 且 `hasShownSkill` 為假，最後打一張普通牌仍不翻）＋ `--cases` 目錄，全部交給 `skill_scenario_runner.py` | 全 PASS |
 | `ui` | 每個可見技能生成一份發動詢問 case 給 `skill_ui_runner.py`：詢問顯示翻譯名而非 id | runner exit 0 |
 | `headless` | registry 全部模式（不含 `*_emjr_cc*` 曹操劇情關卡）+ 6 個劇情模式，各 1 局；`--headless-minutes`（預設 60，0 = 不限）為整批預算 | 對局完成、有 force 標記；Lua 錯誤記 WARN；預算內未完成的模式記 STOPPED／NOT RUN，stage 至多 WARN |
 | `gui` | `network_runner.py` 03_1v2 | 同上 |

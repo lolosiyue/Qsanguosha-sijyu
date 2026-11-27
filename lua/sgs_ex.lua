@@ -5,6 +5,17 @@ local function validLimitScope(scope)
 		and scope >= sgs.Skill_Limit_None and scope <= sgs.Skill_Limit_Custom
 end
 
+-- spec.family = "ganglie" or {"ganglie", ...}: the skill declares which skill it is a
+-- version of (Skill::addFamily); AI asks player:hasSkillFamily("ganglie").
+local function configureFamily(skill, spec)
+	if spec.family == nil then return end
+	local families = type(spec.family) == "table" and spec.family or {spec.family}
+	for _, family in ipairs(families) do
+		assert(type(family) == "string" and family ~= "", "family must be a non-empty string")
+		skill:addFamily(family)
+	end
+end
+
 -- Declarative, viewer-only hints. No Lua callback is run while selecting targets.
 local function configureTargetTip(skill, spec)
 	if spec.target_tip == nil then return end
@@ -89,6 +100,7 @@ function sgs.CreateTriggerSkill(spec)
 	--if type(spec.dynamic_frequency)=="function" then
 		skill.dynamic_frequency = spec.dynamic_frequency
 	--end
+	configureFamily(skill, spec)
 	return skill
 end
 
@@ -146,6 +158,7 @@ function sgs.CreateTriggerSkillV2(spec)
 	if type(spec.waked_skills)=="string" then skill:setWakedSkills(spec.waked_skills) end
 	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
 	if type(spec.hide_skill)=="boolean" then skill:setHideSkill(spec.hide_skill) end
+	configureFamily(skill, spec)
 	return skill
 end
 
@@ -267,6 +280,7 @@ function sgs.CreateViewAsSkillV2(spec)
 	if spec.allow_declaration then skill.allow_declaration = spec.allow_declaration end
 	if spec.build_card then skill.build_card = spec.build_card end
 	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
+	configureFamily(skill, spec)
 	return skill
 end
 

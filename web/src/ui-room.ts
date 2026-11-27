@@ -95,6 +95,34 @@ function markLabel(key: string): string {
   return baseLabel === baseKey ? base : baseLabel;
 }
 
+function equipAreaLabels(bind: UiBind, name: string) {
+  const { state } = bind.session;
+  const playerLabel = (seat: string) => {
+    const player = state.player(seat);
+    const general = playerGeneralName(player);
+    return general ? tr(general) : asString(player?.screen_name, seat);
+  };
+  return state.equipAreaOccupancies().filter(area => area.areaOwner === name || area.occupier === name)
+    .map(area => {
+      const borrowed = area.occupier === name;
+      const player = playerLabel(borrowed ? area.areaOwner : area.occupier);
+      return {
+        borrowed,
+        label: borrowed ? `+借自${player}` : `→${player}`,
+        title: (borrowed ? `借用${player}的装备区` : `装备区被${player}占有`)
+          + (area.reason ? `（${tr(area.reason)}）` : "")
+      };
+    });
+}
+
+function equipAreaMarkers(labels: ReturnType<typeof equipAreaLabels>): HTMLElement {
+  return el("span", { class: "equip-area-markers", title: labels.map(area => area.title).join(" · ") },
+    labels.map(area => el("span", {
+      class: `equip-area-marker ${area.borrowed ? "borrowed" : "occupied"}`,
+      title: area.title
+    }, [area.label])));
+}
+
 function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElement {
   const { session, ui } = bind;
   const player = session.state.player(name);
@@ -174,12 +202,16 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
     art.append(row);
   }
   const equipIds = session.state.cardsForPlayer(name, PLACE_EQUIP);
+  const equipAreas = equipAreaLabels(bind, name);
+  const occupiedTitle = equipAreas.find(area => !area.borrowed)?.title;
   if (kind === "photo" && equipIds.length) {
     const equips = el("span", { class: "photo-equips" });
     for (const id of equipIds)
-      equips.append(equipBar(bind, id));
+      equips.append(equipBar(bind, id, occupiedTitle));
     art.append(equips);
   }
+  if (kind === "photo" && equipAreas.length)
+    art.append(equipAreaMarkers(equipAreas));
   const tricks = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK);
   if (kind === "photo" && tricks.length)
     art.append(judgeIcons(bind, tricks));
@@ -212,6 +244,7 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
     player?.faceup === false ? "背面" : "",
     marks ? `标记 ${marks}` : "",
     equipNames ? `装备 ${equipNames}` : `装备 ${equipIds.length}`,
+    ...equipAreas.map(area => area.title),
     `判定 ${tricks.length}`,
     pileText ? `牌堆 ${pileText}` : "",
     phase ? `阶段 ${phaseLabel[phase] ?? phase}` : "",
@@ -255,9 +288,9 @@ function magatamaBox(hp: number, maxHp: number): HTMLElement {
   return box;
 }
 
-function equipBar(bind: UiBind, cardId: number): HTMLElement {
+function equipBar(bind: UiBind, cardId: number, occupancy?: string): HTMLElement {
   const label = cardLabel(bind, cardId);
-  const bar = el("span", { class: "equip-bar", title: label }, [
+  const bar = el("span", { class: "equip-bar", title: occupancy ? `${label} · ${occupancy}` : label }, [
     el("span", { class: "equip-name" }, [label]),
     assetImg(equipImageUrls(cardObjectName(bind, cardId), true), "", "equip-image")
   ]);
@@ -652,11 +685,16 @@ function handView(bind: UiBind): HTMLElement {
 function dashboardEquips(bind: UiBind, self: string): HTMLElement {
   const equips = el("div", { class: "dash-equips" });
   const player = bind.session.state.player(self);
+  const equipAreas = equipAreaLabels(bind, self);
+  const occupiedTitle = equipAreas.find(area => !area.borrowed)?.title;
   equips.append(el("strong", { class: "dash-screen-name" }, [asString(player?.screen_name, self)]));
+  if (equipAreas.length)
+    equips.append(equipAreaMarkers(equipAreas));
   for (const id of bind.session.state.cardsForPlayer(self, PLACE_EQUIP)) {
     const card = renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id));
     // Equipment is a bar in the left frame, not a card face.
     card.classList.add("equip-card");
+    if (occupiedTitle) card.title = [card.title, occupiedTitle].filter(Boolean).join(" · ");
     card.querySelector("img")?.replaceWith(assetImg(equipImageUrls(cardObjectName(bind, id), false), "", "equip-image"));
     equips.append(card);
   }

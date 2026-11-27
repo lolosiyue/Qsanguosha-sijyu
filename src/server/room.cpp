@@ -749,6 +749,8 @@ QVariantMap Room::historySkillContext(const SkillContext &context) const
             {QStringLiteral("activation_instance_id"), context.activationRef.key.instanceID}};
     if (context.physicalEquipSource.isValid()) {
         result.insert(QStringLiteral("physical_equipment"), context.physicalEquipSource.toVariantMap());
+        if (context.owner)
+            result.insert(QStringLiteral("equip_beneficiary"), context.owner->objectName());
         result.insert(QStringLiteral("skill_name"), context.physicalEquipSource.skill());
         result.insert(QStringLiteral("skill_owner"), context.physicalEquipSource.holder());
         result.insert(QStringLiteral("instance_id"), 0);
@@ -806,6 +808,8 @@ QVariantMap Room::historyCause(const CardMoveReason &reason) const
                && (reason.m_skillName.isEmpty() || reason.m_skillName == reason.m_useStruct.physicalEquipSource.skill())) {
         const PhysicalEquipSource &source = reason.m_useStruct.physicalEquipSource;
         result.insert(QStringLiteral("physical_equipment"), source.toVariantMap());
+        if (reason.m_useStruct.from)
+            result.insert(QStringLiteral("equip_beneficiary"), reason.m_useStruct.from->objectName());
         result.insert(QStringLiteral("skill_name"), source.skill());
         result.insert(QStringLiteral("skill_owner"), source.holder());
         result.insert(QStringLiteral("instance_id"), 0);
@@ -1935,6 +1939,96 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 	m_playerLifecycle->killPlayer(victim, reason, hplost);
 }
 
+quint64 Room::setEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason)
+{
+    return updateEquipAreaOccupier(areaOwner, occupier, false, reason);
+}
+
+quint64 Room::grantEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, const QString &reason)
+{
+    return occupier ? updateEquipAreaOccupier(areaOwner, occupier, true, reason) : 0;
+}
+
+quint64 Room::updateEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *occupier, bool renew,
+                                      const QString &reason)
+{
+    if (!areaOwner || areaOwner->getRoom() != this || areaOwner->objectName().isEmpty()) return 0;
+    if (occupier && (occupier == areaOwner || occupier->getRoom() != this || occupier->objectName().isEmpty()
+                     || !areaOwner->isAlive() || !occupier->isAlive())) return 0;
+
+    const auto update = m_equipAreaOccupancy.assign(areaOwner->objectName(),
+                                                   occupier ? occupier->objectName() : QString(), renew, reason);
+    if (update.changed) {
+        roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+        notifyEquipAreaOccupancy();
+    }
+    return update.generation;
+}
+
+void Room::notifyEquipAreaOccupancy(ServerPlayer *only)
+{
+    // Clients receive the whole table, never a delta, so a stale view can always be replaced.
+    const QVariantMap payload{{QStringLiteral("schema_version"), 1},
+                              {QStringLiteral("areas"), m_equipAreaOccupancy.publicTable()}};
+    if (only)
+        doNotify(only, QSanProtocol::S_COMMAND_EQUIP_AREA_OCCUPANCY, payload);
+    else
+        doBroadcastNotify(QSanProtocol::S_COMMAND_EQUIP_AREA_OCCUPANCY, payload);
+}
+
+bool Room::clearEquipAreaOccupier(ServerPlayer *areaOwner, ServerPlayer *expectedOccupier, quint64 generation)
+{
+    if (!areaOwner || !expectedOccupier || areaOwner->getRoom() != this || expectedOccupier->getRoom() != this)
+        return false;
+    if (!m_equipAreaOccupancy.release(areaOwner->objectName(), expectedOccupier->objectName(), generation))
+        return false;
+    roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+    notifyEquipAreaOccupancy();
+    return true;
+}
+
+void Room::releaseEquipAreasForPlayer(const ServerPlayer *player)
+{
+    if (m_equipAreaOccupancy.releaseForPlayer(player->objectName())) {
+        roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+        notifyEquipAreaOccupancy();
+    }
+}
+
+QList<const Player *> Room::effectiveEquipAreaOwners(const Player *beneficiary) const
+{
+    const auto areas = m_equipAreaOccupancy.effectiveAreas(beneficiary->objectName());
+    QList<const Player *> areaOwners;
+    if (areas.ownArea) areaOwners << beneficiary;
+    for (const QString &name : areas.occupiedAreas) {
+        if (const ServerPlayer *owner = findPlayerByObjectName(name, true))
+            areaOwners << owner;
+    }
+    return areaOwners;
+}
+
+ServerPlayer *Room::getEquipAreaBeneficiary(const Player *areaOwner) const
+{
+    if (!areaOwner || areaOwner->parent() != this) return nullptr;
+    return findPlayerByObjectName(m_equipAreaOccupancy.beneficiaryOf(areaOwner->objectName()), true);
+}
+
+QVariantList Room::getEquipAreaOccupancyGrants() const
+{
+    return equipAreaOccupancySnapshot().rows();
+}
+
+EquipAreaOccupancy::Snapshot Room::equipAreaOccupancySnapshot() const
+{
+    return m_equipAreaOccupancy.snapshot();
+}
+
+void Room::restoreEquipAreaOccupancy(EquipAreaOccupancy::Snapshot snapshot)
+{
+    m_equipAreaOccupancy.swapSnapshot(snapshot);
+    roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+}
+
 void Room::judge(JudgeStruct&judge_struct)
 {
 	RoomThread::CascadeScope cascade(*thread, false);
@@ -2909,6 +3003,45 @@ void Room::setCardTip(int card_id, const QString&tip)
 	m_cardState->setCardTip(card_id, tip);
 }
 
+bool Room::setCardLinked(int card_id, bool linked)
+{
+    Card *card = card_id >= 0 ? getCard(card_id) : nullptr;
+    if (!card || card->isVirtualCard()) return false;
+    const Player::Place place = getCardPlace(card_id);
+    ServerPlayer *owner = place == Player::PlaceHand ? getCardOwner(card_id) : nullptr;
+    if (linked && !owner) return false;
+    if (card->isLinkedCard() == linked) return true;
+    const bool wasVisible = card->hasFlag(QStringLiteral("visible"));
+    m_cardState->setCardLinked(card, linked);
+    if (owner)
+        notifyLinkedHandCard(owner, card_id, linked, linked || wasVisible ? nullptr : owner);
+    else if (place == Player::PlaceEquip || place == Player::PlaceDelayedTrick
+             || place == Player::PlaceTable || place == Player::DiscardPile)
+        notifyLinkedHandCard(nullptr, card_id, false);
+    roomRuntime()->advanceStateRevision(RoomRuntime::CardIdentityChanged);
+    return true;
+}
+
+bool Room::toggleCardLinked(int card_id)
+{
+    const Card *card = card_id >= 0 ? getCard(card_id) : nullptr;
+    return card && setCardLinked(card_id, !card->isLinkedCard());
+}
+
+void Room::notifyLinkedHandCard(const ServerPlayer *owner, int cardId, bool visible,
+                                ServerPlayer *receiver)
+{
+    const Card *card = getCard(cardId);
+    if (visible) {
+        const auto *wrapped = qobject_cast<const WrappedCard *>(card);
+        if (wrapped && wrapped->isModified()) {
+            if (receiver) notifyUpdateCard(receiver, cardId, wrapped);
+            else broadcastUpdateCard(getPlayers(), cardId, wrapped);
+        }
+    }
+    m_cardState->notifyLinkedHandCard(owner, card, visible, receiver);
+}
+
 void Room::clearCardTip(int card_id)
 {
 	m_cardState->clearCardTip(card_id);
@@ -3003,6 +3136,7 @@ void Room::syncTakeoverPlayerState()
 	}
 	for (ServerPlayer *receiver : getPlayers())
 		notifySkillInstanceSnapshot(receiver);
+	notifyEquipAreaOccupancy();
 	for (ServerPlayer *player : getPlayers()) {
 		if (player->isDead())
 			doBroadcastNotify(S_COMMAND_KILL_PLAYER, player->objectName());
@@ -5400,6 +5534,17 @@ bool Room::doCareeristRule()
 
 void Room::preparePlayers()
 {
+    const auto attachVirtualEquipment = [this](ServerPlayer *player, const Skill *skill) {
+        const auto *provider = qobject_cast<const ViewAsEquipSkill *>(skill);
+        if (!provider) return;
+        const QString name = skill->objectName();
+        const QList<int> ids = player->getSkillInstanceIds(name);
+        if (ids.isEmpty()) return;
+        const SkillInstanceRef source(player->objectName(), SkillInstanceKey(name, ids.last()));
+        for (const QString &equipName : provider->viewAsEquip(player).split(',', Qt::SkipEmptyParts)) {
+            if (Sanguosha->getViewAsSkill(equipName)) attachSkillToPlayer(player, equipName, source);
+        }
+    };
     foreach(ServerPlayer*player, getPlayers()){
         const General*gen = Config.EnableHegemony ? player->getActualGeneral1() : player->getGeneral();
         if(!gen) continue;
@@ -5413,16 +5558,7 @@ void Room::preparePlayers()
 			if (relatedNames.contains(skill->objectName())) continue;
             if (Config.EnableHegemony && skill->relateToPlace(false)) continue;
             player->addSkill(skill->objectName(), true);
-            if (skill->inherits("ViewAsEquipSkill")){
-                const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-                QString view = vaes->viewAsEquip(player);
-                if(view!=""){
-                    foreach(QString equip_name, view.split(",")){
-                        if (Sanguosha->getViewAsSkill(equip_name))
-                            attachSkillToPlayer(player,equip_name);
-                    }
-                }
-            }
+            attachVirtualEquipment(player, skill);
         }
         gen = Config.EnableHegemony ? player->getActualGeneral2() : player->getGeneral2();
         if (gen){
@@ -5435,16 +5571,7 @@ void Room::preparePlayers()
 				if (relatedNames.contains(skill->objectName())) continue;
                 if (Config.EnableHegemony && skill->relateToPlace(true)) continue;
                 player->addSkill(skill->objectName(), false);
-                if (skill->inherits("ViewAsEquipSkill")){
-                    const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-                    QString view = vaes->viewAsEquip(player);
-                    if(view!=""){
-                        foreach(QString equip_name, view.split(",")){
-                            if (Sanguosha->getViewAsSkill(equip_name))
-                                attachSkillToPlayer(player,equip_name);
-                        }
-                    }
-                }
+                attachVirtualEquipment(player, skill);
             }
         }
     }

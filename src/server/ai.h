@@ -219,6 +219,8 @@ struct AISkillView {
     QString description;
     QString limitMark;
     QList<int> triggerEvents;
+    // Families the skill declares itself (Skill::familyList), for hasSkillFamily.
+    QStringList families;
     // Owner-only: whether the view-as part is a V2 skill, ViewAsSkill::isEnabledAtPlay,
     // and isEnabledAtResponse for the basic response patterns SmartAI asks about.
     bool viewAsKnown = false;
@@ -243,6 +245,15 @@ struct AISkillView {
           hasAmountOverride(false), amount(0), hasPrivateState(false),
           frequency(0), lordSkill(false),
           attachedLordSkill(false), lordSkillEffective(false) {}
+};
+
+struct AIEffectiveEquipView {
+    int cardId;
+    QString areaOwner;
+    QString beneficiary;
+    bool active;
+    int weaponRange;
+    QStringList nullifiedSources;
 };
 
 struct AIPlayerView {
@@ -279,6 +290,13 @@ struct AIPlayerView {
     QString generalName;
     QString general2Name;
     QList<AICardView> equips;
+    QList<AIEffectiveEquipView> effectiveEquips;
+    QString equipAreaBeneficiary;
+    bool equipSourceEffectsKnown = false;
+    QMap<QString, QStringList> armorEffectsBySource;
+    int usableWoodenOxCount = 0;
+    int offensiveHorseCorrection = 0;
+    int defensiveHorseCorrection = 0;
     QList<AICardView> judgingArea;
     QMap<QString, int> publicMarks;
     // The viewer sees every mark it owns, so a missing mark is zero, not unknown.
@@ -303,6 +321,8 @@ struct AIPlayerView {
     QStringList armorEffectNames;
     bool armorEffectNamesKnown = false;
     QList<AICardPileView> piles;
+    QList<AICardView> usableHandPile;
+    bool usableHandPileKnown = false;
     QList<int> displayCards;
     // Derived player values the shared entries ask for.
     int maxCards;

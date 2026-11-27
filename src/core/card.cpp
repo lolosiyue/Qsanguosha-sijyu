@@ -1291,6 +1291,11 @@ void Card::setFlags(const QString &flag) const
 	}
 }
 
+bool Card::isLinkedCard() const
+{
+    return !isVirtualCard() && hasFlag(QStringLiteral("link_card"));
+}
+
 bool Card::hasFlag(const QString &flag) const
 {
 	return flags.contains(flag);

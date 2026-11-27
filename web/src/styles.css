@@ -160,6 +160,10 @@ body:has(.app.room) { background: var(--scene-bg), var(--bg); background-size: c
 .photo-marks .mark-count { margin-left: calc(-2 * var(--pu)); font: 700 calc(11 * var(--pu)) / 1 Arial, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
 .photo-marks .mark-text { max-width: calc(108 * var(--pu)); padding: 0 calc(2 * var(--pu)); overflow: hidden; font: 600 calc(9 * var(--pu)) / calc(13 * var(--pu)) "Noto Sans SC", "Microsoft YaHei", sans-serif; color: #ffe9b0; text-overflow: ellipsis; white-space: nowrap; background: #000c; border: 1px solid #d8b45a80; border-radius: calc(2 * var(--pu)); text-shadow: 0 0 1px #000; }
 .photo-art .photo-equips { left: calc(1 * var(--pu)); top: calc(120 * var(--pu)); display: flex; flex-direction: column; }
+.equip-area-markers { position: absolute; display: flex; gap: .2em; overflow: hidden; white-space: nowrap; }
+.equip-area-marker { min-width: 0; padding: 0 .35em; overflow: hidden; text-overflow: ellipsis; border-radius: .18em; background: #2c2219ed; color: #ffd687; }
+.equip-area-marker.borrowed { background: #142b48ed; color: #b8ddff; }
+.photo-art > .equip-area-markers { display: flex; left: calc(23 * var(--pu)); top: calc(107 * var(--pu)); max-width: calc(117 * var(--pu)); font: 600 calc(10 * var(--pu)) / calc(13 * var(--pu)) sans-serif; }
 .photo-equips .equip-bar { position: relative; display: block; width: calc(140 * var(--pu)); height: calc(14 * var(--pu)); }
 .photo-equips .equip-image { position: absolute; left: 0; top: calc(1 * var(--pu)); width: calc(140 * var(--pu)); height: calc(19 * var(--pu)); }
 .photo-equips .equip-name { display: none; height: calc(14 * var(--pu)); padding: 0 calc(3 * var(--pu)); overflow: hidden; white-space: nowrap; font-size: calc(10 * var(--pu)); line-height: calc(14 * var(--pu)); color: #f1e2b4; background: #000b; }
@@ -204,6 +208,7 @@ body:has(.app.room) { background: var(--scene-bg), var(--bg); background-size: c
 .dashboard { grid-area: dashboard; position: relative; z-index: 5; min-width: 0; height: var(--dash-h); display: grid; grid-template-columns: calc(164 * var(--gu)) minmax(0, 1fr) calc(106 * var(--gu)) calc(171 * var(--gu)); grid-template-rows: 100%; grid-template-areas: "equip hand platter avatar"; align-items: end; --card-width: calc(93 * var(--gu)); }
 .dash-equips { grid-area: equip; position: relative; height: 100%; display: flex; flex-direction: column; padding: calc(42 * var(--gu)) 0 0 calc(7 * var(--gu)); background: var(--dash-equip-bg) 0 0 / 100% 100% no-repeat, #1b1b1be0; }
 .dash-screen-name { position: absolute; left: 0; top: 0; width: calc(157 * var(--gu)); height: calc(30 * var(--gu)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font: calc(13 * var(--gu)) / calc(30 * var(--gu)) "SimSun", "Songti SC", serif; color: #fff; text-shadow: 0 0 2px #000; }
+.dash-equips > .equip-area-markers { left: calc(7 * var(--gu)); top: calc(30 * var(--gu)); max-width: calc(149 * var(--gu)); font: 600 calc(10 * var(--gu)) / calc(12 * var(--gu)) sans-serif; }
 .dash-equips .card.equip-card { width: calc(149 * var(--gu)); height: calc(25 * var(--gu)); flex: 0 0 auto; display: block; overflow: visible; border: 0; border-radius: 0; background: none; transition: transform 120ms; }
 .dash-equips .card.equip-card .equip-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
 .dash-equips .card.equip-card .card-number { left: calc(104 * var(--gu)); top: calc(-1 * var(--gu)); width: calc(24 * var(--gu)); height: auto; }

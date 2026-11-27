@@ -167,6 +167,7 @@ const QSAN_TEXT = Object.freeze({
   chainedLabel: '连环',
   faceDownLabel: '翻面',
   equipLabel: '装备',
+  equipOccupiedBy: '（被%1占有）',
   noneLabel: '无',
   judgeLabel: '判定',
   waitGeneral: '等待选将',

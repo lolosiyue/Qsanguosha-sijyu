@@ -6,10 +6,14 @@ function text_(value) {
   if (typeof value === 'object') return Object.keys(value).map(k => qsanFieldText_(k) + '：' + text_(qsanFieldValue_(k, value[k]))).join('；');
   return String(value);
 }
-function equipLabels_(value) {
+function equipLabels_(value, players) {
   return (Array.isArray(value) ? value : []).map(item => {
-    if (item && typeof item === 'object') return item.label || item.name || '';
-    return item == null ? '' : String(item);
+    if (item == null || typeof item !== 'object') return item == null ? '' : String(item);
+    const label = item.label || item.name || '';
+    if (!label || !item.occupier) return label;
+    const occupier = (players || []).find(player => player.id === item.occupier);
+    const name = occupier && (occupier.general_label || occupier.label) || item.occupier;
+    return label + qsanFormat_('equipOccupiedBy', name);
   }).filter(Boolean).join('、');
 }
 function marksSummary_(value) {
@@ -288,7 +292,7 @@ function roomSeatText_(seat, view) {
     [p.general_label, p.deputy_general_label].filter(Boolean).join('／') || qsanText_('waitGeneral'),
     hp + '　' + qsanText_('handLabel') + ' ' + (p.hand_count == null ? '?' : p.hand_count),
     [p.alive === false ? qsanText_('deadLabel') : '', role && role !== kingdom ? role : '', kingdom ? qsanText_('kingdomLabel') + ' ' + kingdom : '', roomPhase_(p), p.chained ? qsanText_('chainedLabel') : '', p.face_up === false ? qsanText_('faceDownLabel') : ''].filter(Boolean).join(' · '),
-    qsanText_('equipLabel') + '：' + (equipLabels_(p.equip) || qsanText_('noneLabel')),
+    qsanText_('equipLabel') + '：' + (equipLabels_(p.equip, view.players) || qsanText_('noneLabel')),
     qsanText_('judgeLabel') + '：' + (judgments.map(roomCardText_).join('、') || qsanText_('noneLabel')),
     marksSummary_(p.marks)
   ].filter(Boolean).join('\n');
@@ -441,7 +445,7 @@ function render_(snapshot) {
     const label = p.label || p.id;
     const role = factionText_(p.role), kingdom = factionText_(p.kingdom), phase = roomPhase_(p);
     board.push(['player', p.id, label, (hp === '' && maxHp === '') ? '' : String(hp) + '/' + String(maxHp), handCount,
-      [p.general_label, p.deputy_general_label, equipLabels_(p.equip), marksSummary_(p.marks)].filter(Boolean).join('；'),
+      [p.general_label, p.deputy_general_label, equipLabels_(p.equip, view.players), marksSummary_(p.marks)].filter(Boolean).join('；'),
       (p.alive === false ? qsanText_('deadLabel') : qsanText_('aliveLabel')) + (role && role !== kingdom ? qsanText_('roleSep') + role : '') + (kingdom ? qsanText_('kingdomSep') + kingdom : '') + (phase ? qsanText_('phaseSep') + phase : ''), description_(p), '', '', '']);
   });
   (view.hand || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', qsanText_('selfHand'), '', description_(c), '', '', '']));

@@ -20,6 +20,7 @@ class KOFTuxi : public TriggerSkillV2
 public:
     KOFTuxi() : TriggerSkillV2("koftuxi")
     {
+        addFamily("tuxi");
         events << DrawNCards;
     }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override

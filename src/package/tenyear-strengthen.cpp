@@ -958,6 +958,7 @@ class TenyearJianxiong : public TriggerSkillV2
 public:
 	TenyearJianxiong() : TriggerSkillV2("tenyearjianxiong")
 	{
+		addFamily("jianxiong");
 		frequency = Frequent;
 		events << Damaged;
 	}
@@ -1457,7 +1458,10 @@ void TenyearTuxiCard::onEffect(CardEffectStruct &effect) const
 
 class TenyearTuxi : public TriggerSkillV2 {
 public:
-    TenyearTuxi() : TriggerSkillV2("tenyeartuxi") { events << DrawNCards; }
+    TenyearTuxi() : TriggerSkillV2("tenyeartuxi") {
+        addFamily("tuxi");
+        events << DrawNCards;
+    }
     int getPriority(TriggerEvent) const override { return 1; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
         const DrawStruct draw = data.value<DrawStruct>();

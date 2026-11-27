@@ -50,7 +50,11 @@ public:
 
 class HGuicai : public TriggerSkillV2 {
 public:
-    HGuicai() : TriggerSkillV2("heg_guicai") { events << AskForRetrial; }
+    HGuicai() : TriggerSkillV2("heg_guicai")
+    {
+        addFamily("guicai");
+        events << AskForRetrial;
+    }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override {
         JudgeStruct *judge = data.value<JudgeStruct *>();
@@ -119,7 +123,7 @@ public:
 
 class HGanglie : public HWeiDamagedSkill {
 public:
-    HGanglie() : HWeiDamagedSkill("heg_ganglie") {}
+    HGanglie() : HWeiDamagedSkill("heg_ganglie") { addFamily("ganglie"); }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         room->broadcastSkillInvoke(objectName(), ctx.owner);
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
@@ -528,6 +532,10 @@ public:
             judge.who = zhenji;
             judge.time_consuming = true;
             do {
+                // Each repeat is a fresh judgement. StartJudge only draws a card when the
+                // struct carries none, so the previous result must be cleared or the loop
+                // keeps re-judging the same card.
+                judge.card = nullptr;
                 room->judge(judge);
                 if (judge.isGood() && judge.card) {
                     const int id = judge.card->getEffectiveId();

@@ -126,7 +126,8 @@ export const Command = {
   STATE_SYNC: 133,
   RESOLUTION_STATE: 134,
   SET_UI_THEME: 135,
-  QML_ELEMENT: 136
+  QML_ELEMENT: 136,
+  EQUIP_AREA_OCCUPANCY: 139
 } as const;
 
 export type CardUseMode = "play" | "response" | "discard" | "free";

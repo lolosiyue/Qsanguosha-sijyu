@@ -2,12 +2,14 @@
 // case's Lua trigger once the board is set, and writes a JSON report of the
 // resulting history facts and final board.  Driven by
 // tools/autotest/skill_scenario_runner.py; see tools/autotest/README.md.
+#include "ai-runtime.h"
 #include "engine-bootstrap.h"
 #include "engine.h"
 #include "general.h"
 #include "lua-runtime.h"
 #include "lua.hpp"
 #include "miniscenarios.h"
+#include "package.h"
 #include "room.h"
 #include "roomthread.h"
 #include "runtime-paths.h"
@@ -117,6 +119,39 @@ int luaUseSelected(lua_State *L)
     return 1;
 }
 
+QString registerTriggerOrder(Room *room, const ServerPlayer *player, const QString &reason, const QString &answer)
+{
+    LuaRuntime &runtime = room->roomRuntime()->ai().lua();
+    LuaRuntime::Binding binding(runtime);
+    lua_State *L = runtime.state();
+    if (!L) return QStringLiteral("no isolated AI state for trigger_order");
+    // Select an offered instance. The engine still nominates it, checks the answer and runs cost/effect.
+    static const char script[] = R"lua(
+        local reason, viewer, skill = ...
+        local previous = ai_skill_triggerorder[reason]
+        ai_skill_triggerorder[reason] = function(self, options, request)
+            if request.viewer == viewer then
+                for _, choice in ipairs(options.choices or {}) do
+                    local name = choice:match("^[^:]+"):gsub("#%d+$", "")
+                    if name == skill then return choice end
+                end
+            end
+            if previous then return previous(self, options, request) end
+        end
+    )lua";
+    int status = luaL_loadbuffer(L, script, sizeof(script) - 1, "=trigger_order fixture");
+    if (status == LUA_OK) {
+        lua_pushstring(L, reason.toUtf8().constData());
+        lua_pushstring(L, player->objectName().toUtf8().constData());
+        lua_pushstring(L, answer.toUtf8().constData());
+        status = LuaRuntime::protectedCall(L, 3, 0, 0);
+    }
+    if (status == LUA_OK) return QString();
+    const QString error = QString::fromUtf8(lua_tostring(L, -1));
+    lua_pop(L, 1);
+    return error;
+}
+
 QString luaPrelude(const QStringList &seatNames)
 {
     QStringList seats;
@@ -218,7 +253,8 @@ QVariantList factsAfter(Room *room, const QVariant &watermark, bool actualDamage
 }
 
 // Runs on the room thread: once the worker stops, shutdown releases room tags and cards.
-QVariantMap buildReport(Room *room, const QStringList &names, const QVariant &watermark, const QString &error)
+QVariantMap buildReport(Room *room, const QStringList &names, const QList<QPair<bool, bool>> &shownBefore,
+                        const QVariant &watermark, const QString &error)
 {
     QVariantList seats;
     for (int index = 0; index < names.size(); ++index) {
@@ -234,6 +270,10 @@ QVariantMap buildReport(Room *room, const QStringList &names, const QVariant &wa
         seats << QVariantMap{
             {"seat", index + 1}, {"name", player->objectName()}, {"general", player->getGeneralName()},
             {"general2", player->getGeneral2Name()}, {"role", player->getRole()}, {"hp", player->getHp()},
+            {"general_showed_before", shownBefore.at(index).first},
+            {"general2_showed_before", shownBefore.at(index).second},
+            {"general_showed", player->hasShownGeneral()}, {"general2_showed", player->hasShownGeneral2()},
+            {"has_shown_one_general", player->hasShownOneGeneral()},
             {"maxhp", player->getMaxHp()}, {"alive", player->isAlive()}, {"chained", player->isChained()},
             {"faceup", player->faceUp()}, {"hand", cardSpecs(player->handCards())},
             {"equip", cardSpecs(player->getEquipsId())}, {"judge", cardSpecs(player->getJudgingAreaID())},
@@ -275,35 +315,49 @@ public:
         MiniSceneRule::trigger(event, room, player, data);
         // Hegemony rules switch on only now: the hegemony start would deal random head/deputy pairs.
         if (g_hegemony) Config.EnableHegemony = ServerInfo.EnableHegemony = true;
-        // Hegemony "hidden" seats conceal the head general the way the hegemony start does,
+        // Hegemony "hidden" seats conceal the designated slots the way the hegemony start does,
         // keeping the innate instances so a later reveal is presentation only.
         for (int index = 0; index < seats.size(); ++index) {
             ServerPlayer *seat = seats.at(index);
-            if (!Config.EnableHegemony || players.at(index).value(QStringLiteral("hidden")) != QLatin1String("1")) continue;
+            const QString hidden = players.at(index).value(QStringLiteral("hidden"));
+            if (!Config.EnableHegemony || hidden.isEmpty()) continue;
+            const bool hideDeputy = hidden == QLatin1String("both");
             // MiniScene changes generals through the ordinary scenario lifecycle.
-            // Restore head-source metadata before hiding, preserving IDs and state.
+            // Restore unambiguous source slots before hiding, preserving IDs and state.
             const General *head = seat->getGeneral();
+            const General *deputy = hideDeputy ? seat->getGeneral2() : nullptr;
             const QStringList explicitSkills = players.at(index).value(QStringLiteral("acquireSkills")).split(',');
             for (SkillInstance instance : seat->getSkillInstances()) {
                 if ((instance.source != SourceInnate && instance.source != SourceAcquired)
-                    || instance.bindHead != 0 || !head || !head->hasSkill(instance.skillName)
+                    || instance.bindHead != 0
                     || instance.parentRef.isValid() || instance.frozenSourceRef.isValid()
                     || explicitSkills.contains(instance.skillName)) continue;
-                std::fprintf(stderr, "SKILL_SCENARIO hidden root: %s %s#%d source=%d -> innate head\n",
+                const bool inHead = head && head->hasSkill(instance.skillName);
+                const bool inDeputy = deputy && deputy->hasSkill(instance.skillName);
+                if (inHead == inDeputy) continue;
+                const int slot = inHead ? 1 : 2;
+                std::fprintf(stderr, "SKILL_SCENARIO hidden root: %s %s#%d source=%d -> innate slot=%d\n",
                     qPrintable(seat->objectName()), qPrintable(instance.skillName), instance.instanceID,
-                    static_cast<int>(instance.source));
+                    static_cast<int>(instance.source), slot);
                 if (instance.source == SourceAcquired)
                     seat->removeSkillInstance(instance.skillName, instance.instanceID);
                 instance.source = SourceInnate;
-                instance.bindHead = 1;
+                instance.bindHead = slot;
                 seat->upsertSkillInstance(instance);
             }
             std::fflush(stderr);
             room->setTag(seat->objectName(), QStringList{seat->getGeneralName(), seat->getGeneral2Name()});
             room->safeSetPlayerProperty(seat, "actual_general1", seat->getGeneralName());
+            if (hideDeputy) room->safeSetPlayerProperty(seat, "actual_general2", seat->getGeneral2Name());
             room->setPlayerProperty(seat, "general_showed", true);
             seat->hideGeneral(true);
+            if (hideDeputy) {
+                room->setPlayerProperty(seat, "general2_showed", true);
+                seat->hideGeneral(false);
+            }
         }
+        QList<QPair<bool, bool>> shownBefore;
+        for (const ServerPlayer *seat : seats) shownBefore.append({seat->hasShownGeneral(), seat->hasShownGeneral2()});
         const QVariant watermark =
             room->queryHistoryFacts({{QStringLiteral("limit"), 1}}).value(QStringLiteral("watermark"));
         QString error = registerScript(room, seats);
@@ -311,10 +365,10 @@ public:
             if (error.isEmpty()) error = runTrigger(room, names);
         } catch (TriggerEvent) {
             // A death inside the trigger can end the game; record the board it ended on.
-            g_report = buildReport(room, names, watermark, error);
+            g_report = buildReport(room, names, shownBefore, watermark, error);
             throw;
         }
-        g_report = buildReport(room, names, watermark, error);
+        g_report = buildReport(room, names, shownBefore, watermark, error);
         room->gameOver(QStringLiteral("."));
         return true;
     }
@@ -329,11 +383,18 @@ private:
             const QString key = entry.value(QStringLiteral("key")).toString();
             const QJsonValue answer = entry.value(QStringLiteral("answer"));
             static const QStringList types = {"skill_invoke", "choice", "player_chosen",
-                                              "card_chosen", "card", "activate"};
+                                              "card_chosen", "card", "activate", "trigger_order"};
             if (!player || !types.contains(type))
                 return QStringLiteral("script entry needs a valid seat and one of %1: %2")
                     .arg(types.join(QStringLiteral(", ")))
                     .arg(QString::fromUtf8(QJsonDocument(entry).toJson(QJsonDocument::Compact)));
+            if (type == QLatin1String("trigger_order")) {
+                if (key.isEmpty() || answer.toString().isEmpty())
+                    return QStringLiteral("trigger_order requires a reason and skill name");
+                const QString error = registerTriggerOrder(room, player, key, answer.toString());
+                if (!error.isEmpty()) return error;
+                continue;
+            }
             QVariant resolved = answer.toVariant();
             if (type == QLatin1String("player_chosen")) {
                 ServerPlayer *target = seats.value(answer.toInt() - 1);
@@ -428,7 +489,17 @@ bool parseCase(const QJsonObject &root, CaseSetup &setup, QString *error)
         if (seat.contains(QStringLiteral("kingdom"))) fields["nationality"] = seat.value(QStringLiteral("kingdom")).toString();
         if (seat.value(QStringLiteral("chained")).toBool()) fields["chained"] = "1";
         if (seat.value(QStringLiteral("turned")).toBool()) fields["turned"] = "1";
-        if (seat.value(QStringLiteral("hidden")).toBool()) fields["hidden"] = "1";
+        const QJsonValue hidden = seat.value(QStringLiteral("hidden"));
+        if (hidden.toString() == QLatin1String("both")) {
+            if (fields["general2"].isEmpty() || fields["general2"] == fields["general"]
+                || !Sanguosha->getGeneral(fields["general2"])) {
+                *error = QStringLiteral("seat %1: hidden \"both\" requires a distinct deputy general").arg(index + 1);
+                return false;
+            }
+            fields["hidden"] = "both";
+        } else if (hidden.toBool()) {
+            fields["hidden"] = "1";
+        }
         if (seat.value(QStringLiteral("starter")).toBool()) { fields["starter"] = "1"; hasStarter = true; }
         QStringList skills;
         for (const QJsonValue &skill : seat.value(QStringLiteral("skills")).toArray()) skills << skill.toString();
@@ -460,11 +531,17 @@ bool parseCase(const QJsonObject &root, CaseSetup &setup, QString *error)
     return true;
 }
 
-bool writeJson(const QString &path, const QVariantMap &value)
+bool writeJsonDocument(const QString &path, const QJsonDocument &document)
 {
     QFile file(path);
+    const QByteArray json = document.toJson();
     return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        && file.write(QJsonDocument::fromVariant(value).toJson()) >= 0;
+        && file.write(json) == json.size();
+}
+
+bool writeJson(const QString &path, const QVariantMap &value)
+{
+    return writeJsonDocument(path, QJsonDocument::fromVariant(value));
 }
 
 QString optionValue(const QStringList &args, const QString &name)
@@ -497,6 +574,24 @@ int describeGeneral(const QString &name, const QString &reportPath)
     return writeJson(reportPath, info) ? 0 : 1;
 }
 
+int listPackageGenerals(const QString &name, const QString &reportPath)
+{
+    const Package *package = Sanguosha->getPackage(name);
+    if (!package) {
+        fprintf(stderr, "unknown package '%s'\n", qPrintable(name));
+        return 2;
+    }
+    QStringList names;
+    for (const General *general : package->findChildren<const General *>())
+        names << general->objectName();
+    names.sort();
+    if (!writeJsonDocument(reportPath, QJsonDocument(QJsonArray::fromStringList(names)))) {
+        fprintf(stderr, "cannot write general list to '%s'\n", qPrintable(reportPath));
+        return 1;
+    }
+    return 0;
+}
+
 // Prints every registered skill's text with the metadata its text claims (frequency
 // tags, lord/change/limited flags, usage scope); the input of tools/skill-text-audit.py.
 int describeSkills(const QString &reportPath)
@@ -523,7 +618,8 @@ int describeSkills(const QString &reportPath)
             {"limit_scope", QString::fromLatin1(scopes.valueToKey(skill->getLimitScope()))},
             {"lord", skill->isLordSkill()}, {"limited", skill->isLimitedSkill()},
             {"change", skill->isChangeSkill()}, {"hide", skill->isHideSkill()},
-            {"shiming", skill->isShiMingSkill()}, {"owners", owners.value(name)}};
+            {"shiming", skill->isShiMingSkill()}, {"owners", owners.value(name)},
+            {"families", skill->familyList()}};
     }
     return writeJson(reportPath, {{"skills", skills}}) ? 0 : 1;
 }
@@ -539,22 +635,27 @@ int main(int argc, char **argv)
     const int timeoutSeconds = optionValue(args, QStringLiteral("--timeout")).toInt();
     const QString describe = optionValue(args, QStringLiteral("--describe-general"));
     const bool describeAll = args.contains(QStringLiteral("--describe-skills"));
+    const bool listGenerals = args.contains(QStringLiteral("--list-generals"));
+    const QString package = optionValue(args, QStringLiteral("--package"));
     bool seedOk = false;
     const quint64 seed = optionValue(args, QStringLiteral("--seed")).toULongLong(&seedOk);
-    if (reportPath.isEmpty() || (describe.isEmpty() && !describeAll && (casePath.isEmpty() || !seedOk))) {
+    if (reportPath.isEmpty() || (listGenerals && package.isEmpty())
+        || (!listGenerals && describe.isEmpty() && !describeAll && (casePath.isEmpty() || !seedOk))) {
         fprintf(stderr, "usage: qsanguosha_skill_scenario --case <case.json> --report <report.json> "
                         "--seed <n> [--timeout <seconds>]\n"
                         "       qsanguosha_skill_scenario --describe-general <name> --report <info.json>\n"
-                        "       qsanguosha_skill_scenario --describe-skills --report <skills.json>\n");
+                        "       qsanguosha_skill_scenario --describe-skills --report <skills.json>\n"
+                        "       qsanguosha_skill_scenario --list-generals --package <name> --report <generals.json>\n");
         return 64;
     }
-    if (!describe.isEmpty() || describeAll) {
+    if (listGenerals || !describe.isEmpty() || describeAll) {
         QString error;
         if (!QSanRuntimePaths::resolve(args, &error) || !EngineBootstrap::initialize(false, &error)) {
             fprintf(stderr, "%s\n", qPrintable(error));
             return 1;
         }
-        const int result = describeAll ? describeSkills(reportPath) : describeGeneral(describe, reportPath);
+        const int result = listGenerals ? listPackageGenerals(package, reportPath)
+            : describeAll ? describeSkills(reportPath) : describeGeneral(describe, reportPath);
         EngineBootstrap::shutdown();
         return result;
     }

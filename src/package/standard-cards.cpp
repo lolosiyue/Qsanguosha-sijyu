@@ -590,9 +590,9 @@ public:
 
         int weapon_id = -1;
         bool weapon_was_using = false;
-        if (player->getWeapon() && player->getWeapon()->objectName() == objectName()) {
-            weapon_id = player->getWeapon()->getId();
-            weapon_was_using = player->getWeapon()->hasFlag("using");
+        if (ctx.physicalEquipSource.isValid()) {
+            weapon_id = ctx.physicalEquipSource.cardId();
+            if (const Card *weapon = room->getCard(weapon_id)) weapon_was_using = weapon->hasFlag("using");
             room->setCardFlag(weapon_id, "using");
         }
         const bool had_blade_flag = effect.from->hasFlag("BladeUse");
@@ -978,9 +978,9 @@ public:
 		room->setEmotion(player, "armor/eight_diagram");
 		int armor_id = -1;
 		bool armor_was_using = false;
-		if (player->getArmor() && player->getArmor()->objectName() == objectName()) {
-			armor_id = player->getArmor()->getId();
-			armor_was_using = player->getArmor()->hasFlag("using");
+		if (ctx.physicalEquipSource.isValid()) {
+			armor_id = ctx.physicalEquipSource.cardId();
+			if (const Card *armor = room->getCard(armor_id)) armor_was_using = armor->hasFlag("using");
 			room->setCardFlag(armor_id, "using");
 		}
 		auto restore = qScopeGuard([&] {
@@ -1689,22 +1689,9 @@ public:
         const Player *from = context.primary;
         const Player *to = context.secondary;
         if (!from || !to) return CorrectSkillResult::noEffect();
-        if (Config.EnableHegemony) {
-            int correct = 0;
-            if (from && from->getOffensiveHorse() && !from->isEquipsNullified(from->getOffensiveHorse(), to)) {
-                const Horse *horse = qobject_cast<const Horse *>(from->getOffensiveHorse()->getRealCard());
-                if (horse) correct += horse->getCorrect();
-            }
-            if (to && to->getDefensiveHorse() && !to->isEquipsNullified(to->getDefensiveHorse(), from)) {
-                const Horse *horse = qobject_cast<const Horse *>(to->getDefensiveHorse()->getRealCard());
-                if (horse) correct += horse->getCorrect();
-            }
-            return CorrectSkillResult::useAmount(correct);
-        }
-        // Physical horses (same as hegemony). Full horse-catalog × viewAsEquip
-        // only when a seat can grant virtual equips — 50p AI distance matrix
-        // otherwise pays findChildren×hasHorse on every pair.
-        int oh_correct = 0, dh_correct = 0;
+        int oh_correct = from->getEffectiveHorseCorrection(false, to);
+        int dh_correct = to->getEffectiveHorseCorrection(true, from);
+        if (Config.EnableHegemony) return CorrectSkillResult::useAmount(oh_correct + dh_correct);
         auto mayVirtual = [](const Player *p) -> bool {
             if (!p) return false;
             if (!p->property("View_As_Equips_List").toString().isEmpty())
@@ -1715,16 +1702,6 @@ public:
             }
             return false;
         };
-        if (from->getOffensiveHorse()
-            && !from->isEquipsNullified(from->getOffensiveHorse(), to)) {
-            const Horse *horse = qobject_cast<const Horse *>(from->getOffensiveHorse()->getRealCard());
-            if (horse) oh_correct = qMin(horse->getCorrect(from), oh_correct);
-        }
-        if (to->getDefensiveHorse()
-            && !to->isEquipsNullified(to->getDefensiveHorse(), from)) {
-            const Horse *horse = qobject_cast<const Horse *>(to->getDefensiveHorse()->getRealCard());
-            if (horse) dh_correct = qMax(dh_correct, horse->getCorrect(to));
-        }
         if (mayVirtual(from)) {
             static QList<const OffensiveHorse *> from_ohs = Sanguosha->findChildren<const OffensiveHorse *>();
             foreach (const OffensiveHorse *oh, from_ohs) {
@@ -1749,6 +1726,15 @@ WoodenOxCard::WoodenOxCard()
     // Retain the legacy parse/AI class name; execution uses the shared V2 proxy.
     handling_method = Card::MethodNone;
     m_skillName = "wooden_ox";
+}
+
+static ServerPlayer *woodenOxHolder(Room *room, const PhysicalEquipSource &source)
+{
+    if (!source.isValid() || source.equipment() != QLatin1String("wooden_ox")) return nullptr;
+    ServerPlayer *holder = room->getCardOwner(source.cardId());
+    const Card *card = room->getCard(source.cardId());
+    return holder && holder->objectName() == source.holder() && card && card->objectName() == source.equipment()
+        && room->getCardPlace(source.cardId()) == Player::PlaceEquip ? holder : nullptr;
 }
 
 class WoodenOxViewAsSkill : public ViewAsSkillV2
@@ -1848,7 +1834,8 @@ public:
     bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
     {
         if (!checkCustomUsage(ctx) || request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
-        if (!ctx.sourceRef.isValid() && receiptKey(ctx) != usageKey(ctx.initiator, ctx.sourceRef)) return false;
+        if (!ctx.physicalEquipSource.isValid() && !ctx.sourceRef.isValid()
+            && receiptKey(ctx) != usageKey(ctx.initiator, ctx.sourceRef)) return false;
         const Card *card = Sanguosha->getCard(request.selectedCardIds.first());
         ActiveSkillRequest selection = request;
         selection.selectedCardIds.clear();
@@ -1867,20 +1854,15 @@ public:
         // Storing the selected hand card is the effect, not a discard payment.
         context.choice = "store";
         skillEffect(context, source);
-        const Card *treasure = source->getTreasure();
-        if (!treasure || treasure->objectName() != objectName()
-            || (context.physicalEquipSource.isValid() && treasure->getEffectiveId() != context.physicalEquipSource.cardId())) return FinishSkill;
+        if (!woodenOxHolder(room, context.physicalEquipSource)) return FinishSkill;
 
         QList<ServerPlayer *> targets;
         foreach (ServerPlayer *p, room->getOtherPlayers(source)) {
             if (!p->getTreasure() && p->hasTreasureArea()) targets << p;
         }
         ServerPlayer *target = room->askForPlayerChosen(source, targets, objectName(), "@wooden_ox-move", true);
-        if (target && targets.contains(target) && source->hasEquip(treasure)) {
+        if (target && targets.contains(target) && woodenOxHolder(room, context.physicalEquipSource)) {
             context.choice = "transfer";
-            QVariantMap receipt = context.extra_data.toMap();
-            receipt.insert("transfer_id", treasure->getEffectiveId());
-            context.extra_data = receipt;
             skillEffect(context, target);
         }
         return FinishSkill;
@@ -1892,12 +1874,18 @@ public:
         if (!source || !ctx.use_card) return ContinueEffects;
         if (ctx.choice == "store") {
             const QList<int> ids = ctx.use_card->getSubcards();
-            if (ids.size() == 1 && source->handCards().contains(ids.first()))
-                target->addToPile(objectName(), ids, false);
+            ServerPlayer *holder = ctx.physicalEquipSource.isValid()
+                ? woodenOxHolder(source->getRoom(), ctx.physicalEquipSource) : target;
+            if (holder && ids.size() == 1 && source->handCards().contains(ids.first())) {
+                if (ctx.physicalEquipSource.isValid())
+                    holder->addToPile(objectName(), ids, false, {holder});
+                else holder->addToPile(objectName(), ids, false);
+            }
         } else if (ctx.choice == "transfer") {
-            const int id = ctx.extra_data.toMap().value("transfer_id").toInt();
-            if (source->getEquipsId().contains(id) && !target->getTreasure() && target->hasTreasureArea())
-                target->getRoom()->moveCardTo(Sanguosha->getCard(id), source, target, Player::PlaceEquip,
+            Room *room = source->getRoom();
+            ServerPlayer *holder = woodenOxHolder(room, ctx.physicalEquipSource);
+            if (holder && !target->getTreasure() && target->hasTreasureArea())
+                room->moveCardTo(room->getCard(ctx.physicalEquipSource.cardId()), holder, target, Player::PlaceEquip,
                     CardMoveReason(CardMoveReason::S_REASON_TRANSFER, source->objectName(), target->objectName(), objectName(), ""));
         }
         return ContinueEffects;
@@ -1932,7 +1920,7 @@ public:
         data = QVariant::fromValue(active);
         return false;
     }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList list;
         if (!player || (event != CardsMoveOneTime && event != BeforeCardsMove))
@@ -1950,8 +1938,9 @@ public:
                     }
                 }
             }
+            const ServerPlayer *beneficiary = move.from == player ? room->getEquipAreaBeneficiary(player) : nullptr;
             relevant = incoming_wooden_ox
-                || (move.from == player && player->hasTreasure("wooden_ox")
+                || (beneficiary && beneficiary->hasTreasure("wooden_ox")
                     && move.from_pile_names.contains("wooden_ox")
                     && (move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE
                         || (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_USE));
@@ -2006,7 +1995,8 @@ public:
                     }
                 }
             }
-            if (move.from == target && target->hasTreasure("wooden_ox")
+            ServerPlayer *beneficiary = move.from == target ? room->getEquipAreaBeneficiary(target) : nullptr;
+            if (beneficiary && beneficiary->hasTreasure("wooden_ox")
                 && move.from_pile_names.contains("wooden_ox")
                 && (move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE
                     || (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_USE)) {
@@ -2016,7 +2006,7 @@ public:
                 if (count > 0) {
                     LogMessage log;
                     log.type = "#WoodenOx";
-                    log.from = target;
+                    log.from = beneficiary;
                     log.arg = QString::number(count);
                     log.arg2 = "wooden_ox";
                     log.arg3 = move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE ? "response" : "use";
@@ -2054,8 +2044,11 @@ WoodenOx::WoodenOx(Suit suit, int number)
 
 void WoodenOx::onUninstall(ServerPlayer *player) const
 {
-    player->getRoom()->setPlayerMark(player, QString("wooden_ox_card_%1-PlayClear").arg(getEffectiveId()), 0);
-    player->getRoom()->addPlayerHistory(player, "WoodenOxCard", 0);
+    Room *room = player->getRoom();
+    if (ServerPlayer *beneficiary = room->getEquipAreaBeneficiary(player)) {
+        room->setPlayerMark(beneficiary, QString("wooden_ox_card_%1-PlayClear").arg(getEffectiveId()), 0);
+        room->addPlayerHistory(beneficiary, "WoodenOxCard", 0);
+    }
     Treasure::onUninstall(player);
 }
 

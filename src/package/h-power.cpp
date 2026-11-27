@@ -143,7 +143,10 @@ class HTuxiEGF : public TriggerSkillV2
 public:
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override { return 3; }
-    HTuxiEGF() : TriggerSkillV2("heg_tuxi_egf") { events << DrawNCards; }
+    HTuxiEGF() : TriggerSkillV2("heg_tuxi_egf") {
+        addFamily("tuxi");
+        events << DrawNCards;
+    }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Draw

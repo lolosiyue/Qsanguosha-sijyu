@@ -15,6 +15,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
@@ -432,6 +433,13 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
     } else {
         view.insert(QStringLiteral("prompt_text"), QString());
     }
+    QHash<QString, QVariantMap> occupancyByAreaOwner;
+    for (const QVariant &value : state->gameValue(QStringLiteral("equip_area_occupancy")).toList()) {
+        const QVariantMap area = value.toMap();
+        const QString owner = area.value(QStringLiteral("area_owner")).toString();
+        if (!owner.isEmpty())
+            occupancyByAreaOwner.insert(owner, area);
+    }
     QJsonArray players;
     for (const QString &name : state->playerNames()) {
         const QVariantMap source = state->player(name);
@@ -457,8 +465,13 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
             if (!image.isEmpty()) item.insert(field + QStringLiteral("_image"), image);
         }
         QJsonArray equip;
-        for (int id : state->cardsForPlayer(name, 1))
-            equip.append(cardDetails(core, QString::number(id), assetRoot));
+        const QVariantMap area = occupancyByAreaOwner.value(name);
+        for (int id : state->cardsForPlayer(name, 1)) {
+            QJsonObject card = cardDetails(core, QString::number(id), assetRoot);
+            card.insert(QStringLiteral("occupier"), area.value(QStringLiteral("occupier")).toString());
+            card.insert(QStringLiteral("reason"), area.value(QStringLiteral("reason")).toString());
+            equip.append(card);
+        }
         item.insert(QStringLiteral("equip"), equip);
         players.append(item);
     }

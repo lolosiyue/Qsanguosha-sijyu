@@ -1254,6 +1254,9 @@ QString TuiApplicationController::renderEquipment() const
             .arg(TuiRenderer::sanitize(resolveCardDisplayText(cardId), 512));
     if (equipment.isEmpty())
         lines << tuiText("tui_empty");
+    const QString occupancy = m_renderer.equipmentOccupancyText(*m_core.state(), m_core.state()->selfName());
+    if (!occupancy.isEmpty())
+        lines << occupancy;
     return lines.join(QLatin1Char('\n'));
 }
 

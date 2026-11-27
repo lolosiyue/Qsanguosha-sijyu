@@ -34,6 +34,7 @@
 #include <QDebug>
 //#include "protocol.h"
 #include "lua-wrapper.h"
+#include "gamerule.h"
 //#include "room-state.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
@@ -722,6 +723,9 @@ Engine::Engine(bool isManualMode)
 
     // Clients need rule definitions even when no HEG general package is loaded.
     addSkills(createHegemonyRuleSkills(this));
+    addSkills({createLinkedCardRule(this)});
+    addTranslationEntry(QStringLiteral("link_card"), QStringLiteral("连接"));
+    addTranslationEntry(QStringLiteral("$link_card_dis"), QStringLiteral("%from 弃置连接牌 %card"));
 
     startupPhase.next("engine.native_packages");
     const QVariantMap configuredPackages =

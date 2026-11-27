@@ -66,15 +66,51 @@ EXTENSIONS_MAP = (("ai", "lua/ai"), ("extensions", "extensions"), ("lua", "lua")
 SYNC_SKIP_DIRS = {".git", "logs", "data", "temp"}
 # Stages that load the L Lua tree; graded evidence (xp/web/sheets) brings its own runtime.
 LUA_STAGES = set(LOCAL_STAGES) | {"android"}
-# Built-in skill case: a hidden skill-less general must stay hidden after an ordinary use.
-# It catches helper skills that extensions bind to every general's head (they force a reveal).
-HEGEMONY_BASELINE_CASE = {
-    "hegemony": True,
-    "seats": [{"general": "sujiang", "hidden": True, "hand": ["slash"]}, {"general": "sujiang"}],
-    "trigger": "select_use('slash', P[1], {P[2]}); "
-               "error('HEG_BASELINE shown=' .. tostring(P[1]:hasShownGeneral()))",
-    "expect": {"error": "HEG_BASELINE shown=false"},
-}
+# Built-in hegemony cases. Every general acceptance runs them, because concealment is
+# wired per skill instance and an inherited skill can break it without touching the
+# general's own code.
+HEGEMONY_CASE_DIR = HERE / "heg_cases"
+# Fixed-roster cases bundled beside this file. Each proves one path of the reveal rule:
+# an innate head skill reveals its slot, a skill acquired at runtime never does, the
+# trigger path reveals as well, the deputy slot reveals on its own, and a repeated
+# judgement draws a fresh card instead of re-judging the previous one.
+HEGEMONY_REVEAL_CASES = (
+    "reveal-innate.json",
+    "reveal-control.json",
+    "no-reveal-acquired.json",
+    "reveal-trigger.json",
+    "reveal-deputy.json",
+    "reveal-trigger-black-repeat.json",
+)
+
+
+def hegemony_wiring_case(general, skills):
+    """Conceal the tested general and prove every skill it owns is still wired as innate.
+
+    The case ends with an ordinary card use, so a head-bound helper that forces a
+    reveal fails here even when the general itself never asked to be shown.
+    """
+    lines = ["local p = P[1]",
+             "assert(not p:hasShownOneGeneral() and p:getGeneralName() == 'anjiang', "
+             "'expected a concealed head general')"]
+    for name in skills:
+        lines.append(
+            f"do local s = assert(sgs.Sanguosha:getSkill('{name}'), 'missing skill {name}')\n"
+            f" assert(p:hasInnateSkill(s), '{name} is not innate on the head general')\n"
+            f" assert(p:inHeadSkills('{name}'), '{name} is not listed on the head general')\n"
+            f" assert(not p:hasShownSkill('{name}'), "
+            f"'{name} is visible while its general is concealed') end")
+    lines.append("select_use('slash', P[1], {P[2]})")
+    lines.append("error('HEG_WIRING shown=' .. tostring(P[1]:hasShownGeneral())"
+                 " .. ' one=' .. tostring(P[1]:hasShownOneGeneral()))")
+    return {
+        "hegemony": True,
+        "seats": [{"general": general, "hidden": True, "hand": ["slash"]}, {"general": "sujiang"}],
+        "trigger": "\n".join(lines),
+        "expect": {"error": "HEG_WIRING shown=false one=false"},
+    }
+
+
 ANDROID_ACTIVITY = ANDROID_PACKAGE + "/org.qtproject.qt.android.bindings.QtActivity"
 
 
@@ -248,15 +284,17 @@ class Acceptance:
             {"general": str(info_path)}
 
     def skill(self):
-        if not self.args.cases:
-            return "NOT RUN", "no --cases directory (agent writes scratchpad cases from the skill text)", {}
-        cases = sorted(Path(self.args.cases).glob("*.json"))
-        if not cases:
-            return "NOT RUN", f"no case files in {self.args.cases}", {}
         directory = self.stage_dir("skill")
-        builtin = directory / "builtin" / "heg_hidden_basic_use_baseline.json"
-        builtin.parent.mkdir(exist_ok=True)
-        builtin.write_text(json.dumps(HEGEMONY_BASELINE_CASE, ensure_ascii=False, indent=2), encoding="utf-8")
+        cases = [HEGEMONY_CASE_DIR / name for name in HEGEMONY_REVEAL_CASES]
+        missing = [case.name for case in cases if not case.is_file()]
+        if missing:
+            return "FAIL", f"missing bundled hegemony cases: {', '.join(missing)}", {}
+        if self.args.cases:
+            cases = sorted(Path(self.args.cases).glob("*.json")) + cases
+        builtin = directory / "builtin" / f"heg_wiring_{self.general}.json"
+        builtin.parent.mkdir(parents=True, exist_ok=True)
+        wiring = hegemony_wiring_case(self.general, self.visible_skills)
+        builtin.write_text(json.dumps(wiring, ensure_ascii=False, indent=2), encoding="utf-8")
         cases.append(builtin)
         code = run([sys.executable, HERE / "skill_scenario_runner.py", *cases,
                     "--exe", self.exe("qsanguosha_skill_scenario"), "--seed", self.args.seed,

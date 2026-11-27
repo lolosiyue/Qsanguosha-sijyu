@@ -367,6 +367,7 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
             case DeathCursor::Start: {
                 cursor->stage = DeathCursor::BeforeOver;
                 m_room.clearControllerRelation(victim);
+                m_room.releaseEquipAreasForPlayer(victim);
                 victim->setAlive(false);
                 const QList<ServerPlayer *> affected = m_roster.alivePlayersAfter(victim);
                 m_roster.removeAlive(victim);
@@ -1134,6 +1135,9 @@ void PlayerLifecycleService::marshal(ServerPlayer *player, bool managedTimelineR
         }
         if (m_room.getCurrent()) sync.currentPlayer = m_room.getCurrent()->objectName();
     }
+    // Reconnect and same-room rewind both resend the whole table, empty included, so a
+    // client never keeps an occupancy marker the room no longer has.
+    m_room.notifyEquipAreaOccupancy(player);
     sync.phase = QStringLiteral("end");
     if (m_room.hasGameStarted()) {
         sync.hasRound = true;

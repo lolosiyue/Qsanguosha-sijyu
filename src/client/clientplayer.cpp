@@ -63,6 +63,14 @@ void ClientPlayer::addKnownHandCard(const Card *card)
     if (previous != m_cardMemory.known) emit card_memory_changed();
 }
 
+void ClientPlayer::setLinkedHandCard(int id, bool shown)
+{
+    if (shown == m_linkedHandCards.contains(id)) return;
+    if (shown) m_linkedHandCards << id;
+    else m_linkedHandCards.removeAll(id);
+    emit card_memory_changed();
+}
+
 void ClientPlayer::addCard(int id, Place place)
 {
 	if (place == PlaceHand) {
@@ -174,6 +182,10 @@ QList<const Card *> ClientPlayer::getKnownCards() const
     QList<const Card *> cards;
     for (int id : m_cardMemory.known)
         if (const Card *card = Sanguosha->getCard(id)) cards << card;
+    for (int id : m_linkedHandCards) {
+        const Card *card = Sanguosha->getCard(id);
+        if (card && !cards.contains(card)) cards << card;
+    }
     return cards;
 }
 
@@ -181,7 +193,8 @@ QList<const Card *> ClientPlayer::getUncertainCards() const
 {
     QList<const Card *> cards;
     for (int id : m_cardMemory.uncertain)
-        if (const Card *card = Sanguosha->getCard(id)) cards << card;
+        if (!m_linkedHandCards.contains(id))
+            if (const Card *card = Sanguosha->getCard(id)) cards << card;
     return cards;
 }
 
@@ -270,6 +283,7 @@ void ClientPlayer::removeHandIds(const QList<int> &card_ids)
         } else {
             Player::removeCard(id, PlaceHand);
             hand_ids.removeAll(id);
+            m_linkedHandCards.removeAll(id);
         }
     }
     if (!swapping)
@@ -279,6 +293,7 @@ void ClientPlayer::removeHandIds(const QList<int> &card_ids)
         for (const Card *card : Player::getHandcards())
             if (card) Player::removeCard(card->getId(), PlaceHand);
         hand_ids.clear();
+        m_linkedHandCards.clear();
     }
     emit card_memory_changed();
 }
@@ -456,6 +471,7 @@ void ClientPlayer::resetForManagedSync()
 	for (int id : oldHand) Player::removeCard(id, PlaceHand);
 	handcard_num = 0;
 	hand_ids.clear();
+	m_linkedHandCards.clear();
 	m_cardMemory.clear();
 	for (int id : getEquipsId()) Player::removeCard(id, PlaceEquip);
 	for (int id : getJudgingAreaID()) Player::removeCard(id, PlaceDelayedTrick);

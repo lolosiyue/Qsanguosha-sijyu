@@ -1,0 +1,59 @@
+{
+  "hegemony": true,
+  "seats": [
+    {
+      "general": "heg_xiahoudun",
+      "general2": "heg_zhenji",
+      "hidden": "both"
+    },
+    {
+      "general": "heg_xuchu"
+    }
+  ],
+  "pile": [
+    "peach/heart"
+  ],
+  "script": [
+    {
+      "seat": 1,
+      "type": "trigger_order",
+      "key": "GameRule:TriggerOrder",
+      "answer": "heg_luoshen"
+    },
+    {
+      "seat": 1,
+      "type": "skill_invoke",
+      "key": "heg_luoshen",
+      "answer": true
+    }
+  ],
+  "trigger": "local p = P[1]\nlocal skill = assert(sgs.Sanguosha:getTriggerSkill('heg_luoshen'))\nassert(not skill:isGlobal() and not skill:getViewAsSkill() and not skill:canPreshow(), 'expected a non-global trigger without ViewAs or preshow')\nassert(p:hasInnateSkill(skill) and p:inDeputySkills('heg_luoshen') and not p:inHeadSkills('heg_luoshen'), 'Luoshen is bound to the wrong slot')\nassert(not p:hasShownOneGeneral() and p:getGeneralName() == 'anjiang' and p:getGeneral2Name() == 'anjiang', 'expected concealed generals')\nroom:setCurrent(p)\nassert(not p:changePhase(p:getPhase(), sgs.Player_Start), 'start phase was skipped')",
+  "expect": {
+    "winner": ".",
+    "invoked": [
+      {
+        "seat": 1,
+        "skill": "heg_luoshen"
+      }
+    ],
+    "seats": {
+      "1": {
+        "general_showed_before": false,
+        "general2_showed_before": false,
+        "general": "anjiang",
+        "general2": "heg_zhenji",
+        "general_showed": false,
+        "general2_showed": true,
+        "has_shown_one_general": true
+      }
+    },
+    "moves": [
+      {
+        "card": "peach/heart",
+        "to": 1,
+        "to_place": "judge",
+        "skill": "heg_luoshen"
+      }
+    ]
+  }
+}

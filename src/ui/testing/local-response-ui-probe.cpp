@@ -19,8 +19,11 @@
 #include <QDialog>
 #include <QGraphicsSceneMouseEvent>
 #include <QJsonArray>
+#include <QGraphicsView>
+#include <QHelpEvent>
 #include <QMetaEnum>
 #include <QTextDocument>
+#include <QToolTip>
 
 namespace {
 
@@ -351,6 +354,56 @@ bool LocalResponseUiProbe::activateSkill(const QString &skillName, bool active, 
     }
     if (button->isDown() != active)
         button->click();
+    return true;
+}
+
+bool LocalResponseUiProbe::showToolTip(const QString &playerName, const QString &target,
+                                       QString *text, QString *error)
+{
+    PlayerCardContainer *container = m_scene->name2photo.value(playerName, nullptr);
+    if (!container && m_scene->dashboard && m_scene->dashboard->getPlayer()
+        && m_scene->dashboard->getPlayer()->objectName() == playerName)
+        container = m_scene->dashboard;
+    if (!container) {
+        *error = QStringLiteral("player '%1' is not present").arg(playerName);
+        return false;
+    }
+    QGraphicsItem *item = nullptr;
+    bool hover = false;
+    if (target == QLatin1String("avatar")) {
+        item = container->avatarAreaItem();
+    } else if (target.startsWith(QLatin1String("equip:"))) {
+        QString slotText = target.mid(6);
+        // equip:N/tag is the borrowed-card tag drawn over slot N.
+        hover = slotText.endsWith(QLatin1String("/tag"));
+        if (hover)
+            slotText.chop(4);
+        bool ok = false;
+        const int slot = slotText.toInt(&ok);
+        if (ok) item = hover ? container->equipTagItem(slot) : container->equipRegionItem(slot);
+    }
+    if (!item || !item->isVisible() || item->scene() == nullptr || item->scene()->views().isEmpty()) {
+        *error = QStringLiteral("target '%1' of player '%2' is not shown").arg(target, playerName);
+        return false;
+    }
+    QGraphicsView *view = item->scene()->views().first();
+    const QPoint local = view->mapFromScene(item->sceneBoundingRect().center());
+    const QPoint global = view->viewport()->mapToGlobal(local);
+    if (!hover) {
+        *text = item->toolTip();
+        QToolTip::showText(global, *text, view->viewport());
+        return true;
+    }
+    // A tag overlaps its slot, so ask the view what a real hover there shows.
+    QToolTip::hideText();
+    QHelpEvent help(QEvent::ToolTip, local, global);
+    QApplication::sendEvent(view->viewport(), &help);
+    *text = QToolTip::text();
+    if (*text != item->toolTip()) {
+        *error = QStringLiteral("hovering target '%1' of player '%2' shows another tooltip: %3")
+            .arg(target, playerName, text->isEmpty() ? QStringLiteral("<none>") : *text);
+        return false;
+    }
     return true;
 }
 

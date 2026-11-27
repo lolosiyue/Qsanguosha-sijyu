@@ -8,13 +8,12 @@
 #
 # 用法：
 #   tools/autotest/standard-accept-driver.sh            # 續跑未完的（預設 PACK=standard）
-#   PACK=wind tools/autotest/standard-accept-driver.sh  # 風包 10 將
-#   PACK=fire tools/autotest/standard-accept-driver.sh  # 火包 10 將
+#   PACK=mountain tools/autotest/standard-accept-driver.sh  # 依引擎的包名列出武將
 #   tools/autotest/standard-accept-driver.sh --status   # 只看進度
 #   tools/autotest/standard-accept-driver.sh --reset caocao
 #
-# PACK 會決定輸出目錄：artifacts/<PACK>-accept-<date>/，所以風火包不會
-# 撞進 standard 那輪的 state/ 與 raw/。
+# PACK 會決定輸出目錄：artifacts/<PACK>-accept-<date>/。
+# 新的包需要建置 qsanguosha_skill_scenario，以 --list-generals 查清單。
 #
 # 同一時間只允許一個實例（flock）。要中斷直接 kill 掉這個進程即可；
 # state 是每武將一寫，最壞情況只損失當前這一個武將。
@@ -38,7 +37,7 @@ LOCK="$STATE/driver.lock"
 LOG="$OUT/driver.log"
 EXE_ROOT="$ROOT"
 JOBS="${JOBS:-2}"
-# BASE_SEED 只在 PACK 未給時當後備；PACK 各自有自己的起點（見下面 case）。
+# BASE_SEED 覆蓋包的 seed 起點，供重跑既有對局使用。
 BASE_SEED="${BASE_SEED:-}"
 
 # 21 個 strengthen 強化的原版人 + 4 個 addGenerals 非 nos 武將。順序固定，
@@ -64,12 +63,58 @@ FIRE_GENERALS=(
   yuanshao yanliangwenchou pangde shenzhouyu shenzhugeliang
 )
 
-# 每個包從自己的 seed 起點算，避免三個包在報告裡出現同一組 seed 造成混淆。
+# 林包 ThicketPackage（src/package/thicket.cpp:1681）。源碼裡 caopi 與 dongzhuo
+# 寫成 "caopi$"、"dongzhuo$"，那個 $ 只是主公標記（src/core/general.cpp:19-20
+# 的 lord = copy.contains("$") 之後會 remove），實際名字沒有 $。
+THICKET_GENERALS=(
+  xuhuang caopi menghuo zhurong sunjian
+  lusu dongzhuo jiaxu shencaocao shenlvbu
+)
+
+# 這四個包已留下驗收紀錄。沿用原清單與起點，保住每位武將的 seed。
 case "$PACK" in
   standard) GENERALS=("${STANDARD_GENERALS[@]}"); PACK_SEED_BASE="${PACK_SEED_BASE:-20261110}" ;;
   wind)     GENERALS=("${WIND_GENERALS[@]}");     PACK_SEED_BASE="${PACK_SEED_BASE:-20261210}" ;;
   fire)     GENERALS=("${FIRE_GENERALS[@]}");     PACK_SEED_BASE="${PACK_SEED_BASE:-20261310}" ;;
-  *)        echo "unknown PACK=$PACK (expected: standard|wind|fire)" >&2; exit 2 ;;
+  thicket)  GENERALS=("${THICKET_GENERALS[@]}");  PACK_SEED_BASE="${PACK_SEED_BASE:-20261410}" ;;
+  *)
+    roster="$(python3 - "$ROOT" "$PACK" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+
+root, package = sys.argv[1:]
+sys.path.insert(0, str(Path(root) / "tools" / "autotest"))
+from runner_common import find_exe, resolve_workdir
+
+try:
+    host = find_exe(root, "qsanguosha_skill_scenario")
+    with TemporaryDirectory(prefix="qs-package-generals-") as directory:
+        report = Path(directory) / "generals.json"
+        subprocess.run(
+            [host, "--list-generals", "--package", package, "--report", str(report)],
+            cwd=resolve_workdir(root), stdout=sys.stderr, check=True, timeout=120,
+        )
+        names = json.loads(report.read_text(encoding="utf-8"))
+    if not isinstance(names, list) or not names:
+        raise ValueError("package did not return a nonempty list of generals")
+    if any(not isinstance(name, str) or not name or name in (".", "..")
+           or any(char in name for char in "/\\\r\n\0") for name in names):
+        raise ValueError("package returned an invalid general name")
+    if len(names) != len(set(names)):
+        raise ValueError("package returned duplicate general names")
+except (OSError, ValueError, subprocess.SubprocessError) as error:
+    print(f"Cannot list generals for PACK={package}: {error}", file=sys.stderr)
+    sys.exit(2)
+print("\n".join(names))
+PY
+)" || exit $?
+    mapfile -t GENERALS <<< "$roster"
+    checksum="$(printf '%s' "$PACK" | cksum)" || exit $?
+    PACK_SEED_BASE="${PACK_SEED_BASE:-$((100000000 + ${checksum%% *} % 1000000000))}"
+    ;;
 esac
 
 # 風火包不套用 standard 那輪的 layerB-exclude.txt：那份清單是為 strengthen

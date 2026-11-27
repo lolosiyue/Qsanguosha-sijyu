@@ -107,3 +107,23 @@ void CardStateService::clearCardTip(int cardId)
 			setCardFlag(cardId, "-" + flag, nullptr);
 	}
 }
+
+void CardStateService::setCardLinked(Card *card, bool linked)
+{
+    card->setFlags(linked ? QStringLiteral("link_card") : QStringLiteral("-link_card"));
+    card->setFlags(linked ? QStringLiteral("visible") : QStringLiteral("-visible"));
+    card->setFlags(linked ? QStringLiteral("cardTip:link_card") : QStringLiteral("-cardTip:link_card"));
+}
+
+void CardStateService::notifyLinkedHandCard(const ServerPlayer *owner, const Card *card, bool visible,
+                                           ServerPlayer *receiver)
+{
+    const QVariantMap payload{
+        {"schema_version", 1}, {"player_name", owner ? owner->objectName() : QString()}, {"card_id", card->getId()},
+        {"flag", card->isLinkedCard() ? QStringLiteral("link_card") : QStringLiteral("-link_card")},
+        {"linked_hand", visible}, {"linked_tip", visible && card->hasFlag(QStringLiteral("cardTip:link_card"))}};
+    if (receiver)
+        m_notifier.doNotify(receiver, S_COMMAND_CARD_FLAG, payload);
+    else
+        m_notifier.doBroadcastNotify(S_COMMAND_CARD_FLAG, payload);
+}

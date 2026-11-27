@@ -70,6 +70,110 @@ void PlayerCardContainer::setApplicationSuspended(bool suspended, bool offline)
 
 namespace {
 
+// One line of equip-area occupancy text; the reason is the granting skill and may be absent.
+QString equipOccupancyText(const char *withReason, const char *withoutReason,
+                           const QString &playerName, const QString &reason)
+{
+    const QString who = ClientInstance ? ClientInstance->getPlayerName(playerName) : playerName;
+    return reason.isEmpty()
+        ? Sanguosha->translate(QString::fromLatin1(withoutReason)).arg(who)
+        : Sanguosha->translate(QString::fromLatin1(withReason)).arg(who, Sanguosha->translate(reason));
+}
+
+// One occupancy tag: an arrow and the other seat's general icon (the full-art face crop,
+// scaled to the slot). The name stays in the tooltip; only when no icon exists is the name
+// drawn instead.
+struct OccupancyTag
+{
+    QString arrow;
+    QPixmap icon;
+    QString text;
+    QFont font;
+    qreal arrowWidth = 0;
+    QSizeF size;
+};
+
+OccupancyTag layoutOccupancyTag(const QSizeF &slot, const QString &arrow, const QString &generalName,
+                                const QString &fallbackName)
+{
+    OccupancyTag tag;
+    tag.arrow = arrow;
+    tag.font.setPixelSize(qBound(8, int(slot.height() * 0.6), 12));
+    tag.font.setBold(true);
+    const QFontMetricsF metrics(tag.font);
+    tag.icon = generalName.isEmpty() ? QPixmap()
+        : G_ROOM_SKIN.getGeneralPixmap(generalName, QSanRoomSkin::S_GENERAL_ICON_SIZE_LARGE);
+    const qreal side = slot.height() - 2;
+    tag.arrowWidth = metrics.horizontalAdvance(arrow) + 4;
+    qreal width = tag.arrowWidth;
+    if (!tag.icon.isNull()) {
+        width += side + 1;
+    } else {
+        tag.text = metrics.elidedText(fallbackName, Qt::ElideRight,
+                                      qMax<qreal>(metrics.height(), slot.width() * 0.4 - tag.arrowWidth));
+        width += metrics.horizontalAdvance(tag.text) + 3;
+    }
+    tag.size = QSizeF(qMin(width, slot.width() - 2), side);
+    return tag;
+}
+
+void drawOccupancyTag(QPainter &painter, const QPointF &origin, const OccupancyTag &tag, const QColor &color)
+{
+    const QRectF body(origin, tag.size);
+    const qreal side = tag.size.height();
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(color.red(), color.green(), color.blue(), 210));
+    painter.drawRoundedRect(body, 2, 2);
+    painter.setFont(tag.font);
+    painter.setPen(Qt::black);
+    painter.drawText(QRectF(body.left(), body.top(), tag.arrowWidth, side), Qt::AlignCenter, tag.arrow);
+    const QRectF rest(body.left() + tag.arrowWidth, body.top(), body.width() - tag.arrowWidth, side);
+    if (!tag.icon.isNull())
+        painter.drawPixmap(QRectF(rest.left(), rest.top(), side, side), tag.icon, QRectF(tag.icon.rect()));
+    else
+        painter.drawText(rest, Qt::AlignVCenter | Qt::AlignLeft, tag.text);
+}
+
+void paintOccupancyFrame(QPixmap &pixmap, const QColor &color)
+{
+    if (pixmap.isNull())
+        return;
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(color, 1.5));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(QRectF(QPointF(0, 0), pixmap.deviceIndependentSize()).adjusted(0.75, 0.75, -0.75, -0.75));
+}
+
+// Frames an equip slot and paints the tag into its top-left corner; returns the tag width.
+qreal paintOccupancyTag(QPixmap &pixmap, const QString &arrow, const QString &generalName,
+                        const QString &fallbackName, const QColor &color)
+{
+    if (pixmap.isNull())
+        return 0;
+    paintOccupancyFrame(pixmap, color);
+    const OccupancyTag tag = layoutOccupancyTag(pixmap.deviceIndependentSize(), arrow, generalName, fallbackName);
+    QPainter painter(&pixmap);
+    drawOccupancyTag(painter, QPointF(1, 1), tag, color);
+    return tag.size.width();
+}
+
+// The tag as its own transparent pixmap, for a child item that carries a separate tooltip.
+QPixmap renderOccupancyTag(const QSizeF &slot, qreal devicePixelRatio, const QString &arrow,
+                           const QString &generalName, const QString &fallbackName, const QColor &color)
+{
+    const OccupancyTag tag = layoutOccupancyTag(slot, arrow, generalName, fallbackName);
+    const qreal ratio = qMax<qreal>(1, devicePixelRatio);
+    QPixmap pixmap((tag.size * ratio).toSize());
+    pixmap.setDevicePixelRatio(ratio);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    drawOccupancyTag(painter, QPointF(0, 0), tag, color);
+    return pixmap;
+}
+
 qint64 currentCardMoveMonitorMs()
 {
     static QElapsedTimer timer;
@@ -1260,6 +1364,45 @@ void PlayerCardContainer::_updateEquips()
         return head;
     };
 
+    // Equip-area occupancy, from the room table Client projects. Owner side: the cards stay in
+    // this area but serve the occupier. Occupier side: cards of occupied areas are borrowed.
+    const QString selfName = m_player->objectName();
+    const QString occupierName = ClientInstance ? ClientInstance->equipAreaOccupier(selfName) : QString();
+    const QString occupiedLine = occupierName.isEmpty() ? QString()
+        : equipOccupancyText("EquipOccupiedBy", "EquipOccupiedByNoReason", occupierName,
+                             ClientInstance->equipAreaOccupancyReason(selfName));
+    const QColor occupiedColor(232, 184, 74), borrowedColor(127, 200, 248);
+    // The tag icon is the seat's public general; a hidden general shows its placeholder.
+    auto generalOf = [](const QString &seat) {
+        const ClientPlayer *player = ClientInstance ? ClientInstance->getPlayer(seat) : nullptr;
+        return player ? player->getGeneralName() : QString();
+    };
+    struct BorrowedEquip { const Card *card; QString owner; QString line; };
+    QMap<int, QList<BorrowedEquip>> borrowed; // equip location -> cards of occupied areas
+    if (ClientInstance) {
+        for (const QString &owner : ClientInstance->equipAreasOccupiedBy(selfName)) {
+            const ClientPlayer *ownerPlayer = ClientInstance->getPlayer(owner);
+            if (!ownerPlayer)
+                continue;
+            const QString line = equipOccupancyText("EquipBorrowedFrom", "EquipBorrowedFromNoReason", owner,
+                                                    ClientInstance->equipAreaOccupancyReason(owner));
+            for (int id : ownerPlayer->getEquipsId()) {
+                const Card *card = Sanguosha->getCard(id);
+                const EquipCard *equip = card ? qobject_cast<const EquipCard *>(card->getRealCard()) : nullptr;
+                if (equip)
+                    borrowed[equip->location()] << BorrowedEquip{card, owner, line};
+            }
+        }
+    }
+    auto borrowedTooltip = [&](const QList<BorrowedEquip> &cards) {
+        QStringList parts;
+        // The card description already opens with its name.
+        for (const BorrowedEquip &entry : cards)
+            parts << QStringLiteral("%1<br/><font color=#7FC8F8>%2</font>")
+                         .arg(entry.card->getDescription(m_player), entry.line);
+        return parts.join(QStringLiteral("<br/><hr/>"));
+    };
+
     const PlayerUIState &uiState = m_player->uiState();
     const int off_dist = uiState.offensiveDistance;
     const QStringList &off_skills = uiState.offensiveSkills;
@@ -1309,6 +1452,9 @@ void PlayerCardContainer::_updateEquips()
         const int skillDist = isDef ? def_dist : (isOff ? off_dist : 0);
         const QStringList skills = isDef ? def_skills : off_skills;
         _m_equipRowItems[i].clear();
+        // Rebuilt on every pass; only a slot that still borrows a same-kind card shows it.
+        _m_equipTags[i]->hide();
+        _m_equipTags[i]->setToolTip(QString());
 
         QList<int> faceIds;
         for (auto it = plan.displayById.constBegin(); it != plan.displayById.constEnd(); ++it) {
@@ -1355,6 +1501,27 @@ void PlayerCardContainer::_updateEquips()
                 }
             }
             tooltip = decorateTooltip(tooltip, i);
+            qreal tagLeft = 1;
+            if (!occupiedLine.isEmpty()) {
+                // The card is still here, but its effect serves the occupier.
+                tooltip += QStringLiteral("<br/><font color=#E8B84A>%1</font>").arg(occupiedLine);
+                tagLeft += paintOccupancyTag(pixmap, QStringLiteral("→"), generalOf(occupierName),
+                                             ClientInstance->getPlayerName(occupierName), occupiedColor) + 1;
+                opacity = 0.7f;
+            }
+            const QList<BorrowedEquip> alsoBorrowed = borrowed.value(logicalOf(i));
+            if (!alsoBorrowed.isEmpty() && !pixmap.isNull()) {
+                // The borrowed cards answer a hover on their own tag; the slot tooltip keeps
+                // only the cards that are physically here.
+                paintOccupancyFrame(pixmap, borrowedColor);
+                const QString owner = alsoBorrowed.first().owner;
+                _m_equipTags[i]->setPixmap(renderOccupancyTag(equipPixmapLogicalSize(pixmap), pixmap.devicePixelRatio(),
+                                                              QStringLiteral("+"), generalOf(owner),
+                                                              ClientInstance->getPlayerName(owner), borrowedColor));
+                _m_equipTags[i]->setPos(tagLeft, 1);
+                _m_equipTags[i]->setToolTip(borrowedTooltip(alsoBorrowed));
+                _m_equipTags[i]->show();
+            }
             painted = true;
         } else if (simulatedEquips.contains(i)) {
             const Card *card = simulatedEquips.value(i);
@@ -1373,6 +1540,15 @@ void PlayerCardContainer::_updateEquips()
             pixmap = _getEquipPixmap(card, i);
             tooltip = decorateTooltip(card->getDescription(m_player), i);
             opacity = 0.92f;
+            painted = true;
+        } else if (!borrowed.value(logicalOf(i)).isEmpty() && m_player->hasEquipArea(logicalOf(i))) {
+            // A free slot shows the first borrowed card of its kind; the tooltip lists them all.
+            const QList<BorrowedEquip> cards = borrowed.value(logicalOf(i));
+            pixmap = _getEquipPixmap(cards.first().card, i);
+            tooltip = decorateTooltip(borrowedTooltip(cards), i);
+            paintOccupancyTag(pixmap, QStringLiteral("←"), generalOf(cards.first().owner),
+                              ClientInstance->getPlayerName(cards.first().owner), borrowedColor);
+            opacity = 0.85f;
             painted = true;
         } else if (plan.extraEmptyLogical.contains(i)) {
             pixmap = _paintEquipCaptionRow(i, areaName(plan.extraEmptyLogical.value(i)));
@@ -2560,9 +2736,23 @@ void PlayerCardContainer::updateAvatarTooltip()
         const GeneralInfoCard::AvatarCards cards
             = GeneralInfoCard::forPlayerAvatars(m_player, m_player->getSkillDescription(Self),
                                                 skillAutoInvokeStates());
-        _m_avatarArea->setToolTip(cards.head);
+        // Equip-area occupancy on either side of this seat, from the room table Client projects.
+        QStringList occupancy;
+        if (ClientInstance) {
+            const QString name = m_player->objectName();
+            for (const QString &owner : ClientInstance->equipAreasOccupiedBy(name))
+                occupancy << equipOccupancyText("EquipAreaOccupying", "EquipAreaOccupyingNoReason", owner,
+                                                ClientInstance->equipAreaOccupancyReason(owner));
+            const QString occupier = ClientInstance->equipAreaOccupier(name);
+            if (!occupier.isEmpty())
+                occupancy << equipOccupancyText("EquipAreaOccupiedBy", "EquipAreaOccupiedByNoReason", occupier,
+                                                ClientInstance->equipAreaOccupancyReason(name));
+        }
+        const QString head = occupancy.isEmpty() ? cards.head
+            : cards.head + QStringLiteral("<hr/><font color=#E8B84A>%1</font>").arg(occupancy.join(QStringLiteral("<br/>")));
+        _m_avatarArea->setToolTip(head);
         if (_m_avatarIcon)
-            _m_avatarIcon->setToolTip(cards.head);
+            _m_avatarIcon->setToolTip(head);
 
         QString deputyTooltip = cards.deputy;
         if (deputyTooltip.isEmpty() && m_player->property("avatarIcon2").toString() != "")
@@ -2599,6 +2789,7 @@ PlayerCardContainer::PlayerCardContainer()
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         _m_equipCards[i] = nullptr;
         _m_equipRegions[i] = nullptr;
+        _m_equipTags[i] = nullptr;
         _m_equipAnim[i] = nullptr;
     }
     _m_huashenItem = nullptr;
@@ -2769,6 +2960,10 @@ void PlayerCardContainer::_createControls()
         _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
         _m_equipRegions[i]->setParentItem(_getEquipParent());
         _m_equipRegions[i]->hide();
+        // Drawn above its slot; clicks fall through to the slot, hovers show its own tooltip.
+        _m_equipTags[i] = new EquipPixmapItem(_m_equipRegions[i]);
+        _m_equipTags[i]->setAcceptedMouseButtons(Qt::NoButton);
+        _m_equipTags[i]->hide();
         _m_equipAnim[i] = new QParallelAnimationGroup(this);
     }
 

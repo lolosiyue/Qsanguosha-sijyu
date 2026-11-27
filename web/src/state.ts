@@ -131,6 +131,20 @@ export class ClientGameState {
     return this.game[key];
   }
 
+  equipAreaOccupancies(): { areaOwner: string; occupier: string; reason: string }[] {
+    const rows = this.gameValue("equip_area_occupancy");
+    if (!Array.isArray(rows)) return [];
+    const result = [];
+    for (const row of rows) {
+      if (!isObject(row)) continue;
+      const areaOwner = asString(row.area_owner);
+      const occupier = asString(row.occupier);
+      if (areaOwner && occupier)
+        result.push({ areaOwner, occupier, reason: asString(row.reason) });
+    }
+    return result;
+  }
+
   setSelfName(name: string): void {
     this.selfName = name;
     if (name)

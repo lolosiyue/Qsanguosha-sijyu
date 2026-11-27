@@ -490,7 +490,7 @@ bool validatePlayerJson(const QJsonObject &object, const QString &path,
     return true;
 }
 
-bool validateSnapshotStateJson(const QJsonObject &state, QString *error)
+bool validateSnapshotStateJson(const QJsonObject &state, int schemaVersion, QString *error)
 {
     static const QStringList strings = {
         QStringLiteral("turnSerial"), QStringLiteral("currentPlayer"),
@@ -524,6 +524,9 @@ bool validateSnapshotStateJson(const QJsonObject &state, QString *error)
         if (!requireJsonType(state, key, QJsonValue::Array, path, error)) return false;
     for (const QString &key : objects)
         if (!requireJsonType(state, key, QJsonValue::Object, path, error)) return false;
+    if (schemaVersion == GameSnapshot::TakeoverSchemaVersion
+        && !requireJsonType(state, QStringLiteral("equip_area_occupancy"), QJsonValue::Object, path, error))
+        return false;
     if (!requireJsonType(state, QStringLiteral("eligible"), QJsonValue::Bool, path, error))
         return false;
 
@@ -682,6 +685,28 @@ QByteArray canonicalJson(const QVariantMap &map)
     return QJsonDocument::fromVariant(map).toJson(QJsonDocument::Compact);
 }
 
+bool validateEquipAreaOccupancy(const GlobalSnapshot &state, QString *error)
+{
+    EquipAreaOccupancy::Snapshot occupancy;
+    if (!EquipAreaOccupancy::Snapshot::parse(state.equipAreaOccupancy, occupancy, error))
+        return false;
+    QSet<QString> alive;
+    QMap<QString, const PlayerSnapshot *> seats;
+    for (const PlayerSnapshot &player : state.players) {
+        if (player.alive) alive.insert(player.objectName);
+        seats.insert(player.objectName, &player);
+    }
+    return occupancy.validate(alive, [&](const EquipAreaOccupancy::Grant &grant) {
+        const PlayerSnapshot *occupier = seats.value(grant.occupier);
+        for (const SkillInstanceSnapshot &skill : occupier->skillInstances) {
+            if (skill.skillName == grant.reason
+                && EquipAreaOccupancy::hasPersistedExpiry(skill.state, grant.generation))
+                return true;
+        }
+        return false;
+    }, error);
+}
+
 bool validateState(const GlobalSnapshot &state, QString *error)
 {
     if (!state.eligible || !state.unsupportedState.isEmpty())
@@ -739,6 +764,8 @@ bool validateState(const GlobalSnapshot &state, QString *error)
         return error ? (*error = QStringLiteral("currentPlayer is not in roster"), false) : false;
     if (!currentPlayerAlive)
         return error ? (*error = QStringLiteral("currentPlayer is not alive"), false) : false;
+    if (!validateEquipAreaOccupancy(state, error))
+        return false;
 
     bool cardCountOk = false;
     const int expectedCardCount = state.catalogFingerprint.value(
@@ -1192,6 +1219,7 @@ QVariantMap GlobalSnapshot::serialize() const
     result[QStringLiteral("cards")] = cardList;
     result[QStringLiteral("cardPlaces")] = intMapToVariant(cardPlaces);
     result[QStringLiteral("cardOwners")] = ownerMapToVariant(cardOwners);
+    result[QStringLiteral("equip_area_occupancy")] = equipAreaOccupancy;
     result[QStringLiteral("roomTags")] = roomTags;
     result[QStringLiteral("chatHistory")] = chatHistory;
     result[QStringLiteral("catalogFingerprint")] = catalogFingerprint;
@@ -1226,6 +1254,8 @@ GlobalSnapshot GlobalSnapshot::deserialize(const QVariantMap &map)
         result.cards << CardSnapshot::deserialize(value.toMap());
     result.cardPlaces = intMapFromVariant(map.value(QStringLiteral("cardPlaces")));
     result.cardOwners = ownerMapFromVariant(map.value(QStringLiteral("cardOwners")));
+    if (map.value(QStringLiteral("stateVersion")).toInt() == GameSnapshot::TakeoverSchemaVersion)
+        result.equipAreaOccupancy = map.value(QStringLiteral("equip_area_occupancy")).toMap();
     result.roomTags = map.value(QStringLiteral("roomTags")).toMap();
     result.chatHistory = map.value(QStringLiteral("chatHistory")).toStringList();
     result.catalogFingerprint = map.value(QStringLiteral("catalogFingerprint")).toMap();
@@ -1290,6 +1320,11 @@ GameSnapshot::GameSnapshot(Room *room, QObject *parent)
         m_state.players << item;
         m_state.seatOrder << player->objectName();
     }
+
+    m_state.equipAreaOccupancy = room->equipAreaOccupancySnapshot().wire();
+    QString occupancyError;
+    if (!validateEquipAreaOccupancy(m_state, &occupancyError))
+        markInvalid(m_state, occupancyError);
 
     m_state.drawPile = room->getDrawPile();
     m_state.discardPile = room->getDiscardPile();
@@ -1469,6 +1504,7 @@ bool GameSnapshot::save(const QString &filepath, SaveMode mode)
         for (auto it = m_state.cardOwners.cbegin(); it != m_state.cardOwners.cend(); ++it)
             writer.field(QString::number(it.key()), it.value());
         writer.endObject();
+        writer.field(QStringLiteral("equip_area_occupancy"), m_state.equipAreaOccupancy);
         writer.field(QStringLiteral("roomTags"), m_state.roomTags);
         writer.field(QStringLiteral("chatHistory"), m_state.chatHistory);
         writer.field(QStringLiteral("catalogFingerprint"), m_state.catalogFingerprint);
@@ -1561,9 +1597,10 @@ bool GameSnapshot::load(const QString &filepath, const QByteArray &expectedSha25
         m_error = QStringLiteral("unsupported snapshot format");
         return false;
     }
-    if (!isJsonInteger(object.value(QStringLiteral("schemaVersion")))
-        || object.value(QStringLiteral("schemaVersion")).toDouble()
-            != static_cast<double>(TakeoverSchemaVersion)) {
+    const QJsonValue schema = object.value(QStringLiteral("schemaVersion"));
+    const int schemaVersion = schema.toInt();
+    if (!isJsonInteger(schema)
+        || (schemaVersion != TakeoverSchemaVersion && schemaVersion != PreviousTakeoverSchemaVersion)) {
         m_error = QStringLiteral("unsupported snapshot schema version");
         return false;
     }
@@ -1596,12 +1633,11 @@ bool GameSnapshot::load(const QString &filepath, const QByteArray &expectedSha25
             return false;
         }
     }
-    if (!validateSnapshotStateJson(object.value(QStringLiteral("state")).toObject(),
-                                   &m_error))
+    if (!validateSnapshotStateJson(object.value(QStringLiteral("state")).toObject(), schemaVersion, &m_error))
         return false;
     bool stateVersionOk = false;
     const int stateVersion = stateMap.value(QStringLiteral("stateVersion")).toInt(&stateVersionOk);
-    if (!stateVersionOk || stateVersion != TakeoverSchemaVersion) {
+    if (!stateVersionOk || stateVersion != schemaVersion) {
         m_error = QStringLiteral("snapshot state schema mismatch");
         return false;
     }

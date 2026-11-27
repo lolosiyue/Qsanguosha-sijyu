@@ -235,18 +235,29 @@ static bool isEquipSkillViewAsSkill(const Skill *skill)
 void EquipCard::onInstall(ServerPlayer *player) const
 {
     const Skill *skill = Sanguosha->getSkill(this);
-    if (skill) {
-        Room *room = player->getRoom();
-        if (isEquipSkillViewAsSkill(skill))
-			room->attachSkillToPlayer(player, objectName());
-		else
-			room->acquireSkill(player,skill,true,true,false);
+    if (!skill || getEffectiveId() < 0) return;
+    const QString name = skill->objectName();
+    const QString sourceKey = QStringLiteral("physical_equipment_card_id");
+    for (int id : player->getSkillInstanceIds(name)) {
+        if (player->getSkillInstanceStateValue(name, id, sourceKey, -1).toInt() == getEffectiveId()) return;
     }
+    const int instance = player->getRoom()->acquireSkillUnbound(player, name, true,
+                                                                !isEquipSkillViewAsSkill(skill), false);
+    if (instance > 0)
+        player->setSkillInstanceStateValue(name, instance, sourceKey, getEffectiveId());
 }
 
 void EquipCard::onUninstall(ServerPlayer *player) const
 {
-	player->getRoom()->detachSkillFromPlayer(player,objectName(),true,true,false);
+    const Skill *skill = Sanguosha->getSkill(this);
+    if (!skill || getEffectiveId() < 0) return;
+    const QString name = skill->objectName();
+    const QString sourceKey = QStringLiteral("physical_equipment_card_id");
+    for (int id : player->getSkillInstanceIds(name)) {
+        if (player->getSkillInstanceStateValue(name, id, sourceKey, -1).toInt() != getEffectiveId()) continue;
+        player->getRoom()->detachSkillFromPlayer(player, SkillInstanceUtils::formatName(name, id), true, true, false);
+        return;
+    }
 }
 
 // Get the actual slots occupied by dual-slot equipment.

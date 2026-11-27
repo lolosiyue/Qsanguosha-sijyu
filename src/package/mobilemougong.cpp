@@ -4000,7 +4000,7 @@ public:
 class MobileMouGangLie : public TriggerSkillV2
 {
 public:
-    MobileMouGangLie() : TriggerSkillV2("mobilemouganglie") { events << EventSkillInvoking; global = true; view_as_skill = new MobileMouGangLieVS; }
+    MobileMouGangLie() : TriggerSkillV2("mobilemouganglie") { addFamily("ganglie"); events << EventSkillInvoking; global = true; view_as_skill = new MobileMouGangLieVS; }
     bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &data) const override
     {
         const SkillContext accepted = data.value<SkillContext>();

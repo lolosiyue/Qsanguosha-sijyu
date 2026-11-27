@@ -144,6 +144,8 @@ struct GlobalSnapshot
     QMap<int, int> cardPlaces;
     QMap<int, QString> cardOwners;
 
+    QVariantMap equipAreaOccupancy{{QStringLiteral("last_generation"), QStringLiteral("0")},
+                                   {QStringLiteral("grants"), QVariantList{}}};
     QVariantMap roomTags;
     QStringList chatHistory;
     QVariantMap catalogFingerprint;
@@ -166,7 +168,8 @@ class GameSnapshot : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int TakeoverSchemaVersion = 3;
+    static constexpr int TakeoverSchemaVersion = 4;
+    static constexpr int PreviousTakeoverSchemaVersion = 3;
     static QString takeoverFormat();
 
     explicit GameSnapshot(QObject *parent = nullptr);

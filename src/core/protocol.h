@@ -183,7 +183,8 @@ namespace QSanProtocol {
         S_COMMAND_SET_UI_THEME = 135,
         S_COMMAND_QML_ELEMENT = 136,
         S_COMMAND_MANAGED_REWIND = 137,
-        S_COMMAND_MANAGED_REWIND_STATE = 138
+        S_COMMAND_MANAGED_REWIND_STATE = 138,
+        S_COMMAND_EQUIP_AREA_OCCUPANCY = 139
     };
 
     enum GuanxingStepType

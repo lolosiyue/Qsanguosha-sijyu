@@ -13,6 +13,14 @@ class Weapon;
 class Horse;
 class DelayedTrick;
 class WrappedCard;
+class Player;
+
+struct EffectiveEquip
+{
+    int cardId = -1;
+    const Player *areaOwner = nullptr;
+    const Player *beneficiary = nullptr;
+};
 
 namespace MaxCardsType {
     enum MaxCardsCount { Max = 1, Normal = 0, Min = -1 };
@@ -205,6 +213,7 @@ public:
     bool hasSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasSkill(const Skill *skill, bool include_lose = false) const;
     bool hasSkills(const QString &skill_name, bool include_lose = false) const;
+    bool hasSkillFamily(const QString &family, bool include_lose = false) const;
     bool ownsSkill(const QString &skill_name) const;
     bool hasInnateSkill(const QString &skill_name) const;
     bool hasInnateSkill(const Skill *skill) const;
@@ -315,6 +324,10 @@ public:
 
     QList<const Card *> getEquips(int index = -1) const;
     QList<int> getEquipsId() const;
+    QList<EffectiveEquip> getEffectiveEquips() const;
+    EffectiveEquip getEffectiveEquip(const QString &name, int slot = -1,
+                                      const Player *sourcePlayer = nullptr, bool needArea = true) const;
+    int getEffectiveHorseCorrection(bool defensive, const Player *other) const;
     const EquipCard *getEquip(int index) const;
 
     bool viewAsEquip(const QString &equip_name) const;
@@ -443,7 +456,8 @@ public:
     bool canSeeHandcard(const Player *player) const;
     void addEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
     void removeEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
-    bool isEquipsNullified(const Card *card, const Player *sourcePlayer = nullptr) const;
+    bool isEquipsNullified(const Card *card, const Player *sourcePlayer = nullptr,
+                           const Player *areaOwner = nullptr) const;
     bool hasTurn() const;
 
     QList<int> getShownHandcards() const;
@@ -610,6 +624,8 @@ protected:
 private:
     friend class PlayerStateService;
     friend class RoomManagedState;
+    QList<const Player *> effectiveEquipAreaOwners() const;
+    bool hasVirtualEquipEffect(const QString &name, int slot, const Player *sourcePlayer, bool needArea) const;
     // Commit receipts before mark_changed can re-enter game rules.
     void setMarkWithReceipt(const QString &mark, int value,
                             const std::function<void(const QString &, int, int)> &committed);

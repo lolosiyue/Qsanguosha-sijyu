@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "room.h"
+#include "serverplayer.h"
 #include "skill-instance-utils.h"
 //#include "client.h"
 #include "standard.h"
@@ -317,13 +318,18 @@ int Player::getAttackRange(bool include_weapon) const
         // viewAsEquip) when this player can actually grant virtual equips —
         // otherwise 50p AI WorldView does weapons×players×TriggerOrder findChildren
         // work for every seat every decision.
-        foreach (const EquipCard *eq, getWeapons()) {
-            const Weapon *w = qobject_cast<const Weapon *>(eq);
-            if (!w) continue;
-            const int weaponRange = w->getRange(this);
-            if (trace) trace.note(QStringLiteral("weapon range"), weaponRange, w->objectName());
-            if (range == 1) range = weaponRange;
-            else range = qMax(range, weaponRange);
+        const QList<const Player *> areaOwners = effectiveEquipAreaOwners();
+        for (const Player *areaOwner : areaOwners) {
+            for (const EquipCard *eq : areaOwner->getWeapons()) {
+                const Weapon *w = qobject_cast<const Weapon *>(eq);
+                if (!w || (card_limitation.contains(Card::MethodEffect)
+                           && isEquipsNullified(w, nullptr, areaOwner)))
+                    continue;
+                const int weaponRange = w->getRange(this);
+                if (trace) trace.note(QStringLiteral("weapon range"), weaponRange, w->objectName());
+                if (range == 1) range = weaponRange;
+                else range = qMax(range, weaponRange);
+            }
         }
         if (playerMayHaveVirtualEquip(this)) {
             static QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
@@ -366,20 +372,105 @@ bool Player::inMyAttackRange(const Player *other, int distance_fix, bool chengwu
     return distanceTo(other, distance_fix) <= getAttackRange();
 }
 
+static bool canUseEquipArea(const Player *areaOwner, int slot, bool needArea);
+
 bool Player::inMyAttackRange(const Player *other, QList<int> card_ids, bool chengwu) const
 {
-    int distance_fix = 0;
-	const EquipCard *card = getWeapon();
-    if (card && card_ids.contains(card->getId())){
-        const Weapon *w = qobject_cast<const Weapon *>(card);
-        distance_fix += w->getRange(this) - getAttackRange(false);
+    if (card_ids.isEmpty()) return inMyAttackRange(other, 0, chengwu);
+
+    // Preserve the unconditional range rules before simulating equipment loss.
+    if (attack_range_pair.contains(other)) return true;
+    if (!other || this == other || property("BanAttackRange").toString().split('+').contains(other->objectName()))
+        return false;
+    if (other->property("inMyAttackRangeKingdoms").toString().contains(getKingdom())) return true;
+    const auto siblings = getAliveSiblings();
+    for (const Player *p : siblings)
+        if (p->hasLordSkill("zhaofu") && hasLordSkillKingdom("wu", p) && p->distanceTo(other) == 1)
+            return true;
+    if (chengwu && hasLordSkill("jinchengwu")) {
+        for (const Player *p : siblings)
+            if (p->hasLordSkillKingdom("jin", this) && p->inMyAttackRange(other, card_ids, false))
+                return true;
     }
-	card = getOffensiveHorse();
-    if (card && card_ids.contains(card->getId())){
-        const Horse *oh = qobject_cast<const Horse *>(card);
-        distance_fix -= oh->getCorrect(this);
+
+    bool weaponPaid = false;
+    int remainingWeaponRange = -1;
+    bool offensiveHorsePaid = false;
+    bool remainingHorseFound = false;
+    int remainingHorseCorrection = 0;
+    QSet<const Player *> originalHorseAreas, remainingHorseAreas;
+    QSet<QString> remainingHorseNames;
+    const bool hegemony = Config.EnableHegemony;
+    const auto equipped = getEffectiveEquips();
+    for (const EffectiveEquip &source : equipped) {
+        const Card *card = Sanguosha->getCard(source.cardId);
+        if (!card) continue;
+        const Card *real = card->getRealCard();
+        const bool isPayment = card_ids.contains(source.cardId);
+        if (const auto *weapon = qobject_cast<const Weapon *>(real)) {
+            // Rebuild from surviving effects when paying with a weapon in a
+            // benefiting area. Ordinary range can include disabled weapons.
+            if (isPayment) weaponPaid = true;
+            else if (canUseEquipArea(source.areaOwner, EquipCard::WeaponLocation, true)
+                     && !isEquipsNullified(weapon, nullptr, source.areaOwner))
+                remainingWeaponRange = qMax(remainingWeaponRange, weapon->getRange(this));
+        } else if (const auto *horse = qobject_cast<const Horse *>(real);
+                   horse && source.areaOwner->getEquipRealSlots(source.cardId).contains(EquipCard::OffensiveHorseLocation)) {
+            if (!originalHorseAreas.contains(source.areaOwner)) {
+                originalHorseAreas.insert(source.areaOwner);
+                if (isPayment && !isEquipsNullified(horse, other, source.areaOwner))
+                    offensiveHorsePaid = true;
+            }
+            if (isPayment) continue;
+            if (!hegemony && horse->location() == EquipCard::OffensiveHorseLocation
+                && canUseEquipArea(source.areaOwner, EquipCard::OffensiveHorseLocation, true)
+                && !isEquipsNullified(horse, nullptr, source.areaOwner))
+                remainingHorseNames.insert(horse->objectName());
+            // The physical distance rule reads the first horse in each area.
+            if (remainingHorseAreas.contains(source.areaOwner)) continue;
+            remainingHorseAreas.insert(source.areaOwner);
+            if (isEquipsNullified(horse, other, source.areaOwner)) continue;
+            const int correction = hegemony ? horse->getCorrect() : horse->getCorrect(this);
+            remainingHorseCorrection = hegemony && !remainingHorseFound ? correction
+                : qMin(remainingHorseCorrection, correction);
+            remainingHorseFound = true;
+        }
     }
-    return inMyAttackRange(other, distance_fix, chengwu);
+
+    const bool reduceWeaponRange = weaponPaid && !hasFlag("InfinityAttackRange") && !hasSkill("benshi");
+    const bool mayHaveVirtualEquip = (reduceWeaponRange || offensiveHorsePaid) && playerMayHaveVirtualEquip(this);
+    int distanceFix = 0;
+    if (offensiveHorsePaid) {
+        int currentHorseCorrection = getEffectiveHorseCorrection(false, other);
+        if (!hegemony && mayHaveVirtualEquip) {
+            static const auto horses = Sanguosha->findChildren<const OffensiveHorse *>();
+            for (const OffensiveHorse *horse : horses) {
+                const QString name = horse->objectName();
+                if (hasOffensiveHorse(name))
+                    currentHorseCorrection = qMin(currentHorseCorrection, horse->getCorrect(this));
+                if (remainingHorseNames.contains(name)
+                    || hasVirtualEquipEffect(name, EquipCard::OffensiveHorseLocation, nullptr, true))
+                    remainingHorseCorrection = qMin(remainingHorseCorrection, horse->getCorrect(this));
+            }
+        }
+        distanceFix = remainingHorseCorrection - currentHorseCorrection;
+    }
+
+    int range;
+    if (reduceWeaponRange) {
+        if (mayHaveVirtualEquip) {
+            static const auto weapons = Sanguosha->findChildren<const Weapon *>();
+            for (const Weapon *weapon : weapons)
+                if (hasVirtualEquipEffect(weapon->objectName(), EquipCard::WeaponLocation, nullptr, true))
+                    remainingWeaponRange = qMax(remainingWeaponRange, weapon->getRange(this));
+        }
+        const int fixed = Sanguosha->correctAttackRange(this, true, true);
+        const int base = qMax(fixed < 0 ? 1 : fixed, remainingWeaponRange);
+        range = qMax(0, base + Sanguosha->correctAttackRange(this, true, false));
+    } else {
+        range = getAttackRange();
+    }
+    return distanceTo(other, distanceFix) <= range;
 }
 
 void Player::setFixedDistance(const Player *player, int distance)
@@ -725,6 +816,19 @@ bool Player::hasSkills(const QString &skill_name, bool include_lose) const
             if (!checkpoint) break;
         }
         if (checkpoint) return true;
+    }
+    return false;
+}
+
+bool Player::hasSkillFamily(const QString &family, bool include_lose) const
+{
+    if (family.isEmpty()) return false;
+    // Same answer as hasSkills() over every owned member: hasSkill() keeps the
+    // include_lose, invalidity and hidden-general rules.
+    for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+        if (it->isEmpty()) continue;
+        const Skill *skill = Sanguosha->getSkill(it.key());
+        if (skill && skill->inFamily(family) && hasSkill(it.key(), include_lose)) return true;
     }
     return false;
 }
@@ -1361,6 +1465,22 @@ QList<int> Player::getEquipsId() const
     return _equips;
 }
 
+QList<const Player *> Player::effectiveEquipAreaOwners() const
+{
+    const auto *room = qobject_cast<const Room *>(parent());
+    return room ? room->effectiveEquipAreaOwners(this) : QList<const Player *>{this};
+}
+
+QList<EffectiveEquip> Player::getEffectiveEquips() const
+{
+    QList<EffectiveEquip> result;
+    for (const Player *areaOwner : effectiveEquipAreaOwners()) {
+        for (int cardId : areaOwner->getEquipsId())
+            result.append({cardId, areaOwner, this});
+    }
+    return result;
+}
+
 const EquipCard *Player::getEquip(int index) const
 {
     foreach(const WrappedCard *outer, equips){
@@ -1451,7 +1571,7 @@ void Player::removeEquipsNullified(const QString &pattern, const QString &reason
 	removeCardLimitation("effect", _pattern, reason);
 }
 
-bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) const
+bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer, const Player *areaOwner) const
 {
 	if (!card) return false;
 
@@ -1477,7 +1597,7 @@ bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) con
 				continue;
 		}
 
-		if (Sanguosha->matchExpPattern(pattern, this, card))
+		if (Sanguosha->matchExpPattern(pattern, areaOwner ? areaOwner : this, card))
 			return true;
 	}
 
@@ -1496,161 +1616,117 @@ static bool matchesPhysicalEquipName(const EquipCard *equip, const QString &name
     return actual.compare(requested, Qt::CaseInsensitive) == 0;
 }
 
-bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, bool need_area) const
+static bool canUseEquipArea(const Player *areaOwner, int slot, bool needArea)
 {
-    if (!alive||(need_area&&getMark("IgnoreArea0")<1&&!hasEquipArea(0))) return false;
-    for (const WrappedCard *outer : equips) {
-        const EquipCard *weapon = realEquip(outer);
-        if (weapon->inherits("Weapon") && matchesPhysicalEquipName(weapon, weapon_name)
-            && !isEquipsNullified(weapon, sourcePlayer)) return true;
-    }
-	static QStringList w_equips;
-	if(w_equips.isEmpty()){
-		foreach(const Weapon*w,Sanguosha->findChildren<const Weapon*>())
-			w_equips << w->objectName();
-	}
-	if(w_equips.contains(weapon_name)){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *w = realEquip(outer);
-			if(w->objectName()==weapon_name&&!isEquipsNullified(w, sourcePlayer))
-				return true;
-		}
-		if(viewAsEquip(weapon_name)){
-			Card *ec = Sanguosha->cloneCard(weapon_name);
-			ec->deleteLater();
-			return !isEquipsNullified(ec, sourcePlayer);
-		}
-	}else{
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *w = realEquip(outer);
-			if(w->inherits("Weapon")&&w->inherits(weapon_name.toStdString().c_str()))
-				return !isEquipsNullified(w, sourcePlayer);
-		}
-	}
-	return false;
+    return !needArea || areaOwner->getMark(QStringLiteral("IgnoreArea%1").arg(slot)) > 0
+        || areaOwner->hasEquipArea(slot);
 }
 
-bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlayer, bool need_area) const
+EffectiveEquip Player::getEffectiveEquip(const QString &name, int slot,
+                                         const Player *sourcePlayer, bool needArea) const
 {
-	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1)))
-        return false;
-    if (!armor_name.isEmpty()) {
-        for (const WrappedCard *outer : equips) {
-            const EquipCard *armor = realEquip(outer);
-            if (armor->inherits("Armor") && matchesPhysicalEquipName(armor, armor_name)
-                && !isEquipsNullified(armor, sourcePlayer)) return true;
+    if (!isAlive()) return {};
+    for (const Player *areaOwner : effectiveEquipAreaOwners()) {
+        if (slot >= 0 && !canUseEquipArea(areaOwner, slot, needArea)) continue;
+        for (const WrappedCard *outer : areaOwner->equips) {
+            const EquipCard *equip = realEquip(outer);
+            if (!equip || (slot >= 0 && equip->location() != slot)) continue;
+            if (slot < 0 && !canUseEquipArea(areaOwner, equip->location(), needArea)) continue;
+            if ((name.isEmpty() || matchesPhysicalEquipName(equip, name))
+                && !isEquipsNullified(equip, sourcePlayer, areaOwner))
+                return {outer->getId(), areaOwner, this};
         }
     }
-	static QStringList a_equips;
-	if(a_equips.isEmpty()){
-		foreach(const Armor*a,Sanguosha->findChildren<const Armor*>())
-			a_equips << a->objectName();
-	}
-    if (armor_name.isEmpty()){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *a = realEquip(outer);
-			if(a->inherits("Armor")&&!isEquipsNullified(a, sourcePlayer))
-				return true;
-		}
-		QStringList view_as_equips = property("View_As_Equips_List").toString().split("+");
-		for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
-			const QString &skill_name = outerIt.key();
-			const ViewAsEquipSkill *vaes = Sanguosha->getViewAsEquipSkill(skill_name);
-			if(vaes==nullptr) continue;
-			QString cns = vaes->viewAsEquip(this);
-			if(cns!=""&&hasSkill(skill_name))
-				view_as_equips << cns.split(",");
-		}
-		foreach(QString an,view_as_equips){
-			if(a_equips.contains(an)){
-				Card *ac = Sanguosha->cloneCard(an);
-				ac->deleteLater();
-				if(!isEquipsNullified(ac, sourcePlayer))
-					return true;
-			}
-		}
-    } else if(a_equips.contains(armor_name)){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *a = realEquip(outer);
-			if(a->objectName()==armor_name&&!isEquipsNullified(a, sourcePlayer))
-				return true;
-		}
-		if(viewAsEquip(armor_name)){
-			Card *ec = Sanguosha->cloneCard(armor_name);
-			ec->deleteLater();
-			return !isEquipsNullified(ec, sourcePlayer);
-		}
+    return {};
+}
+
+int Player::getEffectiveHorseCorrection(bool defensive, const Player *other) const
+{
+    int correction = 0;
+    bool found = false;
+    for (const Player *areaOwner : effectiveEquipAreaOwners()) {
+        const EquipCard *card = defensive ? areaOwner->getDefensiveHorse() : areaOwner->getOffensiveHorse();
+        const auto *horse = qobject_cast<const Horse *>(card);
+        if (!horse || isEquipsNullified(horse, other, areaOwner)) continue;
+        const int value = Config.EnableHegemony ? horse->getCorrect() : horse->getCorrect(this);
+        if (Config.EnableHegemony && !found) correction = value;
+        else correction = defensive ? qMax(correction, value) : qMin(correction, value);
+        found = true;
     }
-	return false;
+    return correction;
 }
 
-bool Player::hasDefensiveHorse(const QString &horse_name, bool need_area) const
+template<typename Equip>
+static bool isNamedEquip(const QString &name)
 {
-    if (!alive||(need_area&&getMark("IgnoreArea2")<1&&!hasEquipArea(2))) return false;
-	static QStringList d_equips;
-	if(d_equips.isEmpty()){
-		foreach(const DefensiveHorse*d,Sanguosha->findChildren<const DefensiveHorse*>())
-			d_equips << d->objectName();
-	}
-	if(d_equips.contains(horse_name)){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *h = realEquip(outer);
-			if(h->objectName()==horse_name&&!isEquipsNullified(h))
-				return true;
-		}
-		if(viewAsEquip(horse_name)){
-			Card*ec = Sanguosha->cloneCard(horse_name);
-			ec->deleteLater();
-			return !isEquipsNullified(ec);
-		}
-	}
-	return false;
+    static const auto names = [] {
+        QSet<QString> result;
+        for (const Equip *equip : Sanguosha->findChildren<const Equip *>()) result.insert(equip->objectName());
+        return result;
+    }();
+    return names.contains(name);
 }
 
-bool Player::hasOffensiveHorse(const QString &horse_name, bool need_area) const
+bool Player::hasVirtualEquipEffect(const QString &name, int slot, const Player *sourcePlayer, bool needArea) const
 {
-    if (!alive||(need_area&&getMark("IgnoreArea3")<1&&!hasEquipArea(3))) return false;
-	static QStringList o_equips;
-	if(o_equips.isEmpty()){
-		foreach(const OffensiveHorse*o,Sanguosha->findChildren<const OffensiveHorse*>())
-			o_equips << o->objectName();
-	}
-	if(o_equips.contains(horse_name)){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *h = realEquip(outer);
-			if(h->objectName()==horse_name&&!isEquipsNullified(h))
-				return true;
-		}
-		if(viewAsEquip(horse_name)){
-			Card*ec = Sanguosha->cloneCard(horse_name);
-			ec->deleteLater();
-			return !isEquipsNullified(ec);
-		}
-	}
-	return false;
+    if (!isAlive() || !canUseEquipArea(this, slot, needArea) || !viewAsEquip(name)) return false;
+    Card *card = Sanguosha->cloneCard(name);
+    if (!card) return false;
+    card->deleteLater();
+    return !isEquipsNullified(card, sourcePlayer);
 }
 
-bool Player::hasTreasure(const QString &treasure_name, bool need_area) const
+bool Player::hasWeapon(const QString &name, const Player *sourcePlayer, bool needArea) const
 {
-    if (!alive||(need_area&&getMark("IgnoreArea4")<1&&!hasEquipArea(4))) return false;
-	static QStringList t_equips;
-	if(t_equips.isEmpty()){
-		foreach(const Treasure*t,Sanguosha->findChildren<const Treasure*>())
-			t_equips << t->objectName();
-	}
-	if(t_equips.contains(treasure_name)){
-		foreach(const WrappedCard *outer,equips){
-			const EquipCard *t = realEquip(outer);
-			if(t->objectName()==treasure_name&&!isEquipsNullified(t))
-				return true;
-		}
-		if(viewAsEquip(treasure_name)){
-			Card*ec = Sanguosha->cloneCard(treasure_name);
-			ec->deleteLater();
-			return !isEquipsNullified(ec);
-		}
-	}
-	return false;
+    if (name.isEmpty()) return false;
+    return getEffectiveEquip(name, EquipCard::WeaponLocation, sourcePlayer, needArea).cardId >= 0
+        || (isNamedEquip<Weapon>(name) && hasVirtualEquipEffect(name, EquipCard::WeaponLocation, sourcePlayer, needArea));
+}
+
+bool Player::hasArmorEffect(const QString &name, const Player *sourcePlayer, bool needArea) const
+{
+    if (getEffectiveEquip(name, EquipCard::ArmorLocation, sourcePlayer, needArea).cardId >= 0)
+        return true;
+    if (!isAlive() || !canUseEquipArea(this, EquipCard::ArmorLocation, needArea)) return false;
+    if (!name.isEmpty())
+        return isNamedEquip<Armor>(name) && hasVirtualEquipEffect(name, EquipCard::ArmorLocation, sourcePlayer, needArea);
+
+    QStringList virtualNames = property("View_As_Equips_List").toString().split("+");
+    for (auto it = m_skillInstances.cbegin(); it != m_skillInstances.cend(); ++it) {
+        if (const ViewAsEquipSkill *skill = Sanguosha->getViewAsEquipSkill(it.key())) {
+            const QString equipment = skill->viewAsEquip(this);
+            if (!equipment.isEmpty() && hasSkill(it.key())) virtualNames << equipment.split(",");
+        }
+    }
+    for (const QString &armor : virtualNames) {
+        if (!isNamedEquip<Armor>(armor)) continue;
+        if (Card *card = Sanguosha->cloneCard(armor)) {
+            card->deleteLater();
+            if (!isEquipsNullified(card, sourcePlayer)) return true;
+        }
+    }
+    return false;
+}
+
+bool Player::hasDefensiveHorse(const QString &name, bool needArea) const
+{
+    return isNamedEquip<DefensiveHorse>(name)
+        && (getEffectiveEquip(name, EquipCard::DefensiveHorseLocation, nullptr, needArea).cardId >= 0
+            || hasVirtualEquipEffect(name, EquipCard::DefensiveHorseLocation, nullptr, needArea));
+}
+
+bool Player::hasOffensiveHorse(const QString &name, bool needArea) const
+{
+    return isNamedEquip<OffensiveHorse>(name)
+        && (getEffectiveEquip(name, EquipCard::OffensiveHorseLocation, nullptr, needArea).cardId >= 0
+            || hasVirtualEquipEffect(name, EquipCard::OffensiveHorseLocation, nullptr, needArea));
+}
+
+bool Player::hasTreasure(const QString &name, bool needArea) const
+{
+    return isNamedEquip<Treasure>(name)
+        && (getEffectiveEquip(name, EquipCard::TreasureLocation, nullptr, needArea).cardId >= 0
+            || hasVirtualEquipEffect(name, EquipCard::TreasureLocation, nullptr, needArea));
 }
 
 QList<const Card *> Player::getJudgingArea() const
@@ -2068,6 +2144,12 @@ QString Player::getPileName(int card_id) const
 
 bool Player::pileOpen(const QString &pile_name, const QString &player) const
 {
+    if (pile_name == QLatin1String("wooden_ox")) {
+        if (const auto *room = qobject_cast<const Room *>(parent())) {
+            const Player *beneficiary = room->getEquipAreaBeneficiary(this);
+            if (beneficiary && beneficiary != this) return beneficiary->objectName() == player;
+        }
+    }
     return pile_open[pile_name].contains(player);
 }
 
@@ -2101,12 +2183,23 @@ QStringList Player::getHandPileNames() const
 QList<int> Player::getHandPile() const
 {
     QList<int> result;
+    const QList<const Player *> areaOwners = effectiveEquipAreaOwners();
     foreach (const QString &pile, getHandPileNames()) {
         if (pile.startsWith("%")) {
             foreach (const Player *p, getAliveSiblings())
                 result << p->getPile(pile.mid(1));
-        } else {
+        } else if (pile != QLatin1String("wooden_ox") || areaOwners.contains(this)) {
             result << getPile(pile);
+        }
+    }
+    for (const Player *areaOwner : areaOwners) {
+        if (areaOwner == this) continue;
+        for (const Card *card : areaOwner->getEquips(EquipCard::TreasureLocation)) {
+            if (card->objectName() == QLatin1String("wooden_ox")
+                && !isEquipsNullified(card, nullptr, areaOwner)) {
+                result << areaOwner->getPile(QStringLiteral("wooden_ox"));
+                break;
+            }
         }
     }
     return result;
@@ -2190,24 +2283,24 @@ int Player::usedTimes(const QString &card_class, bool actual) const
 
 bool Player::hasEquipSkill(const QString &skill_name) const
 {
-	static QStringList equipsName;
-	if(equipsName.isEmpty()){
-		foreach(const EquipCard*ec, Sanguosha->findChildren<const EquipCard*>()){
-			if(equipsName.contains(ec->objectName())||Sanguosha->getSkill(ec)==nullptr) continue;
-			equipsName.append(ec->objectName());
-		}
-	}
-    return equipsName.contains(skill_name) && (ownsSkill(skill_name) || viewAsEquip(skill_name));
+    if (skill_name.isEmpty() || !Sanguosha->getSkill(skill_name)) return false;
+    for (const Player *areaOwner : effectiveEquipAreaOwners()) {
+        for (const WrappedCard *outer : areaOwner->equips) {
+            const EquipCard *card = realEquip(outer);
+            if (!card) continue;
+            const Skill *skill = Sanguosha->getSkill(card);
+            if (skill && skill->objectName() == skill_name) return true;
+        }
+    }
+    if (!isNamedEquip<EquipCard>(skill_name)) return false;
+    return viewAsEquip(skill_name);
 }
 
 QSet<const TriggerSkill *> Player::getTriggerSkills() const
 {
     QSet<const TriggerSkill *> skillList;
-    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
-        const QString &baseName = outerIt.key();
-        if (hasEquipSkill(baseName)) continue;
-        const TriggerSkill *trigger = Sanguosha->getTriggerSkill(baseName);
-        if (trigger) skillList << trigger;
+    for (const Skill *skill : getSkillList(false, false)) {
+        if (const auto *trigger = qobject_cast<const TriggerSkill *>(skill)) skillList << trigger;
     }
     return skillList;
 }
@@ -2226,12 +2319,38 @@ QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only)
     // Derive this from SSOT m_skillInstances (baseName already resolved).
     for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
         const QString &baseName = outerIt.key();
-        if (!include_equip && hasEquipSkill(baseName)) continue;
+        const bool hasOrdinarySource = std::any_of(outerIt->cbegin(), outerIt->cend(), [](const SkillInstance &instance) {
+            if (instance.state.contains(QStringLiteral("physical_equipment_card_id"))) return false;
+            return instance.source != SourceAttached || !instance.parentRef.isValid()
+                || !Sanguosha->getViewAsEquipSkill(instance.parentRef.key.skillName);
+        });
+        if (!hasOrdinarySource) continue;
         if (added.contains(baseName)) continue;
         const Skill *skill = Sanguosha->getSkill(baseName);
         if (skill == nullptr || (visible_only && !skill->isVisible())) continue;
         skillList << skill;
         added.insert(baseName);
+    }
+    if (include_equip) {
+        for (const Player *areaOwner : effectiveEquipAreaOwners()) {
+            for (const WrappedCard *outer : areaOwner->equips) {
+                const Skill *skill = Sanguosha->getSkill(realEquip(outer));
+                if (!skill || (visible_only && !skill->isVisible()) || added.contains(skill->objectName())) continue;
+                skillList << skill;
+                added.insert(skill->objectName());
+            }
+        }
+        for (const auto &instances : m_skillInstances) {
+            for (const SkillInstance &instance : instances) {
+                if (instance.source != SourceAttached || !instance.parentRef.isValid()
+                    || !Sanguosha->getViewAsEquipSkill(instance.parentRef.key.skillName)
+                    || added.contains(instance.skillName)) continue;
+                const Skill *skill = Sanguosha->getSkill(instance.skillName);
+                if (!skill || (visible_only && !skill->isVisible())) continue;
+                skillList << skill;
+                added.insert(instance.skillName);
+            }
+        }
     }
     return skillList;
 }

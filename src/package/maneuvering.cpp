@@ -390,21 +390,14 @@ public:
             if (player && player->isAlive() && ArmorSkillV2::triggerable(player)
                 && player->hasArmorEffect(objectName(), damage.from) && damage.damage > 1)
                 result.insert(player, QStringList(objectName()));
-        } else if (Config.EnableHegemony && player
-                   && player->hasFlag("SilverLionRecover")) {
-            CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-            if (move.from != player || !move.from_places.contains(Player::PlaceEquip))
-                return result;
-            for (int i = 0; i < move.card_ids.size(); ++i) {
-                if (move.from_places[i] != Player::PlaceEquip) continue;
-                const Card *card = Sanguosha->getEngineCard(move.card_ids[i]);
-                if (card->objectName() == objectName()) {
-                    if (!player->isWounded())
-                        player->setFlags("-SilverLionRecover");
-                    else
-                        result.insert(player, QStringList(objectName()));
-                    break;
-                }
+        } else if (Config.EnableHegemony && player && player->isAlive() && player->isWounded()) {
+            const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            for (int id : move.card_ids) {
+                const EquipmentMoveSource source = move.equipmentSourceBefore(id);
+                if (!source.effective || source.equipment != objectName()
+                    || source.beneficiary != player->objectName()) continue;
+                result.insert(player, QStringList(objectName()));
+                break;
             }
         }
         return result;
@@ -429,18 +422,13 @@ public:
             return damage.damage == 0;
         }
 
-        CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-        for (int i = 0; i < move.card_ids.size(); ++i) {
-            if (move.from_places[i] != Player::PlaceEquip) continue;
-            const Card *card = Sanguosha->getEngineCard(move.card_ids[i]);
-            if (card->objectName() != objectName()) continue;
-            player->setFlags("-SilverLionRecover");
+        if (ctx.physicalEquipSource.isValid() && player->isAlive() && player->isWounded()) {
+            const Card *card = Sanguosha->getEngineCard(ctx.physicalEquipSource.cardId());
             room->setEmotion(player, "armor/silver_lion");
             RecoverStruct recover;
             recover.card = card;
             recover.recover = getEffectiveAmount(ctx);
             room->recover(player, recover);
-            break;
         }
         return false;
     }
@@ -454,21 +442,17 @@ SilverLion::SilverLion(Suit suit, int number)
 
 void SilverLion::onUninstall(ServerPlayer *player) const
 {
-    if (Config.EnableHegemony) {
-        if (player->isAlive() && player->hasArmorEffect(objectName()))
-            player->setFlags("SilverLionRecover");
-        EquipCard::onUninstall(player);
-        return;
-    }
-
+    Room *room = player->getRoom();
+    const int id = getEffectiveId();
+    ServerPlayer *beneficiary = room->getCardOwner(id) == player && room->getCardPlace(id) == Player::PlaceEquip
+        ? room->getEquipAreaBeneficiary(player) : nullptr;
     EquipCard::onUninstall(player);
-	if (player->isAlive() && player->hasArmorEffect(objectName(), nullptr, false)
-        && player->isWounded()) {
-		Room *room = player->getRoom();
-		room->setEmotion(player, "armor/silver_lion");
-		room->notifySkillInvoked(player, objectName());
-		room->recover(player, RecoverStruct(nullptr, this));
-	}
+    if (!Config.EnableHegemony && beneficiary && beneficiary->isAlive() && beneficiary->isWounded()
+        && !beneficiary->isEquipsNullified(this, nullptr, player)) {
+        room->setEmotion(beneficiary, "armor/silver_lion");
+        room->notifySkillInvoked(beneficiary, objectName());
+        room->recover(beneficiary, RecoverStruct(nullptr, this));
+    }
 }
 
 FireAttack::FireAttack(Card::Suit suit, int number)

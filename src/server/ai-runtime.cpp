@@ -591,6 +591,12 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     }
     pushAIJsonValue(state, skill.correctState);
     lua_setfield(state, -2, "correct_state");
+    lua_createtable(state, int(skill.families.size()), 0);
+    for (int index = 0; index < skill.families.size(); ++index) {
+        pushQString(state, skill.families.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "families");
 }
 
 void pushAISkills(lua_State *state, const QList<AISkillView> &skills)
@@ -682,6 +688,52 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     setStringField(state, "general2", player.general2Name);
     pushAICards(state, player.equips);
     lua_setfield(state, -2, "equips");
+    lua_createtable(state, int(player.effectiveEquips.size()), 0);
+    for (int index = 0; index < player.effectiveEquips.size(); ++index) {
+        const AIEffectiveEquipView &equip = player.effectiveEquips.at(index);
+        lua_createtable(state, 0, 6);
+        lua_pushinteger(state, equip.cardId);
+        lua_setfield(state, -2, "card_id");
+        setStringField(state, "area_owner", equip.areaOwner);
+        setStringField(state, "beneficiary", equip.beneficiary);
+        lua_pushboolean(state, equip.active);
+        lua_setfield(state, -2, "active");
+        lua_pushinteger(state, equip.weaponRange);
+        lua_setfield(state, -2, "weapon_range");
+        lua_createtable(state, int(equip.nullifiedSources.size()), 0);
+        for (int source = 0; source < equip.nullifiedSources.size(); ++source) {
+            pushQString(state, equip.nullifiedSources.at(source));
+            lua_rawseti(state, -2, source + 1);
+        }
+        lua_setfield(state, -2, "nullified_for");
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "effective_equips");
+    setStringField(state, "equip_area_beneficiary", player.equipAreaBeneficiary);
+    lua_pushboolean(state, player.equipSourceEffectsKnown);
+    lua_setfield(state, -2, "equip_source_effects_known");
+    if (!player.armorEffectsBySource.isEmpty()) {
+        lua_createtable(state, 0, int(player.armorEffectsBySource.size()));
+        for (auto entry = player.armorEffectsBySource.cbegin(); entry != player.armorEffectsBySource.cend(); ++entry) {
+            lua_createtable(state, int(entry.value().size()), 0);
+            for (int armor = 0; armor < entry.value().size(); ++armor) {
+                pushQString(state, entry.value().at(armor));
+                lua_rawseti(state, -2, armor + 1);
+            }
+            lua_setfield(state, -2, entry.key().toUtf8().constData());
+        }
+        lua_setfield(state, -2, "armor_effects_by_source");
+    }
+    lua_pushinteger(state, player.usableWoodenOxCount);
+    lua_setfield(state, -2, "usable_wooden_ox_count");
+    lua_pushinteger(state, player.offensiveHorseCorrection);
+    lua_setfield(state, -2, "offensive_horse_correction");
+    lua_pushinteger(state, player.defensiveHorseCorrection);
+    lua_setfield(state, -2, "defensive_horse_correction");
+    if (player.usableHandPileKnown) {
+        pushAICards(state, player.usableHandPile);
+        lua_setfield(state, -2, "usable_hand_pile");
+    }
     pushAICards(state, player.judgingArea);
     lua_setfield(state, -2, "judging_area");
     lua_createtable(state, 0, int(player.publicMarks.size()));

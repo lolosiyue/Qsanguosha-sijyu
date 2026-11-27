@@ -503,6 +503,14 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(player_added(ClientPlayer*)),SLOT(addPlayer(ClientPlayer*)));
 	connect(ClientInstance, &Client::managedTimelineSnapshotStarting,
 		this, &RoomScene::resetManagedTimelinePresentation);
+	connect(ClientInstance, &Client::equipAreaOccupancyChanged, this, &RoomScene::refreshEquipOccupancy,
+		Qt::QueuedConnection);
+	// An occupied area that gains or loses a card changes what its occupier borrows.
+	auto refreshOccupiedAreas = [this]() {
+		if (ClientInstance->hasEquipAreaOccupancy()) refreshEquipOccupancy();
+	};
+	connect(ClientInstance, &Client::move_cards_got, this, refreshOccupiedAreas, Qt::QueuedConnection);
+	connect(ClientInstance, &Client::move_cards_lost, this, refreshOccupiedAreas, Qt::QueuedConnection);
 	connect(ClientInstance, &Client::managedRewindStateChanged, this, [this]() {
 		if (managed_start_game) showOwnerButtons(Self && Self->isOwner());
 	});
@@ -5656,6 +5664,20 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 
 	// Measure all columns in one header pass rather than ten layout updates.
 	table->resizeColumnsToContents();
+}
+
+void RoomScene::refreshEquipOccupancy()
+{
+    if (dashboard && dashboard->getPlayer()) {
+        dashboard->_updateEquips();
+        dashboard->updateAvatarTooltip();
+    }
+    foreach (Photo *photo, photos) {
+        if (photo && photo->getPlayer()) {
+            photo->_updateEquips();
+            photo->updateAvatarTooltip();
+        }
+    }
 }
 
 void RoomScene::updateCardDescription(const QString &player_name, const QString &card_name)

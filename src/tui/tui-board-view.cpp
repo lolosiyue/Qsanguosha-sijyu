@@ -224,6 +224,7 @@ PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState 
             line2 += QLatin1Char(' ') + tuiText("tui_board_equipment_count").arg(equip.size());
         }
     }
+    const qsizetype equipmentEnd = line2.size();
     if (!judge.isEmpty()) {
         if (isSelf) {
             line2 += QLatin1Char(' ') + tuiText("tui_board_judgement_label");
@@ -233,8 +234,6 @@ PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState 
             line2 += QLatin1Char(' ') + tuiText("tui_board_judgement_count").arg(judge.size());
         }
     }
-    line2 = tuiPadTo(line2, width);
-
     QStringList markers;
     if (!alive) {
         // A dead player's chain/facing state stops mattering the moment they
@@ -251,6 +250,14 @@ PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState 
         if (player.value(QStringLiteral("chained")).toBool())
             markers << tuiText("tui_state_chained");
     }
+    const QString occupancy = TuiRenderer::equipmentOccupancyText(state, name, resolvers);
+    if (!occupancy.isEmpty()) {
+        if (tuiDisplayWidth(line2) + 1 + tuiDisplayWidth(occupancy) <= width)
+            line2.insert(equipmentEnd, QLatin1Char(' ') + occupancy);
+        else
+            markers.prepend(occupancy);
+    }
+    line2 = tuiPadTo(line2, width);
     const QString line3 = tuiPadTo(markers.join(QLatin1Char(' ')), width);
 
     return {{line1, line2, line3}, spans};

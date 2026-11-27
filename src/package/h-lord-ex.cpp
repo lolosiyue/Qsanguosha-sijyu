@@ -23,6 +23,7 @@
 #include "h-formation.h"
 #include "skill.h"
 #include "skill-instance-utils.h"
+#include "skill-receipt.h"
 #include "h-strategic-advantage.h"
 #include "standard.h"
 #include "maneuvering.h"
@@ -106,27 +107,7 @@ bool lordExInjuredThisPhase(const ServerPlayer *player)
     return room->hasActualDamage({{"phase_id", phase}, {"to", player->objectName()}}) == 1;
 }
 
-int lordExReceiptId(ServerPlayer *recipient)
-{
-    const int id = recipient->getTag("HLordExReceiptSequence").toInt() + 1;
-    recipient->setTag("HLordExReceiptSequence", id);
-    return id;
-}
-
-auto lordExPromptScope(Room *room, ServerPlayer *player, const SkillInstanceRef &entry)
-{
-    const QString selector = ViewAsSkillV2::borrowedActivationMarkName(entry.key.skillName);
-    const int previous = player->getMark(selector);
-    RoomState *state = Sanguosha->currentRoomState();
-    const auto reason = state->getCurrentCardUseReason();
-    const QString pattern = state->getCurrentCardUsePattern();
-    room->setPlayerMark(player, selector, entry.key.instanceID);
-    return qScopeGuard([=] {
-        room->setPlayerMark(player, selector, previous);
-        state->setCurrentCardUseReason(reason);
-        state->setCurrentCardUsePattern(pattern);
-    });
-}
+constexpr char receiptSequenceTag[] = "HLordExReceiptSequence";
 }
 
 
@@ -320,7 +301,7 @@ public:
             QVariantList receipts = target->getTag("HLiangfanLetters").toList();
             receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
                 {"instance", ctx.sourceRef.key.instanceID}, {"execution", ctx.executionID},
-                {"amount", getEffectiveAmount(ctx)}, {"cards", material}, {"dispatch", lordExReceiptId(target)}};
+                {"amount", getEffectiveAmount(ctx)}, {"cards", material}, {"dispatch", SkillReceipt::nextDispatch(target, receiptSequenceTag)}};
             target->setTag("HLiangfanLetters", receipts);
             lordExSetCards(room, target, "@liangfan-turn", projection);
         }
@@ -662,6 +643,7 @@ public:
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override { return 3; }
     HFankuiSimazhao() : TriggerSkillV2("heg_fankui_simazhao") {
+        addFamily("fankui");
         events << Damaged;}
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -924,7 +906,7 @@ public:
         if (event == EventPhaseStart) return ctx.owner->askForSkillInvoke(this);
         JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
         if (!judge || !judge->card) return false;
-        const auto promptScope = lordExPromptScope(room, ctx.owner, ctx.activationRef);
+        const SkillResponsePromptScope promptScope(room, ctx.owner, ctx.activationRef);
         const QString prompt = QStringList{"@midao-card", judge->who->objectName(), objectName(),
             judge->reason, QString::number(judge->card->getEffectiveId())}.join(":");
         // Retrial selection is read-only; Room::retrial performs the exchange after interception.
@@ -1070,7 +1052,7 @@ public:
         if (!key.isEmpty()) {
             QVariantList receipts = room->getTag(key).toList();
             receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
-                {"instance", ctx.sourceRef.key.instanceID}, {"dispatch", lordExReceiptId(ctx.owner)},
+                {"instance", ctx.sourceRef.key.instanceID}, {"dispatch", SkillReceipt::nextDispatch(ctx.owner, receiptSequenceTag)},
                 {"amount", getEffectiveAmount(ctx)}};
             room->setTag(key, receipts);
         }
@@ -1199,7 +1181,7 @@ private:
             QVariantList letters = target->getTag("HWenjiLetters").toList();
             letters << QVariantMap{{"card", id}, {"owner", ctx.sourceRef.ownerObjectName},
                 {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
-                {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(target)}};
+                {"amount", getEffectiveAmount(ctx)}, {"dispatch", SkillReceipt::nextDispatch(target, receiptSequenceTag)}};
             target->setTag("HWenjiLetters", letters);
             lordExAddCard(room, target, "@wenji-turn", id);
         }
@@ -1959,7 +1941,7 @@ public:
     EffectFlow effect(SkillContext &ctx) const override
     {
         ctx.extra_data = QVariantMap{{"seats", ctx.use_card ? ctx.use_card->getTag("HDiaoguiSeats") : QVariant()},
-            {"dispatch", lordExReceiptId(ctx.invoker)}};
+            {"dispatch", SkillReceipt::nextDispatch(ctx.invoker, receiptSequenceTag)}};
         return ContinueEffects;
     }
     bool pay(Room *, SkillContext &, const ActiveSkillRequest &request) const override
@@ -2156,7 +2138,7 @@ public:
         QVariantList receipts = ctx.owner->property("heg_zhidao_receipts").toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)},
-            {"dispatch", lordExReceiptId(ctx.owner)}, {"target", target->objectName()}};
+            {"dispatch", SkillReceipt::nextDispatch(ctx.owner, receiptSequenceTag)}, {"target", target->objectName()}};
         room->setPlayerProperty(ctx.owner, "heg_zhidao_receipts", receipts);
         QStringList targets = ctx.owner->property("zhidao_targets").toString().split('+', Qt::SkipEmptyParts);
         if (!targets.contains(target->objectName())) targets << target->objectName();
@@ -3646,7 +3628,7 @@ public:
         QVariantList receipts = target->property("heg_xiongnve_receipts").toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"kind", kind}, {"kingdoms", kingdoms},
-            {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(target)}};
+            {"amount", getEffectiveAmount(ctx)}, {"dispatch", SkillReceipt::nextDispatch(target, receiptSequenceTag)}};
         room->setPlayerProperty(target, "heg_xiongnve_receipts", receipts);
         room->addPlayerMark(target, kind == "defence" ? "##xiongnve_avoid" : "##xiongnve");
         return false;
@@ -3780,7 +3762,7 @@ public:
             QVariantList receipts = ctx.owner->getTag("HCongchaReceipts").toList();
             receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
                 {"instance", ctx.sourceRef.key.instanceID}, {"target", target->objectName()},
-                {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(ctx.owner)}};
+                {"amount", getEffectiveAmount(ctx)}, {"dispatch", SkillReceipt::nextDispatch(ctx.owner, receiptSequenceTag)}};
             ctx.owner->setTag("HCongchaReceipts", receipts);
             room->addPlayerMark(target, "##congcha");
         }
@@ -4004,7 +3986,7 @@ public:
     {
         // A repeated payment belongs to this accepted effect; each Slash still uses the ordinary pipeline.
         const QVariantMap receipt{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
-            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(ctx.owner)}};
+            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}, {"dispatch", SkillReceipt::nextDispatch(ctx.owner, receiptSequenceTag)}};
         do {
             for (int n = 0; n < getEffectiveAmount(ctx) && ctx.owner->isAlive() && target->isAlive(); ++n) {
                 Slash slash(Card::NoSuit, 0); slash.setSkillName("_heg_xishe"); slash.setTag("HXisheReceipt", receipt);
@@ -4487,7 +4469,7 @@ public:
         if (!target->isAlive()) return false;
         QVariantList receipts = target->getTag("HJuejueReceipts").toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
-            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(target)}};
+            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}, {"dispatch", SkillReceipt::nextDispatch(target, receiptSequenceTag)}};
         target->setTag("HJuejueReceipts", receipts);
         return false;
     }
@@ -4806,7 +4788,7 @@ public:
         const QList<int> originalIds = lordExCardIds(damage.card);
         Room::AcceptedViewAsEffectScope borrowed(room, target, "heg_tongling_usecard", ctx);
         if (!borrowed.isValid()) return false;
-        const auto prompt = lordExPromptScope(room, target, borrowed.activationRef());
+        const SkillResponsePromptScope prompt(room, target, borrowed.activationRef());
         const QVariant oldTarget = target->property("tongling_usetarget"), oldDamage = target->getTag("tongling-damage");
         room->setPlayerProperty(target, "tongling_usetarget", damage.to->objectName()); target->setTag("tongling-damage", *ctx.original_data);
         const auto restore = qScopeGuard([&] {
@@ -5140,7 +5122,7 @@ public:
     {
         Room::AcceptedViewAsEffectScope borrowed(room, ctx.owner, objectName(), ctx);
         if (!borrowed.isValid()) return false;
-        const auto prompt = lordExPromptScope(room, ctx.owner, borrowed.activationRef());
+        const SkillResponsePromptScope prompt(room, ctx.owner, borrowed.activationRef());
         room->askForUseCard(ctx.owner, "@@heg_jujian", "@jujian-card", -1, Card::MethodDiscard);
         return false;
     }

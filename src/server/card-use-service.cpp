@@ -17,6 +17,7 @@
 #include "skill-execution-registry.h"
 #include "standard.h"
 #include "trigger-cascade-break.h"
+#include "wooden-ox-access.h"
 #include "wrapped-card.h"
 
 #include <QJsonArray>
@@ -41,6 +42,19 @@ QList<const Player *> selectedPlayers(const CardUseStruct &use)
     return result;
 }
 
+}
+
+bool canUseWoodenOxMaterials(const Room &room, const ServerPlayer *player, const Card *card)
+{
+    if (!player || !card) return false;
+    const QList<int> ids = card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getEffectiveId()};
+    for (int id : ids) {
+        if (id < 0 || room.getCardPlace(id) != Player::PlaceSpecial) continue;
+        const ServerPlayer *holder = room.getCardOwner(id);
+        if (holder && holder->getPileName(id) == QLatin1String("wooden_ox")
+            && !player->getHandPile().contains(id)) return false;
+    }
+    return true;
 }
 
 int getConvertedPhysicalCardId(const Card *card)
@@ -614,7 +628,8 @@ bool CardUseService::resolveCardUse(CardUseStruct &use, bool add_history, const 
     }
 	// Revalidate only client/AI-selected targets. Server-created uses may carry
 	// authoritative targets for target-fixed cards, such as Peach in dying rescue.
-	if (use.m_validateTargets && !areCardTargetsLegal(use)) return false;
+	if (use.m_validateTargets && (!areCardTargetsLegal(use)
+        || (!acceptedEffect && !canUseWoodenOxMaterials(m_room, use.from, use.card)))) return false;
 	if ((!use.card->canRecast()||use.from->isCardLimited(use.card,Card::MethodRecast))&&use.from->isCardLimited(use.card,use.card->getHandlingMethod()))
 		return false;
 	use.m_addHistory = add_history;

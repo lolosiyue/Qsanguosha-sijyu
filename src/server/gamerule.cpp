@@ -1,6 +1,7 @@
 #include "gamerule.h"
 #include "hegemony-mode.h"
 #include <QScopeGuard>
+#include <QScopedValueRollback>
 #include <QSet>
 #include "room.h"
 #include "engine.h"
@@ -12,6 +13,93 @@
 #include "card-lifetime-manager.h"
 #include "resolution-history.h"
 #include "h-strategic-advantage.h"
+
+class LinkedCardRule : public TriggerSkillV2
+{
+public:
+    LinkedCardRule() : TriggerSkillV2(QStringLiteral("#linked-card-rule"))
+    {
+        global = true;
+        frequency = Compulsory;
+        events << CardsMoveOneTime;
+    }
+
+    bool collectTriggerContexts(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data,
+                                QList<SkillContext> &contexts) const override
+    {
+        if (!linkedOrigins(room, player, data.value<CardsMoveOneTimeStruct>()).isEmpty()) {
+            SkillContext context;
+            context.skill_name = objectName();
+            context.owner = context.invoker = context.initiator = player;
+            context.original_data = &data;
+            contexts << context;
+        }
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &context) const override
+    {
+        if (!context.original_data) return false;
+        ServerPlayer *source = context.owner;
+        const QStringList origins = linkedOrigins(room, source, context.original_data->value<CardsMoveOneTimeStruct>());
+        if (origins.isEmpty()) return false;
+
+        QScopedValueRollback<bool> resolving(room->m_resolvingLinkedCards, true);
+        QStringList sections{QStringLiteral("link_card_dis"), source->objectName() + '=' + origins.join('+')};
+        QList<CardsMoveStruct> moves;
+        for (ServerPlayer *player : room->getAllPlayers()) {
+            QList<int> ids;
+            QStringList names;
+            for (const Card *card : player->getHandcards()) {
+                if (!card->isLinkedCard() || !player->canDiscard(player, card->getId())) continue;
+                ids << card->getId();
+                names << QString::number(card->getId());
+            }
+            if (ids.isEmpty()) continue;
+
+            const CardMoveReason reason(CardMoveReason::S_REASON_DISCARD, player->objectName(),
+                                        QStringLiteral("link_card"), QString());
+            moves << CardsMoveStruct(ids, nullptr, Player::DiscardPile, reason);
+            LogMessage log;
+            log.type = QStringLiteral("$link_card_dis");
+            log.from = player;
+            log.card_str = names.join('+');
+            sections << (player->objectName() + '=' + log.card_str);
+            room->sendLog(log);
+        }
+        if (!moves.isEmpty()) room->moveCardsAtomic(moves, true);
+        QVariant eventData = sections.join(':');
+        room->getThread()->trigger(EventForDiy, room, source, eventData);
+        return false;
+    }
+
+private:
+    static QStringList linkedOrigins(Room *room, ServerPlayer *player, const CardsMoveOneTimeStruct &move)
+    {
+        if (!player || move.from != player || room->m_resolvingLinkedCards
+            || move.reason.m_skillName == QLatin1String("link_card")) return {};
+        const int reason = move.reason.m_reason;
+        if ((reason & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_DISCARD
+            && reason != CardMoveReason::S_REASON_USE && reason != CardMoveReason::S_REASON_RESPONSE)
+            return {};
+
+        QStringList ids;
+        for (int i = 0; i < move.card_ids.size() && i < move.from_places.size(); ++i) {
+            if (move.from_places.at(i) != Player::PlaceHand) continue;
+            const int id = move.card_ids.at(i);
+            const Card *card = id >= 0 ? room->getCard(id) : nullptr;
+            if (card && card->isLinkedCard()) ids << QString::number(id);
+        }
+        return ids;
+    }
+};
+
+const Skill *createLinkedCardRule(QObject *parent)
+{
+    auto *rule = new LinkedCardRule;
+    rule->setParent(parent);
+    return rule;
+}
 
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)

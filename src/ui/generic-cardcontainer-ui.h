@@ -132,6 +132,13 @@ public:
     bool canBeSelected();
     GraphicsPixmapHoverItem *getAvartarItem() const { return _m_avatarIcon; }
     GraphicsPixmapHoverItem *getSmallAvartarItem() const { return _m_smallAvatarIcon; }
+    // Read-only tooltip carriers for UI tests: one equip slot and the head avatar area.
+    QGraphicsItem *equipRegionItem(int slot) const
+    { return slot >= 0 && slot < S_EQUIP_AREA_LENGTH ? _m_equipRegions[slot] : nullptr; }
+    // The borrowed-card tag drawn over a slot that also holds the viewer's own card.
+    QGraphicsItem *equipTagItem(int slot) const
+    { return slot >= 0 && slot < S_EQUIP_AREA_LENGTH ? _m_equipTags[slot] : nullptr; }
+    QGraphicsItem *avatarAreaItem() const { return _m_avatarArea; }
     QPixmap _getAvatarIcon(const QString &heroName);
     QPixmap getSmallAvatarIcon(const QString &generalName);
 
@@ -256,6 +263,8 @@ protected:
     QList<CardItem *> _m_judgeCards;
 
     EquipPixmapItem *_m_equipRegions[S_EQUIP_AREA_LENGTH];
+    // Child of the matching region; shown only for the "+" (own card plus a borrowed one) case.
+    EquipPixmapItem *_m_equipTags[S_EQUIP_AREA_LENGTH];
     CardItem *_m_equipCards[S_EQUIP_AREA_LENGTH];
     // Cards that share a visual row when every other equip row is already taken.
     QList<CardItem *> _m_extraEquipCards;

@@ -38,6 +38,7 @@
 #include <QScopeGuard>
 #include "skill-declaration.h"
 #include "skill-instance-utils.h"
+#include "skill-receipt.h"
 // New HEG donor: TODO/QSanguosha-For-Hegemony-xxyheaven @ cf61c15.
 // Namespace mapping: docs/hegemony-xxy-names.json.
 
@@ -2841,14 +2842,12 @@ public:
             if (index >= 0 && index < jinks.size() && jinks.at(index).toInt() > 0) jinks[index] = qMax(jinks.at(index).toInt(), 1 + amount);
             use.from->setTag("Jink_" + use.card->toString(), jinks);
         } else if (use.card->isKindOf("Duel")) {
-            const qint64 useId = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
+            const QString key = SkillReceipt::useKey(room, "wushuang");
             const TriggerSkill *native = Sanguosha->getTriggerSkill("wushuang");
-            if (useId <= 0 || !native) return false;
+            if (key.isEmpty() || !native) return false;
             // Share native strongest-response arbitration instead of stacking a second responder.
             room->getThread()->addTriggerSkill(native);
-            const int dispatch = target->property("wushuang_v2_receipt_sequence").toInt() + 1;
-            room->setPlayerProperty(target, "wushuang_v2_receipt_sequence", dispatch);
-            const QString key = "wushuang:" + QString::number(useId);
+            const int dispatch = SkillReceipt::nextDispatch(room, target, "wushuang");
             QVariantMap receipt = use.card->getTag(key).toMap(); QVariantList sources = receipt.value("sources").toList();
             sources << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
                 {"instance", ctx.sourceRef.key.instanceID}, {"responders", QStringList{target->objectName()}},
