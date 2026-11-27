@@ -273,6 +273,7 @@ MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
 {
 	ui->setupUi(this);
+	addAction(ui->actionGeneralAuthorWorkbench);
     installAndroidDialogFit(qApp); // Shared fitting also serves desktop portrait preview.
 
     QAction *correctionAction = ui->menuOptions->addAction(tr("Skill correction inspector (read-only)"));

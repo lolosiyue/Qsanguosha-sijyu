@@ -1711,8 +1711,8 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <location filename="../src/dialog/cardeditor.cpp" line="875"/>
-        <source>Author playable general ...</source>
-        <translation>编写可玩武将……</translation>
+        <source>General author workbench</source>
+        <translation>武将作者工作台</translation>
     </message>
 </context>
 <context>
@@ -5937,6 +5937,10 @@ Waiting for %1 to respond</source>
 </context>
 <context>
     <name>MainWindow</name>
+    <message>
+        <source>General author workbench</source>
+        <translation>武将作者工作台</translation>
+    </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="961"/>
         <location filename="../src/dialog/mainwindow.cpp" line="962"/>
@@ -12927,6 +12931,14 @@ Changes:
 <context>
     <name>GeneralAuthoringDialog</name>
     <message>
+        <source>unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>Provider-reported tokens: input %1, output %2, cache read %3, cache write %4. This is not a bill.</source>
+        <translation>服务商报告的词元数：输入 %1，输出 %2，缓存读取 %3，缓存写入 %4。实际费用以账单为准。</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/general-authoring-dialog.cpp" line="105"/>
         <source>OK</source>
         <translation>确定</translation>
@@ -12939,8 +12951,20 @@ Changes:
     </message>
     <message>
         <location filename="../src/dialog/general-authoring-dialog.cpp" line="39"/>
-        <source>Playable general authoring</source>
-        <translation>可玩武将编写</translation>
+        <source>General author workbench</source>
+        <translation>武将作者工作台</translation>
+    </message>
+    <message>
+        <source>General profile</source>
+        <translation>武将资料</translation>
+    </message>
+    <message>
+        <source>Card editor snapshot</source>
+        <translation>DIY 卡面快照</translation>
+    </message>
+    <message>
+        <source>AI assistant</source>
+        <translation>AI 助手</translation>
     </message>
     <message>
         <location filename="../src/dialog/general-authoring-dialog.cpp" line="42"/>

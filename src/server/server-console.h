@@ -3,6 +3,8 @@
 
 #include <QByteArray>
 #include <QObject>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QThread>
 
@@ -57,11 +59,12 @@ private:
     void executeCommand(const QString &line);
     void printHelp();
     void printStatus();
-    void printStatusJson();
+    QJsonObject statusJson() const;
     void printPlayers();
-    void printPlayersJson();
+    QJsonArray playersJson(bool includeAddress) const;
     void printRooms();
-    void printRoomsJson();
+    QJsonArray roomsJson() const;
+    QJsonObject managementReply(const QJsonObject &request);
     void handleClose(const QString &arguments);
     void handleEndGame(const QString &arguments);
     void handleMaintenance(const QString &arguments);

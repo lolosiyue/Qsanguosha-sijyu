@@ -918,6 +918,23 @@ console，server 仍繼續運行，適合由 systemd 配合 signal 管理。
 `Room::doRequest`、`RoomThread::delay`、`PlayerDecisionService::activate` 等安全點執行
 `gameOver(".")`。不可改用 `abortWaitingRequests()`：該路徑會以 Shutdown 中止對局，而非正常收束。
 
+### 本機管理程序的 stdin 介面
+
+專用伺服器也接受一行一筆的 UTF-8 JSON 指令。管理程序為每筆指令產生唯一字串 `id`，並從 stdout 找出同一 `id` 的回覆。成功回傳 `{"id":"…","ok":true,"result":{…}}`，失敗回傳 `{"id":"…","ok":false,"error":"…"}`。一般伺服器日誌仍可穿插在回覆之間。
+
+| action | 額外欄位 | 操作 |
+| --- | --- | --- |
+| `snapshot` | 無 | 回傳 `status`、`rooms`、`players` 與 `access`。玩家資料含座位 ID、房號及當前 socket 的來源 IP。 |
+| `room.create` | 無 | 建立可直接加入的等待房，回傳整數 `result.roomId`。即使人數為零，房間仍列於快照。 |
+| `room.close` | 整數 `roomId` | 解散指定等待房。 |
+| `player.kick` | 整數 `roomId`、字串 `playerId` | 核對房號、座位及連線後踢出玩家。 |
+| `access.set` | 布林 `allowEnabled`、數字 IP 字串陣列 `allow` 及 `deny` | 原子替換此程序的連線規則。黑名單優先，啟用白名單時只接受列出的 IP。 |
+| `maintenance.set` | 布林 `enabled` | 修改即時維護狀態。 |
+
+TCP 和 WebSocket 會在建立連線及 signup 時檢查來源 IP，包括重連。更新名單後，已完成 signup 的玩家可以繼續對局，管理者可以另外踢出指定玩家。初始規則可經 ini 的 `[General]` 設定 `BannedIP`、`AllowedIP`、`AllowListEnabled` 與 `MaintenanceMode`。未指定房號的 signup 會在需要時使用其他可加入的等待房，指定房號沿用 Protocol V2 signup 的 `room_id`。
+
+預設關閉 stdin 時服務繼續運行。啟動者可設定 `QSAN_MANAGED_CONSOLE=1`，讓非互動式 stdin 管線關閉時走正常關服流程。
+
 ### Production logging
 
 預設使用 `info` level、`text` 格式並寫 stdout；指定 `--log-file` 時會以 append 模式寫入檔案，每筆立即 flush。目標目錄必須已存在且可寫，否則以 exit code `73` 拒絕啟動。

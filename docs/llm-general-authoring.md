@@ -1,12 +1,9 @@
 # LLM-assisted playable general authoring
 
-This MVP adds **Tool → Author playable general ...** (`Alt+G`) to the existing
-card editor. The feature branch is `feature/llm-general-authoring`, based on
-current remote debug `548b5c45`, which contains the requested last-verified
-`77926a85` baseline. The newer debug theme/home/table changes remain intact. It does not integrate
-`feature/lua-state-convenience`, the separate unpublished updater, statistics,
-or rewind changes. No card rendering, avatar cropping, image export or homepage
-layout is redesigned.
+Open **DIY → General author workbench** from the main window (`Ctrl+Alt+G`).
+In the card editor, use the toolbar, the **Tool** menu or `Alt+G`.
+The **Specification** tab shows a snapshot of the source card
+beside the general profile. Select a skill to edit its description directly.
 
 ## User workflow
 
@@ -18,7 +15,7 @@ layout is redesigned.
    ID, and skill IDs prefixed by the general ID. Set initial HP, armor, gender,
    display text and designer. The supported ranges are HP 1–20, armor 0–20,
    1–8 skills, with initial HP no greater than maximum HP.
-3. Enter the provider's final **HTTPS chat-completions endpoint**, API key and
+3. On the **AI assistant** tab, enter the provider's final **HTTPS chat-completions endpoint**, API key and
    model name. This is an OpenAI-compatible adapter, not a vendor account flow.
    No API call is made until **Preview request → Send request**.
 4. Read the complete request preview. It includes the original specification,

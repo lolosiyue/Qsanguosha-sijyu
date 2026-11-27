@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QFontDatabase>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
@@ -16,7 +17,9 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScreen>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QTableWidget>
@@ -28,7 +31,7 @@ QPlainTextEdit *codeEdit(QWidget *parent = nullptr, bool readOnly = false)
 {
     auto *edit = new QPlainTextEdit(parent); edit->setReadOnly(readOnly);
     edit->setLineWrapMode(QPlainTextEdit::NoWrap);
-    edit->setFont(QFont(QStringLiteral("monospace"))); edit->setTabChangesFocus(true);
+    edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont)); edit->setTabChangesFocus(true);
     return edit;
 }
 }
@@ -36,11 +39,13 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
     const QSet<QString> &occupied, const QStringList &kingdoms, const QByteArray &cardPng, QNetworkAccessManager *manager)
     : QDialog(parent), m_provider(this, manager), m_cardPng(cardPng)
 {
-    setWindowTitle(tr("Playable general authoring")); resize(1120, 860);
+    setWindowTitle(tr("General author workbench"));
+    setWindowFlag(Qt::WindowMaximizeButtonHint);
+    resize(QSize(1100, 800).boundedTo(screen()->availableGeometry().size() - QSize(40, 70)));
     m_document.spec = initialSpec; m_document.occupied = occupied;
     auto *layout = new QVBoxLayout(this);
-    auto *notice = new QLabel(tr("Generate and review Lua for this engine. Static checks do not establish safety. Code is never executed here; exports remain outside the installed package roots."));
-    notice->setWordWrap(true); layout->addWidget(notice);
+    auto *assistantPage = new QWidget;
+    auto *assistantLayout = new QVBoxLayout(assistantPage);
     auto *provider = new QGroupBox(tr("OpenAI-compatible provider"));
     auto *providerLayout = new QGridLayout(provider);
     m_endpoint = new QLineEdit; m_endpoint->setPlaceholderText(QStringLiteral("https://your-provider.example/v1/chat/completions"));
@@ -56,12 +61,27 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
     providerLayout->addWidget(keyLabel, 1, 0); providerLayout->addWidget(m_key, 1, 1);
     providerLayout->addWidget(modelLabel, 1, 2); providerLayout->addWidget(m_model, 1, 3);
     auto *privacy = new QLabel(tr("The key is masked, kept in memory for this dialog, and never saved in settings, projects, history or exports. OS credential storage is not available in this editor. Redirects are refused."));
-    privacy->setWordWrap(true); providerLayout->addWidget(privacy, 2, 0, 1, 4); layout->addWidget(provider);
+    privacy->setWordWrap(true); providerLayout->addWidget(privacy, 2, 0, 1, 4); assistantLayout->addWidget(provider);
     connect(m_key, &QLineEdit::editingFinished, this, [this] { m_document.rememberSecret(m_key->text()); });
 
     m_tabs = new QTabWidget; layout->addWidget(m_tabs, 1);
     auto *specPage = new QWidget; auto *specLayout = new QVBoxLayout(specPage);
+    auto *profile = new QGroupBox(tr("General profile"));
+    auto *profileLayout = new QHBoxLayout(profile);
     auto *metadata = new QFormLayout;
+    profileLayout->addLayout(metadata, 1);
+    QPixmap snapshot;
+    if (snapshot.loadFromData(cardPng, "PNG")) {
+        auto *artworkLayout = new QVBoxLayout;
+        auto *artwork = new QLabel;
+        artwork->setAlignment(Qt::AlignCenter);
+        artwork->setPixmap(snapshot.scaled(150, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        artworkLayout->addWidget(artwork);
+        auto *caption = new QLabel(tr("Card editor snapshot"));
+        caption->setAlignment(Qt::AlignCenter);
+        artworkLayout->addWidget(caption);
+        profileLayout->addLayout(artworkLayout);
+    }
     m_package = new QLineEdit; m_general = new QLineEdit; m_name = new QLineEdit;
     m_title = new QLineEdit; m_designer = new QLineEdit;
     m_package->setMaxLength(64); m_general->setMaxLength(64);
@@ -78,37 +98,68 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
     stats->addWidget(new QLabel(tr("Starting HP"))); stats->addWidget(m_startHp);
     stats->addWidget(new QLabel(tr("Armor"))); stats->addWidget(m_armor); stats->addWidget(m_male); stats->addWidget(m_lord);
     metadata->addRow(tr("General properties"), stats); metadata->addRow(tr("Title"), m_title); metadata->addRow(tr("Designer"), m_designer);
-    specLayout->addLayout(metadata);
+    specLayout->addWidget(profile);
     auto *identifierHelp = new QLabel(tr("Use lowercase letters, digits and underscores. General identifiers start with package_id_; skill identifiers start with general_id_. Existing names are rejected. Imported card descriptions may combine several skills; assign each description to its matching row before sending."));
     identifierHelp->setWordWrap(true); specLayout->addWidget(identifierHelp);
     m_skills = new QTableWidget(0, 3); m_skills->setHorizontalHeaderLabels({tr("Skill identifier"), tr("Skill title"), tr("Skill description")});
     m_skills->setAccessibleName(tr("Skills"));
     m_skills->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); m_skills->setObjectName("authoringSkills");
-    specLayout->addWidget(m_skills, 1);
+    m_skills->setColumnHidden(2, true);
+    m_skills->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_skills->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_skills->setAlternatingRowColors(true);
+    auto *skillsBox = new QGroupBox(tr("Skills"));
+    auto *skillsLayout = new QVBoxLayout(skillsBox);
+    auto *skillsSplit = new QSplitter;
+    skillsSplit->addWidget(m_skills);
+    auto *descriptionPane = new QWidget;
+    auto *descriptionLayout = new QVBoxLayout(descriptionPane);
+    descriptionLayout->setContentsMargins(0, 0, 0, 0);
+    auto *description = new QPlainTextEdit;
+    description->setTabChangesFocus(true);
+    auto *descriptionLabel = new QLabel(tr("Skill description"));
+    descriptionLabel->setBuddy(description);
+    descriptionLayout->addWidget(descriptionLabel);
+    descriptionLayout->addWidget(description);
+    skillsSplit->addWidget(descriptionPane);
+    skillsSplit->setChildrenCollapsible(false);
+    skillsLayout->addWidget(skillsSplit, 1);
+    specLayout->addWidget(skillsBox, 1);
     auto *skillButtons = new QHBoxLayout; auto *add = new QPushButton(tr("Add skill")); auto *remove = new QPushButton(tr("Remove selected skill"));
-    skillButtons->addWidget(add); skillButtons->addWidget(remove); skillButtons->addStretch(); specLayout->addLayout(skillButtons);
-    connect(add, &QPushButton::clicked, this, [this] {
+    skillButtons->addWidget(add); skillButtons->addWidget(remove); skillButtons->addStretch(); skillsLayout->addLayout(skillButtons);
+    auto refreshSkill = [this, description, add, remove] {
+        const int row = m_skills->currentRow();
+        const auto *item = row >= 0 ? m_skills->item(row, 2) : nullptr;
+        QSignalBlocker blocker(description);
+        description->setPlainText(item ? item->text() : QString());
+        description->setEnabled(item != nullptr);
+        remove->setEnabled(row >= 0);
+        add->setEnabled(m_skills->rowCount() < 8);
+    };
+    connect(m_skills, &QTableWidget::currentCellChanged, this, refreshSkill);
+    connect(m_skills->model(), &QAbstractItemModel::rowsRemoved, this, refreshSkill);
+    connect(description, &QPlainTextEdit::textChanged, this, [this, description] {
+        auto *item = m_skills->item(m_skills->currentRow(), 2);
+        if (item) item->setText(description->toPlainText());
+    });
+    connect(add, &QPushButton::clicked, this, [this, description] {
         if (m_skills->rowCount() >= 8) return;
         const int row = m_skills->rowCount(); m_skills->insertRow(row);
-        m_skills->setItem(row, 0, new QTableWidgetItem(m_general->text() + "_skill" + QString::number(row + 1)));
+        QSet<QString> identifiers;
+        for (int i = 0; i < row; ++i) identifiers.insert(m_skills->item(i, 0)->text());
+        const QString prefix = m_general->text() + "_skill";
+        int suffix = row + 1;
+        while (identifiers.contains(prefix + QString::number(suffix))) ++suffix;
+        m_skills->setItem(row, 0, new QTableWidgetItem(prefix + QString::number(suffix)));
         m_skills->setItem(row, 1, new QTableWidgetItem(tr("New skill"))); m_skills->setItem(row, 2, new QTableWidgetItem);
-        syncInputs(); m_skills->setCurrentCell(row, 2); m_skills->editItem(m_skills->item(row, 2));
-    });
-    auto *editDescription = new QPushButton(tr("Edit selected description")); skillButtons->insertWidget(2, editDescription);
-    connect(editDescription, &QPushButton::clicked, this, [this] {
-        const int row = m_skills->currentRow(); if (row < 0) return;
-        QDialog dialog(this); dialog.setWindowTitle(tr("Skill description")); dialog.resize(700, 450);
-        auto *layout = new QVBoxLayout(&dialog); auto *text = new QPlainTextEdit;
-        text->setPlainText(m_skills->item(row, 2) ? m_skills->item(row, 2)->text() : QString());
-        text->setTabChangesFocus(true); layout->addWidget(text);
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); layout->addWidget(buttons);
-        buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
-        buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
-        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        if (dialog.exec() == QDialog::Accepted) m_skills->setItem(row, 2, new QTableWidgetItem(text->toPlainText()));
+        m_skills->setCurrentCell(row, 0);
+        description->setFocus();
     });
     connect(remove, &QPushButton::clicked, this, [this] { if (m_skills->currentRow() >= 0) { m_skills->removeRow(m_skills->currentRow()); syncInputs(); } });
-    m_tabs->addTab(specPage, tr("Specification"));
+    auto *specScroll = new QScrollArea;
+    specScroll->setWidgetResizable(true);
+    specScroll->setWidget(specPage);
+    m_tabs->addTab(specScroll, tr("Specification"));
     auto *reviewPage = new QWidget; auto *reviewLayout = new QVBoxLayout(reviewPage);
     auto *reviewHelp = new QLabel(tr("Edit skills between BEGIN SKILLS and END SKILLS. The specification owns metadata, registration and translations. Save a project to preserve your edits and versions."));
     reviewHelp->setWordWrap(true); reviewLayout->addWidget(reviewHelp);
@@ -137,25 +188,42 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
 
     auto *correctionLabel = new QLabel(tr("Generation or correction instructions"));
     m_instruction = new QPlainTextEdit; m_instruction->setMaximumHeight(75); m_instruction->setTabChangesFocus(true);
-    correctionLabel->setBuddy(m_instruction); layout->addWidget(correctionLabel); layout->addWidget(m_instruction);
+    correctionLabel->setBuddy(m_instruction); assistantLayout->addWidget(correctionLabel); assistantLayout->addWidget(m_instruction);
     m_instruction->setPlaceholderText(tr("Describe what to generate or correct. The request includes the original specification, current metadata, reviewed code and diagnostics."));
-    m_diagnostics = new QPlainTextEdit; m_diagnostics->setReadOnly(true); m_diagnostics->setMaximumHeight(100);
-    m_diagnostics->setTabChangesFocus(true); m_diagnostics->setObjectName("authoringDiagnostics"); m_diagnostics->setAccessibleName(tr("Validation and request status")); layout->addWidget(m_diagnostics);
-    auto *actions = new QHBoxLayout;
-    auto button = [&](const QString &text, const QString &shortcut) { auto *b = new QPushButton(text); b->setAutoDefault(false); if (!shortcut.isEmpty()) b->setShortcut(QKeySequence(shortcut)); actions->addWidget(b); return b; };
-    m_send = button(tr("Preview request"), "Alt+G"); m_cancel = button(tr("Cancel request"), "Alt+C");
-    auto *validate = button(tr("Validate code"), "Alt+V"); m_apply = button(tr("Apply reviewed candidate"), "Alt+A");
-    auto *undo = button(tr("Undo version"), "Alt+U");
+    auto *requestButtons = new QHBoxLayout;
+    assistantLayout->addLayout(requestButtons);
+    assistantLayout->addStretch();
+    m_tabs->addTab(assistantPage, tr("AI assistant"));
+    m_diagnostics = new QPlainTextEdit; m_diagnostics->setReadOnly(true);
+    m_diagnostics->setMaximumHeight(m_diagnostics->fontMetrics().lineSpacing() * 3 + 12);
+    m_diagnostics->setTabChangesFocus(true); m_diagnostics->setObjectName("authoringDiagnostics"); m_diagnostics->setAccessibleName(tr("Validation and request status"));
+    m_diagnostics->hide();
+    layout->addWidget(m_diagnostics);
+    auto button = [](const QString &text, const QString &shortcut, QBoxLayout *bar) {
+        auto *b = new QPushButton(text);
+        b->setAutoDefault(false);
+        b->setShortcut(QKeySequence(shortcut));
+        bar->addWidget(b);
+        return b;
+    };
+    m_send = button(tr("Preview request"), "Alt+G", requestButtons);
+    m_cancel = button(tr("Cancel request"), "Alt+C", requestButtons);
+    requestButtons->addStretch();
+    auto *validate = button(tr("Validate code"), "Alt+V", reviewLayout);
+    m_apply = button(tr("Apply reviewed candidate"), "Alt+A", candidateLayout);
+    auto *undo = button(tr("Undo version"), "Alt+U", historyLayout);
     connect(m_send, &QPushButton::clicked, this, &GeneralAuthoringDialog::previewRequest);
     connect(m_cancel, &QPushButton::clicked, this, &GeneralAuthoringDialog::cancelRequest);
     connect(validate, &QPushButton::clicked, this, [this] { syncInputs(); const auto errors = m_document.diagnostics(); showMessage(errors.isEmpty() ? tr("Static checks passed. This does not establish safety or gameplay correctness. Test manually in a disposable runtime after review.") : errors.join('\n')); });
     connect(m_apply, &QPushButton::clicked, this, [this] { QString error; if (!m_document.apply(&error)) showMessage(error); else { m_manualCheckpoint = false; updateViews(); showMessage(tr("Candidate applied to the document. Lua was not run or installed.")); m_tabs->setCurrentIndex(1); } });
     connect(undo, &QPushButton::clicked, this, [this] { cancelRequest(); if (m_document.undo()) { loadInputs(); updateViews(); } });
-    layout->addLayout(actions);
     auto *files = new QHBoxLayout; auto *save = new QPushButton(tr("Save project")); auto *open = new QPushButton(tr("Open project")); auto *exportButton = new QPushButton(tr("Export disabled package"));
     m_includeArt = new QCheckBox(tr("Include current card artwork snapshot")); m_includeArt->setChecked(!cardPng.isEmpty());
     auto *close = new QPushButton(tr("Close")); for (auto *b : {save, open, exportButton, close}) b->setAutoDefault(false);
-    files->addWidget(save); files->addWidget(open); files->addWidget(m_includeArt); files->addWidget(exportButton); files->addStretch(); files->addWidget(close); layout->addLayout(files);
+    open->setShortcut(QKeySequence::Open);
+    save->setShortcut(QKeySequence::Save);
+    m_includeArt->setEnabled(!cardPng.isEmpty());
+    files->addWidget(open); files->addWidget(save); files->addStretch(); files->addWidget(m_includeArt); files->addWidget(exportButton); files->addWidget(close); layout->addLayout(files);
     connect(save, &QPushButton::clicked, this, &GeneralAuthoringDialog::saveProject); connect(open, &QPushButton::clicked, this, &GeneralAuthoringDialog::openProject);
     connect(exportButton, &QPushButton::clicked, this, &GeneralAuthoringDialog::exportPackage); connect(close, &QPushButton::clicked, this, &GeneralAuthoringDialog::reject);
     for (auto *edit : {m_package, m_general, m_name, m_title, m_designer}) connect(edit, &QLineEdit::textChanged, this, [this] { syncInputs(); });
@@ -175,7 +243,7 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
         if (m_loading) return;
         m_document.candidate = m_candidate->toPlainText(); m_diff->setPlainText(GeneralAuthoring::comparison(m_document.reviewed, m_document.candidate));
     });
-    loadInputs(); updateViews(); m_endpoint->setFocus();
+    loadInputs(); updateViews(); refreshSkill(); m_name->setFocus();
 }
 void GeneralAuthoringDialog::syncInputs()
 {
@@ -224,6 +292,7 @@ void GeneralAuthoringDialog::showMessage(const QString &message)
 {
     m_document.rememberSecret(m_key->text());
     m_diagnostics->setPlainText(m_document.containsSecret(message.toUtf8()) ? tr("A credential appears in authoring content. Remove it before continuing.") : message);
+    m_diagnostics->setVisible(!m_diagnostics->toPlainText().isEmpty());
 }
 void GeneralAuthoringDialog::previewRequest()
 {

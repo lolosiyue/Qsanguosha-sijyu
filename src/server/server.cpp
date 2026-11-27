@@ -1797,6 +1797,7 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
     if (qApp) qApp->setProperty("restrictedRewindLabRequested", QVariant());
     if (m_restrictedRewindLab) qInfo("Restricted rewind profile explicitly enabled for this server (native AI 02p)");
 	m_uptimeTimer.start();
+	m_maintenanceMode = Config.value("MaintenanceMode", false).toBool();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	if (injectedSocket != nullptr) {
 		server = injectedSocket;
@@ -1955,12 +1956,14 @@ QList<PlayerStatusSnapshot> Server::playerSnapshots() const
 	return snapshots;
 }
 
-bool Server::kickPlayer(const QString &id)
+bool Server::kickPlayer(const QString &id, int roomId)
 {
 	ServerPlayer *player = players.value(id, nullptr);
+	if (player && roomId >= 0 && player->getRoom()->getId() != roomId)
+		player = nullptr;
 	if (!player) {
 		foreach (Room *room, rooms) {
-			if (!room)
+			if (!room || (roomId >= 0 && room->getId() != roomId))
 				continue;
 			foreach (ServerPlayer *candidate, room->getPlayers()) {
 				if (candidate && candidate->objectName() == id) {
@@ -1972,7 +1975,7 @@ bool Server::kickPlayer(const QString &id)
 				break;
 		}
 	}
-	if (!player)
+	if (!player || (roomId >= 0 && player->getIp().isEmpty()))
 		return false;
 	player->kick();
 	emit server_message(tr("Administrator kicked player %1").arg(id));
@@ -2078,6 +2081,20 @@ bool Server::closeRoom(int roomId, QString *error)
 	retireRoom(room, true);
 	emit server_message(tr("Administrator closed room %1").arg(roomId));
 	return true;
+}
+
+int Server::openWaitingRoom()
+{
+	// Provision another joinable room without stealing the quick-join destination
+	// from a group that is still assembling in the current waiting room.
+	QPointer<Room> previous(current);
+	Room *room = createNewRoom();
+	if (!room)
+		return -1;
+	if (previous && rooms.contains(previous.data()) && !previous->isFull()
+		&& !previous->isFinished() && !previous->isRunning() && !previous->hasGameStarted())
+		current = previous.data();
+	return room->getId();
 }
 
 int Server::closeWaitingRooms()
@@ -2450,18 +2467,37 @@ void Server::setNextGameSessionConfig(const GameSessionConfig &config)
 	m_hasNextSessionConfig = true;
 }
 
+ServerAccessPolicy Server::accessPolicy() const
+{
+	if (m_consoleAccessPolicy)
+		return *m_consoleAccessPolicy;
+	// GUI hosts can edit the persisted ban list while the server is running.
+	ServerAccessPolicy policy;
+	policy.allowEnabled = Config.value("AllowListEnabled", false).toBool();
+	policy.allow = Config.value("AllowedIP").toStringList();
+	policy.deny = Config.value("BannedIP").toStringList();
+	return policy;
+}
+
+void Server::setAccessPolicy(const ServerAccessPolicy &policy)
+{
+	m_consoleAccessPolicy.reset(new ServerAccessPolicy(policy));
+}
+
 void Server::processNewConnection(ClientSocket *socket)
 {
 	if (socket == nullptr)
 		return;
 	if (m_shuttingDown) {
 		disconnectSocketFromOwnerThread(socket);
+		socket->deleteLater();
 		return;
 	}
 	QString addr = socket->peerAddress();
 
-	if (Config.value("BannedIP").toStringList().contains(addr)) {
+	if (!accessPolicy().accepts(addr)) {
 		disconnectSocketFromOwnerThread(socket);
+		socket->deleteLater();
 		emit server_message(tr("Forbid the connection of address %1").arg(addr));
 		return;
 	}
@@ -2469,6 +2505,7 @@ void Server::processNewConnection(ClientSocket *socket)
 	if (Config.ForbidSIMC) {
 		if (addresses.contains(addr)) {
 			disconnectSocketFromOwnerThread(socket);
+			socket->deleteLater();
 			emit server_message(tr("Forbid the connection of address %1").arg(addr));
 			return;
 		}
@@ -2564,6 +2601,12 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		rejectConnection(context, code, message);
 	};
 
+    // The policy may have changed between hello and signup (including reconnect).
+    if (!accessPolicy().accepts(socket->peerAddress())) {
+        rejectSignup(QStringLiteral("access_denied"), QStringLiteral("Connection refused by server access policy"));
+        return;
+    }
+
     // WebSocket requires a sealed identity. Native TCP keeps the W2 legacy path:
     // a desktop tree cannot seal declared-v2, so an Engine error stub is omitted
     // rather than treated as a submitted web identity.
@@ -2647,13 +2690,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 
 	Room *target = current;
 	if (signup.hasRoomId) {
-		target = nullptr;
-		foreach (Room *room, rooms) {
-			if (room && room->getId() == signup.roomId) {
-				target = room;
-				break;
-			}
-		}
+		target = findRoom(signup.roomId);
 		if (target == nullptr) {
 			rejectSignup(QStringLiteral("room_not_found"),
 				QStringLiteral("Requested room does not exist"));
@@ -2664,7 +2701,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 				QStringLiteral("Requested room has ended"));
 			return;
 		}
-		if (target->isRunning()) {
+		if (target->isRunning() || target->hasGameStarted()) {
 			rejectSignup(QStringLiteral("room_started"),
 				QStringLiteral("Requested room has already started"));
 			return;
@@ -2674,13 +2711,21 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 				QStringLiteral("Requested room is full"));
 			return;
 		}
-	} else if (!current || current->isFull() || current->isFinished()) {
-		if (!createNewRoom()) {
+	} else if (!target || target->isFull() || target->isFinished() || target->isRunning() || target->hasGameStarted()) {
+		// Manually provisioned rooms remain available to ordinary quick joins.
+		target = nullptr;
+		for (Room *room : rooms) {
+			if (!room->isFull() && !room->isFinished() && !room->isRunning() && !room->hasGameStarted()
+				&& (!target || room->getId() < target->getId()))
+				target = room;
+		}
+		if (!target)
+			target = createNewRoom();
+		if (!target) {
 			rejectSignup(QStringLiteral("server_full"),
 				QStringLiteral("No room is available"));
 			return;
 		}
-		target = current;
 	}
 	if (signup.hasMaxPlayers && signup.maxPlayers > 0
 		&& Sanguosha->getPlayerCount(target->getMode()) > signup.maxPlayers) {
@@ -2728,6 +2773,8 @@ void Server::cleanup()
 	if (ServerConnectionContext *context = m_connectionContexts.take(socket)) {
 		context->fail();
 		context->deleteLater();
+		// A rejected or abandoned handshake never transferred ownership to a player.
+		socket->deleteLater();
 	}
 	playerCount--;
 	if (Config.ForbidSIMC){

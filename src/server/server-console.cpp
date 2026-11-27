@@ -420,6 +420,12 @@ void ServerConsole::executeCommand(const QString &line)
     if (input.isEmpty())
         return;
 
+    if (input.startsWith(QLatin1Char('{'))) {
+        const QJsonDocument request = QJsonDocument::fromJson(input.toUtf8());
+        writeLine(compactJson(managementReply(request.object())));
+        return;
+    }
+
     qsizetype separator = 0;
     while (separator < input.size() && !input.at(separator).isSpace())
         ++separator;
@@ -433,21 +439,21 @@ void ServerConsole::executeCommand(const QString &line)
             printHelp();
     } else if (command == QLatin1String("status")) {
         if (arguments == QLatin1String("--json"))
-            printStatusJson();
+            writeLine(compactJson(statusJson()));
         else if (!arguments.isEmpty())
             writeLine(QStringLiteral("Usage: status [--json]"));
         else
             printStatus();
     } else if (command == QLatin1String("players")) {
         if (arguments == QLatin1String("--json"))
-            printPlayersJson();
+            writeLine(compactJson({{"players", playersJson(false)}}));
         else if (!arguments.isEmpty())
             writeLine(QStringLiteral("Usage: players [--json]"));
         else
             printPlayers();
     } else if (command == QLatin1String("rooms")) {
         if (arguments == QLatin1String("--json"))
-            printRoomsJson();
+            writeLine(compactJson({{"rooms", roomsJson()}}));
         else if (!arguments.isEmpty())
             writeLine(QStringLiteral("Usage: rooms [--json]"));
         else
@@ -547,7 +553,7 @@ void ServerConsole::printStatus()
     }
 }
 
-void ServerConsole::printStatusJson()
+QJsonObject ServerConsole::statusJson() const
 {
     const ServerStatusSnapshot snapshot = m_server->statusSnapshot();
     // Minimal field set mirroring ServerStatusSnapshot; no stable schema version is promised.
@@ -576,7 +582,7 @@ void ServerConsole::printStatusJson()
                 ? QJsonValue(QJsonValue::Null) : QJsonValue(log.filePath)},
         });
     }
-    writeLine(compactJson(object));
+    return object;
 }
 
 void ServerConsole::printPlayers()
@@ -603,18 +609,21 @@ void ServerConsole::printPlayers()
     }
 }
 
-void ServerConsole::printPlayersJson()
+QJsonArray ServerConsole::playersJson(bool includeAddress) const
 {
     QJsonArray items;
     for (const PlayerStatusSnapshot &player : m_server->playerSnapshots()) {
-        items.append(QJsonObject {
+        QJsonObject item {
             {QStringLiteral("id"), player.id},
             {QStringLiteral("name"), player.name},
             {QStringLiteral("room_id"), optionalRoomId(player.roomId)},
             {QStringLiteral("state"), player.state},
-        });
+        };
+        if (includeAddress)
+            item.insert(QStringLiteral("ip"), player.ip);
+        items.append(item);
     }
-    writeLine(compactJson({{QStringLiteral("players"), items}}));
+    return items;
 }
 
 void ServerConsole::printRooms()
@@ -645,7 +654,7 @@ void ServerConsole::printRooms()
     }
 }
 
-void ServerConsole::printRoomsJson()
+QJsonArray ServerConsole::roomsJson() const
 {
     QJsonArray items;
     for (const RoomStatusSnapshot &room : m_server->roomSnapshots()) {
@@ -659,7 +668,69 @@ void ServerConsole::printRoomsJson()
                 ? QJsonValue(double(room.uptimeMs)) : QJsonValue(QJsonValue::Null)},
         });
     }
-    writeLine(compactJson({{QStringLiteral("rooms"), items}}));
+    return items;
+}
+
+QJsonObject ServerConsole::managementReply(const QJsonObject &request)
+{
+    const QString id = request.value("id").toString();
+    const auto fail = [&id](const QString &error) -> QJsonObject {
+        return {{"id", id}, {"ok", false}, {"error", error}};
+    };
+    if (id.isEmpty() || id.size() > 128)
+        return fail(QStringLiteral("Invalid request id"));
+    const QString action = request.value("action").toString();
+    const int roomId = request.value("roomId").toInt(-1);
+    QJsonObject result;
+    if (action == QLatin1String("snapshot")) {
+        const ServerAccessPolicy policy = m_server->accessPolicy();
+        QJsonObject access {{"allowEnabled", policy.allowEnabled},
+            {"allow", QJsonArray::fromStringList(policy.allow)}, {"deny", QJsonArray::fromStringList(policy.deny)}};
+        result = {{"status", statusJson()}, {"rooms", roomsJson()}, {"players", playersJson(true)}, {"access", access}};
+    } else if (action == QLatin1String("room.create")) {
+        const int createdId = m_server->openWaitingRoom();
+        if (createdId < 0)
+            return fail(QStringLiteral("Room creation failed"));
+        result.insert("roomId", createdId);
+    } else if (action == QLatin1String("room.close")) {
+        QString error;
+        if (roomId < 0)
+            return fail(QStringLiteral("Invalid room id"));
+        if (!m_server->closeRoom(roomId, &error))
+            return fail(error);
+    } else if (action == QLatin1String("player.kick")) {
+        const QString playerId = request.value("playerId").toString();
+        if (roomId < 0 || playerId.isEmpty())
+            return fail(QStringLiteral("Room id and player id required"));
+        if (!m_server->kickPlayer(playerId, roomId))
+            return fail(QStringLiteral("Connected player not found in that room"));
+    } else if (action == QLatin1String("maintenance.set")) {
+        if (!request.value("enabled").isBool())
+            return fail(QStringLiteral("Expected a boolean enabled flag"));
+        m_server->setMaintenanceMode(request.value("enabled").toBool());
+    } else if (action == QLatin1String("access.set")) {
+        const auto addresses = [](const QJsonValue &array, QStringList &out) {
+            if (!array.isArray())
+                return false;
+            for (const QJsonValue &entry : array.toArray()) {
+                const QString address = ServerAccessPolicy::addressKey(entry.toString());
+                if (address.isEmpty())
+                    return false;
+                if (!out.contains(address))
+                    out << address;
+            }
+            return true;
+        };
+        ServerAccessPolicy policy;
+        if (!request.value("allowEnabled").isBool()
+            || !addresses(request.value("allow"), policy.allow) || !addresses(request.value("deny"), policy.deny))
+            return fail(QStringLiteral("Expected allowEnabled and numeric IP address lists allow and deny"));
+        policy.allowEnabled = request.value("allowEnabled").toBool();
+        m_server->setAccessPolicy(policy);
+    } else {
+        return fail(QStringLiteral("Unknown management action"));
+    }
+    return {{"id", id}, {"ok", true}, {"result", result}};
 }
 
 void ServerConsole::handleClose(const QString &arguments)
@@ -840,6 +911,9 @@ void ServerConsole::disableInput()
 {
     m_acceptingInput = false;
     m_promptVisible = false;
+    // Managed processes belong to their pipe owner; ordinary daemons can live past EOF.
+    if (!m_interactive && qgetenv("QSAN_MANAGED_CONSOLE") == QByteArrayLiteral("1"))
+        QCoreApplication::quit();
 #if defined(Q_OS_UNIX)
     if (m_stdinNotifier)
         m_stdinNotifier->setEnabled(false);

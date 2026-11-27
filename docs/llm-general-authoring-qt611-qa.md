@@ -48,8 +48,8 @@ Simplified Chinese translations.
 | Check | Expected result |
 | --- | --- |
 | Existing card art/HP/kingdom/layout and skill text editing | Existing behavior, font settings, avatar rectangles and image export remain intact. |
-| Tool → Author playable general / Alt+G | A separate dialog opens; current card name/title/HP/kingdom/lord/skill titles seed its form. |
-| Several card skills | Shared card skill text starts in the first row; the user can assign descriptions per row using the multiline description editor. |
+| General author workbench toolbar action / Tool menu / Alt+G | The Specification tab opens with the current card snapshot, name, title, HP, kingdom, lord flag and skill titles. |
+| Several card skills | Shared card skill text starts in the first row. Edit the selected skill in the adjacent description pane, switch rows, then save and reopen the project to verify each description. |
 | Provider fields | Endpoint and model are editable; key is masked and has no save/remember option. No automatic request occurs on open or field edits. |
 | Invalid IDs, duplicate/occupied names, fractional/oversized HP | Requests/exports fail visibly; no files or existing general are replaced. |
 | Preview request | Complete model payload is plain text, with original/current specs, reviewed code, diagnostics and bounded context. No Authorization header, key, artwork bytes or local source/project path appears. |

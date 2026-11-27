@@ -4,6 +4,7 @@
 #include "package-catalog.h"
 #include <QBuffer>
 #include <QJsonArray>
+#include <QToolBar>
 #include "mainwindow.h"
 #include "engine.h"
 #include "settings.h"
@@ -863,10 +864,18 @@ QMainWindow(parent)
 	connect(edit_skill, SIGNAL(triggered()), this, SLOT(editSkill()));
 	tool_menu->addAction(edit_skill);
 
-    QAction *author_general = new QAction(tr("Author playable general ..."), tool_menu);
+    QAction *author_general = new QAction(tr("General author workbench"), tool_menu);
     author_general->setShortcut(QKeySequence("Alt+G"));
     connect(author_general, &QAction::triggered, this, &CardEditor::authorPlayableGeneral);
     tool_menu->addAction(author_general);
+
+    auto *authorTools = addToolBar(tr("Card editor"));
+    authorTools->setMovable(false);
+    authorTools->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    authorTools->addAction(import);
+    authorTools->addAction(save);
+    authorTools->addSeparator();
+    authorTools->addAction(author_general);
 
 	tool_menu->addSeparator();
 
@@ -1084,7 +1093,7 @@ QWidget *CardEditor::createSkillBox()
 	bold_ComboBox->addItem(tr("Colla skill"));
 	layout->addRow(tr("Insert bold text"), bold_ComboBox);
 
-	connect(bold_ComboBox, SIGNAL(activated(QString)), skill_box, SLOT(insertBoldText(QString)));
+	connect(bold_ComboBox, &QComboBox::textActivated, skill_box, &SkillBox::insertBoldText);
 
 	box->setLayout(layout);
 	return box;
@@ -1206,11 +1215,24 @@ void CardEditor::editSkill()
 		to_edit->setText(text);
 }
 
+CardEditor *MainWindow::showCardEditor()
+{
+	if (!m_cardEditor)
+		m_cardEditor = new CardEditor(this);
+	m_cardEditor->show();
+	m_cardEditor->raise();
+	m_cardEditor->activateWindow();
+	return m_cardEditor;
+}
+
 void MainWindow::on_actionCard_editor_triggered()
 {
-	static CardEditor *editor = new CardEditor(this);
+	showCardEditor();
+}
 
-	editor->show();
+void MainWindow::on_actionGeneralAuthorWorkbench_triggered()
+{
+	showCardEditor()->authorPlayableGeneral();
 }
 
 

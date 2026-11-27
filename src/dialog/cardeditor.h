@@ -153,6 +153,7 @@ class CardEditor : public QMainWindow
 
 public:
     explicit CardEditor(QWidget *parent = 0);
+    void authorPlayableGeneral();
 
 private:
     CardScene *card_scene;
@@ -185,7 +186,6 @@ private slots:
     void saveAvatar(const QRectF &rect);
     void addSkill();
     void editSkill();
-    void authorPlayableGeneral();
 };
 
 #endif // CARDEDITOR_H

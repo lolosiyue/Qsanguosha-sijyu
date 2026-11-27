@@ -124,6 +124,7 @@
      <string>DIY</string>
     </property>
     <addaction name="actionCard_editor"/>
+    <addaction name="actionGeneralAuthorWorkbench"/>
    </widget>
    <addaction name="menuGame"/>
    <addaction name="menuView"/>
@@ -313,6 +314,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="actionGeneralAuthorWorkbench">
+   <property name="text">
+    <string>General author workbench</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+G</string>
    </property>
   </action>
   <action name="actionReplay_file_convert">

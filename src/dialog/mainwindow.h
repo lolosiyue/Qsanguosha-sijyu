@@ -16,6 +16,7 @@ namespace Ui {
 void applyQsanStyleSheet(bool bigPictureMode);
 
 class FitView;
+class CardEditor;
 class Client;
 class RoomScene;
 class QGraphicsScene;
@@ -123,6 +124,8 @@ protected:
 #endif
 
 private:
+    CardEditor *m_cardEditor = nullptr;
+    CardEditor *showCardEditor();
     enum class MainPage {
         Home,
         Game
@@ -233,6 +236,7 @@ private slots:
     void startLocalConsoleGame();
     void on_actionExit_triggered();
     void on_actionCard_editor_triggered();
+    void on_actionGeneralAuthorWorkbench_triggered();
 
     void checkVersion(const QString &server_version, const QString &server_mod, int card_num);
     void networkError(const QString &error_msg);

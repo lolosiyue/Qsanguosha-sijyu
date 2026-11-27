@@ -1,4 +1,5 @@
 #include "server-config.h"
+#include "server-access-policy.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -142,6 +143,9 @@ const QList<SettingSpec> &settingSpecs()
         integerSetting("BossModeTurnLimit", 70, -1, 200),
 
         stringListSetting("BannedIP"),
+        stringListSetting("AllowedIP"),
+        booleanSetting("AllowListEnabled", false),
+        booleanSetting("MaintenanceMode", false),
         stringListSetting("ForbidPackages"),
         stringSetting("LuaPackages"),
         booleanSetting("OfficialServer", false),
@@ -243,6 +247,17 @@ bool normalizeValue(const SettingSpec &spec, const QVariant &input,
         for (QString &value : values)
             value = value.trimmed();
         values.removeAll(QString());
+        if (spec.key == QLatin1String("AllowedIP") || spec.key == QLatin1String("BannedIP")) {
+            for (QString &value : values) {
+                const QString key = ServerAccessPolicy::addressKey(value);
+                if (key.isEmpty()) {
+                    error = QStringLiteral("expected numeric IP addresses");
+                    return false;
+                }
+                value = key;
+            }
+            values.removeDuplicates();
+        }
         normalized = values;
         return true;
     }

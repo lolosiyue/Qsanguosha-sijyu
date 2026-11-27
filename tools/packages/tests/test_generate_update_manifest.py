@@ -154,22 +154,18 @@ class GenerateUpdateManifestTests(unittest.TestCase):
             self.generate()
 
     def test_rejects_traversal_symlinks_unlisted_members_and_corrupt_zip(self):
-        write_package_zip(self.input_dir / "traversal.zip", unsafe_member="../outside.txt")
-        with self.assertRaisesRegex(generator.ManifestGenerationError, "unsafe ZIP member"):
-            self.generate()
-        (self.input_dir / "traversal.zip").unlink()
+        archive = self.input_dir / "invalid.zip"
+        for options, message in (
+            ({"unsafe_member": "../outside.txt"}, "unsafe ZIP member"),
+            ({"symlink_member": "image/link.png"}, "symlink or special"),
+            ({"extra": {"data/unlisted.bin": b"extra"}}, "unlisted package file"),
+        ):
+            with self.subTest(expected_error=message):
+                write_package_zip(archive, **options)
+                with self.assertRaisesRegex(generator.ManifestGenerationError, message):
+                    self.generate()
 
-        write_package_zip(self.input_dir / "symlink.zip", symlink_member="image/link.png")
-        with self.assertRaisesRegex(generator.ManifestGenerationError, "symlink or special"):
-            self.generate()
-        (self.input_dir / "symlink.zip").unlink()
-
-        write_package_zip(self.input_dir / "unlisted.zip", extra={"data/unlisted.bin": b"extra"})
-        with self.assertRaisesRegex(generator.ManifestGenerationError, "unlisted package file"):
-            self.generate()
-        (self.input_dir / "unlisted.zip").unlink()
-
-        (self.input_dir / "broken.zip").write_bytes(b"not a zip")
+        archive.write_bytes(b"not a zip")
         with self.assertRaises(generator.ManifestGenerationError):
             self.generate()
 

@@ -3331,14 +3331,17 @@ void Room::reportDisconnection()
 	// all above should set its socket to nullptr
 
 	player->setSocket(nullptr);
+	// Waiting seats already have the sentinel role "unknown". Only the session
+	// knows whether the player can leave without affecting a started game.
+	const bool waiting = m_gameSession->state() == GameSessionController::State::Waiting;
 
 	if (player->objectName().isEmpty()){
 		// first case
 		player->setParent(nullptr);
 		removePlayerFromRoster(player);
-	} else if (player->getRole().isEmpty()){
+	} else if (waiting || player->getRole().isEmpty()){
 		// second case
-		if (getPlayers().length() < player_count){
+		if (waiting || getPlayers().length() < player_count){
 			player->setParent(nullptr);
 			removePlayerFromRoster(player);
 
@@ -3395,6 +3398,9 @@ void Room::reportDisconnection()
 			break;
 		}
 	}
+	// Removed waiting players were detached from QObject ownership above.
+	if (!player->parent())
+		player->deleteLater();
 }
 
 void Room::trustCommand(ServerPlayer*player, const QVariant&arg)

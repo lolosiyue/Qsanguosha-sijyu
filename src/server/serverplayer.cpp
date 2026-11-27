@@ -636,9 +636,12 @@ void ServerPlayer::adoptProtocolConnectionState(
 
 void ServerPlayer::kick()
 {
+	if (!socket)
+		return;
 	room->notifyProperty(this, this, "flags", "is_kicked");
+	// Let the normal disconnected signal release the seat and clear its socket.
+	// WebSocket close is asynchronous; detaching now would discard that signal.
 	disconnectSocketFromOwnerThread();
-	setSocket(nullptr);
 }
 
 void ServerPlayer::getMessage(const QByteArray &message)

@@ -7,6 +7,7 @@
 #include "game-session-config.h"
 #include "protocol/protocol-runtime.h"
 #include "server-status.h"
+#include "server-access-policy.h"
 #include "scenario-work.h"
 
 class Room;
@@ -57,7 +58,9 @@ public:
     ServerStatusSnapshot statusSnapshot() const;
     QList<RoomStatusSnapshot> roomSnapshots() const;
     QList<PlayerStatusSnapshot> playerSnapshots() const;
-    bool kickPlayer(const QString &id);
+    bool kickPlayer(const QString &id, int roomId = -1);
+    ServerAccessPolicy accessPolicy() const;
+    void setAccessPolicy(const ServerAccessPolicy &policy);
     void broadcastAdminMessage(const QString &message);
     // Runtime console controls. Everything is addressed by room id / player id;
     // callers never get a Room or ServerPlayer pointer.
@@ -66,6 +69,7 @@ public:
     bool setMaintenanceMode(bool enabled);
     // Dissolve a waiting room: kick its players and reclaim it. Use endRoomGame for a game in progress.
     bool closeRoom(int roomId, QString *error = nullptr);
+    int openWaitingRoom();
     // Dissolve every waiting room; returns how many were dissolved.
     int closeWaitingRooms();
     // End a game in progress through the normal gameOver path; takes effect at a room-thread safe point.
@@ -125,6 +129,7 @@ private:
     QHash<ClientSocket *, QString> m_lobbyScreenNames;
     bool created_successfully;
     bool m_maintenanceMode = false;
+    QScopedPointer<ServerAccessPolicy> m_consoleAccessPolicy;
     int playerCount;
     quint64 m_nextGameSeedIndex;
     QString m_headlessReplayDirectory;
